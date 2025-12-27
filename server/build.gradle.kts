@@ -32,7 +32,6 @@ dependencies {
 publishing {
     publications {
         create<MavenPublication>("fatJar") {
-            from(components["java"])
             artifact(tasks["shadowJar"])
         }
     }
