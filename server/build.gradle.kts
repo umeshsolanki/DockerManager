@@ -1,12 +1,14 @@
 plugins {
     alias(libs.plugins.kotlinJvm)
     alias(libs.plugins.ktor)
+    alias(libs.plugins.shadowJar)
     application
     `maven-publish`
 }
 
 group = "com.umeshsolanki.dockermanager"
 version = "1.0.0"
+
 application {
     mainClass.set("com.umeshsolanki.dockermanager.ApplicationKt")
     
@@ -28,6 +30,12 @@ dependencies {
 }
 
 publishing {
+    publications {
+        create<MavenPublication>("fatJar") {
+            from(components["java"])
+            artifact(tasks["shadowJar"])
+        }
+    }
     repositories {
         maven {
             url = uri("https://r1.umeshsolanki.in/repository/maven-releases/")
