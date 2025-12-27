@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.kotlinJvm)
     alias(libs.plugins.ktor)
     application
+    `maven-publish`
 }
 
 group = "com.umeshsolanki.dockermanager"
@@ -24,4 +25,16 @@ dependencies {
     implementation(libs.docker.java.transport)
     testImplementation(libs.ktor.serverTestHost)
     testImplementation(libs.kotlin.testJunit)
+}
+
+publishing {
+    repositories {
+        maven {
+            url = uri("https://r1.umeshsolanki.in/repository/maven-releases/")
+            credentials {
+                username = System.getenv("MAVEN_USERNAME") ?: "public"
+                password = System.getenv("MAVEN_PASSWORD")?: "public"
+            }
+        }
+    }
 }
