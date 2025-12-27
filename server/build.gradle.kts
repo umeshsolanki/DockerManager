@@ -39,8 +39,8 @@ publishing {
         maven {
             url = uri("https://r1.umeshsolanki.in/repository/maven-releases/")
             credentials {
-                username = System.getenv("MAVEN_USERNAME") ?: "public"
-                password = System.getenv("MAVEN_PASSWORD")?: "public"
+                username = System.getenv("MAVEN_USERNAME")
+                password = System.getenv("MAVEN_PASSWORD")
             }
         }
     }
