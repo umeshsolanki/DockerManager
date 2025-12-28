@@ -10,22 +10,11 @@ pipeline {
 
     stages {
 
-            stage('Stage 1') {
-                steps {
-                    echo "Stage 1"
-                }
+        stage('Publish FatJar') {
+            steps {
+                sh './gradlew :server:publishFatJarPublicationToMavenRepository'
             }
-//         stage('Test') {
-//             steps {
-//                 sh './gradlew test'
-//             }
-//         }
-
-//         stage('Publish FatJar') {
-//             steps {
-//                 sh './gradlew :server:publishFatJarPublicationToMavenRepository'
-//             }
-//         }
+        }
 
         stage('Build Docker Image') {
             steps {
