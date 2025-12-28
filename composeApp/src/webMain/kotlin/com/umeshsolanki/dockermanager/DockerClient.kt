@@ -1,10 +1,14 @@
 package com.umeshsolanki.dockermanager
 
-import io.ktor.client.*
-import io.ktor.client.call.*
-import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.client.request.*
-import io.ktor.serialization.kotlinx.json.*
+import com.russhwolf.settings.set
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.delete
+import io.ktor.client.request.get
+import io.ktor.client.request.parameter
+import io.ktor.client.request.post
+import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 
 object DockerClient {
@@ -17,7 +21,17 @@ object DockerClient {
         }
     }
 
-    private const val BASE_URL = "http://192.168.1.3:85"
+
+    fun getServerUrl(): String {
+        return appSettings.getString(SettingsName.SERVER_URL, "http://192.168.1.3:85")
+    }
+
+    fun setServerUrl(url: String) {
+        appSettings[SettingsName.SERVER_URL] = url
+    }
+
+    private val BASE_URL: String
+        get() = getServerUrl()
 
     suspend fun listContainers(): List<DockerContainer> {
         return try {
@@ -39,6 +53,78 @@ object DockerClient {
     suspend fun stopContainer(id: String) {
         try {
             client.post("$BASE_URL/containers/$id/stop")
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun removeContainer(id: String) {
+        try {
+            client.delete("$BASE_URL/containers/$id")
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun pruneContainers() {
+        try {
+            client.post("$BASE_URL/containers/prune")
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun listImages(): List<DockerImage> {
+        return try {
+            client.get("$BASE_URL/images").body()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun pullImage(name: String) {
+        try {
+            client.post("$BASE_URL/images/pull") {
+                parameter("image", name)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun removeImage(id: String) {
+        try {
+            client.delete("$BASE_URL/images/$id")
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun listComposeFiles(): List<ComposeFile> {
+        return try {
+            client.get("$BASE_URL/compose").body()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun composeUp(path: String) {
+        try {
+            client.post("$BASE_URL/compose/up") {
+                parameter("file", path)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun composeDown(path: String) {
+        try {
+            client.post("$BASE_URL/compose/down") {
+                parameter("file", path)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }

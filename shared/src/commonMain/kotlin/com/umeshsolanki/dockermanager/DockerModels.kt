@@ -10,3 +10,18 @@ data class DockerContainer(
     val status: String,
     val state: String // running, exited, etc.
 )
+
+@Serializable
+data class DockerImage(
+    val id: String,
+    val tags: List<String>,
+    val size: Long,
+    val created: Long
+)
+
+@Serializable
+data class ComposeFile(
+    val path: String,
+    val name: String,
+    val status: String // active, inactive
+)

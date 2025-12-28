@@ -58,5 +58,57 @@ fun Application.module() {
                 call.respondText("Stopped")
             }
         }
+            
+            delete("/{id}") {
+                val id = call.parameters["id"] ?: return@delete call.respondText("Missing ID", status = HttpStatusCode.BadRequest)
+                DockerService.removeContainer(id)
+                call.respondText("Removed")
+            }
+
+            post("/prune") {
+                DockerService.pruneContainers()
+                call.respondText("Pruned")
+            }
+        }
+        
+        route("/images") {
+            get {
+                call.respond(DockerService.listImages())
+            }
+            
+            post("/pull") {
+                val name = call.request.queryParameters["image"] ?: return@post call.respondText("Missing Image Name", status = HttpStatusCode.BadRequest)
+                val success = DockerService.pullImage(name)
+                 if (success) {
+                    call.respondText("Pulled")
+                } else {
+                    call.respondText("Failed to pull", status = HttpStatusCode.InternalServerError)
+                }
+            }
+            
+            delete("/{id}") {
+                 val id = call.parameters["id"] ?: return@delete call.respondText("Missing ID", status = HttpStatusCode.BadRequest)
+                 DockerService.removeImage(id)
+                 call.respondText("Removed")
+            }
+        }
+        
+        route("/compose") {
+            get {
+                call.respond(DockerService.listComposeFiles())
+            }
+            
+            post("/up") {
+                val file = call.request.queryParameters["file"] ?: return@post call.respondText("Missing File Path", status = HttpStatusCode.BadRequest)
+                DockerService.composeUp(file)
+                call.respondText("Up")
+            }
+            
+            post("/down") {
+                 val file = call.request.queryParameters["file"] ?: return@post call.respondText("Missing File Path", status = HttpStatusCode.BadRequest)
+                 DockerService.composeDown(file)
+                 call.respondText("Down")
+            }
+        }
     }
 }

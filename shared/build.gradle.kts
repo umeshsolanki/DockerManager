@@ -21,6 +21,12 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(libs.kotlinx.serializationJson)
+            implementation(libs.settings)
+        }
+        wasmJsMain {
+            dependencies {
+//                implementation(libs.kotlinx.browser)
+            }
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
