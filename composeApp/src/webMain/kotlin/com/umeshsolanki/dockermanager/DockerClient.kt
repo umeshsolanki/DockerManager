@@ -129,4 +129,13 @@ object DockerClient {
             e.printStackTrace()
         }
     }
+
+    suspend fun getBatteryStatus(): BatteryStatus? {
+        return try {
+            client.get("$BASE_URL/system/battery").body()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
 }

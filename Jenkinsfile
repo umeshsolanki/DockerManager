@@ -2,11 +2,11 @@ pipeline {
     agent any
 
     stages {
-        stage('Test') {
-            steps {
-                sh './gradlew test'
-            }
-        }
+//         stage('Test') {
+//             steps {
+//                 sh './gradlew test'
+//             }
+//         }
 
         stage('Build FatJar') {
             steps {

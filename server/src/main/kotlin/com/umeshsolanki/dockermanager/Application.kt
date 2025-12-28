@@ -117,5 +117,11 @@ fun Application.module() {
                  call.respondText("Down")
             }
         }
+
+        route("/system") {
+            get("/battery") {
+                call.respond(SystemService.getBatteryStatus())
+            }
+        }
     }
 }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Settings
@@ -34,6 +35,13 @@ import com.umeshsolanki.dockermanager.screens.ContainersScreen
 import com.umeshsolanki.dockermanager.screens.ImagesScreen
 import com.umeshsolanki.dockermanager.screens.SettingsScreen
 
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.BatteryFull
+import androidx.compose.material.icons.filled.BatteryStd
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
+
 @Composable
 fun App() {
     val darkColorScheme = darkColorScheme(
@@ -51,7 +59,15 @@ fun App() {
 
     MaterialTheme(colorScheme = darkColorScheme) {
         var selectedTab by remember { mutableStateOf(0) }
+        var batteryStatus by remember { mutableStateOf<BatteryStatus?>(null) }
         val titles = listOf("Containers", "Images", "Compose", "Settings")
+
+        LaunchedEffect(Unit) {
+            while (true) {
+                batteryStatus = DockerClient.getBatteryStatus()
+                delay(15*60_000) // Refresh every 60s
+            }
+        }
 
         Surface(
             modifier = Modifier.fillMaxSize(),
@@ -99,6 +115,38 @@ fun App() {
                     )
 
                     Spacer(modifier = Modifier.weight(1f))
+
+                    // Battery Indicator
+                    batteryStatus?.let { status ->
+                        if (status.percentage >= 0) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(bottom = 16.dp)
+                            ) {
+                                Icon(
+                                    imageVector = when {
+                                        status.isCharging -> Icons.Default.BatteryChargingFull
+                                        status.percentage > 80 -> Icons.Default.BatteryFull
+                                        else -> Icons.Default.BatteryStd
+                                    },
+                                    contentDescription = "Battery",
+                                    tint = if (status.isCharging) Color.Green else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = "${status.percentage}%",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                    )
 
                     NavigationRailItem(
                         selected = selectedTab == 3,

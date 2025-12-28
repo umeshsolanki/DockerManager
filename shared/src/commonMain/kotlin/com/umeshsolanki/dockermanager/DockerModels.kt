@@ -25,3 +25,10 @@ data class ComposeFile(
     val name: String,
     val status: String // active, inactive
 )
+
+@Serializable
+data class BatteryStatus(
+    val percentage: Int,
+    val isCharging: Boolean,
+    val source: String
+)
