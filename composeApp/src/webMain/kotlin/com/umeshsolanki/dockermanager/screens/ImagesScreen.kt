@@ -1,65 +1,146 @@
 package com.umeshsolanki.dockermanager.screens
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
 import com.umeshsolanki.dockermanager.DockerClient
 import com.umeshsolanki.dockermanager.DockerImage
+import kotlinx.coroutines.launch
 
 @Composable
 fun ImagesScreen() {
     var images by remember { mutableStateOf<List<DockerImage>>(emptyList()) }
-    var imageName by remember { mutableStateOf("") }
+    var searchQuery by remember { mutableStateOf("") }
+    var pullImageName by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         images = DockerClient.listImages()
     }
-    
+
     fun refresh() {
         scope.launch {
             images = DockerClient.listImages()
         }
     }
 
-    Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+    val filteredImages = images.filter { image ->
+        val tags = image.tags.joinToString(", ")
+        tags.contains(searchQuery, ignoreCase = true) || image.id.contains(
+            searchQuery,
+            ignoreCase = true
+        )
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Pull Image Section
+        ElevatedCard(
+            modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large
         ) {
-            OutlinedTextField(
-                value = imageName,
-                onValueChange = { imageName = it },
-                label = { Text("Image Name") },
-                modifier = Modifier.weight(1f)
-            )
-            Button(onClick = {
-                scope.launch {
-                    DockerClient.pullImage(imageName)
-                    imageName = ""
-                    refresh()
+            Row(
+                modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = pullImageName,
+                    onValueChange = { pullImageName = it },
+                    placeholder = { Text("Pull new image (e.g. nginx:latest)") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Button(
+                    onClick = {
+                        scope.launch {
+                            DockerClient.pullImage(pullImageName)
+                            pullImageName = ""
+                            refresh()
+                        }
+                    }, shape = MaterialTheme.shapes.medium
+                ) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Pull")
                 }
-            }) {
-                Text("Pull")
-            }
-             Button(onClick = { refresh() }) {
-                Text("Refresh")
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(images) { image ->
-                ImageRow(image) { refresh() }
+        // Search and Actions
+        Row(
+            modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search images...") },
+                modifier = Modifier.weight(1f),
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                shape = MaterialTheme.shapes.medium
+            )
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            IconButton(onClick = { refresh() }) {
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        if (filteredImages.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    "No images found",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color.Gray
+                )
+            }
+        } else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                items(filteredImages) { image ->
+                    ImageRow(image) { refresh() }
+                }
             }
         }
     }
@@ -69,31 +150,46 @@ fun ImagesScreen() {
 fun ImageRow(image: DockerImage, onRefresh: () -> Unit) {
     val scope = rememberCoroutineScope()
     val tags = image.tags.joinToString(", ")
-    
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large
     ) {
         Row(
-            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            modifier = Modifier.padding(20.dp).fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = if (tags.isNotEmpty()) tags else image.id.take(12), style = MaterialTheme.typography.titleMedium)
-                Text(text = "Size: ${image.size / 1024 / 1024} MB", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    text = if (tags.isNotEmpty()) tags else "ID: ${image.id.take(12)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Size: ${image.size / 1024 / 1024} MB",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-            
-            Button(
+
+            IconButton(
                 onClick = {
                     scope.launch {
-                         DockerClient.removeImage(image.id)
-                         onRefresh()
+                        DockerClient.removeImage(image.id)
+                        onRefresh()
                     }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336))
-            ) {
-                Text("Remove")
+                }) {
+                Icon(Icons.Default.Delete, contentDescription = "Remove", tint = Color(0xFFF44336))
             }
         }
     }

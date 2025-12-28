@@ -1,56 +1,93 @@
 package com.umeshsolanki.dockermanager.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
 import com.umeshsolanki.dockermanager.DockerClient
 import com.umeshsolanki.dockermanager.DockerContainer
+import kotlinx.coroutines.launch
 
 @Composable
 fun ContainersScreen() {
     var containers by remember { mutableStateOf<List<DockerContainer>>(emptyList()) }
+    var searchQuery by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         containers = DockerClient.listContainers()
     }
-    
+
     fun refresh() {
         scope.launch {
             containers = DockerClient.listContainers()
         }
     }
 
-    Column {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-             Button(onClick = { refresh() }) {
-                Text("Refresh")
+    val filteredContainers = containers.filter {
+        it.names.contains(searchQuery, ignoreCase = true) || it.image.contains(
+            searchQuery,
+            ignoreCase = true
+        )
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search containers...") },
+                modifier = Modifier.weight(1f),
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                shape = MaterialTheme.shapes.medium
+            )
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            IconButton(onClick = { refresh() }) {
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh")
             }
-            Button(
+
+            IconButton(
                 onClick = {
                     scope.launch {
                         DockerClient.pruneContainers()
                         refresh()
                     }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
-            ) {
-                Text("Prune Stopped")
+                }) {
+                Icon(Icons.Default.DeleteSweep, contentDescription = "Prune", tint = Color.Red)
             }
         }
-       
-        Spacer(modifier = Modifier.height(8.dp))
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(containers) { container ->
-                ContainerRow(container) { refresh() }
+        Spacer(modifier = Modifier.height(24.dp))
+
+        if (filteredContainers.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    "No containers found",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color.Gray
+                )
+            }
+        } else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                items(filteredContainers) { container ->
+                    ContainerRow(container) { refresh() }
+                }
             }
         }
     }
@@ -59,63 +96,89 @@ fun ContainersScreen() {
 @Composable
 fun ContainerRow(container: DockerContainer, onRefresh: () -> Unit) {
     val scope = rememberCoroutineScope()
-    
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    val isRunning = container.state.contains("running", ignoreCase = true)
+
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large
     ) {
         Row(
-            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            modifier = Modifier.padding(20.dp).fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = container.names, style = MaterialTheme.typography.titleMedium)
-                Text(text = container.image, style = MaterialTheme.typography.bodySmall)
-                Text(
-                    text = "${container.status} (${container.state})",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (container.state.contains("running", ignoreCase = true)) Color.Green else Color.Gray
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Box(
+                    modifier = Modifier.size(10.dp).background(
+                            color = if (isRunning) Color(0xFF4CAF50) else Color(0xFF757575),
+                            shape = CircleShape
+                        )
                 )
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column {
+                    Text(
+                        text = container.names,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = container.image,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = container.status,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isRunning) Color(0xFF4CAF50).copy(alpha = 0.8f) else Color.Gray
+                    )
+                }
             }
-            
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = {
-                        scope.launch {
-                            DockerClient.startContainer(container.id)
-                            onRefresh()
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
-                ) {
-                    Text("Start")
-                }
-                
-                Button(
-                    onClick = {
-                        scope.launch {
-                            DockerClient.stopContainer(container.id)
-                            onRefresh()
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336))
-                ) {
-                    Text("Stop")
-                }
-                
-                 if (!container.state.contains("running", ignoreCase = true)) {
-                    Button(
+                if (!isRunning) {
+                    IconButton(
                         onClick = {
                             scope.launch {
-                                DockerClient.removeContainer(container.id)
+                                DockerClient.startContainer(container.id)
                                 onRefresh()
                             }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
-                    ) {
-                        Text("Remove")
+                        }) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = "Start",
+                            tint = Color(0xFF4CAF50)
+                        )
                     }
+                } else {
+                    IconButton(
+                        onClick = {
+                            scope.launch {
+                                DockerClient.stopContainer(container.id)
+                                onRefresh()
+                            }
+                        }) {
+                        Icon(
+                            Icons.Default.Stop,
+                            contentDescription = "Stop",
+                            tint = Color(0xFFF44336)
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = {
+                        scope.launch {
+                            DockerClient.removeContainer(container.id)
+                            onRefresh()
+                        }
+                    }, enabled = !isRunning
+                ) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Remove",
+                        tint = if (isRunning) Color.Gray else Color(0xFFF44336)
+                    )
                 }
             }
         }
