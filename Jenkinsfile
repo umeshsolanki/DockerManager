@@ -1,28 +1,32 @@
 pipeline {
     agent any
 
-    // environment {
-    //     // Credentials for Maven Repository
-    //     MAVEN_CREDS = credentials('maven-repo-credentials')
-    //     MAVEN_USERNAME = "${MAVEN_CREDS_USR}"
-    //     MAVEN_PASSWORD = "${MAVEN_CREDS_PSW}"
-    // }
+    environment {
+         // Keep existing environment variables if needed, though mostly used env.VAR now
+    }
 
     stages {
-
-        stage('Publish FatJar') {
+        stage('Test') {
             steps {
-                sh './gradlew :server:publishFatJarPublicationToMavenRepository'
+                sh './gradlew test'
+            }
+        }
+
+        stage('Build FatJar') {
+            steps {
+                // Use shadowJar task to build the FatJar
+                sh './gradlew :server:shadowJar'
             }
         }
 
         stage('Build Docker Image') {
             steps {
+                // Copy the built jar to root so Docker context can see it
+                sh 'cp server/build/libs/server-all.jar server-all.jar'
+                
                 script {
-                    docker.build("docker-manager-server:${env.BUILD_NUMBER}", 
-                        "--build-arg MAVEN_USERNAME=${env.MAVEN_USERNAME} " +
-                        "--build-arg MAVEN_PASSWORD=${env.MAVEN_PASSWORD} ."
-                    )
+                    // Build image without needing maven credentials since we copied the jar
+                    docker.build("docker-manager-server:${env.BUILD_NUMBER}", ".")
                 }
             }
         }
