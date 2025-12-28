@@ -1,10 +1,6 @@
 pipeline {
     agent any
 
-    environment {
-         // Keep existing environment variables if needed, though mostly used env.VAR now
-    }
-
     stages {
         stage('Test') {
             steps {
