@@ -35,6 +35,30 @@ pipeline {
                 }
             }
         }
+
+        stage('Build Client') {
+            steps {
+                sh './gradlew :composeApp:jsBrowserDistribution'
+            }
+        }
+
+        stage('Build Client Image') {
+            steps {
+                script {
+                    docker.build("docker-manager-client:${env.BUILD_NUMBER}", "-f Dockerfile.client .")
+                }
+            }
+        }
+
+        stage('Deploy Client') {
+            steps {
+                script {
+                    sh 'docker stop docker-manager-client || true'
+                    sh 'docker rm docker-manager-client || true'
+                    sh "docker run -d --name docker-manager-client -p 86:80 docker-manager-client:${env.BUILD_NUMBER}"
+                }
+            }
+        }
     }
     
     post {

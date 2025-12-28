@@ -1,0 +1,10 @@
+FROM nginx:alpine
+
+# Copy the built web application static files to Nginx web root
+# Path depends on the Gradle task output
+COPY composeApp/build/dist/js/productionExecutable /usr/share/nginx/html
+
+# Expose port 80 (internal to container)
+EXPOSE 80
+
+# Nginx starts by default
