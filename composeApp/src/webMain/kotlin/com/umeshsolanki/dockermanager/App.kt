@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Settings
@@ -87,6 +88,37 @@ fun App() {
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(bottom = 16.dp)
                             )
+                            // Battery Indicator
+                            batteryStatus?.let { status ->
+                                if (status.percentage >= 0) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.padding(bottom = 16.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = when {
+                                                status.isCharging -> Icons.Default.BatteryChargingFull
+                                                status.percentage > 80 -> Icons.Default.BatteryFull
+                                                else -> Icons.Default.BatteryStd
+                                            },
+                                            contentDescription = "Battery",
+                                            tint = if (status.isCharging) Color.Green else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Text(
+                                            text = "${status.percentage}%",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(
+                                modifier = Modifier.width(20.dp).padding(horizontal = 12.dp),
+                                thickness = 0.5.dp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                            )
                         }
                     }
                 ) {
@@ -115,39 +147,6 @@ fun App() {
                     )
 
                     Spacer(modifier = Modifier.weight(1f))
-
-                    // Battery Indicator
-                    batteryStatus?.let { status ->
-                        if (status.percentage >= 0) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.padding(bottom = 16.dp)
-                            ) {
-                                Icon(
-                                    imageVector = when {
-                                        status.isCharging -> Icons.Default.BatteryChargingFull
-                                        status.percentage > 80 -> Icons.Default.BatteryFull
-                                        else -> Icons.Default.BatteryStd
-                                    },
-                                    contentDescription = "Battery",
-                                    tint = if (status.isCharging) Color.Green else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Text(
-                                    text = "${status.percentage}%",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                        thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-                    )
-
                     NavigationRailItem(
                         selected = selectedTab == 3,
                         onClick = { selectedTab = 3 },
