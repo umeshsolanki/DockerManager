@@ -31,7 +31,7 @@ pipeline {
                 script {
                     sh 'docker stop docker-manager || true'
                     sh 'docker rm docker-manager || true'
-                    sh "docker run -d --name docker-manager -p 85:8080 -v /var/run/docker.sock:/var/run/docker.sock docker-manager-server:${env.BUILD_NUMBER}"
+                    sh "docker run -d --name docker-manager -p 85:8080 -v /var/run/docker.sock:/var/run/docker.sock -v /sys/class/power_supply/BAT0:/sys/class/power_supply/BAT0 docker-manager-server:${env.BUILD_NUMBER}"
                 }
             }
         }
