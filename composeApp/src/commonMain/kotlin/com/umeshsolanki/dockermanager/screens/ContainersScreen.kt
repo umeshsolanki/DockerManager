@@ -1,14 +1,42 @@
 package com.umeshsolanki.dockermanager.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -16,31 +44,90 @@ import androidx.compose.ui.unit.dp
 import com.umeshsolanki.dockermanager.DockerClient
 import com.umeshsolanki.dockermanager.DockerContainer
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
 fun ContainersScreen() {
     var containers by remember { mutableStateOf<List<DockerContainer>>(emptyList()) }
-    var searchQuery by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
+        isLoading = true
         containers = DockerClient.listContainers()
+        isLoading = false
     }
 
     fun refresh() {
         scope.launch {
+            isLoading = true
             containers = DockerClient.listContainers()
+            isLoading = false
         }
     }
 
+    ContainersContent(
+        containers = containers,
+        isLoading = isLoading,
+        onRefresh = { refresh() },
+        onStart = { id ->
+            scope.launch {
+                isLoading = true
+                DockerClient.startContainer(id)
+                refresh()
+            }
+        },
+        onStop = { id ->
+            scope.launch {
+                isLoading = true
+                DockerClient.stopContainer(id)
+                refresh()
+            }
+        },
+        onRemove = { id ->
+            scope.launch {
+                isLoading = true
+                DockerClient.removeContainer(id)
+                refresh()
+            }
+        },
+        onPrune = {
+            scope.launch {
+                isLoading = true
+                DockerClient.pruneContainers()
+                refresh()
+            }
+        })
+}
+
+@Composable
+fun ContainersContent(
+    containers: List<DockerContainer>,
+    isLoading: Boolean,
+    onRefresh: () -> Unit,
+    onStart: (String) -> Unit,
+    onStop: (String) -> Unit,
+    onRemove: (String) -> Unit,
+    onPrune: () -> Unit,
+) {
+    var searchQuery by remember { mutableStateOf("") }
+
     val filteredContainers = containers.filter {
         it.names.contains(searchQuery, ignoreCase = true) || it.image.contains(
-            searchQuery,
-            ignoreCase = true
+            searchQuery, ignoreCase = true
         )
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        if (isLoading) {
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth().height(2.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
         Row(
             modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically
         ) {
@@ -55,17 +142,11 @@ fun ContainersScreen() {
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            IconButton(onClick = { refresh() }) {
+            IconButton(onClick = onRefresh) {
                 Icon(Icons.Default.Refresh, contentDescription = "Refresh")
             }
 
-            IconButton(
-                onClick = {
-                    scope.launch {
-                        DockerClient.pruneContainers()
-                        refresh()
-                    }
-                }) {
+            IconButton(onClick = onPrune) {
                 Icon(Icons.Default.DeleteSweep, contentDescription = "Prune", tint = Color.Red)
             }
         }
@@ -86,7 +167,7 @@ fun ContainersScreen() {
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
                 items(filteredContainers) { container ->
-                    ContainerRow(container) { refresh() }
+                    ContainerRow(container, onRefresh, onStart, onStop, onRemove)
                 }
             }
         }
@@ -94,8 +175,13 @@ fun ContainersScreen() {
 }
 
 @Composable
-fun ContainerRow(container: DockerContainer, onRefresh: () -> Unit) {
-    val scope = rememberCoroutineScope()
+fun ContainerRow(
+    container: DockerContainer,
+    onRefresh: () -> Unit,
+    onStart: (String) -> Unit,
+    onStop: (String) -> Unit,
+    onRemove: (String) -> Unit,
+) {
     val isRunning = container.state.contains("running", ignoreCase = true)
 
     ElevatedCard(
@@ -109,9 +195,9 @@ fun ContainerRow(container: DockerContainer, onRefresh: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                 Box(
                     modifier = Modifier.size(10.dp).background(
-                            color = if (isRunning) Color(0xFF4CAF50) else Color(0xFF757575),
-                            shape = CircleShape
-                        )
+                        color = if (isRunning) Color(0xFF4CAF50) else Color(0xFF757575),
+                        shape = CircleShape
+                    )
                 )
 
                 Spacer(modifier = Modifier.width(16.dp))
@@ -137,13 +223,7 @@ fun ContainerRow(container: DockerContainer, onRefresh: () -> Unit) {
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!isRunning) {
-                    IconButton(
-                        onClick = {
-                            scope.launch {
-                                DockerClient.startContainer(container.id)
-                                onRefresh()
-                            }
-                        }) {
+                    IconButton(onClick = { onStart(container.id) }) {
                         Icon(
                             Icons.Default.PlayArrow,
                             contentDescription = "Start",
@@ -151,13 +231,7 @@ fun ContainerRow(container: DockerContainer, onRefresh: () -> Unit) {
                         )
                     }
                 } else {
-                    IconButton(
-                        onClick = {
-                            scope.launch {
-                                DockerClient.stopContainer(container.id)
-                                onRefresh()
-                            }
-                        }) {
+                    IconButton(onClick = { onStop(container.id) }) {
                         Icon(
                             Icons.Default.Stop,
                             contentDescription = "Stop",
@@ -167,12 +241,7 @@ fun ContainerRow(container: DockerContainer, onRefresh: () -> Unit) {
                 }
 
                 IconButton(
-                    onClick = {
-                        scope.launch {
-                            DockerClient.removeContainer(container.id)
-                            onRefresh()
-                        }
-                    }, enabled = !isRunning
+                    onClick = { onRemove(container.id) }, enabled = !isRunning
                 ) {
                     Icon(
                         Icons.Default.Delete,
@@ -181,6 +250,33 @@ fun ContainerRow(container: DockerContainer, onRefresh: () -> Unit) {
                     )
                 }
             }
+        }
+    }
+}
+
+@Preview
+@Composable
+fun ContainersPreview() {
+    MaterialTheme {
+        Box(modifier = Modifier.padding(16.dp)) {
+            ContainersContent(
+                containers = listOf(
+                DockerContainer("1", "/nginx-proxy", "nginx:latest", "Up 2 hours", "running"),
+                DockerContainer(
+                    "2",
+                    "/db-main",
+                    "postgres:14",
+                    "Exited (0) 5 mins ago",
+                    "exited"
+                ),
+                DockerContainer("3", "/web-app", "node:18", "Up 45 mins", "running")
+            ),
+                isLoading = false,
+                onRefresh = {},
+                onStart = {},
+                onStop = {},
+                onRemove = {},
+                onPrune = {})
         }
     }
 }
