@@ -41,11 +41,25 @@ pipeline {
                 BUILD_NUMBER = "${env.BUILD_NUMBER}"
             }
             steps {
-                sh 'which docker'
-                sh 'docker version'
-                sh 'docker compose version'
-                // Use bash -c to ensure consistent argument parsing and bypass aliases
-                sh 'bash -c "docker compose up -d --remove-orphans"'
+                script {
+                    def composeCmd = ""
+                    // Check standard paths
+                    if (sh(script: "docker compose version", returnStatus: true) == 0) {
+                        composeCmd = "docker compose"
+                    } else if (sh(script: "docker-compose version", returnStatus: true) == 0) {
+                        composeCmd = "docker-compose"
+                    } else if (fileExists('/usr/libexec/docker/cli-plugins/docker-compose')) {
+                        composeCmd = "/usr/libexec/docker/cli-plugins/docker-compose"
+                    } else if (fileExists('/usr/lib/docker/cli-plugins/docker-compose')) {
+                        composeCmd = "/usr/lib/docker/cli-plugins/docker-compose"
+                    } else {
+                        // Let's try to find where it is
+                        sh 'find /usr -name docker-compose 2>/dev/null || true'
+                        error "Docker Compose binary not found. Please ensure docker-compose-plugin is correctly linked."
+                    }
+                    echo "Using compose command: ${composeCmd}"
+                    sh "${composeCmd} up -d --remove-orphans"
+                }
             }
         }
     }
