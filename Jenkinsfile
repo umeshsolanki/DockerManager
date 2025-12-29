@@ -11,6 +11,7 @@ pipeline {
         stage('Build FatJar') {
             steps {
                 // Use shadowJar task to build the FatJar
+                sh './gradlew clean'
                 sh './gradlew :server:shadowJar'
             }
         }
@@ -31,7 +32,7 @@ pipeline {
                 script {
                     sh 'docker stop docker-manager || true'
                     sh 'docker rm docker-manager || true'
-                    sh "docker run -d --name docker-manager -p 85:8080 -v /var/run/docker.sock:/var/run/docker.sock -v /sys/class/power_supply/BAT0:/sys/class/power_supply/BAT0 docker-manager-server:${env.BUILD_NUMBER}"
+                    sh "docker run -d --name docker-manager -p 85:8080 --restart unless-stopped -v /var/run/docker.sock:/var/run/docker.sock -v /sys/class/power_supply/BAT0:/sys/class/power_supply/BAT0 docker-manager-server:${env.BUILD_NUMBER}"
                 }
             }
         }
@@ -55,7 +56,7 @@ pipeline {
                 script {
                     sh 'docker stop docker-manager-client || true'
                     sh 'docker rm docker-manager-client || true'
-                    sh "docker run -d --name docker-manager-client -p 86:80 docker-manager-client:${env.BUILD_NUMBER}"
+                    sh "docker run -d --name docker-manager-client -p 86:80 --restart unless-stopped docker-manager-client:${env.BUILD_NUMBER}"
                 }
             }
         }
