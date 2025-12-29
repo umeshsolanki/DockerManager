@@ -42,10 +42,9 @@ import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
-import org.jetbrains.compose.ui.tooling.preview.Preview
+import kotlinx.coroutines.delay
 
 @Composable
-@Preview
 fun App() {
     val darkColorScheme = darkColorScheme(
         primary = Color(0xFFD0BCFF),

@@ -44,7 +44,6 @@ import androidx.compose.ui.unit.dp
 import com.umeshsolanki.dockermanager.DockerClient
 import com.umeshsolanki.dockermanager.DockerContainer
 import kotlinx.coroutines.launch
-import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
 fun ContainersScreen() {
@@ -250,33 +249,6 @@ fun ContainerRow(
                     )
                 }
             }
-        }
-    }
-}
-
-@Preview
-@Composable
-fun ContainersPreview() {
-    MaterialTheme {
-        Box(modifier = Modifier.padding(16.dp)) {
-            ContainersContent(
-                containers = listOf(
-                DockerContainer("1", "/nginx-proxy", "nginx:latest", "Up 2 hours", "running"),
-                DockerContainer(
-                    "2",
-                    "/db-main",
-                    "postgres:14",
-                    "Exited (0) 5 mins ago",
-                    "exited"
-                ),
-                DockerContainer("3", "/web-app", "node:18", "Up 45 mins", "running")
-            ),
-                isLoading = false,
-                onRefresh = {},
-                onStart = {},
-                onStop = {},
-                onRemove = {},
-                onPrune = {})
         }
     }
 }

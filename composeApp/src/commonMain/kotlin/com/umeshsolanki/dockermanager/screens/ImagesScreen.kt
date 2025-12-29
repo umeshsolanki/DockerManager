@@ -2,6 +2,7 @@ package com.umeshsolanki.dockermanager.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -42,7 +43,6 @@ import androidx.compose.ui.unit.dp
 import com.umeshsolanki.dockermanager.DockerClient
 import com.umeshsolanki.dockermanager.DockerImage
 import kotlinx.coroutines.launch
-import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
 fun ImagesScreen() {
@@ -104,87 +104,156 @@ fun ImagesContent(
         )
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        if (isLoading) {
-            LinearProgressIndicator(
-                modifier = Modifier.fillMaxWidth().height(2.dp),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-        }
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val isWide = maxWidth > 800.dp
 
-        // Pull Image Section
-        ElevatedCard(
-            modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = pullImageName,
-                    onValueChange = { pullImageName = it },
-                    placeholder = { Text("Pull new image (e.g. nginx:latest)") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    shape = MaterialTheme.shapes.medium
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (isLoading) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().height(2.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
-                Spacer(modifier = Modifier.width(16.dp))
-                Button(
-                    onClick = {
-                        onPull(pullImageName)
-                        pullImageName = ""
-                    }, shape = MaterialTheme.shapes.medium
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            if (isWide) {
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large
                 ) {
-                    Icon(Icons.Default.CloudDownload, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Pull")
+                    Row(
+                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SearchControls(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            onRefresh = onRefresh,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        PullImageControls(
+                            value = pullImageName,
+                            onValueChange = { pullImageName = it },
+                            onPull = {
+                                onPull(it)
+                                pullImageName = ""
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        
+                        Spacer(modifier = Modifier.width(24.dp))
+                    }
                 }
-            }
-        }
+            } else {
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    PullImageControls(
+                        value = pullImageName,
+                        onValueChange = { pullImageName = it },
+                        onPull = {
+                            onPull(it)
+                            pullImageName = ""
+                        },
+                        modifier = Modifier.padding(16.dp).fillMaxWidth()
+                    )
+                }
 
-        Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
-        // Search and Actions
-        Row(
-            modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text("Search images...") },
-                modifier = Modifier.weight(1f),
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                shape = MaterialTheme.shapes.medium
-            )
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            IconButton(onClick = { onRefresh() }) {
-                Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        if (filteredImages.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    "No images found",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = Color.Gray
+                SearchControls(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    onRefresh = onRefresh,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
-        } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 16.dp)
-            ) {
-                items(filteredImages) { image ->
-                    ImageRow(image, onRefresh, onRemove)
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            if (filteredImages.isEmpty()) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text(
+                        "No images found",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Color.Gray
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp)
+                ) {
+                    items(filteredImages) { image ->
+                        ImageRow(image, onRefresh, onRemove)
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun PullImageControls(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onPull: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = { Text("Image (e.g. nginx)") },
+            modifier = Modifier.weight(1f),
+            singleLine = true,
+            shape = MaterialTheme.shapes.medium,
+            leadingIcon = { Icon(Icons.Default.CloudDownload, contentDescription = null) }
+        )
+        
+        Spacer(modifier = Modifier.width(12.dp))
+        
+        Button(
+            onClick = { onPull(value) },
+            shape = MaterialTheme.shapes.medium
+        ) {
+            Text("Pull")
+        }
+    }
+}
+
+@Composable
+fun SearchControls(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = { Text("Search images...") },
+            modifier = Modifier.weight(1f),
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            shape = MaterialTheme.shapes.medium,
+            singleLine = true
+        )
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        IconButton(onClick = onRefresh) {
+            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
         }
     }
 }
@@ -234,26 +303,6 @@ fun ImageRow(
                 }) {
                 Icon(Icons.Default.Delete, contentDescription = "Remove", tint = Color(0xFFF44336))
             }
-        }
-    }
-}
-
-@Preview
-@Composable
-fun ImagesPreview() {
-    MaterialTheme {
-        Box(modifier = Modifier.padding(16.dp)) {
-            ImagesContent(
-                images = listOf(
-                    DockerImage(id = "1", tags = listOf("nginx:latest", "nginx:1.21"), size = 150 * 1024 * 1024, created = 0),
-                    DockerImage(id = "2", tags = listOf("postgres:14-alpine"), size = 230 * 1024 * 1024, created = 0),
-                    DockerImage(id = "3", tags = listOf("ubuntu:22.04"), size = 80 * 1024 * 1024, created = 0)
-                ),
-                isLoading = false,
-                onRefresh = {},
-                onPull = {},
-                onRemove = {}
-            )
         }
     }
 }

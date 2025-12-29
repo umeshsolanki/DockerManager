@@ -41,7 +41,6 @@ import androidx.compose.ui.unit.dp
 import com.umeshsolanki.dockermanager.ComposeFile
 import com.umeshsolanki.dockermanager.DockerClient
 import kotlinx.coroutines.launch
-import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
 fun ComposeScreen() {
@@ -208,26 +207,6 @@ fun ComposeRow(
                     )
                 }
             }
-        }
-    }
-}
-
-@Preview
-@Composable
-fun ComposePreview() {
-    MaterialTheme {
-        Box(modifier = Modifier.padding(16.dp)) {
-            ComposeContent(
-                composeFiles = listOf(
-                    ComposeFile("/projects/app1/docker-compose.yml", "Web Application", "inactive"),
-                    ComposeFile("/projects/db/docker-compose.yml", "Database Stack", "active"),
-                    ComposeFile("/projects/monitor/docker-compose.yml", "Monitoring Tools", "inactive")
-                ),
-                isLoading = false,
-                onRefresh = {},
-                onUp = {},
-                onDown = {}
-            )
         }
     }
 }
