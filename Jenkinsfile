@@ -36,16 +36,10 @@ pipeline {
                 }
             }
         }
-
-        stage('Build Client') {
-            steps {
-                sh './gradlew :composeApp:jsBrowserDistribution'
-            }
-        }
-
         stage('Build Client Image') {
             steps {
                 script {
+                    // Dockerfile.client now handles the Next.js build using a multi-stage approach
                     docker.build("docker-manager-client:${env.BUILD_NUMBER}", "-f Dockerfile.client .")
                 }
             }
