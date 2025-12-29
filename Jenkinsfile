@@ -37,11 +37,12 @@ pipeline {
         }
 
         stage('Deploy') {
+            environment {
+                BUILD_NUMBER = "${env.BUILD_NUMBER}"
+            }
             steps {
-                script {
-                    // Use docker-compose to manage both server and client services
-                    sh "BUILD_NUMBER=${env.BUILD_NUMBER} docker compose up -d --remove-orphans"
-                }
+                // Using single quotes to let the shell handle the environment variable
+                sh 'docker compose up -d --remove-orphans'
             }
         }
     }
