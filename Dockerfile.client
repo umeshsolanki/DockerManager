@@ -1,10 +1,13 @@
+# Stage 1: Build Next.js app
+FROM node:18-alpine AS builder
+WORKDIR /app
+COPY web-app/package*.json ./
+RUN npm install
+COPY web-app/ ./
+RUN npm run build
+
+# Stage 2: Serve static files with Nginx
 FROM nginx:alpine
-
-# Copy the built web application static files to Nginx web root
-# Path depends on the Gradle task output
-COPY composeApp/build/dist/js/productionExecutable /usr/share/nginx/html
-
-# Expose port 80 (internal to container)
+COPY --from=builder /app/out /usr/share/nginx/html
 EXPOSE 80
-
-# Nginx starts by default
+CMD ["nginx", "-g", "daemon off;"]
