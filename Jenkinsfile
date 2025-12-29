@@ -40,7 +40,7 @@ pipeline {
             steps {
                 script {
                     // Use docker-compose to manage both server and client services
-                    sh "BUILD_NUMBER=${env.BUILD_NUMBER} docker-compose up -d --remove-orphans"
+                    sh "BUILD_NUMBER=${env.BUILD_NUMBER} docker compose up -d --remove-orphans"
                 }
             }
         }
