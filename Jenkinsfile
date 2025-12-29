@@ -27,15 +27,6 @@ pipeline {
                 }
             }
         }
-        stage('Deploy') {
-            steps {
-                script {
-                    sh 'docker stop docker-manager || true'
-                    sh 'docker rm docker-manager || true'
-                    sh "docker run -d --name docker-manager -p 85:8080 --restart unless-stopped -v /var/run/docker.sock:/var/run/docker.sock -v /sys/class/power_supply/BAT0:/sys/class/power_supply/BAT0 docker-manager-server:${env.BUILD_NUMBER}"
-                }
-            }
-        }
         stage('Build Client Image') {
             steps {
                 script {
@@ -45,12 +36,11 @@ pipeline {
             }
         }
 
-        stage('Deploy Client') {
+        stage('Deploy') {
             steps {
                 script {
-                    sh 'docker stop docker-manager-client || true'
-                    sh 'docker rm docker-manager-client || true'
-                    sh "docker run -d --name docker-manager-client -p 86:80 --restart unless-stopped docker-manager-client:${env.BUILD_NUMBER}"
+                    // Use docker-compose to manage both server and client services
+                    sh "BUILD_NUMBER=${env.BUILD_NUMBER} docker-compose up -d --remove-orphans"
                 }
             }
         }
