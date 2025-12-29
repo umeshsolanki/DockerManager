@@ -32,3 +32,11 @@ data class BatteryStatus(
     val isCharging: Boolean,
     val source: String
 )
+
+@Serializable
+data class DockerSecret(
+    val id: String,
+    val name: String,
+    val createdAt: String,
+    val updatedAt: String
+)

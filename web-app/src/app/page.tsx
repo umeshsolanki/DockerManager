@@ -7,6 +7,7 @@ import ContainersScreen from '@/components/screens/ContainersScreen';
 import ImagesScreen from '@/components/screens/ImagesScreen';
 import ComposeScreen from '@/components/screens/ComposeScreen';
 import SettingsScreen from '@/components/screens/SettingsScreen';
+import SecretsScreen from '@/components/screens/SecretsScreen';
 
 export default function Home() {
   const [selectedScreen, setSelectedScreen] = useState<Screen>('Containers');
@@ -16,6 +17,7 @@ export default function Home() {
       case 'Containers': return <ContainersScreen />;
       case 'Images': return <ImagesScreen />;
       case 'Compose': return <ComposeScreen />;
+      case 'Secrets': return <SecretsScreen />;
       case 'Settings': return <SettingsScreen />;
       default: return <ContainersScreen />;
     }

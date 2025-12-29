@@ -25,4 +25,11 @@ export interface BatteryStatus {
   source: string;
 }
 
-export type Screen = 'Containers' | 'Images' | 'Compose' | 'Settings';
+export interface DockerSecret {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type Screen = 'Containers' | 'Images' | 'Compose' | 'Secrets' | 'Settings';
