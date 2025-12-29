@@ -41,8 +41,11 @@ pipeline {
                 BUILD_NUMBER = "${env.BUILD_NUMBER}"
             }
             steps {
-                // Using single quotes to let the shell handle the environment variable
-                sh 'docker compose up -d --remove-orphans'
+                sh 'which docker'
+                sh 'docker version'
+                sh 'docker compose version'
+                // Use bash -c to ensure consistent argument parsing and bypass aliases
+                sh 'bash -c "docker compose up -d --remove-orphans"'
             }
         }
     }
