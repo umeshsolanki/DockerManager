@@ -1,6 +1,6 @@
-import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest, ComposeResult, SystemLog, FirewallRule, BlockIPRequest } from './types';
+import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest, ComposeResult, SystemLog, FirewallRule, BlockIPRequest, ProxyHost, ProxyHit, ProxyStats, BtmpStats, BtmpEntry } from './types';
 
-const DEFAULT_SERVER_URL = "http://192.168.1.3:85";
+const DEFAULT_SERVER_URL = "http://192.168.1.3:9091";
 
 export const DockerClient = {
     // ... rest of the code ...
@@ -313,6 +313,16 @@ export const DockerClient = {
         }
     },
 
+    async getBtmpStats(): Promise<BtmpStats | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/logs/system/btmp-stats`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    },
+
     async listFirewallRules(): Promise<FirewallRule[]> {
         try {
             const response = await fetch(`${this.getServerUrl()}/firewall/rules`);
@@ -346,6 +356,76 @@ export const DockerClient = {
         } catch (e) {
             console.error(e);
             return false;
+        }
+    },
+
+    async listProxyHosts(): Promise<ProxyHost[]> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/hosts`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return [];
+        }
+    },
+
+    async createProxyHost(host: Partial<ProxyHost>): Promise<boolean> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/hosts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(host)
+            });
+            return response.ok;
+        } catch (e) {
+            console.error(e);
+            return false;
+        }
+    },
+
+    async deleteProxyHost(id: string): Promise<boolean> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/hosts/${id}`, {
+                method: 'DELETE'
+            });
+            return response.ok;
+        } catch (e) {
+            console.error(e);
+            return false;
+        }
+    },
+
+    async toggleProxyHost(id: string): Promise<boolean> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/hosts/${id}/toggle`, {
+                method: 'POST'
+            });
+            return response.ok;
+        } catch (e) {
+            console.error(e);
+            return false;
+        }
+    },
+
+    async requestProxySSL(id: string): Promise<boolean> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/hosts/${id}/request-ssl`, {
+                method: 'POST'
+            });
+            return response.ok;
+        } catch (e) {
+            console.error(e);
+            return false;
+        }
+    },
+
+    async getProxyStats(): Promise<ProxyStats | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/stats`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
         }
     }
 };

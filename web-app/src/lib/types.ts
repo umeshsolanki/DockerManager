@@ -142,4 +142,44 @@ export interface BlockIPRequest {
   comment?: string;
 }
 
-export type Screen = 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Settings';
+export interface ProxyHost {
+  id: string;
+  domain: string;
+  target: string;
+  enabled: boolean;
+  ssl: boolean;
+  createdAt: number;
+}
+
+export interface ProxyHit {
+  timestamp: number;
+  ip: string;
+  method: string;
+  path: string;
+  status: number;
+  responseTime: number;
+  userAgent: string;
+}
+
+export interface ProxyStats {
+  totalHits: number;
+  hitsByStatus: Record<number, number>;
+  hitsOverTime: Record<string, number>;
+  topPaths: [string, number][];
+  recentHits: ProxyHit[];
+}
+
+export interface BtmpEntry {
+  user: string;
+  ip: string;
+  timestamp: number;
+}
+
+export interface BtmpStats {
+  totalFailedAttempts: number;
+  topUsers: [string, number][];
+  topIps: [string, number][];
+  recentFailures: BtmpEntry[];
+}
+
+export type Screen = 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Settings';

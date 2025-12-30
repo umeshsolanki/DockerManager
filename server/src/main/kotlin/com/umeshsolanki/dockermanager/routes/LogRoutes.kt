@@ -20,5 +20,8 @@ fun Route.logRoutes() {
             val content = DockerService.getSystemLogContent(path, tail, filter)
             call.respondText(content)
         }
+        get("/system/btmp-stats") {
+            call.respond(DockerService.getBtmpStats())
+        }
     }
 }

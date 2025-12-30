@@ -165,3 +165,49 @@ data class BlockIPRequest(
     val protocol: String = "ALL",
     val comment: String? = null
 )
+
+@Serializable
+data class ProxyHost(
+    val id: String,
+    val domain: String,
+    val target: String,
+    val enabled: Boolean = true,
+    val ssl: Boolean = false,
+    val createdAt: Long = Clock.System.now().toEpochMilliseconds()
+)
+
+@Serializable
+data class ProxyHit(
+    val timestamp: Long,
+    val ip: String,
+    val method: String,
+    val path: String,
+    val status: Int,
+    val responseTime: Int,
+    val userAgent: String
+)
+
+@Serializable
+data class ProxyStats(
+    val totalHits: Long,
+    val hitsByStatus: Map<Int, Long>,
+    val hitsOverTime: Map<String, Long>, // Key: HH:00
+    val topPaths: List<Pair<String, Long>>,
+    val recentHits: List<ProxyHit>
+)
+
+@Serializable
+data class BtmpEntry(
+    val user: String,
+    val ip: String,
+    val timestamp: Long,
+    val count: Int = 1
+)
+
+@Serializable
+data class BtmpStats(
+    val totalFailedAttempts: Int,
+    val topUsers: List<Pair<String, Int>>,
+    val topIps: List<Pair<String, Int>>,
+    val recentFailures: List<BtmpEntry>
+)

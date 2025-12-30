@@ -12,6 +12,7 @@ object DockerService {
     private val volumeService: IVolumeService = VolumeServiceImpl(dockerClient)
     private val logService: ILogService = LogServiceImpl()
     private val firewallService: IFirewallService = FirewallServiceImpl()
+    private val proxyService: IProxyService = ProxyServiceImpl()
 
     fun listContainers() = containerService.listContainers()
     fun startContainer(id: String) = containerService.startContainer(id)
@@ -49,9 +50,17 @@ object DockerService {
 
     fun listSystemLogs() = logService.listSystemLogs()
     fun getSystemLogContent(path: String, tail: Int = 100, filter: String? = null) = logService.getLogContent(path, tail, filter)
+    fun getBtmpStats() = logService.getBtmpStats()
 
     fun listFirewallRules() = firewallService.listRules()
     fun blockIP(request: BlockIPRequest) = firewallService.blockIP(request)
     fun unblockIP(id: String) = firewallService.unblockIP(id)
+
+    fun listProxyHosts() = proxyService.listHosts()
+    fun createProxyHost(host: ProxyHost) = proxyService.createHost(host)
+    fun deleteProxyHost(id: String) = proxyService.deleteHost(id)
+    fun toggleProxyHost(id: String) = proxyService.toggleHost(id)
+    fun requestProxySSL(id: String) = proxyService.requestSSL(id)
+    fun getProxyStats() = proxyService.getStats()
 }
 

@@ -6,10 +6,72 @@ import java.util.concurrent.TimeUnit
 interface ILogService {
     fun listSystemLogs(): List<SystemLog>
     fun getLogContent(path: String, tail: Int = 100, filter: String? = null): String
+    fun getBtmpStats(): BtmpStats
 }
 
 class LogServiceImpl : ILogService {
     private val logDir = File("/host/var/log")
+    private val btmpFile = File("/host/var/log/btmp")
+    private var cachedBtmpStats: BtmpStats = BtmpStats(0, emptyList(), emptyList(), emptyList())
+
+    init {
+        startBtmpWorker()
+    }
+
+    private fun startBtmpWorker() {
+        Thread {
+            while (true) {
+                try {
+                    updateBtmpStats()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                Thread.sleep(30000) // Every 30 seconds
+            }
+        }.apply {
+            isDaemon = true
+            start()
+        }
+    }
+
+    private fun updateBtmpStats() {
+        if (!btmpFile.exists()) return
+
+        // Use utmpdump to parse btmp and extract user/ip
+        val output = executeCommand("utmpdump ${btmpFile.absolutePath} 2>/dev/null | grep -v 'out of range' | awk '{print ${'$'}4\" \"${'$'}6}'")
+        
+        val entries = output.lineSequence()
+            .filter { it.isNotBlank() }
+            .map { line ->
+                val parts = line.trim().split(" ")
+                val user = if (parts.size > 0) parts[0].replace("[", "").replace("]", "") else "unknown"
+                val ip = if (parts.size > 1) parts[1].replace("[", "").replace("]", "") else "unknown"
+                user to ip
+            }
+            .toList()
+
+        val totalFailed = entries.size
+        val topUsers = entries.groupingBy { it.first }.eachCount().toList().sortedByDescending { it.second }.take(5)
+        val topIps = entries.groupingBy { it.second }.eachCount().toList().sortedByDescending { it.second }.take(5)
+        
+        // Last 10 failures
+        val recentFailures = entries.takeLast(10).reversed().map { (user, ip) ->
+            BtmpEntry(user, ip, System.currentTimeMillis())
+        }
+
+        cachedBtmpStats = BtmpStats(totalFailed, topUsers, topIps, recentFailures)
+    }
+
+    private fun executeCommand(command: String): String {
+        return try {
+            val process = ProcessBuilder("sh", "-c", command).start()
+            process.inputStream.bufferedReader().readText()
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    override fun getBtmpStats(): BtmpStats = cachedBtmpStats
 
     override fun listSystemLogs(): List<SystemLog> {
         if (!logDir.exists() || !logDir.isDirectory) return emptyList()
@@ -36,11 +98,11 @@ class LogServiceImpl : ILogService {
         return try {
             val command = mutableListOf<String>()
             
-            // Handle binary logs (wtmp, btmp)
+            // Handle binary logs (wtmp, btmp) with clean output formatting
             if (file.name == "wtmp" || file.name == "btmp") {
                 command.addAll(listOf("utmpdump", path))
             } else {
-                command.addAll(listOf("cat", path))
+                command.add("cat $path")
             }
 
             // Pipe through tail/awk with strictly enforced timeout and size limits

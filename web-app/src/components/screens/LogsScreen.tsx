@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Search, RefreshCw, FileText, XCircle, Terminal, Shield } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { SystemLog, BlockIPRequest } from '@/lib/types';
+import { SystemLog, BlockIPRequest, BtmpStats } from '@/lib/types';
 import { toast } from 'sonner';
 
 export default function LogsScreen() {
@@ -16,11 +16,16 @@ export default function LogsScreen() {
     const [awkFilter, setAwkFilter] = useState('');
     const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
     const [ipToBlock, setIpToBlock] = useState('');
+    const [btmpStats, setBtmpStats] = useState<BtmpStats | null>(null);
 
     const fetchLogs = async () => {
         setIsLoading(true);
-        const data = await DockerClient.listSystemLogs();
-        setLogs(data);
+        const [logsData, btmpData] = await Promise.all([
+            DockerClient.listSystemLogs(),
+            DockerClient.getBtmpStats()
+        ]);
+        setLogs(logsData);
+        setBtmpStats(btmpData);
         setIsLoading(false);
     };
 
@@ -34,6 +39,8 @@ export default function LogsScreen() {
 
     useEffect(() => {
         fetchLogs();
+        const interval = setInterval(fetchLogs, 30000);
+        return () => clearInterval(interval);
     }, []);
 
     const filteredLogs = useMemo(() => {
@@ -61,6 +68,49 @@ export default function LogsScreen() {
                 <h1 className="text-3xl font-bold">System Logs</h1>
                 {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
             </div>
+
+            {/* Btmp Stats Dashboard */}
+            {btmpStats && btmpStats.totalFailedAttempts > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div className="bg-red-500/5 border border-red-500/10 rounded-2xl p-4">
+                        <div className="flex items-center gap-3 text-red-500 mb-2">
+                            <XCircle size={18} />
+                            <span className="text-xs font-bold uppercase tracking-wider">Failed Logins (btmp)</span>
+                        </div>
+                        <div className="text-3xl font-bold text-red-500">{btmpStats.totalFailedAttempts}</div>
+                        <div className="text-[10px] text-on-surface-variant mt-1">Total recorded attempts</div>
+                    </div>
+
+                    <div className="bg-surface border border-outline/10 rounded-2xl p-4">
+                        <div className="flex items-center gap-3 text-on-surface-variant mb-3">
+                            <Shield size={18} />
+                            <span className="text-xs font-bold uppercase tracking-wider">Top Attacking IPs</span>
+                        </div>
+                        <div className="space-y-2">
+                            {btmpStats.topIps.slice(0, 3).map(([ip, count]) => (
+                                <div key={ip} className="flex justify-between items-center text-[10px]">
+                                    <span className="font-mono text-primary cursor-pointer hover:underline" onClick={() => { setIpToBlock(ip); setIsBlockModalOpen(true); }}>{ip}</span>
+                                    <span className="bg-white/5 px-1.5 py-0.5 rounded font-bold">{count}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="bg-surface border border-outline/10 rounded-2xl p-4">
+                        <div className="flex items-center gap-3 text-on-surface-variant mb-3">
+                            <Terminal size={18} />
+                            <span className="text-xs font-bold uppercase tracking-wider">Recent Attempts</span>
+                        </div>
+                        <div className="space-y-1.5 overflow-hidden">
+                            {btmpStats.recentFailures.slice(0, 3).map((entry, i) => (
+                                <div key={i} className="text-[9px] font-mono truncate text-on-surface-variant">
+                                    <span className="text-red-400">FAILED</span> {entry.user} from {entry.ip}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
                 <div className="relative">

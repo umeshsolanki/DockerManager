@@ -20,5 +20,6 @@ fun Application.configureRouting() {
         systemRoutes()
         logRoutes()
         firewallRoutes()
+        proxyRoutes()
     }
 }
