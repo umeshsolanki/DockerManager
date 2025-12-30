@@ -126,4 +126,20 @@ export interface SystemLog {
   lastModified: number;
 }
 
-export type Screen = 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Volumes' | 'Secrets' | 'Logs' | 'Settings';
+export interface FirewallRule {
+  id: string;
+  ip: string;
+  port?: string;
+  protocol: string;
+  comment?: string;
+  createdAt: number;
+}
+
+export interface BlockIPRequest {
+  ip: string;
+  port?: string;
+  protocol: string;
+  comment?: string;
+}
+
+export type Screen = 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Settings';

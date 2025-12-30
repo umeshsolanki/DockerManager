@@ -1,6 +1,7 @@
 package com.umeshsolanki.dockermanager
 
 import kotlinx.serialization.Serializable
+import kotlinx.datetime.Clock
 
 @Serializable
 data class DockerContainer(
@@ -145,4 +146,22 @@ data class SystemLog(
     val path: String,
     val size: Long,
     val lastModified: Long
+)
+
+@Serializable
+data class FirewallRule(
+    val id: String,
+    val ip: String,
+    val port: String? = null,
+    val protocol: String = "ALL",
+    val comment: String? = null,
+    val createdAt: Long = Clock.System.now().toEpochMilliseconds()
+)
+
+@Serializable
+data class BlockIPRequest(
+    val ip: String,
+    val port: String? = null,
+    val protocol: String = "ALL",
+    val comment: String? = null
 )

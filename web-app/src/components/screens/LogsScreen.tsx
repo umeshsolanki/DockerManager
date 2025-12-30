@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Search, RefreshCw, FileText, XCircle, Terminal } from 'lucide-react';
+import { Search, RefreshCw, FileText, XCircle, Terminal, Shield } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { SystemLog } from '@/lib/types';
+import { SystemLog, BlockIPRequest } from '@/lib/types';
+import { toast } from 'sonner';
 
 export default function LogsScreen() {
     const [logs, setLogs] = useState<SystemLog[]>([]);
@@ -13,6 +14,8 @@ export default function LogsScreen() {
     const [logContent, setLogContent] = useState<string>('');
     const [isReadingLog, setIsReadingLog] = useState(false);
     const [awkFilter, setAwkFilter] = useState('');
+    const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
+    const [ipToBlock, setIpToBlock] = useState('');
 
     const fetchLogs = async () => {
         setIsLoading(true);
@@ -92,6 +95,17 @@ export default function LogsScreen() {
                         title="Apply AWK"
                     >
                         Apply
+                    </button>
+                    <button
+                        onClick={() => {
+                            const ipMatch = logContent.match(/([0-9]{1,3}\.){3}[0-9]{1,3}/);
+                            if (ipMatch) setIpToBlock(ipMatch[0]);
+                            setIsBlockModalOpen(true);
+                        }}
+                        className="p-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-500/20 transition-colors"
+                        title="Block Detected IP"
+                    >
+                        <Shield size={18} />
                     </button>
                     <button
                         onClick={fetchLogs}
@@ -219,6 +233,54 @@ export default function LogsScreen() {
                     )}
                 </div>
             </div>
+            {isBlockModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <div className="bg-surface border border-outline/20 rounded-3xl w-full max-w-md shadow-2xl p-6 animate-in fade-in zoom-in duration-200">
+                        <div className="flex items-center gap-3 mb-6">
+                            <Shield className="text-red-500" size={24} />
+                            <h2 className="text-xl font-bold">Quick Block IP</h2>
+                        </div>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1.5 ml-1">IP Address</label>
+                                <input
+                                    type="text"
+                                    value={ipToBlock}
+                                    onChange={(e) => setIpToBlock(e.target.value)}
+                                    placeholder="e.g. 1.2.3.4"
+                                    className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2.5 focus:outline-none focus:border-red-500 transition-all font-mono"
+                                />
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button
+                                    onClick={() => setIsBlockModalOpen(false)}
+                                    className="flex-1 px-4 py-2.5 rounded-xl border border-outline/20 hover:bg-white/5 transition-all font-bold"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        const success = await DockerClient.blockIP({
+                                            ip: ipToBlock,
+                                            comment: `Blocked from Logs: ${selectedLog?.name}`,
+                                            protocol: 'ALL'
+                                        });
+                                        if (success) {
+                                            toast.success(`IP ${ipToBlock} blocked`);
+                                            setIsBlockModalOpen(false);
+                                        } else {
+                                            toast.error('Failed to block IP');
+                                        }
+                                    }}
+                                    className="flex-1 bg-red-500 text-white px-4 py-2.5 rounded-xl font-bold hover:opacity-90 transition-all"
+                                >
+                                    Confirm Block
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

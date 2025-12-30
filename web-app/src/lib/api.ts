@@ -1,4 +1,4 @@
-import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest, ComposeResult, SystemLog } from './types';
+import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest, ComposeResult, SystemLog, FirewallRule, BlockIPRequest } from './types';
 
 const DEFAULT_SERVER_URL = "http://192.168.1.3:85";
 
@@ -310,6 +310,42 @@ export const DockerClient = {
         } catch (e) {
             console.error(e);
             return 'Error fetching system logs';
+        }
+    },
+
+    async listFirewallRules(): Promise<FirewallRule[]> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/firewall/rules`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return [];
+        }
+    },
+
+    async blockIP(request: BlockIPRequest): Promise<boolean> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/firewall/block`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(request)
+            });
+            return response.ok;
+        } catch (e) {
+            console.error(e);
+            return false;
+        }
+    },
+
+    async unblockIP(id: string): Promise<boolean> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/firewall/rules/${id}`, {
+                method: 'DELETE'
+            });
+            return response.ok;
+        } catch (e) {
+            console.error(e);
+            return false;
         }
     }
 };

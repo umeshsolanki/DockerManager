@@ -11,6 +11,7 @@ object DockerService {
     private val networkService: INetworkService = NetworkServiceImpl(dockerClient)
     private val volumeService: IVolumeService = VolumeServiceImpl(dockerClient)
     private val logService: ILogService = LogServiceImpl()
+    private val firewallService: IFirewallService = FirewallServiceImpl()
 
     fun listContainers() = containerService.listContainers()
     fun startContainer(id: String) = containerService.startContainer(id)
@@ -48,5 +49,9 @@ object DockerService {
 
     fun listSystemLogs() = logService.listSystemLogs()
     fun getSystemLogContent(path: String, tail: Int = 100, filter: String? = null) = logService.getLogContent(path, tail, filter)
+
+    fun listFirewallRules() = firewallService.listRules()
+    fun blockIP(request: BlockIPRequest) = firewallService.blockIP(request)
+    fun unblockIP(id: String) = firewallService.unblockIP(id)
 }
 

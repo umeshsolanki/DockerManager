@@ -37,11 +37,8 @@ class LogServiceImpl : ILogService {
             val command = mutableListOf<String>()
             
             // Handle binary logs (wtmp, btmp)
-            if (file.name == "wtmp") {
-                command.addAll(listOf("last", "-f", path))
-            } else if (file.name == "btmp") {
-                // lastb is specifically for bad login attempts
-                command.addAll(listOf("lastb", "-f", path))
+            if (file.name == "wtmp" || file.name == "btmp") {
+                command.addAll(listOf("utmpdump", path))
             } else {
                 command.addAll(listOf("cat", path))
             }
@@ -51,12 +48,12 @@ class LogServiceImpl : ILogService {
                 // Wrap in timeout to prevent hanging the server
                 append("timeout 5s ")
                 append(command.joinToString(" "))
+                append(" | tail -n $tail")
                 if (!filter.isNullOrBlank()) {
                     append(" | awk '$filter'")
                 }
-                append(" | tail -n $tail")
-                // Final safety: never return more than 1MB of text
-                append(" | head -c 1048576")
+//                // Final safety: never return more than 1MB of text
+//                append(" | head -c 1048576")
             })
             
             val process = processBuilder.start()

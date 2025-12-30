@@ -39,3 +39,39 @@ body {
     @apply bg-white/5;
   }
 }
+
+/* Custom Scrollbar Styling - Ultra Thin & Hidden by default */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 10px;
+  transition: background 0.3s;
+}
+
+/* Show scrollbar thumb only when hovering over the scrollable area */
+*:hover::-webkit-scrollbar-thumb {
+  background: rgba(147, 143, 153, 0.2);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(208, 188, 255, 0.5) !important;
+}
+
+/* Root level scrollbar for Firefox */
+* {
+  scrollbar-width: thin;
+  /* Firefox doesn't support 4px exactly, but 'thin' is the closest */
+  scrollbar-color: transparent transparent;
+}
+
+*:hover {
+  scrollbar-color: rgba(147, 143, 153, 0.2) transparent;
+}
