@@ -1,4 +1,4 @@
-import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork } from './types';
+import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails } from './types';
 
 const DEFAULT_SERVER_URL = "http://192.168.1.3:85";
 
@@ -21,6 +21,16 @@ export const DockerClient = {
         } catch (e) {
             console.error(e);
             return [];
+        }
+    },
+
+    async inspectContainer(id: string): Promise<ContainerDetails | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/containers/${id}/inspect`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
         }
     },
 
@@ -157,6 +167,32 @@ export const DockerClient = {
     async removeNetwork(id: string) {
         try {
             await fetch(`${this.getServerUrl()}/networks/${id}`, { method: 'DELETE' });
+        } catch (e) {
+            console.error(e);
+        }
+    },
+
+    async listVolumes(): Promise<DockerVolume[]> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/volumes`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return [];
+        }
+    },
+
+    async removeVolume(name: string) {
+        try {
+            await fetch(`${this.getServerUrl()}/volumes/${name}`, { method: 'DELETE' });
+        } catch (e) {
+            console.error(e);
+        }
+    },
+
+    async pruneVolumes() {
+        try {
+            await fetch(`${this.getServerUrl()}/volumes/prune`, { method: 'POST' });
         } catch (e) {
             console.error(e);
         }

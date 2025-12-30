@@ -12,6 +12,16 @@ fun Route.containerRoutes() {
             call.respond(DockerService.listContainers())
         }
 
+        get("/{id}/inspect") {
+            val id = call.parameters["id"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+            val details = DockerService.inspectContainer(id)
+            if (details != null) {
+                call.respond(details)
+            } else {
+                call.respond(HttpStatusCode.NotFound)
+            }
+        }
+
         post("/{id}/start") {
             val id = call.parameters["id"] ?: return@post call.respondText("Missing ID", status = HttpStatusCode.BadRequest)
             DockerService.startContainer(id)

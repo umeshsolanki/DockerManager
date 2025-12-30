@@ -6,6 +6,7 @@ interface IContainerService {
     fun stopContainer(id: String): Boolean
     fun removeContainer(id: String): Boolean
     fun pruneContainers(): Boolean
+    fun inspectContainer(id: String): ContainerDetails?
 }
 
 class ContainerServiceImpl(private val dockerClient: com.github.dockerjava.api.DockerClient) : IContainerService {
@@ -19,6 +20,35 @@ class ContainerServiceImpl(private val dockerClient: com.github.dockerjava.api.D
                 status = container.status,
                 state = container.state
             )
+        }
+    }
+
+    override fun inspectContainer(id: String): ContainerDetails? {
+        return try {
+            val details = dockerClient.inspectContainerCmd(id).exec()
+            ContainerDetails(
+                id = details.id,
+                name = details.name.removePrefix("/"),
+                image = details.config.image ?: "unknown",
+                state = details.state.status ?: "unknown",
+                status = details.state.toString(),
+                createdAt = details.created,
+                platform = details.platform ?: "unknown",
+                env = details.config.env?.toList() ?: emptyList(),
+                labels = details.config.labels ?: emptyMap(),
+                mounts = details.mounts?.map { mount ->
+                    DockerMount(
+                        type = mount.type?.name,
+                        source = mount.source,
+                        destination = mount.destination?.path,
+                        mode = mount.mode,
+                        rw = mount.rw
+                    )
+                } ?: emptyList()
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 

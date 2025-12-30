@@ -1,6 +1,6 @@
 'use client';
 
-import { LayoutDashboard, Database, Layers, Settings, Lock, Network } from 'lucide-react';
+import { LayoutDashboard, Database, Layers, Settings, Lock, Network, HardDrive } from 'lucide-react';
 import { Screen } from '@/lib/types';
 import BatteryIndicator from './BatteryIndicator';
 
@@ -15,6 +15,7 @@ export default function NavigationRail({ selectedScreen, onScreenChange }: Props
         { label: 'Images', icon: <Database size={24} /> },
         { label: 'Compose', icon: <Layers size={24} /> },
         { label: 'Networks', icon: <Network size={24} /> },
+        { label: 'Volumes', icon: <HardDrive size={24} /> },
         { label: 'Secrets', icon: <Lock size={24} /> },
     ];
 

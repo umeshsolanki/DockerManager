@@ -49,3 +49,35 @@ data class DockerNetwork(
     val scope: String,
     val internal: Boolean
 )
+
+@Serializable
+data class DockerVolume(
+    val name: String,
+    val driver: String,
+    val mountpoint: String,
+    val createdAt: String? = null,
+    val size: String? = null
+)
+
+@Serializable
+data class ContainerDetails(
+    val id: String,
+    val name: String,
+    val image: String,
+    val state: String,
+    val status: String,
+    val createdAt: String,
+    val platform: String,
+    val env: List<String>,
+    val labels: Map<String, String>,
+    val mounts: List<DockerMount>
+)
+
+@Serializable
+data class DockerMount(
+    val type: String?,
+    val source: String?,
+    val destination: String?,
+    val mode: String?,
+    val rw: Boolean?
+)

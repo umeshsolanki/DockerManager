@@ -9,12 +9,14 @@ object DockerService {
     private val composeService: IComposeService = ComposeServiceImpl()
     private val secretService: ISecretService = SecretServiceImpl(dockerClient)
     private val networkService: INetworkService = NetworkServiceImpl(dockerClient)
+    private val volumeService: IVolumeService = VolumeServiceImpl(dockerClient)
 
     fun listContainers() = containerService.listContainers()
     fun startContainer(id: String) = containerService.startContainer(id)
     fun stopContainer(id: String) = containerService.stopContainer(id)
     fun removeContainer(id: String) = containerService.removeContainer(id)
     fun pruneContainers() = containerService.pruneContainers()
+    fun inspectContainer(id: String) = containerService.inspectContainer(id)
 
     fun listImages() = imageService.listImages()
     fun pullImage(name: String) = imageService.pullImage(name)
@@ -30,5 +32,9 @@ object DockerService {
 
     fun listNetworks() = networkService.listNetworks()
     fun removeNetwork(id: String) = networkService.removeNetwork(id)
+
+    fun listVolumes() = volumeService.listVolumes()
+    fun removeVolume(name: String) = volumeService.removeVolume(name)
+    fun pruneVolumes() = volumeService.pruneVolumes()
 }
 

@@ -16,6 +16,7 @@ fun Application.configureRouting() {
         composeRoutes()
         secretRoutes()
         networkRoutes()
+        volumeRoutes()
         systemRoutes()
     }
 }

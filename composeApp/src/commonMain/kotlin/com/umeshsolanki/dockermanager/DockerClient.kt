@@ -155,4 +155,38 @@ object DockerClient {
             e.printStackTrace()
         }
     }
+
+    suspend fun inspectContainer(id: String): ContainerDetails? {
+        return try {
+            client.get("$BASE_URL/containers/$id/inspect").body()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    suspend fun listVolumes(): List<DockerVolume> {
+        return try {
+            client.get("$BASE_URL/volumes").body()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun removeVolume(name: String) {
+        try {
+            client.delete("$BASE_URL/volumes/$name")
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun pruneVolumes() {
+        try {
+            client.post("$BASE_URL/volumes/prune")
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 }

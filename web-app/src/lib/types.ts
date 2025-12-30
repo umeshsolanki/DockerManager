@@ -40,4 +40,33 @@ export interface DockerNetwork {
   internal: boolean;
 }
 
-export type Screen = 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Secrets' | 'Settings';
+export interface DockerVolume {
+  name: string;
+  driver: string;
+  mountpoint: string;
+  createdAt?: string;
+  size?: string;
+}
+
+export interface DockerMount {
+  type?: string;
+  source?: string;
+  destination?: string;
+  mode?: string;
+  rw?: boolean;
+}
+
+export interface ContainerDetails {
+  id: string;
+  name: string;
+  image: string;
+  state: string;
+  status: string;
+  createdAt: string;
+  platform: string;
+  env: string[];
+  labels: Record<string, string>;
+  mounts: DockerMount[];
+}
+
+export type Screen = 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Volumes' | 'Secrets' | 'Settings';
