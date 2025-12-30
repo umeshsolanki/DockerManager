@@ -8,6 +8,7 @@ interface IContainerService {
     fun pruneContainers(): Boolean
     fun inspectContainer(id: String): ContainerDetails?
     fun createContainer(request: CreateContainerRequest): String?
+    fun getContainerLogs(id: String, tail: Int = 100): String
 }
 
 class ContainerServiceImpl(private val dockerClient: com.github.dockerjava.api.DockerClient) : IContainerService {
@@ -155,6 +156,29 @@ class ContainerServiceImpl(private val dockerClient: com.github.dockerjava.api.D
         } catch (e: Exception) {
             e.printStackTrace()
             false
+        }
+    }
+
+    override fun getContainerLogs(id: String, tail: Int): String {
+        return try {
+            val logCallback = object : com.github.dockerjava.api.async.ResultCallback.Adapter<com.github.dockerjava.api.model.Frame>() {
+                val logs = StringBuilder()
+                override fun onNext(frame: com.github.dockerjava.api.model.Frame) {
+                    logs.append(String(frame.payload))
+                }
+            }
+            
+            dockerClient.logContainerCmd(id)
+                .withStdOut(true)
+                .withStdErr(true)
+                .withTail(tail)
+                .exec(logCallback)
+                .awaitCompletion(5, java.util.concurrent.TimeUnit.SECONDS)
+            
+            logCallback.logs.toString()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            "Error fetching logs: ${e.message}"
         }
     }
 }

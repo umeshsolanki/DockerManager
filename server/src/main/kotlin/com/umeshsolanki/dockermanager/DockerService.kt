@@ -18,6 +18,7 @@ object DockerService {
     fun pruneContainers() = containerService.pruneContainers()
     fun inspectContainer(id: String) = containerService.inspectContainer(id)
     fun createContainer(request: CreateContainerRequest) = containerService.createContainer(request)
+    fun getContainerLogs(id: String, tail: Int = 100) = containerService.getContainerLogs(id, tail)
 
     fun listImages() = imageService.listImages()
     fun pullImage(name: String) = imageService.pullImage(name)

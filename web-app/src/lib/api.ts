@@ -102,6 +102,16 @@ export const DockerClient = {
         }
     },
 
+    async getContainerLogs(id: string, tail: number = 100): Promise<string> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/containers/${id}/logs?tail=${tail}`);
+            return await response.text();
+        } catch (e) {
+            console.error(e);
+            return 'Error fetching logs';
+        }
+    },
+
     async listImages(): Promise<DockerImage[]> {
         try {
             const response = await fetch(`${this.getServerUrl()}/images`);

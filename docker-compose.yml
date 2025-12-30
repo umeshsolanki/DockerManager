@@ -10,6 +10,7 @@ services:
       - /sys/class/power_supply/BAT0:/sys/class/power_supply/BAT0
       - docker-manager-storage:/app/data
       - /home:/home
+      - /var/log:/host/var/log:ro
 
   client:
     image: docker-manager-client:${BUILD_NUMBER}

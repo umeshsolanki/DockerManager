@@ -52,6 +52,13 @@ fun Route.containerRoutes() {
             call.respondText("Removed")
         }
 
+        get("/{id}/logs") {
+            val id = call.parameters["id"] ?: return@get call.respondText("Missing ID", status = HttpStatusCode.BadRequest)
+            val tail = call.request.queryParameters["tail"]?.toIntOrNull() ?: 100
+            val logs = DockerService.getContainerLogs(id, tail)
+            call.respondText(logs)
+        }
+
         post("/prune") {
             DockerService.pruneContainers()
             call.respondText("Pruned")

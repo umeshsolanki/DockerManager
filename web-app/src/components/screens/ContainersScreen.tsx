@@ -122,6 +122,23 @@ export default function ContainersScreen() {
 }
 
 function InspectModal({ details, onClose }: { details: ContainerDetails; onClose: () => void }) {
+    const [activeTab, setActiveTab] = React.useState<'details' | 'logs'>('details');
+    const [logs, setLogs] = React.useState<string>('');
+    const [isLoadingLogs, setIsLoadingLogs] = React.useState(false);
+
+    const fetchLogs = async () => {
+        setIsLoadingLogs(true);
+        const logData = await DockerClient.getContainerLogs(details.id, 100);
+        setLogs(logData);
+        setIsLoadingLogs(false);
+    };
+
+    React.useEffect(() => {
+        if (activeTab === 'logs' && !logs) {
+            fetchLogs();
+        }
+    }, [activeTab]);
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <div className="bg-surface border border-outline/20 rounded-3xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
@@ -134,73 +151,116 @@ function InspectModal({ details, onClose }: { details: ContainerDetails; onClose
                         <XCircle size={24} />
                     </button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                    <div className="grid grid-cols-2 gap-4">
-                        <DetailItem label="Status" value={details.status} />
-                        <DetailItem label="Image" value={details.image} />
-                        <DetailItem label="Platform" value={details.platform} />
-                        <DetailItem label="Created" value={details.createdAt} />
-                    </div>
 
-                    <div>
-                        <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
-                            Environment Variables
-                        </h3>
-                        <div className="bg-black/20 rounded-xl p-4 font-mono text-sm space-y-1 overflow-x-auto">
-                            {details.env.map((e: string, i: number) => (
-                                <div key={i} className="text-green-400/80">{e}</div>
-                            ))}
-                        </div>
-                    </div>
+                {/* Tab Navigation */}
+                <div className="flex border-b border-outline/10">
+                    <button
+                        onClick={() => setActiveTab('details')}
+                        className={`flex-1 px-6 py-3 font-medium transition-colors ${activeTab === 'details'
+                                ? 'text-primary border-b-2 border-primary'
+                                : 'text-on-surface-variant hover:text-on-surface'
+                            }`}
+                    >
+                        Details
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('logs')}
+                        className={`flex-1 px-6 py-3 font-medium transition-colors ${activeTab === 'logs'
+                                ? 'text-primary border-b-2 border-primary'
+                                : 'text-on-surface-variant hover:text-on-surface'
+                            }`}
+                    >
+                        Logs
+                    </button>
+                </div>
 
-                    <div>
-                        <h3 className="text-lg font-bold mb-3">Ports</h3>
-                        <div className="space-y-2">
-                            {details.ports && details.ports.length > 0 ? (
-                                details.ports.map((p: any, i: number) => (
-                                    <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-4">
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <div>
-                                                <div className="text-[10px] text-on-surface-variant">Container Port</div>
-                                                <div className="text-sm font-mono">{p.containerPort}</div>
-                                            </div>
-                                            <div>
-                                                <div className="text-[10px] text-on-surface-variant">Host Port</div>
-                                                <div className="text-sm font-mono">{p.hostPort}</div>
-                                            </div>
-                                            <div>
-                                                <div className="text-[10px] text-on-surface-variant">Protocol</div>
-                                                <div className="text-sm font-mono uppercase">{p.protocol}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="text-sm text-on-surface-variant italic">No port mappings</div>
-                            )}
-                        </div>
-                    </div>
+                <div className="flex-1 overflow-y-auto p-6">
+                    {activeTab === 'details' ? (
+                        <div className="space-y-8">
+                            <div className="grid grid-cols-2 gap-4">
+                                <DetailItem label="Status" value={details.status} />
+                                <DetailItem label="Image" value={details.image} />
+                                <DetailItem label="Platform" value={details.platform} />
+                                <DetailItem label="Created" value={details.createdAt} />
+                            </div>
 
-                    <div>
-                        <h3 className="text-lg font-bold mb-3">Mounts</h3>
-                        <div className="space-y-2">
-                            {details.mounts.map((m: any, i: number) => (
-                                <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-4">
-                                    <div className="text-xs text-on-surface-variant uppercase font-bold mb-1">{m.type}</div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <div className="text-[10px] text-on-surface-variant">Source</div>
-                                            <div className="text-sm font-mono break-all">{m.source}</div>
-                                        </div>
-                                        <div>
-                                            <div className="text-[10px] text-on-surface-variant">Destination</div>
-                                            <div className="text-sm font-mono break-all">{m.destination}</div>
-                                        </div>
-                                    </div>
+                            <div>
+                                <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
+                                    Environment Variables
+                                </h3>
+                                <div className="bg-black/20 rounded-xl p-4 font-mono text-sm space-y-1 overflow-x-auto">
+                                    {details.env.map((e: string, i: number) => (
+                                        <div key={i} className="text-green-400/80">{e}</div>
+                                    ))}
                                 </div>
-                            ))}
+                            </div>
+
+                            <div>
+                                <h3 className="text-lg font-bold mb-3">Ports</h3>
+                                <div className="space-y-2">
+                                    {details.ports && details.ports.length > 0 ? (
+                                        details.ports.map((p: any, i: number) => (
+                                            <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-4">
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                    <div>
+                                                        <div className="text-[10px] text-on-surface-variant">Container Port</div>
+                                                        <div className="text-sm font-mono">{p.containerPort}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-[10px] text-on-surface-variant">Host Port</div>
+                                                        <div className="text-sm font-mono">{p.hostPort}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-[10px] text-on-surface-variant">Protocol</div>
+                                                        <div className="text-sm font-mono uppercase">{p.protocol}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="text-sm text-on-surface-variant italic">No port mappings</div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div>
+                                <h3 className="text-lg font-bold mb-3">Mounts</h3>
+                                <div className="space-y-2">
+                                    {details.mounts.map((m: any, i: number) => (
+                                        <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-4">
+                                            <div className="text-xs text-on-surface-variant uppercase font-bold mb-1">{m.type}</div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div>
+                                                    <div className="text-[10px] text-on-surface-variant">Source</div>
+                                                    <div className="text-sm font-mono break-all">{m.source}</div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-[10px] text-on-surface-variant">Destination</div>
+                                                    <div className="text-sm font-mono break-all">{m.destination}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="h-full">
+                            <div className="flex items-center justify-between mb-3">
+                                <h3 className="text-lg font-bold">Container Logs (Last 100 lines)</h3>
+                                <button
+                                    onClick={fetchLogs}
+                                    disabled={isLoadingLogs}
+                                    className="px-3 py-1 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors text-sm disabled:opacity-50"
+                                >
+                                    {isLoadingLogs ? 'Refreshing...' : 'Refresh'}
+                                </button>
+                            </div>
+                            <div className="bg-black/40 rounded-xl p-4 font-mono text-xs overflow-auto max-h-[60vh]">
+                                <pre className="whitespace-pre-wrap text-green-400/90">{logs || 'No logs available'}</pre>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
