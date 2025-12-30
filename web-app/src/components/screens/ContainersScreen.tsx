@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Search, RefreshCw, Trash2, Play, Square, Trash, Info, X } from 'lucide-react';
+import { Search, RefreshCw, Trash2, Play, Square, Trash, Info, X, XCircle } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { DockerContainer, ContainerDetails } from '@/lib/types';
 
