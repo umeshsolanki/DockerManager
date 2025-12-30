@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import NavigationRail from '@/components/NavigationRail';
 import { Screen } from '@/lib/types';
 import ContainersScreen from '@/components/screens/ContainersScreen';
@@ -9,8 +10,27 @@ import ComposeScreen from '@/components/screens/ComposeScreen';
 import SettingsScreen from '@/components/screens/SettingsScreen';
 import SecretsScreen from '@/components/screens/SecretsScreen';
 
-export default function Home() {
+function HomeContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [selectedScreen, setSelectedScreen] = useState<Screen>('Containers');
+
+  // Initialize from URL on mount
+  useEffect(() => {
+    const screenParam = searchParams.get('screen') as Screen;
+    const validScreens: Screen[] = ['Containers', 'Images', 'Compose', 'Secrets', 'Settings'];
+    if (screenParam && validScreens.includes(screenParam)) {
+      setSelectedScreen(screenParam);
+    }
+  }, [searchParams]);
+
+  const handleScreenChange = (screen: Screen) => {
+    setSelectedScreen(screen);
+    // Update URL without refreshing the page
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('screen', screen);
+    router.push(`?${params.toString()}`);
+  };
 
   const renderScreen = () => {
     switch (selectedScreen) {
@@ -27,7 +47,7 @@ export default function Home() {
     <div className="flex h-screen bg-background text-foreground overflow-hidden">
       <NavigationRail
         selectedScreen={selectedScreen}
-        onScreenChange={setSelectedScreen}
+        onScreenChange={handleScreenChange}
       />
       <main className="flex-1 overflow-y-auto px-8 py-10 md:px-16 lg:px-24">
         {renderScreen()}
@@ -35,3 +55,12 @@ export default function Home() {
     </div>
   );
 }
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center bg-background">Loading...</div>}>
+      <HomeContent />
+    </Suspense>
+  );
+}
+
