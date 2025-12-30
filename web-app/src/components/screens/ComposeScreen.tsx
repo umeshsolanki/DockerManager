@@ -146,9 +146,9 @@ export default function ComposeScreen() {
 
     return (
         <div className="flex flex-col h-full relative">
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-4">
-                    <h1 className="text-4xl font-bold">Compose</h1>
+                    <h1 className="text-3xl font-bold">Compose</h1>
                     {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
                 </div>
                 <div className="flex items-center gap-3">
@@ -169,7 +169,7 @@ export default function ComposeScreen() {
                 </div>
             </div>
 
-            <div className="flex items-center gap-4 mb-8">
+            <div className="flex items-center gap-4 mb-5">
                 <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={20} />
                     <input
@@ -194,7 +194,7 @@ export default function ComposeScreen() {
                     No compose files found
                 </div>
             ) : (
-                <div className="flex flex-col gap-3 overflow-y-auto pb-8">
+                <div className="flex flex-col gap-3 overflow-y-auto pb-6">
                     {filteredFiles.map(file => (
                         <ComposeFileCard
                             key={file.path}
@@ -333,7 +333,7 @@ function ComposeFileCard({ file, onAction, onEdit, onBackup }: {
     onBackup: () => void;
 }) {
     return (
-        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 flex items-center justify-between hover:bg-surface transition-colors group">
+        <div className="bg-surface/50 border border-outline/10 rounded-xl p-4 flex items-center justify-between hover:bg-surface transition-colors group">
             <div className="flex items-center gap-4 flex-1 overflow-hidden">
                 <div className="flex flex-col overflow-hidden">
                     <span className="text-lg font-medium text-on-surface truncate">{file.name}</span>
@@ -427,7 +427,7 @@ function ComposeWizard({ onGenerate }: { onGenerate: (yml: string) => void }) {
             </div>
             <button
                 onClick={generate}
-                className="w-full py-4 bg-primary/10 text-primary border border-primary/20 rounded-2xl hover:bg-primary hover:text-on-primary transition-all font-bold flex items-center justify-center gap-3 group"
+                className="w-full py-4 bg-primary/10 text-primary border border-primary/20 rounded-xl hover:bg-primary hover:text-on-primary transition-all font-bold flex items-center justify-center gap-3 group"
             >
                 <Wand2 size={24} className="group-hover:rotate-12 transition-transform" />
                 Generate YAML

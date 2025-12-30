@@ -16,7 +16,7 @@ export default function SettingsScreen() {
 
     return (
         <div className="flex flex-col h-full">
-            <h1 className="text-4xl font-bold mb-8">Settings</h1>
+            <h1 className="text-3xl font-bold mb-5">Settings</h1>
 
             <div className="max-w-2xl bg-surface/50 border border-outline/10 rounded-3xl p-8 shadow-xl">
                 <h2 className="text-xl font-semibold text-primary mb-6">Server Configuration</h2>
@@ -31,7 +31,7 @@ export default function SettingsScreen() {
                                 value={serverUrl}
                                 onChange={(e) => setServerUrl(e.target.value)}
                                 placeholder="e.g., http://192.168.1.100:8080"
-                                className="w-full bg-surface border border-outline/20 rounded-2xl py-4 pl-12 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors text-lg"
+                                className="w-full bg-surface border border-outline/20 rounded-xl py-4 pl-12 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors text-lg"
                             />
                         </div>
                         <p className="text-xs text-on-surface-variant px-1 mt-2">
@@ -50,7 +50,7 @@ export default function SettingsScreen() {
                         </div>
                         <button
                             onClick={handleSave}
-                            className="flex items-center gap-2 bg-primary text-primary-foreground font-bold px-8 py-4 rounded-2xl hover:opacity-90 transition-all active:scale-95 shadow-lg shadow-primary/20"
+                            className="flex items-center gap-2 bg-primary text-primary-foreground font-bold px-8 py-4 rounded-xl hover:opacity-90 transition-all active:scale-95 shadow-lg shadow-primary/20"
                         >
                             <Save size={20} />
                             <span>Save Changes</span>

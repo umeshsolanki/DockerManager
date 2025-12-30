@@ -36,12 +36,12 @@ export default function NetworksScreen() {
 
     return (
         <div className="flex flex-col h-full">
-            <div className="flex items-center gap-4 mb-8">
-                <h1 className="text-4xl font-bold">Networks</h1>
+            <div className="flex items-center gap-4 mb-5">
+                <h1 className="text-3xl font-bold">Networks</h1>
                 {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
             </div>
 
-            <div className="flex items-center gap-4 mb-8">
+            <div className="flex items-center gap-4 mb-5">
                 <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={20} />
                     <input
@@ -66,7 +66,7 @@ export default function NetworksScreen() {
                     No networks found
                 </div>
             ) : (
-                <div className="flex flex-col gap-3 overflow-y-auto pb-8">
+                <div className="flex flex-col gap-3 overflow-y-auto pb-6">
                     {filteredNetworks.map(network => (
                         <NetworkCard
                             key={network.id}
@@ -85,7 +85,7 @@ function NetworkCard({ network, onAction }: {
     onAction: (action: () => Promise<void>) => Promise<void>;
 }) {
     return (
-        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 flex items-center justify-between hover:bg-surface transition-colors">
+        <div className="bg-surface/50 border border-outline/10 rounded-xl p-4 flex items-center justify-between hover:bg-surface transition-colors">
             <div className="flex items-center gap-4 flex-1">
                 <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
                     <Share2 size={24} />

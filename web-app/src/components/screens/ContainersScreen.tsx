@@ -45,12 +45,12 @@ export default function ContainersScreen() {
 
     return (
         <div className="flex flex-col h-full relative">
-            <div className="flex items-center gap-4 mb-8">
-                <h1 className="text-4xl font-bold">Containers</h1>
+            <div className="flex items-center gap-4 mb-5">
+                <h1 className="text-3xl font-bold">Containers</h1>
                 {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
             </div>
 
-            <div className="flex items-center gap-4 mb-8">
+            <div className="flex items-center gap-4 mb-5">
                 <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={20} />
                     <input
@@ -89,7 +89,7 @@ export default function ContainersScreen() {
                     No containers found
                 </div>
             ) : (
-                <div className="flex flex-col gap-3 overflow-y-auto pb-8">
+                <div className="flex flex-col gap-3 overflow-y-auto pb-6">
                     {filteredContainers.map(container => (
                         <ContainerCard
                             key={container.id}
@@ -155,7 +155,7 @@ function InspectModal({ details, onClose }: { details: ContainerDetails; onClose
 
                     <div>
                         <h3 className="text-lg font-bold mb-3">Ports</h3>
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                             {details.ports && details.ports.length > 0 ? (
                                 details.ports.map((p: any, i: number) => (
                                     <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-4">
@@ -183,7 +183,7 @@ function InspectModal({ details, onClose }: { details: ContainerDetails; onClose
 
                     <div>
                         <h3 className="text-lg font-bold mb-3">Mounts</h3>
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                             {details.mounts.map((m: any, i: number) => (
                                 <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-4">
                                     <div className="text-xs text-on-surface-variant uppercase font-bold mb-1">{m.type}</div>
@@ -225,7 +225,7 @@ function ContainerCard({ container, onAction, onInspect }: {
     const isRunning = container.state.toLowerCase().includes('running');
 
     return (
-        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 flex items-center justify-between hover:bg-surface transition-colors">
+        <div className="bg-surface/50 border border-outline/10 rounded-xl p-4 flex items-center justify-between hover:bg-surface transition-colors">
             <div className="flex items-center gap-4 flex-1">
                 <div className={`w-3 h-3 rounded-full ${isRunning ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-gray-500'}`} />
                 <div className="flex flex-col">
@@ -457,7 +457,7 @@ function CreateContainerWizard({ onClose, onCreated }: { onClose: () => void; on
                                             setFormData({ ...formData, networks: [...current, net.id] });
                                         }
                                     }}
-                                    className={`p-4 rounded-2xl border transition-all text-left ${formData.networks?.includes(net.id) ? 'bg-primary/20 border-primary text-primary' : 'bg-black/20 border-outline/10 text-on-surface-variant hover:border-outline/30'}`}
+                                    className={`p-4 rounded-xl border transition-all text-left ${formData.networks?.includes(net.id) ? 'bg-primary/20 border-primary text-primary' : 'bg-black/20 border-outline/10 text-on-surface-variant hover:border-outline/30'}`}
                                 >
                                     <div className="font-bold">{net.name}</div>
                                     <div className="text-xs opacity-60 font-mono">{net.driver}</div>
@@ -522,8 +522,8 @@ function CreateContainerWizard({ onClose, onCreated }: { onClose: () => void; on
 
 function WizardHeader({ title, icon, description }: { title: string; icon: React.ReactNode; description: string }) {
     return (
-        <div className="flex items-center gap-4 mb-8 p-4 bg-white/5 rounded-3xl border border-white/5">
-            <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+        <div className="flex items-center gap-4 mb-5 p-4 bg-white/5 rounded-3xl border border-white/5">
+            <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
                 {icon}
             </div>
             <div>
@@ -547,7 +547,7 @@ function DynamicList<T>({ items, onAdd, onRemove, renderItem }: { items: T[]; on
             ))}
             <button
                 onClick={onAdd}
-                className="w-full py-4 border-2 border-dashed border-outline/20 rounded-2xl text-on-surface-variant hover:border-primary/50 hover:text-primary transition-all flex items-center justify-center gap-2"
+                className="w-full py-4 border-2 border-dashed border-outline/20 rounded-xl text-on-surface-variant hover:border-primary/50 hover:text-primary transition-all flex items-center justify-center gap-2"
             >
                 <Plus size={20} /> Add Item
             </button>
@@ -596,7 +596,7 @@ function DynamicMap({ items, onUpdate }: { items: Record<string, string>; onUpda
             ))}
             <button
                 onClick={() => onUpdate({ ...items, [`VAR_${entries.length + 1}`]: '' })}
-                className="w-full py-4 border-2 border-dashed border-outline/20 rounded-2xl text-on-surface-variant hover:border-primary/50 hover:text-primary transition-all flex items-center justify-center gap-2"
+                className="w-full py-4 border-2 border-dashed border-outline/20 rounded-xl text-on-surface-variant hover:border-primary/50 hover:text-primary transition-all flex items-center justify-center gap-2"
             >
                 <Plus size={20} /> Add Environment Variable
             </button>

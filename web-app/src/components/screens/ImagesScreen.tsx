@@ -46,14 +46,14 @@ export default function ImagesScreen() {
 
     return (
         <div className="flex flex-col h-full">
-            <div className="flex items-center gap-4 mb-8">
-                <h1 className="text-4xl font-bold">Images</h1>
+            <div className="flex items-center gap-4 mb-5">
+                <h1 className="text-3xl font-bold">Images</h1>
                 {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
                 {/* Pull Controls */}
-                <div className="flex bg-surface/50 border border-outline/10 rounded-2xl p-4 gap-3 items-center">
+                <div className="flex bg-surface/50 border border-outline/10 rounded-xl p-4 gap-3 items-center">
                     <div className="relative flex-1">
                         <Download className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={18} />
                         <input
@@ -99,7 +99,7 @@ export default function ImagesScreen() {
                     No images found
                 </div>
             ) : (
-                <div className="flex flex-col gap-3 overflow-y-auto pb-8">
+                <div className="flex flex-col gap-3 overflow-y-auto pb-6">
                     {filteredImages.map(image => (
                         <ImageCard
                             key={image.id}
@@ -121,7 +121,7 @@ function ImageCard({ image, onRemove }: {
     const sizeMB = (image.size / (1024 * 1024)).toFixed(2);
 
     return (
-        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 flex items-center justify-between hover:bg-surface transition-colors">
+        <div className="bg-surface/50 border border-outline/10 rounded-xl p-4 flex items-center justify-between hover:bg-surface transition-colors">
             <div className="flex flex-col gap-1">
                 <span className="text-lg font-medium text-on-surface truncate max-w-md">{tags}</span>
                 <div className="flex items-center gap-2 text-on-surface-variant">

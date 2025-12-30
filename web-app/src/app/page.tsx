@@ -58,7 +58,7 @@ function HomeContent() {
         selectedScreen={selectedScreen}
         onScreenChange={handleScreenChange}
       />
-      <main className="flex-1 overflow-y-auto px-8 py-10 md:px-16 lg:px-24">
+      <main className="flex-1 overflow-y-auto px-6 py-6 md:px-10 lg:px-16">
         {renderScreen()}
       </main>
     </div>

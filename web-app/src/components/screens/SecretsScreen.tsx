@@ -49,21 +49,21 @@ export default function SecretsScreen() {
 
     return (
         <div className="flex flex-col h-full relative">
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-4">
-                    <h1 className="text-4xl font-bold">Secrets</h1>
+                    <h1 className="text-3xl font-bold">Secrets</h1>
                     {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
                 </div>
                 <button
                     onClick={() => setIsCreateOpen(true)}
-                    className="flex items-center gap-2 bg-primary text-primary-foreground font-bold px-6 py-3 rounded-2xl hover:opacity-90 transition-all active:scale-95 shadow-lg shadow-primary/20"
+                    className="flex items-center gap-2 bg-primary text-primary-foreground font-bold px-6 py-3 rounded-xl hover:opacity-90 transition-all active:scale-95 shadow-lg shadow-primary/20"
                 >
                     <Plus size={20} />
                     <span>Create Secret</span>
                 </button>
             </div>
 
-            <div className="flex items-center gap-4 mb-8">
+            <div className="flex items-center gap-4 mb-5">
                 <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={20} />
                     <input
@@ -89,7 +89,7 @@ export default function SecretsScreen() {
                     <span>No secrets found</span>
                 </div>
             ) : (
-                <div className="flex flex-col gap-3 overflow-y-auto pb-8">
+                <div className="flex flex-col gap-3 overflow-y-auto pb-6">
                     {filteredSecrets.map(secret => (
                         <SecretCard
                             key={secret.id}
@@ -105,7 +105,7 @@ export default function SecretsScreen() {
                 <div className="fixed inset-0 z-50 flex justify-end">
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsCreateOpen(false)} />
                     <div className="relative w-full max-w-md bg-surface border-l border-outline/10 h-full p-8 shadow-2xl animate-in slide-in-from-right duration-300">
-                        <div className="flex items-center justify-between mb-8">
+                        <div className="flex items-center justify-between mb-5">
                             <h2 className="text-2xl font-bold">New Secret</h2>
                             <button onClick={() => setIsCreateOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
                                 <X size={24} />
@@ -141,7 +141,7 @@ export default function SecretsScreen() {
                             <button
                                 onClick={handleCreate}
                                 disabled={!newName.trim() || !newData.trim()}
-                                className="w-full bg-primary text-primary-foreground font-bold py-4 rounded-2xl hover:opacity-90 transition-all active:scale-95 disabled:opacity-50 disabled:scale-100 shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
+                                className="w-full bg-primary text-primary-foreground font-bold py-4 rounded-xl hover:opacity-90 transition-all active:scale-95 disabled:opacity-50 disabled:scale-100 shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
                             >
                                 <Lock size={20} />
                                 <span>Save Secret</span>
@@ -159,7 +159,7 @@ function SecretCard({ secret, onRemove }: {
     onRemove: (id: string) => Promise<void>;
 }) {
     return (
-        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 flex items-center justify-between hover:bg-surface transition-colors">
+        <div className="bg-surface/50 border border-outline/10 rounded-xl p-4 flex items-center justify-between hover:bg-surface transition-colors">
             <div className="flex items-center gap-4 flex-1 overflow-hidden">
                 <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
                     <Key size={20} />
