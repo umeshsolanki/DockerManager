@@ -119,4 +119,11 @@ export interface ComposeResult {
   message: string;
 }
 
-export type Screen = 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Volumes' | 'Secrets' | 'Settings';
+export interface SystemLog {
+  name: string;
+  path: string;
+  size: number;
+  lastModified: number;
+}
+
+export type Screen = 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Volumes' | 'Secrets' | 'Logs' | 'Settings';

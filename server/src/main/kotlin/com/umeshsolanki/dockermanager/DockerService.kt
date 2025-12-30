@@ -10,6 +10,7 @@ object DockerService {
     private val secretService: ISecretService = SecretServiceImpl(dockerClient)
     private val networkService: INetworkService = NetworkServiceImpl(dockerClient)
     private val volumeService: IVolumeService = VolumeServiceImpl(dockerClient)
+    private val logService: ILogService = LogServiceImpl()
 
     fun listContainers() = containerService.listContainers()
     fun startContainer(id: String) = containerService.startContainer(id)
@@ -44,5 +45,8 @@ object DockerService {
     fun pruneVolumes() = volumeService.pruneVolumes()
     fun inspectVolume(name: String) = volumeService.inspectVolume(name)
     fun backupVolume(name: String) = volumeService.backupVolume(name)
+
+    fun listSystemLogs() = logService.listSystemLogs()
+    fun getSystemLogContent(path: String, tail: Int = 100) = logService.getLogContent(path, tail)
 }
 

@@ -138,3 +138,11 @@ data class ComposeResult(
     val success: Boolean,
     val message: String
 )
+
+@Serializable
+data class SystemLog(
+    val name: String,
+    val path: String,
+    val size: Long,
+    val lastModified: Long
+)

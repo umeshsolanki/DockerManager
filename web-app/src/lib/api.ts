@@ -1,4 +1,4 @@
-import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest, ComposeResult } from './types';
+import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest, ComposeResult, SystemLog } from './types';
 
 const DEFAULT_SERVER_URL = "http://192.168.1.3:85";
 
@@ -290,6 +290,26 @@ export const DockerClient = {
             await fetch(`${this.getServerUrl()}/volumes/prune`, { method: 'POST' });
         } catch (e) {
             console.error(e);
+        }
+    },
+
+    async listSystemLogs(): Promise<SystemLog[]> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/logs/system`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return [];
+        }
+    },
+
+    async getSystemLogContent(path: string, tail: number = 100): Promise<string> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/logs/system/content?path=${encodeURIComponent(path)}&tail=${tail}`);
+            return await response.text();
+        } catch (e) {
+            console.error(e);
+            return 'Error fetching system logs';
         }
     }
 };

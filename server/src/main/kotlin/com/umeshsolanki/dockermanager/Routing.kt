@@ -18,5 +18,6 @@ fun Application.configureRouting() {
         networkRoutes()
         volumeRoutes()
         systemRoutes()
+        logRoutes()
     }
 }
