@@ -44,7 +44,7 @@ class VolumeServiceImpl(private val dockerClient: com.github.dockerjava.api.Dock
     override fun backupVolume(name: String): BackupResult {
         return try {
             val fileName = "backup_${name}_${System.currentTimeMillis()}.tar"
-            val backupDir = File("data/backups/volumes")
+            val backupDir = File("data/backups/volumes").absoluteFile
             if (!backupDir.exists()) backupDir.mkdirs()
 
             val fullPath = File(backupDir, fileName).absolutePath
@@ -54,17 +54,18 @@ class VolumeServiceImpl(private val dockerClient: com.github.dockerjava.api.Dock
             val processBuilder = ProcessBuilder(
                 "docker", "run", "--rm",
                 "-v", "$name:/data",
-                "-v", "$backupDir:/backup",
+                "-v", "${backupDir.absolutePath}:/backup",
                 "alpine", "tar", "cvf", "/backup/$fileName", "-C", "/data", "."
-            )
+            ).redirectErrorStream(true)
 
             val process = processBuilder.start()
+            val output = process.inputStream.bufferedReader().readText()
             val exitCode = process.waitFor()
 
             if (exitCode == 0) {
                 BackupResult(true, fileName, fullPath, "Backup created successfully at $fullPath")
             } else {
-                BackupResult(false, null, null, "Failed to create backup. Exit code: $exitCode")
+                BackupResult(false, null, null, "Failed to create backup. Exit code: $exitCode. Output: $output")
             }
         } catch (e: Exception) {
             e.printStackTrace()
