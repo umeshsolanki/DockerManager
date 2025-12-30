@@ -22,8 +22,8 @@ pipeline {
                 sh 'cp server/build/libs/server-all.jar server-all.jar'
                 
                 script {
-                    // Build image without needing maven credentials since we copied the jar
-                    docker.build("docker-manager-server:${env.BUILD_NUMBER}", ".")
+                    // Add build label for tracking and selective cleanup
+                    docker.build("docker-manager-server:${env.BUILD_NUMBER}", "--label jenkins_build_id=${env.BUILD_ID} .")
                 }
             }
         }
@@ -31,7 +31,7 @@ pipeline {
             steps {
                 script {
                     // Dockerfile.client now handles the Next.js build using a multi-stage approach
-                    docker.build("docker-manager-client:${env.BUILD_NUMBER}", "-f Dockerfile.client .")
+                    docker.build("docker-manager-client:${env.BUILD_NUMBER}", "--label jenkins_build_id=${env.BUILD_ID} -f Dockerfile.client .")
                 }
             }
         }
@@ -66,6 +66,12 @@ pipeline {
     
     post {
         always {
+            script {
+                // Remove only containers and images created by this specific Jenkins build
+                // This prevents deleting other users' Docker resources
+                sh "docker ps -a --filter label=jenkins_build_id=${env.BUILD_ID} -q | xargs -r docker rm -f || true"
+                sh "docker images --filter label=jenkins_build_id=${env.BUILD_ID} -q | xargs -r docker rmi -f || true"
+            }
             cleanWs()
         }
     }
