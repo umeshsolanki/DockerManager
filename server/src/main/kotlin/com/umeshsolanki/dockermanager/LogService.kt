@@ -1,6 +1,7 @@
 package com.umeshsolanki.dockermanager
 
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 interface ILogService {
     fun listSystemLogs(): List<SystemLog>
@@ -42,24 +43,36 @@ class LogServiceImpl : ILogService {
                 command.addAll(listOf("cat", path))
             }
 
-            // Pipe through tail
+            // Pipe through tail/awk with strictly enforced timeout and size limits
             val processBuilder = ProcessBuilder("sh", "-c", buildString {
+                // Wrap in timeout to prevent hanging the server
+                append("timeout 5s ")
                 append(command.joinToString(" "))
                 if (!filter.isNullOrBlank()) {
                     append(" | awk '$filter'")
                 }
                 append(" | tail -n $tail")
+                // Final safety: never return more than 1MB of text
+                append(" | head -c 1048576")
             })
             
             val process = processBuilder.start()
-            val output = process.inputStream.bufferedReader().readText()
-            val error = process.errorStream.bufferedReader().readText()
-            process.waitFor()
             
+            // Read stream carefully
+            val output = process.inputStream.bufferedReader().use { it.readText() }
+            val error = process.errorStream.bufferedReader().use { it.readText() }
+            
+            val completed = process.waitFor(6, TimeUnit.SECONDS)
+            
+            if (!completed) {
+                process.destroyForcibly()
+                return "Command timed out (log file might be too large for this filter)"
+            }
+
             if (output.isBlank() && error.isNotBlank()) {
                 "Error processing log: $error"
             } else {
-                output.ifBlank { "No entries found" }
+                output.ifBlank { "No entries found (or filter returned nothing)" }
             }
         } catch (e: Exception) {
             "Error reading log: ${e.message}"

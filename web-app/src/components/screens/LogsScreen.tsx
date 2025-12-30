@@ -103,6 +103,46 @@ export default function LogsScreen() {
                 </div>
             </div>
 
+            <div className="flex flex-wrap items-center gap-2 mb-5 px-1">
+                <span className="text-[10px] uppercase font-bold text-on-surface-variant/60 mr-1 tracking-wider">Quick Filters:</span>
+                <QuickFilterBtn
+                    label="Errors"
+                    awk="/[Ee]rror|ERROR/"
+                    current={awkFilter}
+                    onClick={(awk) => { setAwkFilter(awk); selectedLog && fetchLogContent(selectedLog, awk); }}
+                />
+                <QuickFilterBtn
+                    label="Failures"
+                    awk="/[Ff]ail|FAILED/"
+                    current={awkFilter}
+                    onClick={(awk) => { setAwkFilter(awk); selectedLog && fetchLogContent(selectedLog, awk); }}
+                />
+                <QuickFilterBtn
+                    label="Logins (utmp)"
+                    awk="/\[7\]/"
+                    current={awkFilter}
+                    onClick={(awk) => { setAwkFilter(awk); selectedLog && fetchLogContent(selectedLog, awk); }}
+                />
+                <QuickFilterBtn
+                    label="SSH"
+                    awk="/ssh/"
+                    current={awkFilter}
+                    onClick={(awk) => { setAwkFilter(awk); selectedLog && fetchLogContent(selectedLog, awk); }}
+                />
+                <QuickFilterBtn
+                    label="IP Counts"
+                    awk='tail -n 50000 | awk "{for(i=1;i<=NF;i++) if(\\$i ~ /([0-9]{1,3}\\.){3}[0-9]{1,3}/) a[\\$i]++} END {for(i in a) print a[i], i | \"sort -rn\"}"'
+                    current={awkFilter}
+                    onClick={(awk) => { setAwkFilter(awk); selectedLog && fetchLogContent(selectedLog, awk); }}
+                />
+                <button
+                    onClick={() => { setAwkFilter(''); selectedLog && fetchLogContent(selectedLog, ''); }}
+                    className="ml-auto px-2 py-1 text-[10px] text-primary/70 hover:text-primary transition-colors underline decoration-dotted underline-offset-4"
+                >
+                    Clear Filter
+                </button>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
                 {/* Log List */}
                 <div className="lg:col-span-1 flex flex-col gap-2 overflow-y-auto pb-4">
@@ -180,5 +220,20 @@ export default function LogsScreen() {
                 </div>
             </div>
         </div>
+    );
+}
+
+function QuickFilterBtn({ label, awk, current, onClick }: { label: string, awk: string, current: string, onClick: (awk: string) => void }) {
+    const isActive = current === awk;
+    return (
+        <button
+            onClick={() => onClick(awk)}
+            className={`px-2 py-1 text-[10px] rounded-lg border transition-all ${isActive
+                ? 'bg-primary/20 border-primary/40 text-primary'
+                : 'bg-white/5 border-white/10 text-on-surface-variant hover:bg-white/10 hover:border-white/20'
+                }`}
+        >
+            {label}
+        </button>
     );
 }

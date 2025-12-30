@@ -55,7 +55,7 @@ object SystemService {
     }
 
     private fun executeCommand(command: String): String {
-        val process = Runtime.getRuntime().exec(command)
+        val process = ProcessBuilder("sh", "-c", command).start()
         process.waitFor(2, TimeUnit.SECONDS)
         return process.inputStream.bufferedReader().readText()
     }
