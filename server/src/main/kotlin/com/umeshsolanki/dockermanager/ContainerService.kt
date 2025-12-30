@@ -38,9 +38,9 @@ class ContainerServiceImpl(private val dockerClient: com.github.dockerjava.api.D
                 labels = details.config.labels ?: emptyMap(),
                 mounts = details.mounts?.map { mount ->
                     DockerMount(
-                        type = mount.type?.name,
+                        type = if (mount.driver != null) "volume" else "bind",
                         source = mount.source,
-                        destination = mount.destination?.path,
+                        destination = mount.destination?.toString(),
                         mode = mount.mode,
                         rw = mount.rw
                     )
