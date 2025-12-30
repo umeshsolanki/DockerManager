@@ -37,8 +37,11 @@ class LogServiceImpl : ILogService {
             val command = mutableListOf<String>()
             
             // Handle binary logs (wtmp, btmp)
-            if (file.name == "wtmp" || file.name == "btmp") {
-                command.addAll(listOf("utmpdump", path))
+            if (file.name == "wtmp") {
+                command.addAll(listOf("last", "-f", path))
+            } else if (file.name == "btmp") {
+                // lastb is specifically for bad login attempts
+                command.addAll(listOf("lastb", "-f", path))
             } else {
                 command.addAll(listOf("cat", path))
             }
