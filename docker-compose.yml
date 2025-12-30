@@ -15,7 +15,7 @@ services:
       - docker-manager-storage:/app/data
       - /home:/home
       - /var/log:/host/var/log:ro
-      - /host/usr/bin/lastb:/usr/bin/lastb:ro
+      - /usr/bin/lastb:/host/usr/bin/lastb:ro
       - ./nginx/conf.d:/usr/local/openresty/nginx/conf/conf.d
       - ./nginx/logs:/usr/local/openresty/nginx/logs
       - ./certbot/conf:/etc/letsencrypt
