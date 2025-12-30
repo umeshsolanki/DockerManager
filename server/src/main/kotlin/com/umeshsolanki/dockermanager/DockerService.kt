@@ -36,5 +36,7 @@ object DockerService {
     fun listVolumes() = volumeService.listVolumes()
     fun removeVolume(name: String) = volumeService.removeVolume(name)
     fun pruneVolumes() = volumeService.pruneVolumes()
+    fun inspectVolume(name: String) = volumeService.inspectVolume(name)
+    fun backupVolume(name: String) = volumeService.backupVolume(name)
 }
 

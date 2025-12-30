@@ -189,4 +189,22 @@ object DockerClient {
             e.printStackTrace()
         }
     }
+
+    suspend fun inspectVolume(name: String): VolumeDetails? {
+        return try {
+            client.get("$BASE_URL/volumes/$name/inspect").body()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    suspend fun backupVolume(name: String): BackupResult? {
+        return try {
+            client.post("$BASE_URL/volumes/$name/backup").body()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
 }

@@ -1,8 +1,29 @@
-import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails } from './types';
+import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult } from './types';
 
 const DEFAULT_SERVER_URL = "http://192.168.1.3:85";
 
 export const DockerClient = {
+    // ... rest of the code ...
+    async inspectVolume(name: string): Promise<VolumeDetails | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/volumes/${name}/inspect`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    },
+
+    async backupVolume(name: string): Promise<BackupResult | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/volumes/${name}/backup`, { method: 'POST' });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    },
+    // ... rest of the code ...
     getServerUrl(): string {
         if (typeof window === 'undefined') return DEFAULT_SERVER_URL;
         return localStorage.getItem('SERVER_URL') || DEFAULT_SERVER_URL;

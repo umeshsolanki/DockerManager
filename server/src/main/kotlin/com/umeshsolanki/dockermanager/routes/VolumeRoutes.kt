@@ -11,6 +11,21 @@ fun Route.volumeRoutes() {
         get {
             call.respond(DockerService.listVolumes())
         }
+
+        get("/{name}/inspect") {
+            val name = call.parameters["name"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+            val details = DockerService.inspectVolume(name)
+            if (details != null) {
+                call.respond(details)
+            } else {
+                call.respond(HttpStatusCode.NotFound)
+            }
+        }
+
+        post("/{name}/backup") {
+            val name = call.parameters["name"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+            call.respond(DockerService.backupVolume(name))
+        }
         
         post("/prune") {
             if (DockerService.pruneVolumes()) {

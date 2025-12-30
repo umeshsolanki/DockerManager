@@ -69,4 +69,21 @@ export interface ContainerDetails {
   mounts: DockerMount[];
 }
 
+export interface VolumeDetails {
+  name: string;
+  driver: string;
+  mountpoint: string;
+  labels: Record<string, string>;
+  scope: string;
+  options: Record<string, string>;
+  createdAt?: string;
+}
+
+export interface BackupResult {
+  success: boolean;
+  fileName?: string;
+  filePath?: string;
+  message: string;
+}
+
 export type Screen = 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Volumes' | 'Secrets' | 'Settings';

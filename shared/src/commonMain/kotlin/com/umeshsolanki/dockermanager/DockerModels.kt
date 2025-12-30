@@ -81,3 +81,22 @@ data class DockerMount(
     val mode: String?,
     val rw: Boolean?
 )
+
+@Serializable
+data class VolumeDetails(
+    val name: String,
+    val driver: String,
+    val mountpoint: String,
+    val labels: Map<String, String>,
+    val scope: String,
+    val options: Map<String, String>,
+    val createdAt: String?
+)
+
+@Serializable
+data class BackupResult(
+    val success: Boolean,
+    val fileName: String?,
+    val filePath: String?,
+    val message: String
+)
