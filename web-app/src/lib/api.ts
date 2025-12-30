@@ -303,9 +303,9 @@ export const DockerClient = {
         }
     },
 
-    async getSystemLogContent(path: string, tail: number = 100): Promise<string> {
+    async getSystemLogContent(path: string, tail: number = 100, filter?: string): Promise<string> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/logs/system/content?path=${encodeURIComponent(path)}&tail=${tail}`);
+            const response = await fetch(`${this.getServerUrl()}/logs/system/content?path=${encodeURIComponent(path)}&tail=${tail}${filter ? `&filter=${encodeURIComponent(filter)}` : ''}`);
             return await response.text();
         } catch (e) {
             console.error(e);

@@ -16,7 +16,8 @@ fun Route.logRoutes() {
         get("/system/content") {
             val path = call.request.queryParameters["path"] ?: return@get call.respond(HttpStatusCode.BadRequest, "Missing path")
             val tail = call.request.queryParameters["tail"]?.toIntOrNull() ?: 100
-            val content = DockerService.getSystemLogContent(path, tail)
+            val filter = call.request.queryParameters["filter"]
+            val content = DockerService.getSystemLogContent(path, tail, filter)
             call.respondText(content)
         }
     }

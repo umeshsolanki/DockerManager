@@ -47,6 +47,6 @@ object DockerService {
     fun backupVolume(name: String) = volumeService.backupVolume(name)
 
     fun listSystemLogs() = logService.listSystemLogs()
-    fun getSystemLogContent(path: String, tail: Int = 100) = logService.getLogContent(path, tail)
+    fun getSystemLogContent(path: String, tail: Int = 100, filter: String? = null) = logService.getLogContent(path, tail, filter)
 }
 

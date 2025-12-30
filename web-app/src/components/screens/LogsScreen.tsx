@@ -12,6 +12,7 @@ export default function LogsScreen() {
     const [selectedLog, setSelectedLog] = useState<SystemLog | null>(null);
     const [logContent, setLogContent] = useState<string>('');
     const [isReadingLog, setIsReadingLog] = useState(false);
+    const [awkFilter, setAwkFilter] = useState('');
 
     const fetchLogs = async () => {
         setIsLoading(true);
@@ -20,10 +21,10 @@ export default function LogsScreen() {
         setIsLoading(false);
     };
 
-    const fetchLogContent = async (log: SystemLog) => {
+    const fetchLogContent = async (log: SystemLog, filter?: string) => {
         setIsReadingLog(true);
         setSelectedLog(log);
-        const content = await DockerClient.getSystemLogContent(log.path, 200);
+        const content = await DockerClient.getSystemLogContent(log.path, 200, filter);
         setLogContent(content);
         setIsReadingLog(false);
     };
@@ -58,24 +59,48 @@ export default function LogsScreen() {
                 {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
             </div>
 
-            <div className="flex items-center gap-4 mb-5">
-                <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={20} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={18} />
                     <input
                         type="text"
-                        placeholder="Search logs..."
+                        placeholder="Search file names..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-surface border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors"
+                        className="w-full bg-surface border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-primary transition-colors"
                     />
                 </div>
-                <button
-                    onClick={fetchLogs}
-                    className="p-2 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors"
-                    title="Refresh"
-                >
-                    <RefreshCw size={18} />
-                </button>
+                <div className="flex gap-2">
+                    <div className="relative flex-1">
+                        <Terminal className="absolute left-3 top-1/2 -translate-y-1/2 text-primary" size={18} />
+                        <input
+                            type="text"
+                            placeholder="AWK filter (e.g. /error/ for searching error)..."
+                            value={awkFilter}
+                            onChange={(e) => setAwkFilter(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && selectedLog) {
+                                    fetchLogContent(selectedLog, awkFilter);
+                                }
+                            }}
+                            className="w-full bg-surface border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-sm font-mono focus:outline-none focus:border-primary transition-colors"
+                        />
+                    </div>
+                    <button
+                        onClick={() => selectedLog && fetchLogContent(selectedLog, awkFilter)}
+                        className="p-2 bg-primary/10 text-primary border border-primary/20 rounded-xl hover:bg-primary/20 transition-colors"
+                        title="Apply AWK"
+                    >
+                        Apply
+                    </button>
+                    <button
+                        onClick={fetchLogs}
+                        className="p-2 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors"
+                        title="Refresh list"
+                    >
+                        <RefreshCw size={18} />
+                    </button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
@@ -84,10 +109,10 @@ export default function LogsScreen() {
                     {filteredLogs.map(log => (
                         <div
                             key={log.path}
-                            onClick={() => fetchLogContent(log)}
+                            onClick={() => fetchLogContent(log, awkFilter)}
                             className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${selectedLog?.path === log.path
-                                    ? 'bg-primary/10 border-primary/30'
-                                    : 'bg-surface/50 border-outline/10 hover:bg-surface'
+                                ? 'bg-primary/10 border-primary/30'
+                                : 'bg-surface/50 border-outline/10 hover:bg-surface'
                                 }`}
                         >
                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${selectedLog?.path === log.path ? 'bg-primary/20 text-primary' : 'bg-white/5 text-on-surface-variant'
@@ -124,7 +149,7 @@ export default function LogsScreen() {
                                         Last modified: {formatDate(selectedLog.lastModified)}
                                     </span>
                                     <button
-                                        onClick={() => fetchLogContent(selectedLog)}
+                                        onClick={() => fetchLogContent(selectedLog, awkFilter)}
                                         disabled={isReadingLog}
                                         className="p-1 hover:bg-white/10 rounded transition-colors disabled:opacity-50"
                                         title="Reload content"
