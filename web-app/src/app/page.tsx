@@ -26,6 +26,11 @@ function HomeContent() {
     }
   }, [searchParams]);
 
+  // Update document title dynamically
+  useEffect(() => {
+    document.title = `${selectedScreen} | Docker Manager`;
+  }, [selectedScreen]);
+
   const handleScreenChange = (screen: Screen) => {
     setSelectedScreen(screen);
     // Update URL without refreshing the page

@@ -70,7 +70,8 @@ data class ContainerDetails(
     val platform: String,
     val env: List<String>,
     val labels: Map<String, String>,
-    val mounts: List<DockerMount>
+    val mounts: List<DockerMount>,
+    val ports: List<PortMapping> = emptyList()
 )
 
 @Serializable

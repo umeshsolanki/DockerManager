@@ -89,6 +89,7 @@ export interface ContainerDetails {
   env: string[];
   labels: Record<string, string>;
   mounts: DockerMount[];
+  ports: PortMapping[];
 }
 
 export interface VolumeDetails {

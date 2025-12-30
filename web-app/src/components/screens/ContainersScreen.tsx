@@ -154,6 +154,34 @@ function InspectModal({ details, onClose }: { details: ContainerDetails; onClose
                     </div>
 
                     <div>
+                        <h3 className="text-lg font-bold mb-3">Ports</h3>
+                        <div className="space-y-3">
+                            {details.ports && details.ports.length > 0 ? (
+                                details.ports.map((p: any, i: number) => (
+                                    <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div>
+                                                <div className="text-[10px] text-on-surface-variant">Container Port</div>
+                                                <div className="text-sm font-mono">{p.containerPort}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-[10px] text-on-surface-variant">Host Port</div>
+                                                <div className="text-sm font-mono">{p.hostPort}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-[10px] text-on-surface-variant">Protocol</div>
+                                                <div className="text-sm font-mono uppercase">{p.protocol}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="text-sm text-on-surface-variant italic">No port mappings</div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div>
                         <h3 className="text-lg font-bold mb-3">Mounts</h3>
                         <div className="space-y-3">
                             {details.mounts.map((m: any, i: number) => (

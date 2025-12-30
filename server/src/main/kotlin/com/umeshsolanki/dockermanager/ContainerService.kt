@@ -101,7 +101,16 @@ class ContainerServiceImpl(private val dockerClient: com.github.dockerjava.api.D
                         mode = mount.mode,
                         rw = mount.rw
                     )
-                } ?: emptyList()
+                } ?: emptyList(),
+                ports = details.networkSettings.ports.bindings.flatMap { (exposedPort, bindings) ->
+                    bindings?.map { binding ->
+                        PortMapping(
+                            containerPort = exposedPort.port,
+                            hostPort = binding.hostPortSpec.toIntOrNull() ?: 0,
+                            protocol = exposedPort.protocol.toString()
+                        )
+                    } ?: emptyList()
+                }
             )
         } catch (e: Exception) {
             e.printStackTrace()
