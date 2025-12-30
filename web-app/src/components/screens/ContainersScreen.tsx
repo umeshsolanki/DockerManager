@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Search, RefreshCw, Trash2, Play, Square, Trash, Info } from 'lucide-react';
+import { Search, RefreshCw, Trash2, Play, Square, Trash, Info, X } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { DockerContainer, ContainerDetails } from '@/lib/types';
 
@@ -113,7 +113,7 @@ function InspectModal({ details, onClose }: { details: ContainerDetails; onClose
                         <span className="text-xs text-on-surface-variant font-mono">{details.id}</span>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-                        <RefreshCw size={24} className="rotate-45" /> {/* Close icon substitute */}
+                        <XCircle size={24} />
                     </button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 space-y-8">
