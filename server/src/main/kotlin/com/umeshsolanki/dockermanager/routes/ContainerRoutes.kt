@@ -2,6 +2,8 @@ package com.umeshsolanki.dockermanager.routes
 
 import com.umeshsolanki.dockermanager.DockerService
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.call
+import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.*
@@ -10,6 +12,16 @@ fun Route.containerRoutes() {
     route("/containers") {
         get {
             call.respond(DockerService.listContainers())
+        }
+
+        post {
+            val request = call.receive<com.umeshsolanki.dockermanager.CreateContainerRequest>()
+            val id = DockerService.createContainer(request)
+            if (id != null) {
+                call.respond(HttpStatusCode.Created, id)
+            } else {
+                call.respond(HttpStatusCode.InternalServerError, "Failed to create container")
+            }
         }
 
         get("/{id}/inspect") {

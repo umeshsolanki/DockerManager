@@ -7,6 +7,7 @@ interface IContainerService {
     fun removeContainer(id: String): Boolean
     fun pruneContainers(): Boolean
     fun inspectContainer(id: String): ContainerDetails?
+    fun createContainer(request: CreateContainerRequest): String?
 }
 
 class ContainerServiceImpl(private val dockerClient: com.github.dockerjava.api.DockerClient) : IContainerService {
@@ -20,6 +21,62 @@ class ContainerServiceImpl(private val dockerClient: com.github.dockerjava.api.D
                 status = container.status,
                 state = container.state
             )
+        }
+    }
+
+    override fun createContainer(request: CreateContainerRequest): String? {
+        return try {
+            val cmd = dockerClient.createContainerCmd(request.image)
+                .withName(request.name)
+            
+            // Port Mappings
+            if (request.ports.isNotEmpty()) {
+                val portBindings = request.ports.map { 
+                    com.github.dockerjava.api.model.ExposedPort(it.containerPort, com.github.dockerjava.api.model.InternetProtocol.parse(it.protocol)) to 
+                    com.github.dockerjava.api.model.Ports.Binding.bindPort(it.hostPort)
+                }
+                val ports = com.github.dockerjava.api.model.Ports()
+                portBindings.forEach { (exposed, binding) ->
+                    ports.bind(exposed, binding)
+                }
+                cmd.withHostConfig(com.github.dockerjava.api.model.HostConfig.newHostConfig().withPortBindings(ports))
+            }
+
+            // Environment Variables
+            if (request.env.isNotEmpty()) {
+                cmd.withEnv(request.env.map { "${it.key}=${it.value}" })
+            }
+
+            // Volumes
+            if (request.volumes.isNotEmpty()) {
+                val binds = request.volumes.map { 
+                    com.github.dockerjava.api.model.Bind(it.hostPath, com.github.dockerjava.api.model.Volume(it.containerPath))
+                }
+                val currentHostConfig = cmd.hostConfig ?: com.github.dockerjava.api.model.HostConfig.newHostConfig()
+                cmd.withHostConfig(currentHostConfig.withBinds(binds))
+            }
+
+            // Networks - Note: docker-java usually requires connecting to extra networks after creation
+            // if we want more than one. But we can set the primary one here or use NetworkingConfig.
+            
+            val response = cmd.exec()
+            
+            // Connect to networks if specified
+            request.networks.forEach { networkIdOrName ->
+                try {
+                    dockerClient.connectToNetworkCmd()
+                        .withContainerId(response.id)
+                        .withNetworkId(networkIdOrName)
+                        .exec()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            response.id
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 

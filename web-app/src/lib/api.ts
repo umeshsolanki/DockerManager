@@ -1,8 +1,23 @@
-import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult } from './types';
+import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest } from './types';
 
 const DEFAULT_SERVER_URL = "http://192.168.1.3:85";
 
 export const DockerClient = {
+    // ... rest of the code ...
+    async createContainer(request: CreateContainerRequest): Promise<string | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/containers`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(request)
+            });
+            if (response.ok) return await response.text();
+            return null;
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    },
     // ... rest of the code ...
     async inspectVolume(name: string): Promise<VolumeDetails | null> {
         try {

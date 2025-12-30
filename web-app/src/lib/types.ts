@@ -6,6 +6,28 @@ export interface DockerContainer {
   state: string; // running, exited, etc.
 }
 
+export interface CreateContainerRequest {
+  name: string;
+  image: string;
+  ports?: PortMapping[];
+  env?: Record<string, string>;
+  volumes?: VolumeMapping[];
+  networks?: string[];
+  restartPolicy?: string;
+}
+
+export interface PortMapping {
+  containerPort: number;
+  hostPort: number;
+  protocol?: string;
+}
+
+export interface VolumeMapping {
+  containerPath: string;
+  hostPath: string;
+  mode?: string;
+}
+
 export interface DockerImage {
   id: string;
   tags: string[];

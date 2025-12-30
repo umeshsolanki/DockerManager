@@ -100,3 +100,28 @@ data class BackupResult(
     val filePath: String?,
     val message: String
 )
+
+@Serializable
+data class CreateContainerRequest(
+    val name: String,
+    val image: String,
+    val ports: List<PortMapping> = emptyList(),
+    val env: Map<String, String> = emptyMap(),
+    val volumes: List<VolumeMapping> = emptyList(),
+    val networks: List<String> = emptyList(),
+    val restartPolicy: String = "no"
+)
+
+@Serializable
+data class PortMapping(
+    val containerPort: Int,
+    val hostPort: Int,
+    val protocol: String = "tcp"
+)
+
+@Serializable
+data class VolumeMapping(
+    val containerPath: String,
+    val hostPath: String,
+    val mode: String = "rw"
+)
