@@ -1,7 +1,7 @@
 package com.umeshsolanki.dockermanager
 
 import kotlinx.serialization.Serializable
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 
 @Serializable
 data class DockerContainer(
