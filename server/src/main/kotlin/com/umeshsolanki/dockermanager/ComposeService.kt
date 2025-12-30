@@ -7,6 +7,8 @@ interface IComposeService {
     fun listComposeFiles(): List<ComposeFile>
     fun composeUp(filePath: String): Boolean
     fun composeDown(filePath: String): Boolean
+    fun saveComposeFile(name: String, content: String): Boolean
+    fun getComposeFileContent(filePath: String): String
 }
 
 class ComposeServiceImpl : IComposeService {
@@ -55,6 +57,35 @@ class ComposeServiceImpl : IComposeService {
         } catch (e: Exception) {
             e.printStackTrace()
             false
+        }
+    }
+
+    override fun saveComposeFile(name: String, content: String): Boolean {
+        return try {
+            if (!composeDir.exists()) composeDir.mkdirs()
+            val projectDir = File(composeDir, name)
+            if (!projectDir.exists()) projectDir.mkdirs()
+            
+            val file = File(projectDir, "docker-compose.yml")
+            file.writeText(content)
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    override fun getComposeFileContent(filePath: String): String {
+        return try {
+            val file = File(filePath)
+            if (file.exists()) {
+                file.readText()
+            } else {
+                ""
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            ""
         }
     }
 }

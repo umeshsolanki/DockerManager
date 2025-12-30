@@ -1,4 +1,4 @@
-import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest } from './types';
+import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest } from './types';
 
 const DEFAULT_SERVER_URL = "http://192.168.1.3:85";
 
@@ -151,6 +151,31 @@ export const DockerClient = {
             await fetch(`${this.getServerUrl()}/compose/down?file=${encodeURIComponent(path)}`, { method: 'POST' });
         } catch (e) {
             console.error(e);
+        }
+    },
+
+    async saveComposeFile(request: SaveComposeRequest): Promise<boolean> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/compose/save`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(request)
+            });
+            return response.ok;
+        } catch (e) {
+            console.error(e);
+            return false;
+        }
+    },
+
+    async getComposeFileContent(path: string): Promise<string> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/compose/content?file=${encodeURIComponent(path)}`);
+            if (response.ok) return await response.text();
+            return "";
+        } catch (e) {
+            console.error(e);
+            return "";
         }
     },
 

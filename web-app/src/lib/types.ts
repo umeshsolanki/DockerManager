@@ -108,4 +108,9 @@ export interface BackupResult {
   message: string;
 }
 
+export interface SaveComposeRequest {
+  name: string;
+  content: string;
+}
+
 export type Screen = 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Volumes' | 'Secrets' | 'Settings';

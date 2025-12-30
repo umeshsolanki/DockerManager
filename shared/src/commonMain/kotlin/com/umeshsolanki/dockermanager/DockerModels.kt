@@ -125,3 +125,9 @@ data class VolumeMapping(
     val hostPath: String,
     val mode: String = "rw"
 )
+
+@Serializable
+data class SaveComposeRequest(
+    val name: String,
+    val content: String
+)
