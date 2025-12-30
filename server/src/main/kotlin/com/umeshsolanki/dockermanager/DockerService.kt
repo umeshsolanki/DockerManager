@@ -28,6 +28,8 @@ object DockerService {
     fun composeDown(filePath: String) = composeService.composeDown(filePath)
     fun saveComposeFile(name: String, content: String) = composeService.saveComposeFile(name, content)
     fun getComposeFileContent(filePath: String) = composeService.getComposeFileContent(filePath)
+    fun backupCompose(name: String) = composeService.backupCompose(name)
+    fun backupAllCompose() = composeService.backupAllCompose()
 
     fun listSecrets() = secretService.listSecrets()
     fun createSecret(name: String, data: String) = secretService.createSecret(name, data)

@@ -113,4 +113,9 @@ export interface SaveComposeRequest {
   content: string;
 }
 
+export interface ComposeResult {
+  success: boolean;
+  message: string;
+}
+
 export type Screen = 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Volumes' | 'Secrets' | 'Settings';

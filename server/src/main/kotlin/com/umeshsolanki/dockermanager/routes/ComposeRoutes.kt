@@ -16,14 +16,14 @@ fun Route.composeRoutes() {
 
         post("/up") {
             val file = call.request.queryParameters["file"] ?: return@post call.respondText("Missing File Path", status = HttpStatusCode.BadRequest)
-            DockerService.composeUp(file)
-            call.respondText("Up")
+            val result = DockerService.composeUp(file)
+            call.respond(result)
         }
 
         post("/down") {
             val file = call.request.queryParameters["file"] ?: return@post call.respondText("Missing File Path", status = HttpStatusCode.BadRequest)
-            DockerService.composeDown(file)
-            call.respondText("Down")
+            val result = DockerService.composeDown(file)
+            call.respond(result)
         }
 
         post("/save") {
@@ -37,6 +37,17 @@ fun Route.composeRoutes() {
             val file = call.request.queryParameters["file"] ?: return@get call.respondText("Missing File Path", status = HttpStatusCode.BadRequest)
             val content = DockerService.getComposeFileContent(file)
             call.respondText(content)
+        }
+
+        post("/{name}/backup") {
+            val name = call.parameters["name"] ?: return@post call.respondText("Missing Name", status = HttpStatusCode.BadRequest)
+            val result = DockerService.backupCompose(name)
+            call.respond(result)
+        }
+
+        post("/backup-all") {
+            val result = DockerService.backupAllCompose()
+            call.respond(result)
         }
     }
 }

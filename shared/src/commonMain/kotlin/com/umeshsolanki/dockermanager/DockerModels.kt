@@ -131,3 +131,9 @@ data class SaveComposeRequest(
     val name: String,
     val content: String
 )
+
+@Serializable
+data class ComposeResult(
+    val success: Boolean,
+    val message: String
+)

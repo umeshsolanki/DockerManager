@@ -1,4 +1,4 @@
-import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest } from './types';
+import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest, ComposeResult } from './types';
 
 const DEFAULT_SERVER_URL = "http://192.168.1.3:85";
 
@@ -138,19 +138,23 @@ export const DockerClient = {
         }
     },
 
-    async composeUp(path: string) {
+    async composeUp(path: string): Promise<ComposeResult | null> {
         try {
-            await fetch(`${this.getServerUrl()}/compose/up?file=${encodeURIComponent(path)}`, { method: 'POST' });
+            const response = await fetch(`${this.getServerUrl()}/compose/up?file=${encodeURIComponent(path)}`, { method: 'POST' });
+            return await response.json();
         } catch (e) {
             console.error(e);
+            return null;
         }
     },
 
-    async composeDown(path: string) {
+    async composeDown(path: string): Promise<ComposeResult | null> {
         try {
-            await fetch(`${this.getServerUrl()}/compose/down?file=${encodeURIComponent(path)}`, { method: 'POST' });
+            const response = await fetch(`${this.getServerUrl()}/compose/down?file=${encodeURIComponent(path)}`, { method: 'POST' });
+            return await response.json();
         } catch (e) {
             console.error(e);
+            return null;
         }
     },
 
@@ -176,6 +180,26 @@ export const DockerClient = {
         } catch (e) {
             console.error(e);
             return "";
+        }
+    },
+
+    async backupCompose(name: string): Promise<BackupResult | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/compose/${name}/backup`, { method: 'POST' });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    },
+
+    async backupAllCompose(): Promise<BackupResult | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/compose/backup-all`, { method: 'POST' });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
         }
     },
 

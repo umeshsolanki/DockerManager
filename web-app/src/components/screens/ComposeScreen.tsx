@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Search, RefreshCw, Folder, Play, Square, Plus, Edit2, X, Save, FileCode, Wand2 } from 'lucide-react';
+import { Search, RefreshCw, Folder, Play, Square, Plus, Edit2, X, Save, FileCode, Wand2, Archive, Upload } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { ComposeFile, SaveComposeRequest } from '@/lib/types';
 import Editor from '@monaco-editor/react';
+import { toast } from 'sonner';
 
 export default function ComposeScreen() {
     const [composeFiles, setComposeFiles] = useState<ComposeFile[]>([]);
@@ -27,16 +28,32 @@ export default function ComposeScreen() {
         fetchComposeFiles();
     }, []);
 
-    const handleAction = async (action: () => Promise<void>) => {
+    const handleAction = async (action: () => Promise<any>) => {
         setIsLoading(true);
-        await action();
+        const promise = action();
+
+        toast.promise(promise, {
+            loading: 'Executing command...',
+            success: (result) => {
+                if (result && typeof result === 'object' && 'success' in result) {
+                    if (!result.success) {
+                        return `Error: ${result.message}`;
+                    }
+                }
+                return 'Command executed successfully';
+            },
+            error: 'Failed to execute command'
+        });
+
+        await promise;
         await fetchComposeFiles();
+        setIsLoading(false);
     };
 
     const handleCreate = () => {
         setEditingFile(null);
         setProjectName('');
-        setEditorContent('version: "3.8"\n\nservices:\n  app:\n    image: nginx:latest\n    ports:\n      - "80:80"');
+        setEditorContent('services:\n  app:\n    image: nginx:latest\n    ports:\n      - "80:80"');
         setIsEditorOpen(true);
         setActiveTab('editor');
     };
@@ -52,9 +69,57 @@ export default function ComposeScreen() {
         setIsLoading(false);
     };
 
+    const handleBackup = async (file: ComposeFile) => {
+        setIsLoading(true);
+        const result = await DockerClient.backupCompose(file.name);
+        setIsLoading(false);
+        if (result?.success) {
+            toast.success(`Backup created: ${result.fileName}`, {
+                description: `Location: ${result.filePath}`,
+                duration: 5000
+            });
+        } else {
+            toast.error('Failed to create backup', {
+                description: result?.message || 'Unknown error'
+            });
+        }
+    };
+
+    const handleBackupAll = async () => {
+        setIsLoading(true);
+        const result = await DockerClient.backupAllCompose();
+        setIsLoading(false);
+        if (result?.success) {
+            toast.success(`Full backup created: ${result.fileName}`, {
+                description: `Location: ${result.filePath}`,
+                duration: 5000
+            });
+        } else {
+            toast.error('Failed to create full backup', {
+                description: result?.message || 'Unknown error'
+            });
+        }
+    };
+
+    const handleRestoreFromFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const content = event.target?.result as string;
+            setEditorContent(content);
+            if (!projectName && file.name.includes('docker-compose')) {
+                // Try to infer project name if not set
+                // But usually user should set name first or we are editing
+            }
+        };
+        reader.readAsText(file);
+    };
+
     const handleSave = async () => {
         if (!projectName) {
-            alert('Project name is required');
+            toast.error('Project name is required');
             return;
         }
         setIsLoading(true);
@@ -63,10 +128,11 @@ export default function ComposeScreen() {
             content: editorContent
         });
         if (success) {
+            toast.success('Project saved successfully');
             setIsEditorOpen(false);
             await fetchComposeFiles();
         } else {
-            alert('Failed to save compose file');
+            toast.error('Failed to save project');
         }
         setIsLoading(false);
     };
@@ -85,13 +151,22 @@ export default function ComposeScreen() {
                     <h1 className="text-4xl font-bold">Compose</h1>
                     {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
                 </div>
-                <button
-                    onClick={handleCreate}
-                    className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl hover:bg-primary/90 transition-colors font-medium"
-                >
-                    <Plus size={20} />
-                    Create New
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={handleBackupAll}
+                        className="flex items-center gap-2 bg-surface border border-outline/20 text-on-surface px-4 py-2 rounded-xl hover:bg-white/5 transition-colors font-medium shadow-sm"
+                    >
+                        <Archive size={18} />
+                        Backup All
+                    </button>
+                    <button
+                        onClick={handleCreate}
+                        className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl hover:bg-primary/90 transition-colors font-medium shadow-lg shadow-primary/20"
+                    >
+                        <Plus size={20} />
+                        Create New
+                    </button>
+                </div>
             </div>
 
             <div className="flex items-center gap-4 mb-8">
@@ -126,6 +201,7 @@ export default function ComposeScreen() {
                             file={file}
                             onAction={handleAction}
                             onEdit={() => handleEdit(file)}
+                            onBackup={() => handleBackup(file)}
                         />
                     ))}
                 </div>
@@ -151,16 +227,34 @@ export default function ComposeScreen() {
 
                         <div className="flex-1 overflow-hidden flex flex-col">
                             <div className="p-4 bg-surface/30 border-b border-outline/10 flex items-center gap-4">
-                                <div className="flex-1">
-                                    <label className="text-xs text-on-surface-variant uppercase font-bold mb-1 block">Project Name</label>
-                                    <input
-                                        type="text"
-                                        value={projectName}
-                                        onChange={(e) => setProjectName(e.target.value)}
-                                        placeholder="e.g. my-app"
-                                        disabled={!!editingFile}
-                                        className="w-full bg-black/20 border border-outline/20 rounded-lg px-3 py-2 text-on-surface focus:outline-none focus:border-primary transition-colors disabled:opacity-50"
-                                    />
+                                <div className="flex-1 flex gap-3 items-end">
+                                    <div className="flex-1">
+                                        <label className="text-xs text-on-surface-variant uppercase font-bold mb-1 block">Project Name</label>
+                                        <input
+                                            type="text"
+                                            value={projectName}
+                                            onChange={(e) => setProjectName(e.target.value)}
+                                            placeholder="e.g. my-app"
+                                            disabled={!!editingFile}
+                                            className="w-full bg-black/20 border border-outline/20 rounded-lg px-3 py-2 text-on-surface focus:outline-none focus:border-primary transition-colors disabled:opacity-50"
+                                        />
+                                    </div>
+                                    <div className="relative">
+                                        <input
+                                            type="file"
+                                            id="restore-file"
+                                            className="hidden"
+                                            accept=".yml,.yaml"
+                                            onChange={handleRestoreFromFile}
+                                        />
+                                        <label
+                                            htmlFor="restore-file"
+                                            className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-outline/20 rounded-lg text-sm font-medium hover:bg-white/10 cursor-pointer transition-colors whitespace-nowrap"
+                                        >
+                                            <Upload size={16} />
+                                            Restore YAML
+                                        </label>
+                                    </div>
                                 </div>
                                 <div className="flex items-center bg-black/20 rounded-xl p-1 border border-outline/10">
                                     <button
@@ -232,10 +326,11 @@ export default function ComposeScreen() {
     );
 }
 
-function ComposeFileCard({ file, onAction, onEdit }: {
+function ComposeFileCard({ file, onAction, onEdit, onBackup }: {
     file: ComposeFile;
-    onAction: (action: () => Promise<void>) => Promise<void>;
+    onAction: (action: () => Promise<any>) => Promise<void>;
     onEdit: () => void;
+    onBackup: () => void;
 }) {
     return (
         <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 flex items-center justify-between hover:bg-surface transition-colors group">
@@ -250,6 +345,13 @@ function ComposeFileCard({ file, onAction, onEdit }: {
             </div>
 
             <div className="flex items-center gap-2">
+                <button
+                    onClick={onBackup}
+                    className="p-2 hover:bg-primary/10 text-on-surface-variant hover:text-primary rounded-lg transition-colors"
+                    title="Backup"
+                >
+                    <Archive size={20} />
+                </button>
                 <button
                     onClick={onEdit}
                     className="p-2 hover:bg-primary/10 text-primary rounded-lg transition-colors"
@@ -283,9 +385,7 @@ function ComposeWizard({ onGenerate }: { onGenerate: (yml: string) => void }) {
     const [port, setPort] = useState('80:80');
 
     const generate = () => {
-        const yml = `version: "3.8"
-
-services:
+        const yml = `services:
   ${serviceName}:
     image: ${image}
     ports:
