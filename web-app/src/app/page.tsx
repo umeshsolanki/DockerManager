@@ -9,6 +9,7 @@ import ImagesScreen from '@/components/screens/ImagesScreen';
 import ComposeScreen from '@/components/screens/ComposeScreen';
 import SettingsScreen from '@/components/screens/SettingsScreen';
 import SecretsScreen from '@/components/screens/SecretsScreen';
+import NetworksScreen from '@/components/screens/NetworksScreen';
 
 function HomeContent() {
   const router = useRouter();
@@ -18,7 +19,7 @@ function HomeContent() {
   // Initialize from URL on mount
   useEffect(() => {
     const screenParam = searchParams.get('screen') as Screen;
-    const validScreens: Screen[] = ['Containers', 'Images', 'Compose', 'Secrets', 'Settings'];
+    const validScreens: Screen[] = ['Containers', 'Images', 'Compose', 'Networks', 'Secrets', 'Settings'];
     if (screenParam && validScreens.includes(screenParam)) {
       setSelectedScreen(screenParam);
     }
@@ -37,6 +38,7 @@ function HomeContent() {
       case 'Containers': return <ContainersScreen />;
       case 'Images': return <ImagesScreen />;
       case 'Compose': return <ComposeScreen />;
+      case 'Networks': return <NetworksScreen />;
       case 'Secrets': return <SecretsScreen />;
       case 'Settings': return <SettingsScreen />;
       default: return <ContainersScreen />;

@@ -1,4 +1,4 @@
-import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret } from './types';
+import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork } from './types';
 
 const DEFAULT_SERVER_URL = "http://192.168.1.3:85";
 
@@ -139,6 +139,24 @@ export const DockerClient = {
     async removeSecret(id: string) {
         try {
             await fetch(`${this.getServerUrl()}/secrets/${id}`, { method: 'DELETE' });
+        } catch (e) {
+            console.error(e);
+        }
+    },
+
+    async listNetworks(): Promise<DockerNetwork[]> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/networks`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return [];
+        }
+    },
+
+    async removeNetwork(id: string) {
+        try {
+            await fetch(`${this.getServerUrl()}/networks/${id}`, { method: 'DELETE' });
         } catch (e) {
             console.error(e);
         }

@@ -40,3 +40,12 @@ data class DockerSecret(
     val createdAt: String,
     val updatedAt: String
 )
+
+@Serializable
+data class DockerNetwork(
+    val id: String,
+    val name: String,
+    val driver: String,
+    val scope: String,
+    val internal: Boolean
+)

@@ -15,6 +15,7 @@ fun Application.configureRouting() {
         imageRoutes()
         composeRoutes()
         secretRoutes()
+        networkRoutes()
         systemRoutes()
     }
 }

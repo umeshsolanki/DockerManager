@@ -32,4 +32,12 @@ export interface DockerSecret {
   updatedAt: string;
 }
 
-export type Screen = 'Containers' | 'Images' | 'Compose' | 'Secrets' | 'Settings';
+export interface DockerNetwork {
+  id: string;
+  name: string;
+  driver: string;
+  scope: string;
+  internal: boolean;
+}
+
+export type Screen = 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Secrets' | 'Settings';

@@ -138,4 +138,21 @@ object DockerClient {
             null
         }
     }
+
+    suspend fun listNetworks(): List<DockerNetwork> {
+        return try {
+            client.get("$BASE_URL/networks").body()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun removeNetwork(id: String) {
+        try {
+            client.delete("$BASE_URL/networks/$id")
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 }

@@ -8,6 +8,7 @@ object DockerService {
     private val imageService: IImageService = ImageServiceImpl(dockerClient)
     private val composeService: IComposeService = ComposeServiceImpl()
     private val secretService: ISecretService = SecretServiceImpl(dockerClient)
+    private val networkService: INetworkService = NetworkServiceImpl(dockerClient)
 
     fun listContainers() = containerService.listContainers()
     fun startContainer(id: String) = containerService.startContainer(id)
@@ -26,5 +27,8 @@ object DockerService {
     fun listSecrets() = secretService.listSecrets()
     fun createSecret(name: String, data: String) = secretService.createSecret(name, data)
     fun removeSecret(id: String) = secretService.removeSecret(id)
+
+    fun listNetworks() = networkService.listNetworks()
+    fun removeNetwork(id: String) = networkService.removeNetwork(id)
 }
 
