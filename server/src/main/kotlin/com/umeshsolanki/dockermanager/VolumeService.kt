@@ -1,5 +1,7 @@
 package com.umeshsolanki.dockermanager
 
+import java.io.File
+
 interface IVolumeService {
     fun listVolumes(): List<DockerVolume>
     fun removeVolume(name: String): Boolean
@@ -42,12 +44,11 @@ class VolumeServiceImpl(private val dockerClient: com.github.dockerjava.api.Dock
     override fun backupVolume(name: String): BackupResult {
         return try {
             val fileName = "backup_${name}_${System.currentTimeMillis()}.tar"
-            val backupDir = System.getProperty("user.home") + "/docker_backups"
-            val javaFile = java.io.File(backupDir)
-            if (!javaFile.exists()) javaFile.mkdirs()
-            
-            val fullPath = "$backupDir/$fileName"
-            
+            val backupDir = File("data/backups/volumes")
+            if (!backupDir.exists()) backupDir.mkdirs()
+
+            val fullPath = File(backupDir, fileName).absolutePath
+
             // We use a temporary container to create a tarball of the volume
             // Command: docker run --rm -v [volume_name]:/data -v [backup_dir]:/backup alpine tar cvf /backup/[filename] -C /data .
             val processBuilder = ProcessBuilder(
@@ -56,10 +57,10 @@ class VolumeServiceImpl(private val dockerClient: com.github.dockerjava.api.Dock
                 "-v", "$backupDir:/backup",
                 "alpine", "tar", "cvf", "/backup/$fileName", "-C", "/data", "."
             )
-            
+
             val process = processBuilder.start()
             val exitCode = process.waitFor()
-            
+
             if (exitCode == 0) {
                 BackupResult(true, fileName, fullPath, "Backup created successfully at $fullPath")
             } else {

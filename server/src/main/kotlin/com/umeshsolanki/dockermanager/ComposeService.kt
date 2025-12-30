@@ -14,10 +14,11 @@ interface IComposeService {
 }
 
 class ComposeServiceImpl : IComposeService {
-    private val composeDir = File("compose_projects")
-    private val backupDir = File(System.getProperty("user.home"), "docker_backups/compose")
+    private val composeDir = File("data/compose")
+    private val backupDir = File("data/backups/compose")
 
     init {
+        if (!composeDir.exists()) composeDir.mkdirs()
         if (!backupDir.exists()) backupDir.mkdirs()
     }
 

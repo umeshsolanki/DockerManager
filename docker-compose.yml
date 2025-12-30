@@ -8,6 +8,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /sys/class/power_supply/BAT0:/sys/class/power_supply/BAT0
+      - docker-manager-storage:/app/data
+      - /home:/home
 
   client:
     image: docker-manager-client:${BUILD_NUMBER}
@@ -15,3 +17,6 @@ services:
     ports:
       - "86:80"
     restart: unless-stopped
+
+volumes:
+  docker-manager-storage:
