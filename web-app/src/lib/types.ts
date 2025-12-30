@@ -161,11 +161,16 @@ export interface ProxyHit {
   userAgent: string;
 }
 
+export interface KotlinPair<A, B> {
+  first: A;
+  second: B;
+}
+
 export interface ProxyStats {
   totalHits: number;
   hitsByStatus: Record<number, number>;
   hitsOverTime: Record<string, number>;
-  topPaths: [string, number][];
+  topPaths: KotlinPair<string, number>[];
   recentHits: ProxyHit[];
 }
 
@@ -177,8 +182,8 @@ export interface BtmpEntry {
 
 export interface BtmpStats {
   totalFailedAttempts: number;
-  topUsers: [string, number][];
-  topIps: [string, number][];
+  topUsers: KotlinPair<string, number>[];
+  topIps: KotlinPair<string, number>[];
   recentFailures: BtmpEntry[];
 }
 

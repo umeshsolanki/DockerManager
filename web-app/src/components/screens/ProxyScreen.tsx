@@ -202,7 +202,7 @@ export default function ProxyScreen() {
                             </div>
                         </div>
                         <div className="space-y-3">
-                            {stats?.topPaths.map(([path, count]) => (
+                            {stats?.topPaths.map(({ first: path, second: count }) => (
                                 <div key={path} className="space-y-1">
                                     <div className="flex justify-between text-[10px] font-mono">
                                         <span className="truncate pr-4">{path}</span>

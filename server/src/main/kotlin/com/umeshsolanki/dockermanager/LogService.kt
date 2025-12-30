@@ -37,23 +37,25 @@ class LogServiceImpl : ILogService {
     private fun updateBtmpStats() {
         if (!btmpFile.exists()) return
 
-        // Use utmpdump to parse btmp and extract user/ip
-        val output = executeCommand("utmpdump ${btmpFile.absolutePath} 2>/dev/null | grep -v 'out of range' | awk '{print ${'$'}4\" \"${'$'}6}'")
-        
-        val entries = output.lineSequence()
-            .filter { it.isNotBlank() }
-            .map { line ->
-                val parts = line.trim().split(" ")
-                val user = if (parts.size > 0) parts[0].replace("[", "").replace("]", "") else "unknown"
-                val ip = if (parts.size > 1) parts[1].replace("[", "").replace("]", "") else "unknown"
-                user to ip
-            }
-            .toList()
+        // Use host's utmpdump via chroot to parse btmp and extract user/ip
+        val output =
+            executeCommand($$"/host/usr/bin/lastb -f /var/log/btmp | awk '{print $4\" \"$6}'")
+
+        val entries = output.lineSequence().filter { it.isNotBlank() }.map { line ->
+            val parts = line.trim().split(" ")
+            val user = if (parts.size > 0) parts[0].replace("[", "").replace("]", "") else "unknown"
+            val ip = if (parts.size > 1) parts[1].replace("[", "").replace("]", "") else "unknown"
+            user to ip
+        }.toList()
 
         val totalFailed = entries.size
-        val topUsers = entries.groupingBy { it.first }.eachCount().toList().sortedByDescending { it.second }.take(5)
-        val topIps = entries.groupingBy { it.second }.eachCount().toList().sortedByDescending { it.second }.take(5)
-        
+        val topUsers =
+            entries.groupingBy { it.first }.eachCount().toList().sortedByDescending { it.second }
+                .take(5)
+        val topIps =
+            entries.groupingBy { it.second }.eachCount().toList().sortedByDescending { it.second }
+                .take(5)
+
         // Last 10 failures
         val recentFailures = entries.takeLast(10).reversed().map { (user, ip) ->
             BtmpEntry(user, ip, System.currentTimeMillis())
@@ -76,7 +78,7 @@ class LogServiceImpl : ILogService {
     override fun listSystemLogs(): List<SystemLog> {
         if (!logDir.exists() || !logDir.isDirectory) return emptyList()
 
-        return logDir.listFiles()?.filter { it.isFile } ?.map { file ->
+        return logDir.listFiles()?.filter { it.isFile }?.map { file ->
             SystemLog(
                 name = file.name,
                 path = file.absolutePath,
@@ -92,15 +94,14 @@ class LogServiceImpl : ILogService {
         if (!file.absolutePath.startsWith("/host/var/log")) {
             return "Access denied"
         }
-        
+
         if (!file.exists() || !file.isFile) return "Log file not found"
 
         return try {
             val command = mutableListOf<String>()
-            
-            // Handle binary logs (wtmp, btmp) with clean output formatting
+
             if (file.name == "wtmp" || file.name == "btmp") {
-                command.addAll(listOf("utmpdump", path))
+                command.add("/host/usr/bin/lastb -f $path")
             } else {
                 command.add("cat $path")
             }
@@ -117,15 +118,15 @@ class LogServiceImpl : ILogService {
 //                // Final safety: never return more than 1MB of text
 //                append(" | head -c 1048576")
             })
-            
+
             val process = processBuilder.start()
-            
+
             // Read stream carefully
             val output = process.inputStream.bufferedReader().use { it.readText() }
             val error = process.errorStream.bufferedReader().use { it.readText() }
-            
+
             val completed = process.waitFor(6, TimeUnit.SECONDS)
-            
+
             if (!completed) {
                 process.destroyForcibly()
                 return "Command timed out (log file might be too large for this filter)"

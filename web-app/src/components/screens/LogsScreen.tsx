@@ -87,7 +87,7 @@ export default function LogsScreen() {
                             <span className="text-xs font-bold uppercase tracking-wider">Top Attacking IPs</span>
                         </div>
                         <div className="space-y-2">
-                            {btmpStats.topIps.slice(0, 3).map(([ip, count]) => (
+                            {btmpStats.topIps.slice(0, 3).map(({ first: ip, second: count }) => (
                                 <div key={ip} className="flex justify-between items-center text-[10px]">
                                     <span className="font-mono text-primary cursor-pointer hover:underline" onClick={() => { setIpToBlock(ip); setIsBlockModalOpen(true); }}>{ip}</span>
                                     <span className="bg-white/5 px-1.5 py-0.5 rounded font-bold">{count}</span>
