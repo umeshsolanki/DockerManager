@@ -4,6 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Search, RefreshCw, Folder, Play, Square, Plus, Edit2, X, Save, FileCode, Wand2 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { ComposeFile, SaveComposeRequest } from '@/lib/types';
+import Editor from '@monaco-editor/react';
 
 export default function ComposeScreen() {
     const [composeFiles, setComposeFiles] = useState<ComposeFile[]>([]);
@@ -179,33 +180,32 @@ export default function ComposeScreen() {
                                 </div>
                             </div>
 
-                            <div className="flex-1 overflow-auto p-4">
+                            <div className="flex-1 overflow-auto bg-[#1e1e1e]">
                                 {activeTab === 'editor' ? (
-                                    <textarea
+                                    <Editor
+                                        height="100%"
+                                        defaultLanguage="yaml"
+                                        theme="vs-dark"
                                         value={editorContent}
-                                        onChange={(e) => setEditorContent(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Tab') {
-                                                e.preventDefault();
-                                                const start = e.currentTarget.selectionStart;
-                                                const end = e.currentTarget.selectionEnd;
-                                                const value = e.currentTarget.value;
-                                                const newValue = value.substring(0, start) + "  " + value.substring(end);
-                                                setEditorContent(newValue);
-                                                setTimeout(() => {
-                                                    const target = e.target as HTMLTextAreaElement;
-                                                    target.selectionStart = target.selectionEnd = start + 2;
-                                                }, 0);
-                                            }
+                                        onChange={(value) => setEditorContent(value || '')}
+                                        options={{
+                                            minimap: { enabled: false },
+                                            fontSize: 14,
+                                            lineNumbers: 'on',
+                                            roundedSelection: true,
+                                            scrollBeyondLastLine: false,
+                                            readOnly: false,
+                                            automaticLayout: true,
+                                            padding: { top: 16 }
                                         }}
-                                        className="w-full h-full bg-black/40 border border-outline/10 rounded-xl p-4 font-mono text-sm resize-none focus:outline-none focus:border-primary/50"
-                                        spellCheck={false}
                                     />
                                 ) : (
-                                    <ComposeWizard onGenerate={(yml) => {
-                                        setEditorContent(yml);
-                                        setActiveTab('editor');
-                                    }} />
+                                    <div className="p-4">
+                                        <ComposeWizard onGenerate={(yml) => {
+                                            setEditorContent(yml);
+                                            setActiveTab('editor');
+                                        }} />
+                                    </div>
                                 )}
                             </div>
                         </div>
