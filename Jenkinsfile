@@ -69,8 +69,8 @@ pipeline {
             script {
                 // Remove only containers and images from PREVIOUS Jenkins builds
                 // We keep the current build's resources so the application stays running
-                sh "docker ps -a --filter 'label=jenkins_build_id' --format '{{.ID}} {{.Label \"jenkins_build_id\"}}' | awk '\$2 != \"${env.BUILD_ID}\" {print \$1}' | xargs -r docker rm -f || true"
-                sh "docker images --filter 'label=jenkins_build_id' --format '{{.ID}} {{.Label \"jenkins_build_id\"}}' | awk '\$2 != \"${env.BUILD_ID}\" {print \$1}' | xargs -r docker rmi -f || true"
+                sh "docker ps -a --filter 'label=jenkins_build_id' --format '{{.ID}} {{.Labels}}' | grep -v 'jenkins_build_id=${env.BUILD_ID}' | awk '{print \$1}' | xargs -r docker rm -f || true"
+                sh "docker images --filter 'label=jenkins_build_id' --format '{{.ID}} {{.Labels}}' | grep -v 'jenkins_build_id=${env.BUILD_ID}' | awk '{print \$1}' | xargs -r docker rmi -f || true"
             }
             cleanWs()
         }
