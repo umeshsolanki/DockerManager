@@ -2,8 +2,8 @@ FROM eclipse-temurin:21-jre-alpine
 
 WORKDIR /app
 
-# Install Docker CLI, Compose and util-linux (for 'last' command)
-RUN apk add --no-cache docker-cli docker-cli-compose util-linux
+# Install Docker CLI, Compose, util-linux and utmps (for full 'last' command)
+RUN apk add --no-cache docker-cli docker-cli-compose util-linux utmps
 
 # Copy the locally built FatJar
 # Expects the jar to be in the build context (root of workspace)

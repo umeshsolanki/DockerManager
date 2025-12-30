@@ -37,7 +37,7 @@ class LogServiceImpl : ILogService {
             
             // Handle binary logs (wtmp, btmp)
             if (file.name == "wtmp" || file.name == "btmp") {
-                command.addAll(listOf("last", "-f", path))
+                command.addAll(listOf("utmpdump", path))
             } else {
                 command.addAll(listOf("cat", path))
             }
