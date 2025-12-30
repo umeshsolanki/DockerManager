@@ -37,8 +37,8 @@ class LogServiceImpl : ILogService {
     private fun updateBtmpStats() {
         if (!btmpFile.exists()) return
 
-        // Use host's lastb to parse btmp and extract user/ip ($1=user, $3=ip)
-        val output = executeCommand($$"/host/usr/bin/lastb -f $${btmpFile.absolutePath} | grep -v 'btmp begins' | awk '{print $1\" \"$3}'")
+        // Use host's last to parse btmp and extract user/ip ($1=user, $3=ip)
+        val output = executeCommand($$"/host/usr/bin/last -f $${btmpFile.absolutePath} | grep -v 'btmp begins' | awk '{print $1\" \"$3}'")
 
         val entries = output.lineSequence()
             .filter { it.isNotBlank() }
@@ -48,7 +48,7 @@ class LogServiceImpl : ILogService {
                 val ip = if (parts.size > 1) parts[1] else "unknown"
                 user to ip
             }
-            .filter { it.first != "unknown" && it.first != "lastb" && it.first != "btmp" }
+            .filter { it.first != "unknown" && it.first != "last" && it.first != "btmp" }
             .toList()
 
         val totalFailed = entries.size
@@ -100,7 +100,7 @@ class LogServiceImpl : ILogService {
             val command = mutableListOf<String>()
 
             if (file.name == "wtmp" || file.name == "btmp") {
-                command.add("/host/usr/bin/lastb -f $path")
+                command.add("/host/usr/bin/last -f $path")
             } else {
                 command.add("cat $path")
             }
