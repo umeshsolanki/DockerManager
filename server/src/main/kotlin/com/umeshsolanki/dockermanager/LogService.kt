@@ -37,24 +37,23 @@ class LogServiceImpl : ILogService {
     private fun updateBtmpStats() {
         if (!btmpFile.exists()) return
 
-        // Use host's utmpdump via chroot to parse btmp and extract user/ip
-        val output =
-            executeCommand($$"/host/usr/bin/lastb -f /var/log/btmp | awk '{print $4\" \"$6}'")
+        // Use host's lastb to parse btmp and extract user/ip ($1=user, $3=ip)
+        val output = executeCommand($$"/host/usr/bin/lastb -f $${btmpFile.absolutePath} | grep -v 'btmp begins' | awk '{print $1\" \"$3}'")
 
-        val entries = output.lineSequence().filter { it.isNotBlank() }.map { line ->
-            val parts = line.trim().split(" ")
-            val user = if (parts.size > 0) parts[0].replace("[", "").replace("]", "") else "unknown"
-            val ip = if (parts.size > 1) parts[1].replace("[", "").replace("]", "") else "unknown"
-            user to ip
-        }.toList()
+        val entries = output.lineSequence()
+            .filter { it.isNotBlank() }
+            .map { line ->
+                val parts = line.trim().split(" ")
+                val user = if (parts.size > 0) parts[0] else "unknown"
+                val ip = if (parts.size > 1) parts[1] else "unknown"
+                user to ip
+            }
+            .filter { it.first != "unknown" && it.first != "lastb" && it.first != "btmp" }
+            .toList()
 
         val totalFailed = entries.size
-        val topUsers =
-            entries.groupingBy { it.first }.eachCount().toList().sortedByDescending { it.second }
-                .take(5)
-        val topIps =
-            entries.groupingBy { it.second }.eachCount().toList().sortedByDescending { it.second }
-                .take(5)
+        val topUsers = entries.groupingBy { it.first }.eachCount().toList().sortedByDescending { it.second }.take(5)
+        val topIps = entries.groupingBy { it.second }.eachCount().toList().sortedByDescending { it.second }.take(5)
 
         // Last 10 failures
         val recentFailures = entries.takeLast(10).reversed().map { (user, ip) ->
