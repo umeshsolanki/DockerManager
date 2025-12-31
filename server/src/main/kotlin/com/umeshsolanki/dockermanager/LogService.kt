@@ -9,7 +9,7 @@ interface ILogService {
 }
 
 class LogServiceImpl : ILogService {
-    private val baseLogDir = File("/host/var/log")
+    private val baseLogDir = AppConfig.systemLogDir
 
     override fun listSystemLogs(subPath: String): List<SystemLog> {
         val targetDir = if (subPath.isBlank()) baseLogDir else File(baseLogDir, subPath)
@@ -33,7 +33,7 @@ class LogServiceImpl : ILogService {
     }
 
     override fun getLogContent(path: String, tail: Int, filter: String?, since: String?, until: String?): String {
-        val file = if (path.startsWith("/host/var/log")) File(path) else File(baseLogDir, path)
+        val file = if (path.startsWith(baseLogDir.absolutePath)) File(path) else File(baseLogDir, path)
         
         if (!file.absolutePath.startsWith(baseLogDir.absolutePath)) {
             return "Access denied"

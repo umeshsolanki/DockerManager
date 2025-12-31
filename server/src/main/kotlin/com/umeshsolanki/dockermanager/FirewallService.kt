@@ -13,9 +13,9 @@ interface IFirewallService {
 }
 
 class FirewallServiceImpl : IFirewallService {
-    private val dataDir = File("/app/data/firewall")
-    private val iptablesCmd = "/main/sbin/iptables"
-    private val ipSetCmd = "/main/sbin/ipset"
+    private val dataDir = AppConfig.firewallDataDir
+    private val iptablesCmd = AppConfig.iptablesCmd
+    private val ipSetCmd = AppConfig.ipsetCmd
     private val rulesFile = File(dataDir, "rules.json")
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
 

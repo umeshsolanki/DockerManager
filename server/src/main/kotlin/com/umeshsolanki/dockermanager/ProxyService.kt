@@ -22,9 +22,9 @@ interface IProxyService {
 }
 
 class ProxyServiceImpl : IProxyService {
-    private val configDir = File("/nginx/conf.d")
-    private val logFile = File("/nginx/logs/access.log")
-    private val hostsFile = File("/app/data/proxy/hosts.json")
+    private val configDir = AppConfig.proxyConfigDir
+    private val logFile = AppConfig.proxyLogFile
+    private val hostsFile = AppConfig.proxyHostsFile
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
 
     private var cachedStats: ProxyStats = ProxyStats(0, emptyMap(), emptyMap(), emptyList(), emptyList())
@@ -254,7 +254,7 @@ class ProxyServiceImpl : IProxyService {
 
         try {
             // Run certbot via docker using absolute paths map to the certbot volume
-            val certCmd = "docker exec docker-manager-certbot certbot certonly --webroot -w /certbot/www -d ${host.domain} --non-interactive --agree-tos --email admin@${host.domain} --config-dir /certbot/conf --work-dir /certbot/work --logs-dir /certbot/logs"
+            val certCmd = "${AppConfig.dockerCommand} exec docker-manager-certbot certbot certonly --webroot -w /certbot/www -d ${host.domain} --non-interactive --agree-tos --email admin@${host.domain} --config-dir /certbot/conf --work-dir /certbot/work --logs-dir /certbot/logs"
             val result = executeCommand(certCmd)
             
             if (result.contains("Successfully received certificate") || result.contains("Certificate not yet due for renewal")) {
@@ -275,7 +275,7 @@ class ProxyServiceImpl : IProxyService {
         val certs = mutableListOf<SSLCertificate>()
         
         // Scan LetsEncrypt
-        val leDir = File("/etc/letsencrypt/live")
+        val leDir = AppConfig.letsEncryptDir
         if (leDir.exists()) {
             leDir.listFiles()?.filter { it.isDirectory }?.forEach { dir ->
                 val fullchain = File(dir, "fullchain.pem")
@@ -292,7 +292,7 @@ class ProxyServiceImpl : IProxyService {
         }
 
         // Scan custom certs dir
-        val custDir = File("/app/data/certs")
+        val custDir = AppConfig.customCertDir
         if (custDir.exists()) {
             custDir.listFiles()?.filter { it.extension == "crt" || it.extension == "pem" }?.forEach { cert ->
                 val keyName = cert.nameWithoutExtension + ".key"
@@ -404,7 +404,7 @@ $sslConfig
 
     private fun reloadNginx() {
         // Use executeCommand to capture output and potential errors
-        val result = executeCommand("/usr/bin/docker exec docker-manager-proxy openresty -s reload")
+        val result = executeCommand("${AppConfig.dockerCommand} exec docker-manager-proxy openresty -s reload")
         if (result.isNotBlank()) {
             println("Nginx Reload Output: $result")
         }

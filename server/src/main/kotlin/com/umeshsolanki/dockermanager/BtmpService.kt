@@ -22,7 +22,7 @@ class BtmpServiceImpl(
     private val firewallService: IFirewallService
 ) : IBtmpService {
     val simpleDateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
-    private val btmpPath = Paths.get("/host/var/log/btmp")
+    private val btmpPath = AppConfig.btmpLogFile.toPath()
     private var totalFailedAttempts = 0
     private val userCounts = mutableMapOf<String, Int>()
     private val ipCounts = mutableMapOf<String, Int>()
@@ -131,7 +131,7 @@ class BtmpServiceImpl(
 
             if (lastInode != null && currentInode != lastInode) {
                  // File rotated. Try to finish processing the old file if possible.
-                 val rotated = File("/host/var/log/btmp.1")
+                 val rotated = File(btmpPath.parent.toFile(), "btmp.1")
                  if (rotated.exists()) {
                      try {
                          val rotAttrs = Files.readAttributes(rotated.toPath(), BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
