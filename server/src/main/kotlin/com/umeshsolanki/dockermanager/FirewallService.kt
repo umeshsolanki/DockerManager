@@ -14,6 +14,8 @@ interface IFirewallService {
 
 class FirewallServiceImpl : IFirewallService {
     private val dataDir = File("/app/data/firewall")
+    private val iptablesCmd = "/main/sbin/iptables"
+    private val ipSetCmd = "/main/sbin/ipset"
     private val rulesFile = File(dataDir, "rules.json")
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
 
@@ -21,7 +23,7 @@ class FirewallServiceImpl : IFirewallService {
         if (!dataDir.exists()) dataDir.mkdirs()
         if (!rulesFile.exists()) rulesFile.writeText("[]")
         // Initialize ipset if it doesn't exist
-        executeCommand("ipset create dm-blocklist hash:ip-port timeout 0 -exist")
+        executeCommand("$ipSetCmd create dm-blocklist hash:ip-port timeout 0 -exist")
         // Apply existing rules to iptables on startup
         syncRules()
     }
@@ -57,29 +59,29 @@ class FirewallServiceImpl : IFirewallService {
                 val proto = if (request.protocol == "ALL") "tcp" else request.protocol.lowercase()
                 // Use iptables for specific port blocking - For both Container and Host
                 val cmdDocker =
-                    "iptables -I DOCKER-USER -s ${request.ip} -p $proto --dport ${request.port} -j DROP -m comment --comment \"dm-rule-$id\""
+                    "$iptablesCmd -I DOCKER-USER -s ${request.ip} -p $proto --dport ${request.port} -j DROP -m comment --comment \"dm-rule-$id\""
                 val cmdHost =
-                    "iptables -I INPUT -s ${request.ip} -p $proto --dport ${request.port} -j DROP -m comment --comment \"dm-rule-$id\""
+                    "$iptablesCmd -I INPUT -s ${request.ip} -p $proto --dport ${request.port} -j DROP -m comment --comment \"dm-rule-$id\""
 
                 executeCommand(cmdDocker).isNotEmpty() || executeCommand(cmdHost).isNotEmpty()
                 true // Assume success if code reached here
             } else {
                 // Use ipset for general IP blocking (more efficient)
-                executeCommand("ipset add dm-blocklist ${request.ip} -exist")
+                executeCommand("$ipSetCmd add dm-blocklist ${request.ip} -exist")
 
                 // Ensure iptables is tracking the ipset for CONTAINER traffic
-                executeCommand("iptables -C DOCKER-USER -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed\"").isEmpty()
+                executeCommand("$iptablesCmd -C DOCKER-USER -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed\"").isEmpty()
                     .let { isMissing ->
                         if (isMissing) {
-                            executeCommand("iptables -I DOCKER-USER -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed\"")
+                            executeCommand("$iptablesCmd -I DOCKER-USER -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed\"")
                         }
                     }
 
                 // Ensure iptables is tracking the ipset for HOST traffic
-                executeCommand("iptables -C INPUT -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed-host\"").isEmpty()
+                executeCommand("$iptablesCmd -C INPUT -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed-host\"").isEmpty()
                     .let { isMissing ->
                         if (isMissing) {
-                            executeCommand("iptables -I INPUT -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed-host\"")
+                            executeCommand("$iptablesCmd -I INPUT -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed-host\"")
                         }
                     }
                 true
@@ -101,10 +103,10 @@ class FirewallServiceImpl : IFirewallService {
 
             if (rule.port != null) {
                 val proto = if (rule.protocol == "ALL") "tcp" else rule.protocol.lowercase()
-                executeCommand("iptables -D DOCKER-USER -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-$id\"")
-                executeCommand("iptables -D INPUT -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-$id\"")
+                executeCommand("$iptablesCmd -D DOCKER-USER -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-$id\"")
+                executeCommand("$iptablesCmd -D INPUT -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-$id\"")
             } else {
-                executeCommand("ipset del dm-blocklist ${rule.ip}")
+                executeCommand("$ipSetCmd del dm-blocklist ${rule.ip}")
             }
 
             rules.remove(rule)
@@ -121,7 +123,7 @@ class FirewallServiceImpl : IFirewallService {
             val rules = loadRules()
             val rule = rules.find { it.ip == ip && it.port == null } ?: return false
 
-            executeCommand("ipset del dm-blocklist ${rule.ip}")
+            executeCommand("$ipSetCmd del dm-blocklist ${rule.ip}")
 
             rules.remove(rule)
             saveRules(rules)
@@ -133,7 +135,7 @@ class FirewallServiceImpl : IFirewallService {
     }
 
     override fun getIptablesVisualisation(): Map<String, List<IptablesRule>> {
-        val output = executeCommand("iptables -L -n -v")
+        val output = executeCommand("$iptablesCmd -L -n -v")
         val chains = mutableMapOf<String, MutableList<IptablesRule>>()
         var currentChain = ""
 
@@ -172,22 +174,22 @@ class FirewallServiceImpl : IFirewallService {
         // Useful after a host or container restart
         val rules = loadRules()
         // Ensure the iptables jump to ipset exists for both chains
-        executeCommand("iptables -C DOCKER-USER -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed\"").isEmpty()
+        executeCommand("$iptablesCmd -C DOCKER-USER -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed\"").isEmpty()
             .let { isMissing ->
-                if (isMissing) executeCommand("iptables -I DOCKER-USER -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed\"")
+                if (isMissing) executeCommand("$iptablesCmd -I DOCKER-USER -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed\"")
             }
-        executeCommand("iptables -C INPUT -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed-host\"").isEmpty()
+        executeCommand("$iptablesCmd -C INPUT -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed-host\"").isEmpty()
             .let { isMissing ->
-                if (isMissing) executeCommand("iptables -I INPUT -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed-host\"")
+                if (isMissing) executeCommand("$iptablesCmd -I INPUT -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed-host\"")
             }
 
         rules.forEach { rule ->
             if (rule.port != null) {
                 val proto = if (rule.protocol == "ALL") "tcp" else rule.protocol.lowercase()
-                executeCommand("iptables -I DOCKER-USER -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-${rule.id}\"")
-                executeCommand("iptables -I INPUT -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-${rule.id}\"")
+                executeCommand("$iptablesCmd -I DOCKER-USER -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-${rule.id}\"")
+                executeCommand("$iptablesCmd -I INPUT -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-${rule.id}\"")
             } else {
-                executeCommand("ipset add dm-blocklist ${rule.ip} -exist")
+                executeCommand("$ipSetCmd add dm-blocklist ${rule.ip} -exist")
             }
         }
     }

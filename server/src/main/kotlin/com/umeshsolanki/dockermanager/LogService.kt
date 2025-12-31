@@ -45,14 +45,26 @@ class LogServiceImpl : ILogService {
             val command = mutableListOf<String>()
 
             if (file.name.startsWith("wtmp") || file.name.startsWith("btmp")) {
-                val lastCmd = StringBuilder("lastb -f ${file.absolutePath}")
+                val binary = if (file.name.startsWith("btmp")) "lastb" else "last"
+                val lastCmd = StringBuilder("$binary -f ${file.absolutePath}")
+                
                 since?.takeIf { it.isNotBlank() }?.let {
-                    val formatted = it.replace("-", "").replace("T", "").replace(":", "") + "00"
-                    lastCmd.append(" -s $formatted")
+                    if (it.matches(Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*"""))) {
+                        // Standard ISO format from frontend, convert to -s format
+                        val formatted = it.replace("-", "").replace("T", "").replace(":", "").take(12) + "00"
+                        lastCmd.append(" -s $formatted")
+                    } else {
+                        // Human readable format (e.g. "5 minutes ago", "today")
+                        lastCmd.append(" --since \"$it\"")
+                    }
                 }
                 until?.takeIf { it.isNotBlank() }?.let {
-                    val formatted = it.replace("-", "").replace("T", "").replace(":", "") + "00"
-                    lastCmd.append(" -t $formatted")
+                    if (it.matches(Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*"""))) {
+                        val formatted = it.replace("-", "").replace("T", "").replace(":", "").take(12) + "00"
+                        lastCmd.append(" -t $formatted")
+                    } else {
+                        lastCmd.append(" --until \"$it\"")
+                    }
                 }
                 command.add(lastCmd.toString())
             } else {

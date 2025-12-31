@@ -321,19 +321,21 @@ export default function LogsScreen() {
                     <div className="flex items-center bg-surface/50 backdrop-blur-sm border border-outline/20 rounded-xl px-3 h-9 gap-2">
                         <Clock size={14} className="text-on-surface-variant/50" />
                         <input
-                            type="datetime-local"
+                            type="text"
                             value={since}
                             onChange={(e) => setSince(e.target.value)}
-                            className="bg-transparent border-none text-[10px] font-mono focus:outline-none text-primary selection:bg-primary/30 w-32"
-                            title="Since"
+                            placeholder="Since (e.g. today)"
+                            className="bg-transparent border-none text-[10px] font-mono focus:outline-none text-primary selection:bg-primary/30 w-36 placeholder:text-on-surface-variant/30"
+                            title="Since (ISO or '5 minutes ago')"
                         />
                         <span className="text-[10px] opacity-20">→</span>
                         <input
-                            type="datetime-local"
+                            type="text"
                             value={until}
                             onChange={(e) => setUntil(e.target.value)}
-                            className="bg-transparent border-none text-[10px] font-mono focus:outline-none text-primary selection:bg-primary/30 w-32"
-                            title="Until"
+                            placeholder="Until (now)"
+                            className="bg-transparent border-none text-[10px] font-mono focus:outline-none text-primary selection:bg-primary/30 w-36 placeholder:text-on-surface-variant/30"
+                            title="Until (ISO or 'yesterday')"
                         />
                     </div>
 

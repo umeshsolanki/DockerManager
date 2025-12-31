@@ -6,8 +6,6 @@ WORKDIR /app
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     docker.io \
-    iptables \
-    ipset \
     util-linux \
     tzdata && \
     rm -rf /var/lib/apt/lists/*
