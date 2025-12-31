@@ -301,14 +301,12 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
             ? await DockerClient.updateProxyHost(hostData)
             : await DockerClient.createProxyHost(hostData);
 
-        if (result === true) {
-            toast.success(initialHost ? 'Proxy host updated' : 'Proxy host created');
+        if (result.success) {
+            toast.success(result.message || (initialHost ? 'Proxy host updated' : 'Proxy host created'));
             onAdded();
-        } else if (typeof result === 'string') {
-            toast.error(result); // Show specific error from backend
-            if (!initialHost) onAdded(); // Even if config failed, host might be created/saved
         } else {
-            toast.error(initialHost ? 'Failed to update proxy host' : 'Failed to create proxy host');
+            toast.error(result.message || (initialHost ? 'Failed to update proxy host' : 'Failed to create proxy host'));
+            if (!initialHost && result.message?.includes("SSL")) onAdded(); // Allow save if SSL partially failed
         }
         setIsSubmitting(false);
     };

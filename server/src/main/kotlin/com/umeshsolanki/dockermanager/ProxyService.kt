@@ -1,10 +1,14 @@
 package com.umeshsolanki.dockermanager
 
+import kotlinx.coroutines.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.util.*
 import java.text.SimpleDateFormat
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 interface IProxyService {
     fun listHosts(): List<ProxyHost>
@@ -25,6 +29,7 @@ class ProxyServiceImpl : IProxyService {
 
     private var cachedStats: ProxyStats = ProxyStats(0, emptyMap(), emptyMap(), emptyList(), emptyList())
     private val refreshIntervalMs = 10000L // Configurable interval: 10 seconds
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
 
     init {
         if (!configDir.exists()) configDir.mkdirs()
@@ -36,18 +41,15 @@ class ProxyServiceImpl : IProxyService {
     }
 
     private fun startStatsWorker() {
-        Thread {
-            while (true) {
+        scope.launch {
+            while (isActive) {
                 try {
                     updateStatsNatively()
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
-                Thread.sleep(refreshIntervalMs)
+                delay(refreshIntervalMs)
             }
-        }.apply { 
-            isDaemon = true 
-            start()
         }
     }
 
@@ -139,13 +141,23 @@ class ProxyServiceImpl : IProxyService {
             hosts.add(newHost)
             
             val configResult = generateNginxConfig(newHost)
-            saveHosts(hosts) // Save regardless, so user sees it
+            saveHosts(hosts) 
             
             if (!configResult.first) {
                  return false to configResult.second
             }
             
             reloadNginx()
+
+            // Check if we fell back to HTTP due to missing certs
+            if (configResult.second.startsWith("SSL Certificate missing")) {
+                // Auto-request SSL in background
+                scope.launch {
+                    requestSSL(newHost.id)
+                }
+                return true to "Host created. Requesting SSL certificate in background..."
+            }
+
             true to "Host created successfully"
         } catch (e: Exception) {
             e.printStackTrace()
@@ -186,6 +198,18 @@ class ProxyServiceImpl : IProxyService {
                 if (!configResult.first) {
                     saveHosts(hosts)
                     return false to configResult.second
+                }
+                
+                // Check if we fell back to HTTP due to missing certs
+                if (configResult.second.startsWith("SSL Certificate missing")) {
+                    saveHosts(hosts)
+                    reloadNginx()
+                    
+                    // Auto-request SSL in background
+                    scope.launch {
+                        requestSSL(host.id)
+                    }
+                    return true to "Host updated. Requesting SSL certificate in background..."
                 }
             }
             
@@ -314,7 +338,8 @@ class ProxyServiceImpl : IProxyService {
             // check if files exist
             if (!File(cert).exists() || !File(key).exists()) {
                 println("Cert files missing for ${host.domain}")
-                return false to "SSL Certificate files missing: $cert"
+                // Fallback to HTTP config
+                return generateNginxConfig(host.copy(ssl = false)).copy(second = "SSL Certificate missing, fallback to HTTP")
             }
 
             val hstsHeader = if (host.hstsEnabled) "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;" else ""

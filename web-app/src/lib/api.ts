@@ -415,33 +415,33 @@ export const DockerClient = {
         }
     },
 
-    async createProxyHost(host: Partial<ProxyHost>): Promise<boolean | string> {
+    async createProxyHost(host: Partial<ProxyHost>): Promise<{ success: boolean; message: string }> {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/hosts`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(host)
             });
-            if (!response.ok) return await response.text();
-            return true;
+            const text = await response.text();
+            return { success: response.ok, message: text };
         } catch (e) {
             console.error(e);
-            return false;
+            return { success: false, message: 'Network error or unknown failure' };
         }
     },
 
-    async updateProxyHost(host: ProxyHost): Promise<boolean | string> {
+    async updateProxyHost(host: ProxyHost): Promise<{ success: boolean; message: string }> {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/hosts/${host.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(host)
             });
-            if (!response.ok) return await response.text();
-            return true;
+            const text = await response.text();
+            return { success: response.ok, message: text };
         } catch (e) {
             console.error(e);
-            return false;
+            return { success: false, message: 'Network error or unknown failure' };
         }
     },
 
