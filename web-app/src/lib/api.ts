@@ -293,9 +293,11 @@ export const DockerClient = {
         }
     },
 
-    async listSystemLogs(): Promise<SystemLog[]> {
+    async listSystemLogs(path?: string): Promise<SystemLog[]> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/logs/system`);
+            let url = `${this.getServerUrl()}/logs/system`;
+            if (path) url += `?path=${encodeURIComponent(path)}`;
+            const response = await fetch(url);
             return await response.json();
         } catch (e) {
             console.error(e);

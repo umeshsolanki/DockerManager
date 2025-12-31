@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Search, RefreshCw, FileText, XCircle, Terminal, Shield, User, Clock, Settings, Lock, Ban, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, RefreshCw, FileText, XCircle, Terminal, Shield, User, Clock, Settings, Lock, Ban, ChevronDown, ChevronRight, Folder, ArrowLeft, Database } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { SystemLog, BlockIPRequest, BtmpStats } from '@/lib/types';
 import { toast } from 'sonner';
@@ -69,10 +69,12 @@ export default function LogsScreen() {
     const [jailDuration, setJailDuration] = useState(30);
     const [isAutoJailEnabled, setIsAutoJailEnabled] = useState(false);
 
-    const fetchLogs = async () => {
+    const [currentPath, setCurrentPath] = useState('');
+
+    const fetchLogs = async (path?: string) => {
         setIsLoading(true);
         const [logsData, btmpData] = await Promise.all([
-            DockerClient.listSystemLogs(),
+            DockerClient.listSystemLogs(path || currentPath),
             DockerClient.getBtmpStats()
         ]);
         setLogs(logsData || []);
@@ -83,12 +85,22 @@ export default function LogsScreen() {
     };
 
     useEffect(() => {
-        if (btmpStats) {
-            setIsAutoJailEnabled(btmpStats.autoJailEnabled ?? false);
-            setJailThreshold(btmpStats.jailThreshold ?? 5);
-            setJailDuration(btmpStats.jailDurationMinutes ?? 30);
-        }
-    }, [btmpStats]);
+        fetchLogs(currentPath);
+    }, [currentPath]);
+
+    const handlePathChange = (path: string) => {
+        setCurrentPath(path);
+        setSelectedLog(null);
+    };
+
+    const breadcrumbs = useMemo(() => {
+        if (!currentPath) return [];
+        const parts = currentPath.split('/');
+        return parts.map((part, i) => ({
+            name: part,
+            path: parts.slice(0, i + 1).join('/')
+        }));
+    }, [currentPath]);
 
     const manualRefreshBtmp = async () => {
         setIsRefreshingBtmp(true);
@@ -101,6 +113,10 @@ export default function LogsScreen() {
     };
 
     const fetchLogContent = async (log: SystemLog, filter?: string) => {
+        if (log.isDirectory) {
+            handlePathChange(log.path);
+            return;
+        }
         setIsReadingLog(true);
         setSelectedLog(log);
         const content = await DockerClient.getSystemLogContent(log.path, tailLines, filter, since, until);
@@ -109,10 +125,9 @@ export default function LogsScreen() {
     };
 
     useEffect(() => {
-        fetchLogs();
-        const interval = setInterval(fetchLogs, 30000);
+        const interval = setInterval(() => fetchLogs(currentPath), 30000);
         return () => clearInterval(interval);
-    }, []);
+    }, [currentPath]);
 
     const filteredLogs = useMemo(() => {
         return logs.filter(l =>
@@ -344,7 +359,7 @@ export default function LogsScreen() {
                         </button>
 
                         <button
-                            onClick={fetchLogs}
+                            onClick={() => fetchLogs()}
                             className="w-9 h-9 flex items-center justify-center bg-surface/50 border border-outline/20 rounded-xl hover:bg-white/5 transition-all"
                             title="Refresh list"
                         >
@@ -413,38 +428,75 @@ export default function LogsScreen() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
                 {/* Log List */}
-                <div className="lg:col-span-1 flex flex-col gap-2 overflow-y-auto pb-4">
+                <div className="lg:col-span-1 flex flex-col gap-2 overflow-y-auto pb-4 custom-scrollbar">
                     {filteredLogs.map(log => (
                         <div
                             key={log.path}
                             onClick={() => fetchLogContent(log, awkFilter)}
                             className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${selectedLog?.path === log.path
-                                ? 'bg-primary/10 border-primary/30'
-                                : 'bg-surface/50 border-outline/10 hover:bg-surface'
+                                ? 'bg-primary/20 border-primary/40 shadow-[0_0_20px_rgba(var(--md-sys-color-primary-rgb),0.1)]'
+                                : log.isDirectory
+                                    ? 'bg-blue-500/5 border-blue-500/10 hover:bg-blue-500/10 hover:border-blue-500/20'
+                                    : 'bg-surface/50 border-outline/10 hover:bg-surface hover:border-outline/20'
                                 }`}
                         >
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${selectedLog?.path === log.path ? 'bg-primary/20 text-primary' : 'bg-white/5 text-on-surface-variant'
+                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors ${selectedLog?.path === log.path
+                                    ? 'bg-primary text-on-primary'
+                                    : log.isDirectory
+                                        ? 'bg-blue-500/10 text-blue-500'
+                                        : 'bg-white/5 text-on-surface-variant'
                                 }`}>
-                                <FileText size={18} />
+                                {log.isDirectory ? <Folder size={18} /> : <FileText size={18} />}
                             </div>
                             <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium truncate">{log.name}</div>
-                                <div className="text-[10px] text-on-surface-variant flex justify-between mt-1">
-                                    <span>{formatSize(log.size)}</span>
+                                <div className="text-sm font-bold truncate flex items-center gap-2">
+                                    {log.name}
+                                    {log.isDirectory && <span className="text-[8px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black">DIR</span>}
+                                </div>
+                                <div className="text-[10px] text-on-surface-variant/60 flex justify-between mt-1 font-medium">
+                                    <span className="flex items-center gap-1">
+                                        {!log.isDirectory && <><Database size={10} /> {formatSize(log.size)}</>}
+                                        {log.isDirectory && "Directory"}
+                                    </span>
                                     <span>{new Date(log.lastModified).toLocaleDateString()}</span>
                                 </div>
                             </div>
+                            <ChevronRight size={14} className="text-on-surface-variant/20" />
                         </div>
                     ))}
                     {filteredLogs.length === 0 && !isLoading && (
-                        <div className="text-center py-10 text-on-surface-variant text-sm italic">
-                            No logs found in /var/log
+                        <div className="flex flex-col items-center justify-center py-10 opacity-40 italic text-sm">
+                            <Folder size={32} className="mb-2 opacity-20" />
+                            No logs or folders found
                         </div>
                     )}
                 </div>
 
                 {/* Log Content Viewer */}
                 <div className="lg:col-span-2 bg-black/40 rounded-xl border border-outline/10 flex flex-col overflow-hidden">
+                    {!selectedLog && (
+                        <div className="flex items-center gap-2 mb-4 bg-surface/50 p-2 rounded-xl border border-outline/5 overflow-x-auto no-scrollbar">
+                            <button
+                                onClick={() => handlePathChange('')}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${!currentPath ? 'bg-primary/20 text-primary border border-primary/20' : 'text-on-surface-variant hover:bg-white/10'}`}
+                            >
+                                <Folder size={14} />
+                                root
+                            </button>
+                            {breadcrumbs.map((bc, i) => (
+                                <React.Fragment key={bc.path}>
+                                    <ChevronRight size={12} className="text-on-surface-variant/40 shrink-0" />
+                                    <button
+                                        onClick={() => handlePathChange(bc.path)}
+                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${i === breadcrumbs.length - 1 ? 'bg-primary/20 text-primary border border-primary/20' : 'text-on-surface-variant hover:bg-white/10'}`}
+                                    >
+                                        {bc.name}
+                                    </button>
+                                </React.Fragment>
+                            ))}
+                        </div>
+                    )}
+
                     {selectedLog ? (
                         <>
                             <div className="p-3 border-b border-outline/10 flex items-center justify-between bg-white/5">

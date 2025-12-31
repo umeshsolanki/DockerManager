@@ -4,29 +4,38 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 interface ILogService {
-    fun listSystemLogs(): List<SystemLog>
+    fun listSystemLogs(subPath: String = ""): List<SystemLog>
     fun getLogContent(path: String, tail: Int = 100, filter: String? = null, since: String? = null, until: String? = null): String
 }
 
 class LogServiceImpl : ILogService {
-    private val logDir = File("/host/var/log")
+    private val baseLogDir = File("/host/var/log")
 
-    override fun listSystemLogs(): List<SystemLog> {
-        if (!logDir.exists() || !logDir.isDirectory) return emptyList()
+    override fun listSystemLogs(subPath: String): List<SystemLog> {
+        val targetDir = if (subPath.isBlank()) baseLogDir else File(baseLogDir, subPath)
+        
+        // Security check: ensure targetDir is within baseLogDir
+        if (!targetDir.absolutePath.startsWith(baseLogDir.absolutePath)) {
+            return emptyList()
+        }
 
-        return logDir.listFiles()?.filter { it.isFile }?.map { file ->
+        if (!targetDir.exists() || !targetDir.isDirectory) return emptyList()
+
+        return targetDir.listFiles()?.map { file ->
             SystemLog(
                 name = file.name,
-                path = file.absolutePath,
+                path = file.absolutePath.removePrefix(baseLogDir.absolutePath).removePrefix("/"),
                 size = file.length(),
-                lastModified = file.lastModified()
+                lastModified = file.lastModified(),
+                isDirectory = file.isDirectory
             )
         } ?: emptyList()
     }
 
     override fun getLogContent(path: String, tail: Int, filter: String?, since: String?, until: String?): String {
-        val file = File(path)
-        if (!file.absolutePath.startsWith("/host/var/log")) {
+        val file = if (path.startsWith("/host/var/log")) File(path) else File(baseLogDir, path)
+        
+        if (!file.absolutePath.startsWith(baseLogDir.absolutePath)) {
             return "Access denied"
         }
 
@@ -36,7 +45,7 @@ class LogServiceImpl : ILogService {
             val command = mutableListOf<String>()
 
             if (file.name.startsWith("wtmp") || file.name.startsWith("btmp")) {
-                val lastCmd = StringBuilder("last -f $path")
+                val lastCmd = StringBuilder("lastb -f $path")
                 since?.takeIf { it.isNotBlank() }?.let {
                     val formatted = it.replace("-", "").replace("T", "").replace(":", "") + "00"
                     lastCmd.append(" -s $formatted")
@@ -51,7 +60,7 @@ class LogServiceImpl : ILogService {
             }
 
             val processBuilder = ProcessBuilder("sh", "-c", buildString {
-                append("timeout 5s ")
+                append("timeout 10s ")
                 append(command.joinToString(" "))
                 
                 // Add time filtering for text logs if not wtmp/btmp
@@ -65,7 +74,7 @@ class LogServiceImpl : ILogService {
                     }
                 }
 
-                append(" | tail -n $tail")
+                append(" | head -n $tail")
                 
                 if (!filter.isNullOrBlank()) {
                     if (filter.startsWith("|")) {

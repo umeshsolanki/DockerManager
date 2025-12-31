@@ -124,6 +124,7 @@ export interface SystemLog {
   path: string;
   size: number;
   lastModified: number;
+  isDirectory: boolean;
 }
 
 export interface FirewallRule {

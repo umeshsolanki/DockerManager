@@ -10,7 +10,8 @@ import io.ktor.server.routing.*
 fun Route.logRoutes() {
     route("/logs") {
         get("/system") {
-            call.respond(DockerService.listSystemLogs())
+            val path = call.request.queryParameters["path"] ?: ""
+            call.respond(DockerService.listSystemLogs(path))
         }
 
         get("/system/content") {

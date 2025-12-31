@@ -94,8 +94,8 @@ class BtmpServiceImpl(
     private fun processFileRange(file: File, startByte: Long) {
         val deltaFile = File("/tmp/btmp_delta_${System.currentTimeMillis()}")
         try {
-            executeCommand("tail -c +${startByte + 1} ${file.absolutePath} > ${deltaFile.absolutePath}")
-            val output = executeCommand("last -f ${deltaFile.absolutePath}")
+            executeCommand("head -c +${startByte + 1} ${file.absolutePath} > ${deltaFile.absolutePath}")
+            val output = executeCommand("lastb -f ${deltaFile.absolutePath}")
             
             val lines = output.lines().filter { it.isNotBlank() }
             if (lines.isNotEmpty()) {

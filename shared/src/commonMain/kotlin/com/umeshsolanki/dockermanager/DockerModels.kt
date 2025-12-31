@@ -4,64 +4,64 @@ import kotlinx.serialization.Serializable
 import kotlin.time.Clock
 
 @Serializable
-data class DockerContainer(
+class DockerContainer(
     val id: String,
     val names: String,
     val image: String,
     val status: String,
-    val state: String // running, exited, etc.
+    val state: String, // running, exited, etc.
 )
 
 @Serializable
-data class DockerImage(
+class DockerImage(
     val id: String,
     val tags: List<String>,
     val size: Long,
-    val created: Long
+    val created: Long,
 )
 
 @Serializable
-data class ComposeFile(
+class ComposeFile(
     val path: String,
     val name: String,
-    val status: String // active, inactive
+    val status: String, // active, inactive
 )
 
 @Serializable
-data class BatteryStatus(
+class BatteryStatus(
     val percentage: Int,
     val isCharging: Boolean,
-    val source: String
+    val source: String,
 )
 
 @Serializable
-data class DockerSecret(
+class DockerSecret(
     val id: String,
     val name: String,
     val createdAt: String,
-    val updatedAt: String
+    val updatedAt: String,
 )
 
 @Serializable
-data class DockerNetwork(
+class DockerNetwork(
     val id: String,
     val name: String,
     val driver: String,
     val scope: String,
-    val internal: Boolean
+    val internal: Boolean,
 )
 
 @Serializable
-data class DockerVolume(
+class DockerVolume(
     val name: String,
     val driver: String,
     val mountpoint: String,
     val createdAt: String? = null,
-    val size: String? = null
+    val size: String? = null,
 )
 
 @Serializable
-data class ContainerDetails(
+class ContainerDetails(
     val id: String,
     val name: String,
     val image: String,
@@ -72,150 +72,151 @@ data class ContainerDetails(
     val env: List<String>,
     val labels: Map<String, String>,
     val mounts: List<DockerMount>,
-    val ports: List<PortMapping> = emptyList()
+    val ports: List<PortMapping> = emptyList(),
 )
 
 @Serializable
-data class DockerMount(
+class DockerMount(
     val type: String?,
     val source: String?,
     val destination: String?,
     val mode: String?,
-    val rw: Boolean?
+    val rw: Boolean?,
 )
 
 @Serializable
-data class VolumeDetails(
+class VolumeDetails(
     val name: String,
     val driver: String,
     val mountpoint: String,
     val labels: Map<String, String>,
     val scope: String,
     val options: Map<String, String>,
-    val createdAt: String?
+    val createdAt: String?,
 )
 
 @Serializable
-data class BackupResult(
+class BackupResult(
     val success: Boolean,
     val fileName: String?,
     val filePath: String?,
-    val message: String
+    val message: String,
 )
 
 @Serializable
-data class CreateContainerRequest(
+class CreateContainerRequest(
     val name: String,
     val image: String,
     val ports: List<PortMapping> = emptyList(),
     val env: Map<String, String> = emptyMap(),
     val volumes: List<VolumeMapping> = emptyList(),
     val networks: List<String> = emptyList(),
-    val restartPolicy: String = "no"
+    val restartPolicy: String = "no",
 )
 
 @Serializable
-data class PortMapping(
+class PortMapping(
     val containerPort: Int,
     val hostPort: Int,
-    val protocol: String = "tcp"
+    val protocol: String = "tcp",
 )
 
 @Serializable
-data class VolumeMapping(
+class VolumeMapping(
     val containerPath: String,
     val hostPath: String,
-    val mode: String = "rw"
+    val mode: String = "rw",
 )
 
 @Serializable
-data class SaveComposeRequest(
+class SaveComposeRequest(
     val name: String,
-    val content: String
+    val content: String,
 )
 
 @Serializable
-data class ComposeResult(
+class ComposeResult(
     val success: Boolean,
-    val message: String
+    val message: String,
 )
 
 @Serializable
-data class SystemLog(
+class SystemLog(
     val name: String,
     val path: String,
     val size: Long,
-    val lastModified: Long
+    val lastModified: Long,
+    val isDirectory: Boolean,
 )
 
 @Serializable
-data class FirewallRule(
+class FirewallRule(
     val id: String,
     val ip: String,
     val port: String? = null,
     val protocol: String = "ALL",
     val comment: String? = null,
-    val createdAt: Long = Clock.System.now().toEpochMilliseconds()
+    val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
 )
 
 @Serializable
-data class BlockIPRequest(
+class BlockIPRequest(
     val ip: String,
     val port: String? = null,
     val protocol: String = "ALL",
-    val comment: String? = null
+    val comment: String? = null,
 )
 
 @Serializable
-data class ProxyHost(
+class ProxyHost(
     val id: String,
     val domain: String,
     val target: String,
     val enabled: Boolean = true,
     val ssl: Boolean = false,
-    val createdAt: Long = Clock.System.now().toEpochMilliseconds()
+    val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
 )
 
 @Serializable
-data class ProxyHit(
+class ProxyHit(
     val timestamp: Long,
     val ip: String,
     val method: String,
     val path: String,
     val status: Int,
     val responseTime: Int,
-    val userAgent: String
+    val userAgent: String,
 )
 
 @Serializable
-data class ProxyStats(
+class ProxyStats(
     val totalHits: Long,
     val hitsByStatus: Map<Int, Long>,
     val hitsOverTime: Map<String, Long>, // Key: HH:00
     val topPaths: List<Pair<String, Long>>,
-    val recentHits: List<ProxyHit>
+    val recentHits: List<ProxyHit>,
 )
 
 @Serializable
-data class BtmpEntry(
+class BtmpEntry(
     val user: String,
     val ip: String,
     val session: String = "",
     val timestampString: String = "",
     val timestamp: Long = 0,
-    val duration: String = ""
+    val duration: String = "",
 )
 
 @Serializable
-data class JailedIP(
+class JailedIP(
     val ip: String,
     val reason: String,
     val expiresAt: Long,
-    val createdAt: Long = Clock.System.now().toEpochMilliseconds()
+    val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
 )
 
 @Serializable
-data class BtmpStats(
+class BtmpStats(
     val totalFailedAttempts: Int,
     val topUsers: List<Pair<String, Int>>,
     val topIps: List<Pair<String, Int>>,
@@ -224,5 +225,5 @@ data class BtmpStats(
     val jailedIps: List<JailedIP> = emptyList(),
     val autoJailEnabled: Boolean = false,
     val jailThreshold: Int = 5,
-    val jailDurationMinutes: Int = 30
+    val jailDurationMinutes: Int = 30,
 )
