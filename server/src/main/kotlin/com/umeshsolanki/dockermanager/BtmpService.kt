@@ -1,24 +1,35 @@
 package com.umeshsolanki.dockermanager
 
+import com.sun.jna.Native
+import com.umeshsolanki.dockermanager.jna.Utmpx
 import kotlinx.coroutines.*
 import java.io.File
+import java.io.RandomAccessFile
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.Paths
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.TimeUnit
 
 interface IBtmpService {
     fun getStats(): BtmpStats
     suspend fun refreshStats(): BtmpStats
     fun updateAutoJailSettings(enabled: Boolean, threshold: Int, durationMinutes: Int)
+    fun updateMonitoringSettings(active: Boolean, intervalMinutes: Int)
 }
 
 class BtmpServiceImpl(
     private val firewallService: IFirewallService
 ) : IBtmpService {
-    private val btmpFile = File("/host/var/log/btmp")
+    val simpleDateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+    private val btmpPath = Paths.get("/host/var/log/btmp")
     private var totalFailedAttempts = 0
     private val userCounts = mutableMapOf<String, Int>()
     private val ipCounts = mutableMapOf<String, Int>()
     private val recentFailuresList = mutableListOf<BtmpEntry>()
-    private var lastProcessedSize = 0L
+    
+    private var lastInode: Any? = null
+    private var lastPosition = 0L
 
     private var autoJailEnabled = false
     private var jailThreshold = 5
@@ -27,6 +38,9 @@ class BtmpServiceImpl(
     private val failedAttemptsInWindow = mutableMapOf<String, Int>()
 
     private var cachedBtmpStats: BtmpStats = BtmpStats(0, emptyList(), emptyList(), emptyList(), 0)
+    
+    private var refreshIntervalMinutes = 5
+    private var isMonitoringActive = true
     
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var workerJob: Job? = null
@@ -38,14 +52,17 @@ class BtmpServiceImpl(
     }
 
     private fun startWorker() {
+        workerJob?.cancel()
         workerJob = scope.launch {
             while (isActive) {
-                try {
-                    updateStats()
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                if (isMonitoringActive) {
+                    try {
+                        updateStats()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
-                delay(30000)
+                delay(refreshIntervalMinutes * 60 * 1000L)
             }
         }
     }
@@ -90,84 +107,127 @@ class BtmpServiceImpl(
         updateCachedStats()
     }
 
-
-    private fun processFileRange(file: File, startByte: Long) {
-        val deltaFile = File("/tmp/btmp_delta_${System.currentTimeMillis()}")
-        try {
-            executeCommand("head -c +${startByte + 1} ${file.absolutePath} > ${deltaFile.absolutePath}")
-            val output = executeCommand("lastb -f ${deltaFile.absolutePath}")
-            
-            val lines = output.lines().filter { it.isNotBlank() }
-            if (lines.isNotEmpty()) {
-                lines.forEach { line ->
-                    val parts = line.trim().split(Regex("\\s+"))
-                    if (parts.size >= 4) {
-                        val user = parts[0]
-                        val session = parts[1]
-                        val ip = parts[2]
-                        val timeStr = parts.slice(3 until minOf(parts.size, 7)).joinToString(" ")
-                        val duration = if (parts.size > 10) parts.last() else ""
-
-                        if (user != "last" && user != "btmp" && user != "btmp_delta" && session != "begins") {
-                            totalFailedAttempts++
-                            userCounts[user] = (userCounts[user] ?: 0) + 1
-                            ipCounts[ip] = (ipCounts[ip] ?: 0) + 1
-                            
-                            if (autoJailEnabled && jailedIps.none { it.ip == ip }) {
-                                failedAttemptsInWindow[ip] = (failedAttemptsInWindow[ip] ?: 0) + 1
-                                if (failedAttemptsInWindow[ip]!! >= jailThreshold) {
-                                    val expiresAt = System.currentTimeMillis() + (jailDurationMinutes * 60 * 1000)
-                                    val jail = JailedIP(ip, "Automatic jail after $jailThreshold failed attempts", expiresAt)
-                                    firewallService.blockIP(BlockIPRequest(ip, comment = jail.reason))
-                                    jailedIps.add(jail)
-                                    failedAttemptsInWindow.remove(ip)
-                                }
-                            }
-
-                            recentFailuresList.add(0, BtmpEntry(
-                                user = user,
-                                ip = ip,
-                                session = session,
-                                timestampString = timeStr,
-                                timestamp = System.currentTimeMillis(),
-                                duration = duration
-                            ))
-                        }
-                    }
-                }
-                if (recentFailuresList.size > 1000) {
-                    val toRemove = recentFailuresList.size - 1000
-                    repeat(toRemove) { recentFailuresList.removeAt(recentFailuresList.size - 1) }
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        } finally {
-            if (deltaFile.exists()) deltaFile.delete()
+    override fun updateMonitoringSettings(active: Boolean, intervalMinutes: Int) {
+        val needRestart = intervalMinutes != this.refreshIntervalMinutes
+        
+        this.isMonitoringActive = active
+        this.refreshIntervalMinutes = intervalMinutes.coerceAtLeast(1)
+        
+        updateCachedStats()
+        
+        if (needRestart) {
+            startWorker()
         }
     }
 
     private fun updateStats() {
-        if (!btmpFile.exists()) return
-
-        val currentSize = btmpFile.length()
-        if (currentSize == lastProcessedSize) return
-
-        if (currentSize < lastProcessedSize) {
-            // Process the end of rotated file
-            val rotatedFile = File("/host/var/log/btmp.1")
-            if (rotatedFile.exists()) {
-                processFileRange(rotatedFile, lastProcessedSize)
-            }
-            lastProcessedSize = 0
-        }
+        val file = btmpPath.toFile()
+        if (!file.exists()) return
 
         try {
-            processFileRange(btmpFile, lastProcessedSize)
-            lastProcessedSize = currentSize
-            updateCachedStats()
+            val attrs = Files.readAttributes(btmpPath, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+            val currentInode = attrs.fileKey()
+            val currentSize = attrs.size()
+
+            if (lastInode != null && currentInode != lastInode) {
+                 // File rotated. Try to finish processing the old file if possible.
+                 val rotated = File("/host/var/log/btmp.1")
+                 if (rotated.exists()) {
+                     try {
+                         val rotAttrs = Files.readAttributes(rotated.toPath(), BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+                         if (rotAttrs.fileKey() == lastInode) {
+                             processBtmpFile(rotated, lastPosition)
+                         }
+                     } catch(ignore: Exception) {}
+                 }
+                 lastPosition = 0L
+            }
+            
+            lastInode = currentInode
+            
+            if (currentSize > lastPosition) {
+                lastPosition = processBtmpFile(file, lastPosition)
+                updateCachedStats()
+            } else if (currentSize < lastPosition) {
+                // File truncated
+                lastPosition = 0L
+                lastPosition = processBtmpFile(file, lastPosition)
+                updateCachedStats()
+            }
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    private fun processBtmpFile(file: File, startOffset: Long): Long {
+        var currentOffset = startOffset
+        val utmpx = Utmpx()
+        // Ensure structure memory is allocated
+        // size() returns the size of the structure in bytes
+        val structSize = utmpx.size()
+        
+        RandomAccessFile(file, "r").use { raf ->
+            val len = raf.length()
+            if (currentOffset >= len) return len
+            
+            raf.seek(currentOffset)
+            val buffer = ByteArray(structSize)
+            
+            while (currentOffset + structSize <= len && raf.read(buffer) == structSize) {
+                // Copy buffer to structure memory
+                utmpx.pointer.write(0, buffer, 0, structSize)
+                // Sync fields from memory
+                utmpx.read()
+                
+                val user = Native.toString(utmpx.ut_user)
+                val host = Native.toString(utmpx.ut_host)
+                // ut_tv is struct timeval { long tv_sec; long tv_usec; }
+                val timestamp = (utmpx.ut_tv.tv_sec * 1000L)
+                val type = utmpx.ut_type.toInt()
+                
+                // Usually type 7 (USER_PROCESS) or 6 (LOGIN_PROCESS) appear in btmp for failed logins
+                // But generally anything in btmp is a failed login.
+                if (user.isNotBlank() && type != 0) {
+                     handleFailedAttempt(user, host, timestamp)
+                }
+
+                currentOffset += structSize
+            }
+        }
+        return currentOffset
+    }
+
+    private fun handleFailedAttempt(user: String, ip: String, timestamp: Long) {
+        if (ip.isBlank()) return
+
+        totalFailedAttempts++
+        userCounts[user] = (userCounts[user] ?: 0) + 1
+        ipCounts[ip] = (ipCounts[ip] ?: 0) + 1
+        
+        if (autoJailEnabled && jailedIps.none { it.ip == ip }) {
+            failedAttemptsInWindow[ip] = (failedAttemptsInWindow[ip] ?: 0) + 1
+            if (failedAttemptsInWindow[ip]!! >= jailThreshold) {
+                val expiresAt = System.currentTimeMillis() + (jailDurationMinutes * 60_000)
+                val jail = JailedIP(ip, "Failed login >= $jailThreshold failed attempts", expiresAt)
+                firewallService.blockIP(BlockIPRequest(ip, comment = jail.reason))
+                jailedIps.add(jail)
+                failedAttemptsInWindow.remove(ip)
+            }
+        }
+        
+        // Add to history
+        val entry = BtmpEntry(
+            user = user,
+            ip = ip,
+            session = "",
+            timestampString = simpleDateFormat.format(java.util.Date(timestamp)),
+            timestamp = timestamp,
+            duration = ""
+        )
+        
+        recentFailuresList.add(0, entry)
+        if (recentFailuresList.size > 1000) {
+            recentFailuresList.removeAt(recentFailuresList.size - 1)
         }
     }
 
@@ -183,14 +243,5 @@ class BtmpServiceImpl(
             jailThreshold = jailThreshold,
             jailDurationMinutes = jailDurationMinutes
         )
-    }
-
-    private fun executeCommand(command: String): String {
-        return try {
-            val process = ProcessBuilder("sh", "-c", command).start()
-            process.inputStream.bufferedReader().readText()
-        } catch (e: Exception) {
-            ""
-        }
     }
 }

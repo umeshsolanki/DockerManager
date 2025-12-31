@@ -349,6 +349,16 @@ export const DockerClient = {
         }
     },
 
+    async updateBtmpMonitoring(active: boolean, interval: number): Promise<boolean> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/logs/system/btmp-stats/monitoring?active=${active}&interval=${interval}`, { method: 'POST' });
+            return response.ok;
+        } catch (e) {
+            console.error(e);
+            return false;
+        }
+    },
+
     async listFirewallRules(): Promise<FirewallRule[]> {
         try {
             const response = await fetch(`${this.getServerUrl()}/firewall/rules`);

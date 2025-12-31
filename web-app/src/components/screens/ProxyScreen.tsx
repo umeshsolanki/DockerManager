@@ -147,6 +147,7 @@ export default function ProxyScreen() {
                                             <h3 className="text-lg font-bold">{host.domain}</h3>
                                             {!host.enabled && <span className="text-[10px] bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded font-bold uppercase">Disabled</span>}
                                             {host.ssl && <span className="text-[10px] bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1"><Lock size={10} /> SSL</span>}
+                                            {host.hstsEnabled && <span className="text-[10px] bg-purple-500/10 text-purple-500 px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1"><ShieldCheck size={10} /> HSTS</span>}
                                             {host.websocketEnabled && <span className="text-[10px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1"><Network size={10} /> WS</span>}
                                         </div>
                                         <div className="flex items-center gap-2 text-on-surface-variant text-sm mt-1">
@@ -254,6 +255,8 @@ function AddHostModal({ onClose, onAdded }: { onClose: () => void, onAdded: () =
     const [domain, setDomain] = useState('');
     const [target, setTarget] = useState('http://');
     const [websocketEnabled, setWebsocketEnabled] = useState(false);
+    const [hstsEnabled, setHstsEnabled] = useState(false);
+    const [sslEnabled, setSslEnabled] = useState(false);
     const [selectedCert, setSelectedCert] = useState<string>('');
     const [certs, setCerts] = useState<SSLCertificate[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -270,9 +273,10 @@ function AddHostModal({ onClose, onAdded }: { onClose: () => void, onAdded: () =
             domain,
             target,
             enabled: true,
-            ssl: !!selectedCert,
+            ssl: sslEnabled,
             websocketEnabled,
-            customSslPath: selectedCert || undefined,
+            hstsEnabled: sslEnabled ? hstsEnabled : false,
+            customSslPath: (sslEnabled && selectedCert) ? selectedCert : undefined,
             createdAt: Date.now()
         });
         if (success) {
@@ -312,34 +316,71 @@ function AddHostModal({ onClose, onAdded }: { onClose: () => void, onAdded: () =
                         />
                     </div>
 
-                    <div>
-                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1 ml-1">SSL Certificate (Optional)</label>
-                        <div className="relative">
-                            <select
-                                value={selectedCert}
-                                onChange={(e) => setSelectedCert(e.target.value)}
-                                className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2.5 appearance-none focus:outline-none focus:border-primary text-sm"
-                            >
-                                <option value="">Auto-generate / None</option>
-                                {certs.map(cert => (
-                                    <option key={cert.id} value={`${cert.certPath}|${cert.keyPath}`}>
-                                        {cert.domain} ({cert.id})
-                                    </option>
-                                ))}
-                            </select>
-                            <FileKey size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" />
+                    <div className="flex flex-col gap-2 pt-2 border-t border-outline/10">
+                        {/* WebSocket Toggle */}
+                        <div className="flex items-center gap-3 py-1">
+                            <input
+                                type="checkbox"
+                                id="ws-toggle"
+                                checked={websocketEnabled}
+                                onChange={(e) => setWebsocketEnabled(e.target.checked)}
+                                className="w-5 h-5 rounded border-outline/20 bg-white/5 checked:bg-primary accent-primary"
+                            />
+                            <label htmlFor="ws-toggle" className="text-sm font-medium cursor-pointer text-on-surface">Enable Websockets Support</label>
                         </div>
-                    </div>
 
-                    <div className="flex items-center gap-3 py-2">
-                        <input
-                            type="checkbox"
-                            id="ws-toggle"
-                            checked={websocketEnabled}
-                            onChange={(e) => setWebsocketEnabled(e.target.checked)}
-                            className="w-5 h-5 rounded border-outline/20 bg-white/5 checked:bg-primary accent-primary"
-                        />
-                        <label htmlFor="ws-toggle" className="text-sm font-medium cursor-pointer">Enable Websockets Support</label>
+                        {/* SSL Toggle */}
+                        <div className="flex items-center gap-3 py-1">
+                            <input
+                                type="checkbox"
+                                id="ssl-toggle"
+                                checked={sslEnabled}
+                                onChange={(e) => setSslEnabled(e.target.checked)}
+                                className="w-5 h-5 rounded border-outline/20 bg-white/5 checked:bg-green-500 accent-green-500"
+                            />
+                            <label htmlFor="ssl-toggle" className="text-sm font-medium cursor-pointer text-on-surface flex items-center gap-2">
+                                Enable SSL (HTTPS)
+                                <Lock size={12} className="text-green-500" />
+                            </label>
+                        </div>
+
+                        {/* SSL Options - Only visible when SSL is enabled */}
+                        {sslEnabled && (
+                            <div className="pl-4 ml-2 border-l-2 border-green-500/20 space-y-3 mt-1 animate-in slide-in-from-left-2 duration-200">
+                                <div>
+                                    <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">SSL Certificate Source</label>
+                                    <div className="relative">
+                                        <select
+                                            value={selectedCert}
+                                            onChange={(e) => setSelectedCert(e.target.value)}
+                                            className="w-full bg-white/5 border border-outline/20 rounded-xl px-3 py-2 appearance-none focus:outline-none focus:border-green-500 text-sm"
+                                        >
+                                            <option value="">Auto-generate (Let's Encrypt)</option>
+                                            {certs.map(cert => (
+                                                <option key={cert.id} value={`${cert.certPath}|${cert.keyPath}`}>
+                                                    {cert.domain} ({cert.id})
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <FileKey size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" />
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="checkbox"
+                                        id="hsts-toggle"
+                                        checked={hstsEnabled}
+                                        onChange={(e) => setHstsEnabled(e.target.checked)}
+                                        className="w-4 h-4 rounded border-outline/20 bg-white/5 checked:bg-purple-500 accent-purple-500"
+                                    />
+                                    <label htmlFor="hsts-toggle" className="text-xs font-medium cursor-pointer flex items-center gap-2 text-on-surface-variant">
+                                        Enable HSTS
+                                        <span className="text-[9px] bg-purple-500/10 text-purple-500 px-1 py-0.5 rounded font-bold uppercase">Strict Security</span>
+                                    </label>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex gap-3 pt-4">

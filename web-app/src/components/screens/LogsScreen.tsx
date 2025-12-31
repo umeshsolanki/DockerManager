@@ -68,6 +68,18 @@ export default function LogsScreen() {
     const [jailThreshold, setJailThreshold] = useState(5);
     const [jailDuration, setJailDuration] = useState(30);
     const [isAutoJailEnabled, setIsAutoJailEnabled] = useState(false);
+    const [refreshInterval, setRefreshInterval] = useState(5);
+    const [isMonitoringActive, setIsMonitoringActive] = useState(true);
+
+    useEffect(() => {
+        if (btmpStats) {
+            setIsAutoJailEnabled(btmpStats.autoJailEnabled);
+            setJailThreshold(btmpStats.jailThreshold);
+            setJailDuration(btmpStats.jailDurationMinutes);
+            setRefreshInterval(btmpStats.refreshIntervalMinutes);
+            setIsMonitoringActive(btmpStats.isMonitoringActive);
+        }
+    }, [btmpStats]);
 
     const [currentPath, setCurrentPath] = useState('');
 
@@ -796,12 +808,49 @@ export default function LogsScreen() {
                                         <button
                                             onClick={async () => {
                                                 const success = await DockerClient.updateAutoJailSettings(isAutoJailEnabled, jailThreshold, jailDuration);
-                                                if (success) toast.success('Security settings saved');
+                                                const monitorSuccess = await DockerClient.updateBtmpMonitoring(isMonitoringActive, refreshInterval);
+                                                if (success && monitorSuccess) toast.success('Security settings saved');
                                             }}
-                                            className="w-full bg-primary text-white py-3 rounded-2xl font-bold hover:shadow-lg hover:shadow-primary/30 transition-all active:scale-95 mt-4"
+                                            className="w-full bg-primary text-black font-bold py-3 rounded-xl mt-4 hover:opacity-90 transition-all"
                                         >
-                                            SAVE CONFIGURATION
+                                            SAVE SETTINGS
                                         </button>
+                                    </div>
+
+                                    <div className="border-t border-outline/10 pt-6 space-y-4">
+                                        <div className="flex items-center justify-between bg-white/5 border border-outline/10 p-4 rounded-2xl">
+                                            <div className="flex flex-col">
+                                                <span className="font-bold">Active Monitoring</span>
+                                                <span className="text-[10px] text-on-surface-variant uppercase font-bold">Enable background log processing</span>
+                                            </div>
+                                            <button
+                                                onClick={() => setIsMonitoringActive(!isMonitoringActive)}
+                                                className={`w-12 h-6 rounded-full transition-all relative ${isMonitoringActive ? 'bg-green-500' : 'bg-white/10'}`}
+                                            >
+                                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${isMonitoringActive ? 'left-7' : 'left-1'}`} />
+                                            </button>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-bold text-on-surface-variant uppercase mb-2 ml-1">Refresh Interval (Minutes)</label>
+                                            <div className="flex gap-4 items-center">
+                                                <input
+                                                    type="range" min="1" max="60" step="1"
+                                                    value={refreshInterval}
+                                                    onChange={(e) => setRefreshInterval(parseInt(e.target.value))}
+                                                    className="flex-1 accent-primary"
+                                                />
+                                                <span className="w-12 text-center bg-white/5 border border-outline/10 rounded-lg py-1 font-bold font-mono text-primary">{refreshInterval}</span>
+                                            </div>
+                                            <p className="text-[9px] text-on-surface-variant mt-2 italic">How often to scan logs for new failed attempts</p>
+                                        </div>
+
+                                        {!isMonitoringActive && (
+                                            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs flex gap-2 items-center">
+                                                <Ban size={16} />
+                                                <span>Monitoring is disabled. Stats will not update and auto-jail will not function.</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}

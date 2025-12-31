@@ -189,6 +189,7 @@ data class ProxyHost(
     val enabled: Boolean = true,
     val ssl: Boolean = false,
     val websocketEnabled: Boolean = false,
+    val hstsEnabled: Boolean = false,
     val customSslPath: String? = null,
     val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
 )
@@ -250,4 +251,6 @@ class BtmpStats(
     val autoJailEnabled: Boolean = false,
     val jailThreshold: Int = 5,
     val jailDurationMinutes: Int = 30,
+    val refreshIntervalMinutes: Int = 5,
+    val isMonitoringActive: Boolean = true,
 )

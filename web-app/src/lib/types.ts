@@ -163,6 +163,7 @@ export interface ProxyHost {
   enabled: boolean;
   ssl: boolean;
   websocketEnabled: boolean;
+  hstsEnabled: boolean;
   customSslPath?: string;
   createdAt: number;
 }
@@ -222,6 +223,8 @@ export interface BtmpStats {
   autoJailEnabled: boolean;
   jailThreshold: number;
   jailDurationMinutes: number;
+  refreshIntervalMinutes: number;
+  isMonitoringActive: boolean;
 }
 
 export type Screen = 'Dashboard' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Settings';

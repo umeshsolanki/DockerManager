@@ -267,11 +267,13 @@ class ProxyServiceImpl : IProxyService {
 
         val sslConfig = if (host.ssl) {
             val (cert, key) = if (!host.customSslPath.isNullOrBlank() && host.customSslPath?.contains("|") == true) {
-                val parts = host.customSslPath?.split("|")
-                parts?.get(0) to parts?.get(1)
+                val parts = host.customSslPath!!.split("|")
+                if (parts.size >= 2) parts[0] to parts[1] else "/etc/letsencrypt/live/${host.domain}/fullchain.pem" to "/etc/letsencrypt/live/${host.domain}/privkey.pem"
             } else {
                 "/etc/letsencrypt/live/${host.domain}/fullchain.pem" to "/etc/letsencrypt/live/${host.domain}/privkey.pem"
             }
+
+            val hstsHeader = if (host.hstsEnabled) "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;" else ""
             
             """
 server {
@@ -280,6 +282,8 @@ server {
 
     ssl_certificate $cert;
     ssl_certificate_key $key;
+    
+    $hstsHeader
 
     location / {
         proxy_pass ${host.target};
@@ -319,15 +323,19 @@ server {
 
 $sslConfig
         """.trimIndent()
-        File(configDir, "${host.domain}.conf").writeText(config)
+        
+        try {
+            File(configDir, "${host.domain}.conf").writeText(config)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun reloadNginx() {
-        try {
-            // Signal OpenResty container to reload
-            ProcessBuilder("docker", "exec", "docker-manager-proxy", "openresty", "-s", "reload").start()
-        } catch (e: Exception) {
-            e.printStackTrace()
+        // Use executeCommand to capture output and potential errors
+        val result = executeCommand("/usr/bin/docker exec docker-manager-proxy openresty -s reload")
+        if (result.isNotBlank()) {
+            println("Nginx Reload Output: $result")
         }
     }
 }

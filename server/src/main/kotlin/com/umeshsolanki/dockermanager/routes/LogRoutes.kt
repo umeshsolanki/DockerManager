@@ -36,5 +36,11 @@ fun Route.logRoutes() {
             DockerService.updateAutoJailSettings(enabled, threshold, duration)
             call.respond(HttpStatusCode.OK)
         }
+        post("/system/btmp-stats/monitoring") {
+            val active = call.request.queryParameters["active"]?.toBoolean() ?: true
+            val interval = call.request.queryParameters["interval"]?.toInt() ?: 5
+            DockerService.updateBtmpMonitoring(active, interval)
+            call.respond(HttpStatusCode.OK)
+        }
     }
 }
