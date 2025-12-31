@@ -168,7 +168,7 @@ class BlockIPRequest(
 )
 
 @Serializable
-class ProxyHost(
+data class ProxyHost(
     val id: String,
     val domain: String,
     val target: String,
