@@ -52,8 +52,8 @@ class LogServiceImpl : ILogService {
             .toList()
 
         val totalFailed = entries.size
-        val topUsers = entries.groupingBy { it.first }.eachCount().toList().sortedByDescending { it.second }.take(5)
-        val topIps = entries.groupingBy { it.second }.eachCount().toList().sortedByDescending { it.second }.take(5)
+        val topUsers = entries.groupingBy { it.first }.eachCount().toList().sortedByDescending { it.second }.take(50)
+        val topIps = entries.groupingBy { it.second }.eachCount().toList().sortedByDescending { it.second }.take(50)
 
         // Last 10 failures
         val recentFailures = entries.takeLast(10).reversed().map { (user, ip) ->
@@ -112,10 +112,12 @@ class LogServiceImpl : ILogService {
                 append(command.joinToString(" "))
                 append(" | tail -n $tail")
                 if (!filter.isNullOrBlank()) {
-                    append(" | awk '$filter'")
+                    if (filter.startsWith("|")) {
+                        append(" $filter")
+                    } else {
+                        append(" | awk $filter")
+                    }
                 }
-//                // Final safety: never return more than 1MB of text
-//                append(" | head -c 1048576")
             })
 
             val process = processBuilder.start()

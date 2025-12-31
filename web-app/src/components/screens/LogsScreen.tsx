@@ -17,6 +17,8 @@ export default function LogsScreen() {
     const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
     const [ipToBlock, setIpToBlock] = useState('');
     const [btmpStats, setBtmpStats] = useState<BtmpStats | null>(null);
+    const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
+    const [statsModalType, setStatsModalType] = useState<'IPS' | 'ATTEMPTS'>('IPS');
 
     const fetchLogs = async () => {
         setIsLoading(true);
@@ -86,14 +88,22 @@ export default function LogsScreen() {
                             <Shield size={18} />
                             <span className="text-xs font-bold uppercase tracking-wider">Top Attacking IPs</span>
                         </div>
-                        <div className="space-y-2">
-                            {btmpStats.topIps.slice(0, 3).map(({ first: ip, second: count }) => (
+                        <div className="space-y-2 max-h-[100px] overflow-y-hidden pr-2">
+                            {btmpStats.topIps.slice(0, 1000).map(({ first: ip, second: count }) => (
                                 <div key={ip} className="flex justify-between items-center text-[10px]">
                                     <span className="font-mono text-primary cursor-pointer hover:underline" onClick={() => { setIpToBlock(ip); setIsBlockModalOpen(true); }}>{ip}</span>
                                     <span className="bg-white/5 px-1.5 py-0.5 rounded font-bold">{count}</span>
                                 </div>
                             ))}
                         </div>
+                        {btmpStats.topIps.length > 4 && (
+                            <button
+                                onClick={() => { setStatsModalType('IPS'); setIsStatsModalOpen(true); }}
+                                className="w-full text-center text-[9px] font-bold text-primary mt-3 hover:underline underline-offset-4"
+                            >
+                                VIEW ALL {btmpStats.topIps.length} IPS
+                            </button>
+                        )}
                     </div>
 
                     <div className="bg-surface border border-outline/10 rounded-2xl p-4">
@@ -101,13 +111,21 @@ export default function LogsScreen() {
                             <Terminal size={18} />
                             <span className="text-xs font-bold uppercase tracking-wider">Recent Attempts</span>
                         </div>
-                        <div className="space-y-1.5 overflow-hidden">
-                            {btmpStats.recentFailures.slice(0, 3).map((entry, i) => (
+                        <div className="space-y-1.5 max-h-[100px] overflow-y-hidden pr-2">
+                            {btmpStats.recentFailures.slice(0, 1000).map((entry, i) => (
                                 <div key={i} className="text-[9px] font-mono truncate text-on-surface-variant">
-                                    <span className="text-red-400">FAILED</span> {entry.user} from {entry.ip}
+                                    <span className="text-red-400 font-bold">FAILED</span> {entry.user} from {entry.ip}
                                 </div>
                             ))}
                         </div>
+                        {btmpStats.recentFailures.length > 4 && (
+                            <button
+                                onClick={() => { setStatsModalType('ATTEMPTS'); setIsStatsModalOpen(true); }}
+                                className="w-full text-center text-[9px] font-bold text-primary mt-3 hover:underline underline-offset-4"
+                            >
+                                VIEW ALL RECENT ATTEMPTS
+                            </button>
+                        )}
                     </div>
                 </div>
             )}
@@ -195,7 +213,7 @@ export default function LogsScreen() {
                 />
                 <QuickFilterBtn
                     label="IP Counts"
-                    awk='tail -n 50000 | awk "{for(i=1;i<=NF;i++) if(\\$i ~ /([0-9]{1,3}\\.){3}[0-9]{1,3}/) a[\\$i]++} END {for(i in a) print a[i], i | \"sort -rn\"}"'
+                    awk='| awk "{for(i=1;i<=NF;i++) if(\\$i ~ /([0-9]{1,3}\\.){3}[0-9]{1,3}/) a[\\$i]++} END {for(i in a) print a[i], i | \"sort -rn\"}"'
                     current={awkFilter}
                     onClick={(awk) => { setAwkFilter(awk); selectedLog && fetchLogContent(selectedLog, awk); }}
                 />
@@ -327,6 +345,69 @@ export default function LogsScreen() {
                                     Confirm Block
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Stats View All Modal */}
+            {isStatsModalOpen && btmpStats && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+                    <div className="bg-surface border border-outline/20 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh] animate-in fade-in zoom-in duration-200">
+                        <div className="p-6 border-b border-outline/10 flex items-center justify-between bg-white/5">
+                            <div className="flex items-center gap-3">
+                                {statsModalType === 'IPS' ? <Shield className="text-primary" size={24} /> : <Terminal className="text-primary" size={24} />}
+                                <h2 className="text-xl font-bold">
+                                    {statsModalType === 'IPS' ? 'Top Attacking IPs (btmp)' : 'Full Recent Authentication Failures'}
+                                </h2>
+                            </div>
+                            <button onClick={() => setIsStatsModalOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+                                <RefreshCw className="rotate-45" size={20} />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                            {statsModalType === 'IPS' ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {btmpStats.topIps.map(({ first: ip, second: count }) => (
+                                        <div key={ip} className="flex justify-between items-center bg-white/5 border border-outline/5 rounded-xl p-3">
+                                            <div className="flex flex-col">
+                                                <span className="font-mono text-sm text-primary">{ip}</span>
+                                                <span className="text-[10px] text-on-surface-variant uppercase font-bold mt-1">Found in {count} attempts</span>
+                                            </div>
+                                            <button
+                                                onClick={() => { setIpToBlock(ip); setIsBlockModalOpen(true); }}
+                                                className="px-3 py-1.5 bg-red-500/10 text-red-500 rounded-lg text-[10px] font-bold hover:bg-red-500/20 transition-all"
+                                            >
+                                                BLOCK
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {btmpStats.recentFailures.map((entry, i) => (
+                                        <div key={i} className="flex justify-between items-center bg-white/5 border border-outline/5 rounded-xl p-3 font-mono text-xs">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-red-500 font-bold">FAILED</span>
+                                                <span className="text-on-surface font-bold">{entry.user}</span>
+                                                <span className="text-on-surface-variant">from</span>
+                                                <span className="text-primary cursor-pointer hover:underline" onClick={() => { setIpToBlock(entry.ip); setIsBlockModalOpen(true); }}>{entry.ip}</span>
+                                            </div>
+                                            <div className="text-[10px] text-on-surface-variant">
+                                                {new Date(entry.timestamp).toLocaleString()}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div className="p-4 border-t border-outline/10 bg-white/5 flex justify-end">
+                            <button
+                                onClick={() => setIsStatsModalOpen(false)}
+                                className="px-6 py-2 bg-primary text-white rounded-xl font-bold hover:opacity-90 transition-all"
+                            >
+                                Close
+                            </button>
                         </div>
                     </div>
                 </div>
