@@ -14,8 +14,8 @@ interface IComposeService {
 }
 
 class ComposeServiceImpl : IComposeService {
-    private val composeDir = File("data/compose")
-    private val backupDir = File("data/backups/compose")
+    private val composeDir = File("/app/data/compose")
+    private val backupDir = File("/app/data/backups/compose")
 
     init {
         if (!composeDir.exists()) composeDir.mkdirs()

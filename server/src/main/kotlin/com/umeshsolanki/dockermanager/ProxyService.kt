@@ -18,7 +18,7 @@ interface IProxyService {
 class ProxyServiceImpl : IProxyService {
     private val configDir = File("/usr/local/openresty/nginx/conf/conf.d")
     private val logFile = File("/usr/local/openresty/nginx/logs/access.log")
-    private val hostsFile = File("data/proxy/hosts.json")
+    private val hostsFile = File("/app/data/proxy/hosts.json")
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
 
     private var cachedStats: ProxyStats = ProxyStats(0, emptyMap(), emptyMap(), emptyList(), emptyList())

@@ -12,7 +12,7 @@ interface IFirewallService {
 }
 
 class FirewallServiceImpl : IFirewallService {
-    private val dataDir = File("data/firewall")
+    private val dataDir = File("/app/data/firewall")
     private val rulesFile = File(dataDir, "rules.json")
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
 
