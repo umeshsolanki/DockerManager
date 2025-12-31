@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Search, RefreshCw, FileText, XCircle, Terminal, Shield, User, Clock, Settings, Lock, Ban } from 'lucide-react';
+import { Search, RefreshCw, FileText, XCircle, Terminal, Shield, User, Clock, Settings, Lock, Ban, ChevronDown, ChevronRight } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { SystemLog, BlockIPRequest, BtmpStats } from '@/lib/types';
 import { toast } from 'sonner';
@@ -25,6 +25,7 @@ export default function LogsScreen() {
     const [tailLines, setTailLines] = useState<number>(200);
     const [since, setSince] = useState<string>('');
     const [until, setUntil] = useState<string>('');
+    const [isStatsExpanded, setIsStatsExpanded] = useState(true);
 
     const setQuickTimeRange = (range: 'today' | 'yesterday' | 'week' | 'month') => {
         const now = new Date();
@@ -74,10 +75,20 @@ export default function LogsScreen() {
             DockerClient.listSystemLogs(),
             DockerClient.getBtmpStats()
         ]);
-        setLogs(logsData);
-        setBtmpStats(btmpData);
+        setLogs(logsData || []);
+        if (btmpData) {
+            setBtmpStats(btmpData);
+        }
         setIsLoading(false);
     };
+
+    useEffect(() => {
+        if (btmpStats) {
+            setIsAutoJailEnabled(btmpStats.autoJailEnabled ?? false);
+            setJailThreshold(btmpStats.jailThreshold ?? 5);
+            setJailDuration(btmpStats.jailDurationMinutes ?? 30);
+        }
+    }, [btmpStats]);
 
     const manualRefreshBtmp = async () => {
         setIsRefreshingBtmp(true);
@@ -129,95 +140,145 @@ export default function LogsScreen() {
                 {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
             </div>
 
-            {/* Btmp Stats Dashboard */}
+            {/* Security Insights Dashboard with Collapse/Expand */}
             {btmpStats && btmpStats.totalFailedAttempts > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    <div className="bg-red-500/5 border border-red-500/10 rounded-2xl p-4">
-                        <div className="flex items-center justify-between text-red-500 mb-2">
-                            <div className="flex items-center gap-3">
-                                <XCircle size={18} />
-                                <span className="text-xs font-bold uppercase tracking-wider">Failed Logins (btmp)</span>
+                <div className="mb-6 bg-white/5 border border-outline/10 rounded-3xl overflow-hidden transition-all duration-300">
+                    <div
+                        onClick={() => setIsStatsExpanded(!isStatsExpanded)}
+                        className="p-4 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-all group"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-xl transition-all ${isStatsExpanded ? 'bg-red-500/20 text-red-500' : 'bg-red-500/10 text-red-500/60'}`}>
+                                <Shield size={18} />
                             </div>
-                            <button
-                                onClick={(e) => { e.stopPropagation(); manualRefreshBtmp(); }}
-                                disabled={isRefreshingBtmp}
-                                className="p-1 hover:bg-white/10 rounded-lg transition-all"
-                                title="Force Refresh"
-                            >
-                                <RefreshCw size={12} className={isRefreshingBtmp ? 'animate-spin' : ''} />
-                            </button>
+                            <div className="flex flex-col">
+                                <span className="text-sm font-bold tracking-tight">Login Security Insights</span>
+                                <div className="flex items-center gap-3">
+                                    <span className="text-[10px] text-on-surface-variant uppercase font-bold tracking-widest opacity-60">Authentication Monitoring</span>
+                                    {!isStatsExpanded && (
+                                        <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-300">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                                            <span className="text-[10px] bg-red-500/10 text-red-500 px-2 py-0.5 rounded-full font-bold">
+                                                {btmpStats.totalFailedAttempts} FAILURES DETECTED
+                                            </span>
+                                            <span className="text-[10px] text-on-surface-variant/40">
+                                                Last attack {new Date(btmpStats.lastUpdated).toLocaleTimeString()}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
-                        <div className="text-3xl font-bold text-red-500">{btmpStats.totalFailedAttempts}</div>
-                        <div className="text-[9px] text-on-surface-variant mt-1 flex justify-between">
-                            <span>Total recorded attempts</span>
-                            {btmpStats.lastUpdated > 0 && <span>Updated: {new Date(btmpStats.lastUpdated).toLocaleTimeString()}</span>}
+                        <div className="flex items-center gap-4">
+                            {!isStatsExpanded && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); manualRefreshBtmp(); }}
+                                    disabled={isRefreshingBtmp}
+                                    className="p-2 hover:bg-white/10 rounded-xl transition-all text-on-surface-variant group-hover:text-primary"
+                                    title="Refresh Security Data"
+                                >
+                                    <RefreshCw size={16} className={isRefreshingBtmp ? 'animate-spin' : ''} />
+                                </button>
+                            )}
+                            <div className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 text-on-surface-variant group-hover:bg-primary group-hover:text-white transition-all">
+                                {isStatsExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                            </div>
                         </div>
                     </div>
 
-                    <div className="bg-surface border border-outline/10 rounded-2xl p-4">
-                        <div className="flex items-center gap-3 text-on-surface-variant mb-3">
-                            <Shield size={18} />
-                            <span className="text-xs font-bold uppercase tracking-wider">Top Attacking IPs</span>
-                        </div>
-                        <div className="space-y-2 max-h-[100px] overflow-y-hidden pr-2">
-                            {btmpStats.topIps.slice(0, 1000).map(({ first: ip, second: count }) => (
-                                <div key={ip} className="flex justify-between items-center text-[10px]">
-                                    <span className="font-mono text-primary cursor-pointer hover:underline" onClick={() => { setIpToBlock(ip); setIsBlockModalOpen(true); }}>{ip}</span>
-                                    <span className="bg-white/5 px-1.5 py-0.5 rounded font-bold">{count}</span>
+                    {isStatsExpanded && (
+                        <div className="px-5 pb-5 animate-in fade-in zoom-in-95 duration-300">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="bg-red-500/5 border border-red-500/10 rounded-2xl p-4">
+                                    <div className="flex items-center justify-between text-red-500 mb-2">
+                                        <div className="flex items-center gap-3">
+                                            <XCircle size={18} />
+                                            <span className="text-xs font-bold uppercase tracking-wider">Failed Logins (btmp)</span>
+                                        </div>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); manualRefreshBtmp(); }}
+                                            disabled={isRefreshingBtmp}
+                                            className="p-1 hover:bg-white/10 rounded-lg transition-all"
+                                            title="Force Refresh"
+                                        >
+                                            <RefreshCw size={12} className={isRefreshingBtmp ? 'animate-spin' : ''} />
+                                        </button>
+                                    </div>
+                                    <div className="text-3xl font-bold text-red-500">{btmpStats.totalFailedAttempts}</div>
+                                    <div className="text-[9px] text-on-surface-variant mt-1 flex justify-between">
+                                        <span>Total recorded attempts</span>
+                                        {btmpStats.lastUpdated > 0 && <span>Updated: {new Date(btmpStats.lastUpdated).toLocaleTimeString()}</span>}
+                                    </div>
                                 </div>
-                            ))}
-                        </div>
-                        {btmpStats.topIps.length > 4 && (
-                            <button
-                                onClick={() => { setStatsModalType('IPS'); setIsStatsModalOpen(true); }}
-                                className="w-full text-center text-[9px] font-bold text-primary mt-3 hover:underline underline-offset-4"
-                            >
-                                VIEW ALL {btmpStats.topIps.length} IPS
-                            </button>
-                        )}
-                    </div>
 
-                    <div className="bg-surface border border-outline/10 rounded-2xl p-4">
-                        <div className="flex items-center gap-3 text-on-surface-variant mb-3">
-                            <Terminal size={18} />
-                            <span className="text-xs font-bold uppercase tracking-wider">Recent Attempts</span>
-                        </div>
-                        <div className="space-y-1.5 max-h-[100px] overflow-y-hidden pr-2">
-                            {btmpStats.recentFailures.slice(0, 1000).map((entry, i) => (
-                                <div key={i} className="text-[9px] font-mono truncate text-on-surface-variant">
-                                    <span className="text-red-400 font-bold">FAILED</span> {entry.user} from {entry.ip}
+                                <div className="bg-surface border border-outline/10 rounded-2xl p-4">
+                                    <div className="flex items-center gap-3 text-on-surface-variant mb-3">
+                                        <Shield size={18} />
+                                        <span className="text-xs font-bold uppercase tracking-wider">Top Attacking IPs</span>
+                                    </div>
+                                    <div className="space-y-2 max-h-[100px] overflow-y-hidden pr-2">
+                                        {btmpStats.topIps.slice(0, 1000).map(({ first: ip, second: count }) => (
+                                            <div key={ip} className="flex justify-between items-center text-[10px]">
+                                                <span className="font-mono text-primary cursor-pointer hover:underline" onClick={() => { setIpToBlock(ip); setIsBlockModalOpen(true); }}>{ip}</span>
+                                                <span className="bg-white/5 px-1.5 py-0.5 rounded font-bold">{count}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {btmpStats.topIps.length > 4 && (
+                                        <button
+                                            onClick={() => { setStatsModalType('IPS'); setIsStatsModalOpen(true); }}
+                                            className="w-full text-center text-[9px] font-bold text-primary mt-3 hover:underline underline-offset-4"
+                                        >
+                                            VIEW ALL {btmpStats.topIps.length} IPS
+                                        </button>
+                                    )}
                                 </div>
-                            ))}
+
+                                <div className="bg-surface border border-outline/10 rounded-2xl p-4">
+                                    <div className="flex items-center gap-3 text-on-surface-variant mb-3">
+                                        <Terminal size={18} />
+                                        <span className="text-xs font-bold uppercase tracking-wider">Recent Attempts</span>
+                                    </div>
+                                    <div className="space-y-1.5 max-h-[100px] overflow-y-hidden pr-2">
+                                        {btmpStats.recentFailures.slice(0, 1000).map((entry, i) => (
+                                            <div key={i} className="text-[9px] font-mono truncate text-on-surface-variant">
+                                                <span className="text-red-400 font-bold">FAILED</span> {entry.user} from {entry.ip}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {btmpStats.recentFailures.length > 4 && (
+                                        <button
+                                            onClick={() => { setStatsModalType('ATTEMPTS'); setIsStatsModalOpen(true); }}
+                                            className="w-full text-center text-[9px] font-bold text-primary mt-3 hover:underline underline-offset-4"
+                                        >
+                                            VIEW ALL RECENT ATTEMPTS
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
                         </div>
-                        {btmpStats.recentFailures.length > 4 && (
-                            <button
-                                onClick={() => { setStatsModalType('ATTEMPTS'); setIsStatsModalOpen(true); }}
-                                className="w-full text-center text-[9px] font-bold text-primary mt-3 hover:underline underline-offset-4"
-                            >
-                                VIEW ALL RECENT ATTEMPTS
-                            </button>
-                        )}
-                    </div>
+                    )}
                 </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-                <div className="relative max-w-xs">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={18} />
+            <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-5">
+                <div className="relative min-w-[200px] lg:w-64">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={16} />
                     <input
                         type="text"
                         placeholder="Search file names..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-surface border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-primary transition-colors"
+                        className="w-full bg-surface/50 backdrop-blur-sm border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-xs focus:outline-none focus:border-primary transition-colors"
                     />
                 </div>
-                <div className="flex gap-2">
-                    <div className="relative flex-1">
-                        <Terminal className="absolute left-3 top-1/2 -translate-y-1/2 text-primary" size={18} />
+
+                <div className="flex flex-wrap items-center gap-2 flex-1">
+                    <div className="relative flex-1 min-w-[150px]">
+                        <Terminal className="absolute left-3 top-1/2 -translate-y-1/2 text-primary/70" size={14} />
                         <input
                             type="text"
-                            placeholder="AWK filter (e.g. /error/ for searching error)..."
+                            placeholder="AWK filter..."
                             value={awkFilter}
                             onChange={(e) => setAwkFilter(e.target.value)}
                             onKeyDown={(e) => {
@@ -225,11 +286,12 @@ export default function LogsScreen() {
                                     fetchLogContent(selectedLog, awkFilter);
                                 }
                             }}
-                            className="w-full bg-surface border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-sm font-mono focus:outline-none focus:border-primary transition-colors"
+                            className="w-full bg-surface/50 backdrop-blur-sm border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-xs font-mono focus:outline-none focus:border-primary transition-colors h-9"
                         />
                     </div>
-                    <div className="flex items-center gap-2 bg-surface border border-outline/20 rounded-xl px-2">
-                        <span className="text-[10px] uppercase font-bold text-on-surface-variant/60 ml-2">Lines</span>
+
+                    <div className="flex items-center bg-surface/50 backdrop-blur-sm border border-outline/20 rounded-xl px-2 h-9">
+                        <span className="text-[10px] uppercase font-bold text-on-surface-variant/50 ml-1 mr-2">Lines</span>
                         <input
                             type="number"
                             min="10"
@@ -237,52 +299,58 @@ export default function LogsScreen() {
                             step="100"
                             value={tailLines}
                             onChange={(e) => setTailLines(parseInt(e.target.value) || 200)}
-                            className="w-16 bg-transparent border-none py-2 text-xs font-mono focus:outline-none text-primary font-bold"
+                            className="w-12 bg-transparent border-none text-xs font-mono focus:outline-none text-primary font-bold"
                         />
                     </div>
-                    <div className="flex items-center gap-2 bg-surface border border-outline/20 rounded-xl px-2">
-                        <Clock size={14} className="text-on-surface-variant/60 ml-2" />
+
+                    <div className="flex items-center bg-surface/50 backdrop-blur-sm border border-outline/20 rounded-xl px-3 h-9 gap-2">
+                        <Clock size={14} className="text-on-surface-variant/50" />
                         <input
                             type="datetime-local"
                             value={since}
                             onChange={(e) => setSince(e.target.value)}
-                            className="bg-transparent border-none py-2 text-[10px] font-mono focus:outline-none text-primary selection:bg-primary/30"
+                            className="bg-transparent border-none text-[10px] font-mono focus:outline-none text-primary selection:bg-primary/30 w-32"
                             title="Since"
                         />
-                        <span className="text-[10px] opacity-30 px-1">→</span>
+                        <span className="text-[10px] opacity-20">→</span>
                         <input
                             type="datetime-local"
                             value={until}
                             onChange={(e) => setUntil(e.target.value)}
-                            className="bg-transparent border-none py-2 text-[10px] font-mono focus:outline-none text-primary selection:bg-primary/30 mr-2"
+                            className="bg-transparent border-none text-[10px] font-mono focus:outline-none text-primary selection:bg-primary/30 w-32"
                             title="Until"
                         />
                     </div>
-                    <button
-                        onClick={() => selectedLog && fetchLogContent(selectedLog, awkFilter)}
-                        className="p-2 bg-primary/10 text-primary border border-primary/20 rounded-xl hover:bg-primary/20 transition-colors"
-                        title="Apply Filters & Tail"
-                    >
-                        Apply
-                    </button>
-                    <button
-                        onClick={() => {
-                            const ipMatch = logContent.match(/([0-9]{1,3}\.){3}[0-9]{1,3}/);
-                            if (ipMatch) setIpToBlock(ipMatch[0]);
-                            setIsBlockModalOpen(true);
-                        }}
-                        className="p-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-500/20 transition-colors"
-                        title="Block Detected IP Address"
-                    >
-                        <Ban size={18} />
-                    </button>
-                    <button
-                        onClick={fetchLogs}
-                        className="p-2 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors"
-                        title="Refresh list"
-                    >
-                        <RefreshCw size={18} />
-                    </button>
+
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => selectedLog && fetchLogContent(selectedLog, awkFilter)}
+                            disabled={isReadingLog}
+                            className="px-4 h-9 bg-primary/10 text-primary border border-primary/20 rounded-xl hover:bg-primary/20 transition-all font-bold text-[10px] uppercase tracking-wider"
+                        >
+                            Apply
+                        </button>
+
+                        <button
+                            onClick={() => {
+                                const ipMatch = logContent.match(/([0-9]{1,3}\.){3}[0-9]{1,3}/);
+                                if (ipMatch) setIpToBlock(ipMatch[0]);
+                                setIsBlockModalOpen(true);
+                            }}
+                            className="w-9 h-9 flex items-center justify-center bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-500/20 transition-all"
+                            title="Block Detected IP Address"
+                        >
+                            <Ban size={16} />
+                        </button>
+
+                        <button
+                            onClick={fetchLogs}
+                            className="w-9 h-9 flex items-center justify-center bg-surface/50 border border-outline/20 rounded-xl hover:bg-white/5 transition-all"
+                            title="Refresh list"
+                        >
+                            <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -595,12 +663,12 @@ export default function LogsScreen() {
 
                             {statsModalType === 'JAILED' && (
                                 <div className="space-y-3">
-                                    {btmpStats.jailedIps.length === 0 ? (
+                                    {(btmpStats.jailedIps?.length || 0) === 0 ? (
                                         <div className="text-center py-20 text-on-surface-variant italic opacity-50">
                                             No IPs currently in jail. The system is secure.
                                         </div>
                                     ) : (
-                                        btmpStats.jailedIps.map(jail => (
+                                        btmpStats.jailedIps?.map(jail => (
                                             <div key={jail.ip} className="flex justify-between items-center bg-red-500/5 border border-red-500/20 rounded-2xl p-4">
                                                 <div className="flex items-center gap-4">
                                                     <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center text-red-500">

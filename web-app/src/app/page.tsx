@@ -14,16 +14,17 @@ import VolumesScreen from '@/components/screens/VolumesScreen';
 import LogsScreen from '@/components/screens/LogsScreen';
 import FirewallScreen from '@/components/screens/FirewallScreen';
 import ProxyScreen from '@/components/screens/ProxyScreen';
+import DashboardScreen from '@/components/screens/DashboardScreen';
 
 function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [selectedScreen, setSelectedScreen] = useState<Screen>('Containers');
+  const [selectedScreen, setSelectedScreen] = useState<Screen>('Dashboard');
 
   // Initialize from URL on mount
   useEffect(() => {
     const screenParam = searchParams.get('screen') as Screen;
-    const validScreens: Screen[] = ['Containers', 'Images', 'Compose', 'Networks', 'Volumes', 'Secrets', 'Logs', 'Firewall', 'Proxy', 'Settings'];
+    const validScreens: Screen[] = ['Dashboard', 'Containers', 'Images', 'Compose', 'Networks', 'Volumes', 'Secrets', 'Logs', 'Firewall', 'Proxy', 'Settings'];
     if (screenParam && validScreens.includes(screenParam)) {
       setSelectedScreen(screenParam);
     }
@@ -44,6 +45,7 @@ function HomeContent() {
 
   const renderScreen = () => {
     switch (selectedScreen) {
+      case 'Dashboard': return <DashboardScreen />;
       case 'Containers': return <ContainersScreen />;
       case 'Images': return <ImagesScreen />;
       case 'Compose': return <ComposeScreen />;
@@ -54,7 +56,7 @@ function HomeContent() {
       case 'Firewall': return <FirewallScreen />;
       case 'Proxy': return <ProxyScreen />;
       case 'Settings': return <SettingsScreen />;
-      default: return <ContainersScreen />;
+      default: return <DashboardScreen />;
     }
   };
 
