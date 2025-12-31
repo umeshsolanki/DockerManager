@@ -441,10 +441,10 @@ export default function LogsScreen() {
                                 }`}
                         >
                             <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors ${selectedLog?.path === log.path
-                                    ? 'bg-primary text-on-primary'
-                                    : log.isDirectory
-                                        ? 'bg-blue-500/10 text-blue-500'
-                                        : 'bg-white/5 text-on-surface-variant'
+                                ? 'bg-primary text-on-primary'
+                                : log.isDirectory
+                                    ? 'bg-blue-500/10 text-blue-500'
+                                    : 'bg-white/5 text-on-surface-variant'
                                 }`}>
                                 {log.isDirectory ? <Folder size={18} /> : <FileText size={18} />}
                             </div>
@@ -637,7 +637,7 @@ export default function LogsScreen() {
                                         {tab === 'JAILED' && <Lock size={12} />}
                                         {tab === 'CONFIG' && <Settings size={12} />}
                                         {tab}
-                                        {tab === 'JAILED' && btmpStats.jailedIps && btmpStats.jailedIps.length > 0 && (
+                                        {tab === 'JAILED' && btmpStats?.jailedIps && btmpStats.jailedIps.length > 0 && (
                                             <span className="bg-red-500 text-white px-1.5 rounded-full text-[8px]">{btmpStats.jailedIps.length}</span>
                                         )}
                                     </button>
@@ -648,7 +648,7 @@ export default function LogsScreen() {
                         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
                             {statsModalType === 'IPS' && (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                    {btmpStats.topIps.map(({ first: ip, second: count }) => (
+                                    {btmpStats?.topIps?.map(({ first: ip, second: count }) => (
                                         <div key={ip} className="flex justify-between items-center bg-white/5 border border-outline/5 rounded-xl p-4 hover:border-primary/20 transition-all group">
                                             <div className="flex flex-col">
                                                 <span className="font-mono text-sm text-primary font-bold">{ip}</span>
@@ -668,7 +668,7 @@ export default function LogsScreen() {
 
                             {statsModalType === 'USERS' && (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                    {btmpStats.topUsers.map(({ first: user, second: count }) => (
+                                    {btmpStats?.topUsers?.map(({ first: user, second: count }) => (
                                         <div key={user} className="bg-white/5 border border-outline/5 rounded-xl p-3 flex flex-col items-center text-center">
                                             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-2 text-primary">
                                                 <User size={20} />
@@ -692,7 +692,7 @@ export default function LogsScreen() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {btmpStats.recentFailures.map((entry, i) => (
+                                            {btmpStats?.recentFailures?.map((entry, i) => (
                                                 <tr key={i} className="hover:bg-white/5 transition-colors border-b border-outline/5 last:border-0 group">
                                                     <td className="px-4 py-3 text-red-400 font-bold uppercase">{entry.user}</td>
                                                     <td className="px-4 py-3 text-primary font-bold">{entry.ip}</td>

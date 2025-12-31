@@ -14,6 +14,10 @@ fun Route.firewallRoutes() {
             call.respond(DockerService.listFirewallRules())
         }
 
+        get("/iptables") {
+            call.respond(DockerService.getIptablesVisualisation())
+        }
+
         post("/block") {
             val request = call.receive<BlockIPRequest>()
             if (DockerService.blockIP(request)) {

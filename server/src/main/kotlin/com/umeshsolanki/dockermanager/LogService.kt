@@ -45,7 +45,7 @@ class LogServiceImpl : ILogService {
             val command = mutableListOf<String>()
 
             if (file.name.startsWith("wtmp") || file.name.startsWith("btmp")) {
-                val lastCmd = StringBuilder("lastb -f $path")
+                val lastCmd = StringBuilder("lastb -f ${file.absolutePath}")
                 since?.takeIf { it.isNotBlank() }?.let {
                     val formatted = it.replace("-", "").replace("T", "").replace(":", "") + "00"
                     lastCmd.append(" -s $formatted")
@@ -56,7 +56,7 @@ class LogServiceImpl : ILogService {
                 }
                 command.add(lastCmd.toString())
             } else {
-                command.add("cat $path")
+                command.add("cat ${file.absolutePath}")
             }
 
             val processBuilder = ProcessBuilder("sh", "-c", buildString {

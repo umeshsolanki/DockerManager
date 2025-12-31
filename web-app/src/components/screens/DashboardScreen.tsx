@@ -107,8 +107,8 @@ export default function DashboardScreen() {
                 <StatCard
                     icon={<Shield size={20} />}
                     label="Security"
-                    value={btmpStats?.totalFailedAttempts.toString() || '0'}
-                    subValue={`${btmpStats?.jailedIps.length || 0} Blocked`}
+                    value={btmpStats?.totalFailedAttempts?.toString() || '0'}
+                    subValue={`${btmpStats?.jailedIps?.length || 0} Blocked`}
                     color="red"
                 />
                 <StatCard
@@ -121,7 +121,7 @@ export default function DashboardScreen() {
                 <StatCard
                     icon={<Zap size={20} />}
                     label="Threats"
-                    value={btmpStats?.topIps.length.toString() || '0'}
+                    value={btmpStats?.topIps?.length?.toString() || '0'}
                     subValue="Unique Sources"
                     color="orange"
                 />
@@ -190,7 +190,7 @@ export default function DashboardScreen() {
                         <span className="text-[9px] uppercase font-bold text-on-surface-variant/30 tracking-wider">Top attacking IPs</span>
                     </div>
                     <div className="flex flex-col gap-2">
-                        {btmpStats?.topIps.slice(0, 4).map(({ first: ip, second: count }, i) => (
+                        {btmpStats?.topIps?.slice(0, 4).map(({ first: ip, second: count }, i) => (
                             <div key={ip} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 group hover:border-red-500/20 transition-all">
                                 <div className="flex items-center gap-3">
                                     <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-red-500/10 text-red-500 text-[10px] font-bold">
@@ -218,7 +218,7 @@ export default function DashboardScreen() {
                         <span className="text-[9px] uppercase font-bold text-on-surface-variant/30 tracking-wider">Latest auth failures</span>
                     </div>
                     <div className="space-y-2">
-                        {btmpStats?.recentFailures.slice(0, 4).map((failure, i) => (
+                        {btmpStats?.recentFailures?.slice(0, 4).map((failure, i) => (
                             <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
                                 <div className="p-1.5 rounded-lg bg-orange-500/10 text-orange-500">
                                     <ShieldAlert size={14} />
@@ -245,7 +245,7 @@ export default function DashboardScreen() {
                         <span className="text-[9px] uppercase font-bold text-on-surface-variant/30 tracking-wider">Most visited routes</span>
                     </div>
                     <div className="space-y-2">
-                        {proxyStats?.topPaths.slice(0, 4).map(({ first: path, second: count }, i) => (
+                        {proxyStats?.topPaths?.slice(0, 4).map(({ first: path, second: count }, i) => (
                             <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
                                 <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500">
                                     <Server size={14} />
@@ -258,7 +258,7 @@ export default function DashboardScreen() {
                                     <div className="mt-1.5 w-full h-1 bg-white/5 rounded-full overflow-hidden">
                                         <div
                                             className="h-full bg-blue-500/50"
-                                            style={{ width: `${Math.min(100, (count / (proxyStats.topPaths[0]?.second || 1)) * 100)}%` }}
+                                            style={{ width: `${Math.min(100, (count / (proxyStats?.topPaths?.[0]?.second || 1)) * 100)}%` }}
                                         />
                                     </div>
                                 </div>

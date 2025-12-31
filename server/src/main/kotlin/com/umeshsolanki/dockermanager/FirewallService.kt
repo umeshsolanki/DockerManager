@@ -9,6 +9,7 @@ interface IFirewallService {
     fun blockIP(request: BlockIPRequest): Boolean
     fun unblockIP(id: String): Boolean
     fun unblockIPByAddress(ip: String): Boolean
+    fun getIptablesVisualisation(): Map<String, List<IptablesRule>>
 }
 
 class FirewallServiceImpl : IFirewallService {
@@ -129,6 +130,41 @@ class FirewallServiceImpl : IFirewallService {
             e.printStackTrace()
             false
         }
+    }
+
+    override fun getIptablesVisualisation(): Map<String, List<IptablesRule>> {
+        val output = executeCommand("iptables -L -n -v")
+        val chains = mutableMapOf<String, MutableList<IptablesRule>>()
+        var currentChain = ""
+
+        output.lines().forEach { line ->
+            val trimmed = line.trim()
+            if (trimmed.startsWith("Chain")) {
+                currentChain = trimmed.split(Regex("\\s+"))[1]
+                chains[currentChain] = mutableListOf()
+            } else if (trimmed.isNotBlank() && !trimmed.startsWith("pkts") && currentChain.isNotBlank()) {
+                val parts = trimmed.split(Regex("\\s+"))
+                if (parts.size >= 9) {
+                    try {
+                        val rule = IptablesRule(
+                            pkts = parts[0],
+                            bytes = parts[1],
+                            target = parts[2],
+                            prot = parts[3],
+                            opt = parts[4],
+                            ins = parts[5],
+                            out = parts[6],
+                            source = parts[7],
+                            destination = parts[8],
+                            extra = if (parts.size > 9) parts.drop(9).joinToString(" ") else ""
+                        )
+                        chains[currentChain]?.add(rule)
+                    } catch (e: Exception) {
+                    }
+                }
+            }
+        }
+        return chains
     }
 
     private fun syncRules() {

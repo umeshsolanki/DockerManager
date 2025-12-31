@@ -60,6 +60,7 @@ object DockerService {
     fun blockIP(request: BlockIPRequest) = firewallService.blockIP(request)
     fun unblockIP(id: String) = firewallService.unblockIP(id)
     fun unblockIPByAddress(ip: String) = firewallService.unblockIPByAddress(ip)
+    fun getIptablesVisualisation() = firewallService.getIptablesVisualisation()
 
     fun listProxyHosts() = proxyService.listHosts()
     fun createProxyHost(host: ProxyHost) = proxyService.createHost(host)

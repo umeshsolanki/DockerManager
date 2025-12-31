@@ -143,6 +143,19 @@ export interface BlockIPRequest {
   comment?: string;
 }
 
+export interface IptablesRule {
+  pkts: string;
+  bytes: string;
+  target: string;
+  prot: string;
+  opt: string;
+  ins: string;
+  out: string;
+  source: string;
+  destination: string;
+  extra: string;
+}
+
 export interface ProxyHost {
   id: string;
   domain: string;

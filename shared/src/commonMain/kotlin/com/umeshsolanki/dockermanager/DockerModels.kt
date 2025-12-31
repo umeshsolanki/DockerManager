@@ -168,6 +168,20 @@ class BlockIPRequest(
 )
 
 @Serializable
+class IptablesRule(
+    val pkts: String,
+    val bytes: String,
+    val target: String,
+    val prot: String,
+    val opt: String,
+    val ins: String,
+    val out: String,
+    val source: String,
+    val destination: String,
+    val extra: String,
+)
+
+@Serializable
 data class ProxyHost(
     val id: String,
     val domain: String,
