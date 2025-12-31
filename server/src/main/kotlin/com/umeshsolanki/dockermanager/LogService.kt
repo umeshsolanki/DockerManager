@@ -35,7 +35,7 @@ class LogServiceImpl : ILogService {
         return try {
             val command = mutableListOf<String>()
 
-            if (file.name == "wtmp" || file.name == "btmp") {
+            if (file.name.startsWith("wtmp") || file.name.startsWith("btmp")) {
                 val lastCmd = StringBuilder("last -f $path")
                 since?.takeIf { it.isNotBlank() }?.let {
                     val formatted = it.replace("-", "").replace("T", "").replace(":", "") + "00"

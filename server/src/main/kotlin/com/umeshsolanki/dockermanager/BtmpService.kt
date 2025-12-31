@@ -90,24 +90,12 @@ class BtmpServiceImpl(
         updateCachedStats()
     }
 
-    private fun updateStats() {
-        if (!btmpFile.exists()) return
 
-        val currentSize = btmpFile.length()
-        if (currentSize == lastProcessedSize) return
-
-        if (currentSize < lastProcessedSize) {
-            totalFailedAttempts = 0
-            userCounts.clear()
-            ipCounts.clear()
-            recentFailuresList.clear()
-            lastProcessedSize = 0
-        }
-
-        val deltaFile = File("/tmp/btmp_delta")
+    private fun processFileRange(file: File, startByte: Long) {
+        val deltaFile = File("/tmp/btmp_delta_${System.currentTimeMillis()}")
         try {
-            executeCommand("tail -c +${lastProcessedSize + 1} ${btmpFile.absolutePath} > ${deltaFile.absolutePath}")
-            val output = executeCommand("last -f ${deltaFile.absolutePath} | grep -v 'btmp begins'")
+            executeCommand("tail -c +${startByte + 1} ${file.absolutePath} > ${deltaFile.absolutePath}")
+            val output = executeCommand("last -f ${deltaFile.absolutePath}")
             
             val lines = output.lines().filter { it.isNotBlank() }
             if (lines.isNotEmpty()) {
@@ -120,7 +108,7 @@ class BtmpServiceImpl(
                         val timeStr = parts.slice(3 until minOf(parts.size, 7)).joinToString(" ")
                         val duration = if (parts.size > 10) parts.last() else ""
 
-                        if (user != "last" && user != "btmp") {
+                        if (user != "last" && user != "btmp" && user != "btmp_delta" && session != "begins") {
                             totalFailedAttempts++
                             userCounts[user] = (userCounts[user] ?: 0) + 1
                             ipCounts[ip] = (ipCounts[ip] ?: 0) + 1
@@ -152,12 +140,34 @@ class BtmpServiceImpl(
                     repeat(toRemove) { recentFailuresList.removeAt(recentFailuresList.size - 1) }
                 }
             }
-            lastProcessedSize = currentSize
-            updateCachedStats()
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
             if (deltaFile.exists()) deltaFile.delete()
+        }
+    }
+
+    private fun updateStats() {
+        if (!btmpFile.exists()) return
+
+        val currentSize = btmpFile.length()
+        if (currentSize == lastProcessedSize) return
+
+        if (currentSize < lastProcessedSize) {
+            // Process the end of rotated file
+            val rotatedFile = File("/host/var/log/btmp.1")
+            if (rotatedFile.exists()) {
+                processFileRange(rotatedFile, lastProcessedSize)
+            }
+            lastProcessedSize = 0
+        }
+
+        try {
+            processFileRange(btmpFile, lastProcessedSize)
+            lastProcessedSize = currentSize
+            updateCachedStats()
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
