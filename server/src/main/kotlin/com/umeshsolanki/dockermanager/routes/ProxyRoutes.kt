@@ -53,5 +53,9 @@ fun Route.proxyRoutes() {
         get("/stats") {
             call.respond(DockerService.getProxyStats())
         }
+
+        get("/certificates") {
+            call.respond(DockerService.listProxyCertificates())
+        }
     }
 }

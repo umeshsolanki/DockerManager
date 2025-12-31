@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Globe, Plus, Search, RefreshCw, Trash2, Power, BarChart3, Activity, Clock, Server, ExternalLink, ShieldCheck, Lock } from 'lucide-react';
+import { Globe, Plus, Search, RefreshCw, Trash2, Power, BarChart3, Activity, Clock, Server, ExternalLink, ShieldCheck, Lock, Network, FileKey } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { ProxyHost, ProxyStats } from '@/lib/types';
+import { ProxyHost, ProxyStats, SSLCertificate } from '@/lib/types';
 import { toast } from 'sonner';
 
 export default function ProxyScreen() {
@@ -147,6 +147,7 @@ export default function ProxyScreen() {
                                             <h3 className="text-lg font-bold">{host.domain}</h3>
                                             {!host.enabled && <span className="text-[10px] bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded font-bold uppercase">Disabled</span>}
                                             {host.ssl && <span className="text-[10px] bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1"><Lock size={10} /> SSL</span>}
+                                            {host.websocketEnabled && <span className="text-[10px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1"><Network size={10} /> WS</span>}
                                         </div>
                                         <div className="flex items-center gap-2 text-on-surface-variant text-sm mt-1">
                                             <ExternalLink size={14} />
@@ -252,7 +253,14 @@ export default function ProxyScreen() {
 function AddHostModal({ onClose, onAdded }: { onClose: () => void, onAdded: () => void }) {
     const [domain, setDomain] = useState('');
     const [target, setTarget] = useState('http://');
+    const [websocketEnabled, setWebsocketEnabled] = useState(false);
+    const [selectedCert, setSelectedCert] = useState<string>('');
+    const [certs, setCerts] = useState<SSLCertificate[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        DockerClient.listProxyCertificates().then(setCerts);
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -262,7 +270,9 @@ function AddHostModal({ onClose, onAdded }: { onClose: () => void, onAdded: () =
             domain,
             target,
             enabled: true,
-            ssl: false,
+            ssl: !!selectedCert,
+            websocketEnabled,
+            customSslPath: selectedCert || undefined,
             createdAt: Date.now()
         });
         if (success) {
@@ -301,6 +311,37 @@ function AddHostModal({ onClose, onAdded }: { onClose: () => void, onAdded: () =
                             className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2 focus:outline-none focus:border-primary"
                         />
                     </div>
+
+                    <div>
+                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1 ml-1">SSL Certificate (Optional)</label>
+                        <div className="relative">
+                            <select
+                                value={selectedCert}
+                                onChange={(e) => setSelectedCert(e.target.value)}
+                                className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2.5 appearance-none focus:outline-none focus:border-primary text-sm"
+                            >
+                                <option value="">Auto-generate / None</option>
+                                {certs.map(cert => (
+                                    <option key={cert.id} value={`${cert.certPath}|${cert.keyPath}`}>
+                                        {cert.domain} ({cert.id})
+                                    </option>
+                                ))}
+                            </select>
+                            <FileKey size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" />
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 py-2">
+                        <input
+                            type="checkbox"
+                            id="ws-toggle"
+                            checked={websocketEnabled}
+                            onChange={(e) => setWebsocketEnabled(e.target.checked)}
+                            className="w-5 h-5 rounded border-outline/20 bg-white/5 checked:bg-primary accent-primary"
+                        />
+                        <label htmlFor="ws-toggle" className="text-sm font-medium cursor-pointer">Enable Websockets Support</label>
+                    </div>
+
                     <div className="flex gap-3 pt-4">
                         <button
                             type="button"

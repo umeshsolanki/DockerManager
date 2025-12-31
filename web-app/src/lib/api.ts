@@ -1,4 +1,4 @@
-import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest, ComposeResult, SystemLog, FirewallRule, BlockIPRequest, ProxyHost, ProxyHit, ProxyStats, BtmpStats, BtmpEntry, IptablesRule } from './types';
+import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest, ComposeResult, SystemLog, FirewallRule, BlockIPRequest, ProxyHost, ProxyHit, ProxyStats, BtmpStats, BtmpEntry, IptablesRule, SSLCertificate } from './types';
 
 const DEFAULT_SERVER_URL = "http://192.168.1.3:9091";
 
@@ -462,6 +462,16 @@ export const DockerClient = {
         } catch (e) {
             console.error(e);
             return null;
+        }
+    },
+
+    async listProxyCertificates(): Promise<SSLCertificate[]> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/certificates`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return [];
         }
     }
 };

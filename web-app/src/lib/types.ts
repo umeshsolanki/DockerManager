@@ -162,7 +162,16 @@ export interface ProxyHost {
   target: string;
   enabled: boolean;
   ssl: boolean;
+  websocketEnabled: boolean;
+  customSslPath?: string;
   createdAt: number;
+}
+
+export interface SSLCertificate {
+  id: string;
+  domain: string;
+  certPath: string;
+  keyPath: string;
 }
 
 export interface ProxyHit {

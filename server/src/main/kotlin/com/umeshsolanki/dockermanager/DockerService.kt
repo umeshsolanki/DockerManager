@@ -68,4 +68,5 @@ object DockerService {
     fun toggleProxyHost(id: String) = proxyService.toggleHost(id)
     fun requestProxySSL(id: String) = proxyService.requestSSL(id)
     fun getProxyStats() = proxyService.getStats()
+    fun listProxyCertificates() = proxyService.listCertificates()
 }

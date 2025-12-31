@@ -188,7 +188,17 @@ data class ProxyHost(
     val target: String,
     val enabled: Boolean = true,
     val ssl: Boolean = false,
+    val websocketEnabled: Boolean = false,
+    val customSslPath: String? = null,
     val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
+)
+
+@Serializable
+class SSLCertificate(
+    val id: String,
+    val domain: String,
+    val certPath: String,
+    val keyPath: String,
 )
 
 @Serializable

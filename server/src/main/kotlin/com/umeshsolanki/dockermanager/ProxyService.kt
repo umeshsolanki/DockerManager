@@ -13,6 +13,7 @@ interface IProxyService {
     fun getStats(): ProxyStats
     fun toggleHost(id: String): Boolean
     fun requestSSL(id: String): Boolean
+    fun listCertificates(): List<SSLCertificate>
 }
 
 class ProxyServiceImpl : IProxyService {
@@ -55,7 +56,7 @@ class ProxyServiceImpl : IProxyService {
         val totalHits = executeCommand("wc -l < ${logFile.absolutePath}").trim().toLongOrNull() ?: 0
         
         // Hits by Status
-        val statusCounts = executeCommand("awk '{print ${'$'}9}' ${logFile.absolutePath} | sort | uniq -c")
+        val statusCounts = executeCommand("awk '{print \$9}' ${logFile.absolutePath} | sort | uniq -c")
             .lineSequence()
             .filter { it.isNotBlank() }
             .associate { 
@@ -64,7 +65,7 @@ class ProxyServiceImpl : IProxyService {
             }
 
         // Hits over time (Last 24 hours approximation from last 5000 lines)
-        val timeCounts = executeCommand("tail -n 5000 ${logFile.absolutePath} | awk -F'[' '{print ${'$'}2}' | awk -F':' '{print ${'$'}2\":00\"}' | sort | uniq -c")
+        val timeCounts = executeCommand("tail -n 5000 ${logFile.absolutePath} | awk -F'[' '{print \$2}' | awk -F':' '{print \$2\":00\"}' | sort | uniq -c")
             .lineSequence()
             .filter { it.isNotBlank() }
             .associate {
@@ -73,7 +74,7 @@ class ProxyServiceImpl : IProxyService {
             }
 
         // Top Paths
-        val topPaths = executeCommand("awk '{print ${'$'}7}' ${logFile.absolutePath} | sort | uniq -c | sort -rn | head -n 5")
+        val topPaths = executeCommand("awk '{print \$7}' ${logFile.absolutePath} | sort | uniq -c | sort -rn | head -n 5")
             .lineSequence()
             .filter { it.isNotBlank() }
             .map {
@@ -208,6 +209,46 @@ class ProxyServiceImpl : IProxyService {
         return false
     }
 
+    override fun listCertificates(): List<SSLCertificate> {
+        val certs = mutableListOf<SSLCertificate>()
+        
+        // Scan LetsEncrypt
+        val leDir = File("/etc/letsencrypt/live")
+        if (leDir.exists()) {
+            leDir.listFiles()?.filter { it.isDirectory }?.forEach { dir ->
+                val fullchain = File(dir, "fullchain.pem")
+                val privkey = File(dir, "privkey.pem")
+                if (fullchain.exists() && privkey.exists()) {
+                    certs.add(SSLCertificate(
+                        id = dir.name,
+                        domain = dir.name,
+                        certPath = fullchain.absolutePath,
+                        keyPath = privkey.absolutePath
+                    ))
+                }
+            }
+        }
+
+        // Scan custom certs dir
+        val custDir = File("/app/data/certs")
+        if (custDir.exists()) {
+            custDir.listFiles()?.filter { it.extension == "crt" || it.extension == "pem" }?.forEach { cert ->
+                val keyName = cert.nameWithoutExtension + ".key"
+                val keyFile = File(cert.parentFile, keyName)
+                if (keyFile.exists()) {
+                    certs.add(SSLCertificate(
+                        id = cert.nameWithoutExtension,
+                        domain = cert.nameWithoutExtension,
+                        certPath = cert.absolutePath,
+                        keyPath = keyFile.absolutePath
+                    ))
+                }
+            }
+        }
+        
+        return certs
+    }
+
     private fun executeCommand(command: String): String {
         return try {
             val process = ProcessBuilder("sh", "-c", command).start()
@@ -218,6 +259,41 @@ class ProxyServiceImpl : IProxyService {
     }
 
     private fun generateNginxConfig(host: ProxyHost) {
+        val wsConfig = if (host.websocketEnabled) """
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade ${'$'}http_upgrade;
+            proxy_set_header Connection "upgrade";
+        """.trimIndent() else ""
+
+        val sslConfig = if (host.ssl) {
+            val (cert, key) = if (!host.customSslPath.isNullOrBlank() && host.customSslPath.contains("|")) {
+                val parts = host.customSslPath.split("|")
+                parts[0] to parts[1]
+            } else {
+                "/etc/letsencrypt/live/${host.domain}/fullchain.pem" to "/etc/letsencrypt/live/${host.domain}/privkey.pem"
+            }
+            
+            """
+server {
+    listen 443 ssl;
+    server_name ${host.domain};
+
+    ssl_certificate $cert;
+    ssl_certificate_key $key;
+
+    location / {
+        proxy_pass ${host.target};
+        proxy_set_header Host ${'$'}host;
+        proxy_set_header X-Real-IP ${'$'}remote_addr;
+        proxy_set_header X-Forwarded-For ${'$'}proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto ${'$'}scheme;
+        
+        $wsConfig
+    }
+}
+            """.trimIndent()
+        } else ""
+
         val config = """
 server {
     listen 80;
@@ -235,27 +311,13 @@ server {
         proxy_set_header X-Real-IP ${'$'}remote_addr;
         proxy_set_header X-Forwarded-For ${'$'}proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto ${'$'}scheme;
+        
+        $wsConfig
         """.trimIndent() else ""}
     }
 }
 
-${if (host.ssl) """
-server {
-    listen 443 ssl;
-    server_name ${host.domain};
-
-    ssl_certificate /etc/letsencrypt/live/${host.domain}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${host.domain}/privkey.pem;
-
-    location / {
-        proxy_pass ${host.target};
-        proxy_set_header Host ${'$'}host;
-        proxy_set_header X-Real-IP ${'$'}remote_addr;
-        proxy_set_header X-Forwarded-For ${'$'}proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto ${'$'}scheme;
-    }
-}
-""".trimIndent() else ""}
+$sslConfig
         """.trimIndent()
         File(configDir, "${host.domain}.conf").writeText(config)
     }
