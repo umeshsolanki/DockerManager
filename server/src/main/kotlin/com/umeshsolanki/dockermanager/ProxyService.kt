@@ -8,10 +8,11 @@ import java.text.SimpleDateFormat
 
 interface IProxyService {
     fun listHosts(): List<ProxyHost>
-    fun createHost(host: ProxyHost): Boolean
+    fun createHost(host: ProxyHost): Pair<Boolean, String>
     fun deleteHost(id: String): Boolean
     fun getStats(): ProxyStats
     fun toggleHost(id: String): Boolean
+    fun updateHost(host: ProxyHost): Pair<Boolean, String>
     fun requestSSL(id: String): Boolean
     fun listCertificates(): List<SSLCertificate>
 }
@@ -131,18 +132,24 @@ class ProxyServiceImpl : IProxyService {
 
     override fun listHosts(): List<ProxyHost> = loadHosts()
 
-    override fun createHost(host: ProxyHost): Boolean {
+    override fun createHost(host: ProxyHost): Pair<Boolean, String> {
         return try {
             val hosts = loadHosts()
             val newHost = if (host.id.isEmpty()) host.copy(id = UUID.randomUUID().toString()) else host
             hosts.add(newHost)
-            generateNginxConfig(newHost)
-            saveHosts(hosts)
+            
+            val configResult = generateNginxConfig(newHost)
+            saveHosts(hosts) // Save regardless, so user sees it
+            
+            if (!configResult.first) {
+                 return false to configResult.second
+            }
+            
             reloadNginx()
-            true
+            true to "Host created successfully"
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            false to (e.message ?: "Unknown error")
         }
     }
 
@@ -157,6 +164,37 @@ class ProxyServiceImpl : IProxyService {
             true
         } catch (e: Exception) {
             false
+        }
+    }
+
+    override fun updateHost(host: ProxyHost): Pair<Boolean, String> {
+        return try {
+            val hosts = loadHosts()
+            val index = hosts.indexOfFirst { it.id == host.id }
+            if (index == -1) return false to "Host not found"
+            
+            val oldHost = hosts[index]
+            // If domain changed or disabled, remove old config
+            if (oldHost.domain != host.domain || !host.enabled) {
+                File(configDir, "${oldHost.domain}.conf").delete()
+            }
+            
+            hosts[index] = host
+            
+            if (host.enabled) {
+                val configResult = generateNginxConfig(host)
+                if (!configResult.first) {
+                    saveHosts(hosts)
+                    return false to configResult.second
+                }
+            }
+            
+            saveHosts(hosts)
+            reloadNginx()
+            true to "Host updated successfully"
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false to (e.message ?: "Unknown error")
         }
     }
 
@@ -258,7 +296,7 @@ class ProxyServiceImpl : IProxyService {
         }
     }
 
-    private fun generateNginxConfig(host: ProxyHost) {
+    private fun generateNginxConfig(host: ProxyHost): Pair<Boolean, String> {
         val wsConfig = if (host.websocketEnabled) """
             proxy_http_version 1.1;
             proxy_set_header Upgrade ${'$'}http_upgrade;
@@ -271,6 +309,12 @@ class ProxyServiceImpl : IProxyService {
                 if (parts.size >= 2) parts[0] to parts[1] else "/etc/letsencrypt/live/${host.domain}/fullchain.pem" to "/etc/letsencrypt/live/${host.domain}/privkey.pem"
             } else {
                 "/etc/letsencrypt/live/${host.domain}/fullchain.pem" to "/etc/letsencrypt/live/${host.domain}/privkey.pem"
+            }
+
+            // check if files exist
+            if (!File(cert).exists() || !File(key).exists()) {
+                println("Cert files missing for ${host.domain}")
+                return false to "SSL Certificate files missing: $cert"
             }
 
             val hstsHeader = if (host.hstsEnabled) "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;" else ""
@@ -326,8 +370,10 @@ $sslConfig
         
         try {
             File(configDir, "${host.domain}.conf").writeText(config)
+            return true to "Config generated"
         } catch (e: Exception) {
             e.printStackTrace()
+            return false to "Failed to write config: ${e.message}"
         }
     }
 

@@ -415,14 +415,30 @@ export const DockerClient = {
         }
     },
 
-    async createProxyHost(host: Partial<ProxyHost>): Promise<boolean> {
+    async createProxyHost(host: Partial<ProxyHost>): Promise<boolean | string> {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/hosts`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(host)
             });
-            return response.ok;
+            if (!response.ok) return await response.text();
+            return true;
+        } catch (e) {
+            console.error(e);
+            return false;
+        }
+    },
+
+    async updateProxyHost(host: ProxyHost): Promise<boolean | string> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/hosts/${host.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(host)
+            });
+            if (!response.ok) return await response.text();
+            return true;
         } catch (e) {
             console.error(e);
             return false;

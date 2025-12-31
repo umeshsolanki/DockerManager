@@ -16,10 +16,22 @@ fun Route.proxyRoutes() {
 
         post("/hosts") {
             val host = call.receive<ProxyHost>()
-            if (DockerService.createProxyHost(host)) {
-                call.respond(HttpStatusCode.Created)
+            val result = DockerService.createProxyHost(host)
+            if (result.first) {
+                call.respond(HttpStatusCode.Created, result.second)
             } else {
-                call.respond(HttpStatusCode.InternalServerError)
+                call.respond(HttpStatusCode.BadRequest, result.second) // Using BadRequest for explicit errors
+            }
+        }
+
+        put("/hosts/{id}") {
+            val id = call.parameters["id"] ?: return@put call.respond(HttpStatusCode.BadRequest)
+            val host = call.receive<ProxyHost>()
+            val result = DockerService.updateProxyHost(host.copy(id = id))
+            if (result.first) {
+                call.respond(HttpStatusCode.OK, result.second)
+            } else {
+                call.respond(HttpStatusCode.BadRequest, result.second)
             }
         }
 

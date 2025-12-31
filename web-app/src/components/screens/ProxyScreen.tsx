@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Globe, Plus, Search, RefreshCw, Trash2, Power, BarChart3, Activity, Clock, Server, ExternalLink, ShieldCheck, Lock, Network, FileKey } from 'lucide-react';
+import { Globe, Plus, Search, RefreshCw, Trash2, Power, BarChart3, Activity, Clock, Server, ExternalLink, ShieldCheck, Lock, Network, FileKey, Pencil } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { ProxyHost, ProxyStats, SSLCertificate } from '@/lib/types';
 import { toast } from 'sonner';
@@ -12,6 +12,7 @@ export default function ProxyScreen() {
     const [isLoading, setIsLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [editingHost, setEditingHost] = useState<ProxyHost | null>(null);
 
     const fetchData = async () => {
         setIsLoading(true);
@@ -167,6 +168,13 @@ export default function ProxyScreen() {
                                         </button>
                                     )}
                                     <button
+                                        onClick={() => setEditingHost(host)}
+                                        className="p-2 text-on-surface-variant hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-all"
+                                        title="Edit"
+                                    >
+                                        <Pencil size={18} />
+                                    </button>
+                                    <button
                                         onClick={() => handleToggle(host.id)}
                                         className={`p-2 rounded-lg transition-all ${host.enabled ? 'text-green-500 hover:bg-green-500/10' : 'text-on-surface-variant hover:bg-white/10'}`}
                                         title={host.enabled ? "Disable" : "Enable"}
@@ -242,22 +250,30 @@ export default function ProxyScreen() {
             </div>
 
             {isAddModalOpen && (
-                <AddHostModal
+                <ProxyHostModal
                     onClose={() => setIsAddModalOpen(false)}
                     onAdded={() => { setIsAddModalOpen(false); fetchData(); }}
+                />
+            )}
+
+            {editingHost && (
+                <ProxyHostModal
+                    initialHost={editingHost}
+                    onClose={() => setEditingHost(null)}
+                    onAdded={() => { setEditingHost(null); fetchData(); }}
                 />
             )}
         </div>
     );
 }
 
-function AddHostModal({ onClose, onAdded }: { onClose: () => void, onAdded: () => void }) {
-    const [domain, setDomain] = useState('');
-    const [target, setTarget] = useState('http://');
-    const [websocketEnabled, setWebsocketEnabled] = useState(false);
-    const [hstsEnabled, setHstsEnabled] = useState(false);
-    const [sslEnabled, setSslEnabled] = useState(false);
-    const [selectedCert, setSelectedCert] = useState<string>('');
+function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void, onAdded: () => void, initialHost?: ProxyHost }) {
+    const [domain, setDomain] = useState(initialHost?.domain || '');
+    const [target, setTarget] = useState(initialHost?.target || 'http://');
+    const [websocketEnabled, setWebsocketEnabled] = useState(initialHost?.websocketEnabled || false);
+    const [hstsEnabled, setHstsEnabled] = useState(initialHost?.hstsEnabled || false);
+    const [sslEnabled, setSslEnabled] = useState(initialHost?.ssl || false);
+    const [selectedCert, setSelectedCert] = useState<string>(initialHost?.customSslPath || '');
     const [certs, setCerts] = useState<SSLCertificate[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -268,22 +284,31 @@ function AddHostModal({ onClose, onAdded }: { onClose: () => void, onAdded: () =
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
-        const success = await DockerClient.createProxyHost({
-            id: '',
+
+        const hostData: ProxyHost = {
+            id: initialHost?.id || '',
             domain,
             target,
-            enabled: true,
+            enabled: initialHost?.enabled ?? true,
             ssl: sslEnabled,
             websocketEnabled,
             hstsEnabled: sslEnabled ? hstsEnabled : false,
             customSslPath: (sslEnabled && selectedCert) ? selectedCert : undefined,
-            createdAt: Date.now()
-        });
-        if (success) {
-            toast.success('Proxy host created');
+            createdAt: initialHost?.createdAt || Date.now()
+        };
+
+        const result = initialHost
+            ? await DockerClient.updateProxyHost(hostData)
+            : await DockerClient.createProxyHost(hostData);
+
+        if (result === true) {
+            toast.success(initialHost ? 'Proxy host updated' : 'Proxy host created');
             onAdded();
+        } else if (typeof result === 'string') {
+            toast.error(result); // Show specific error from backend
+            if (!initialHost) onAdded(); // Even if config failed, host might be created/saved
         } else {
-            toast.error('Failed to create proxy host');
+            toast.error(initialHost ? 'Failed to update proxy host' : 'Failed to create proxy host');
         }
         setIsSubmitting(false);
     };
@@ -291,7 +316,7 @@ function AddHostModal({ onClose, onAdded }: { onClose: () => void, onAdded: () =
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <div className="bg-surface border border-outline/20 rounded-3xl w-full max-w-md shadow-2xl p-6">
-                <h2 className="text-xl font-bold mb-6">Add Proxy Host</h2>
+                <h2 className="text-xl font-bold mb-6">{initialHost ? 'Edit Proxy Host' : 'Add Proxy Host'}</h2>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1 ml-1">Domain Name</label>
@@ -396,7 +421,7 @@ function AddHostModal({ onClose, onAdded }: { onClose: () => void, onAdded: () =
                             disabled={isSubmitting}
                             className="flex-1 bg-primary text-on-primary px-4 py-2 rounded-xl font-bold"
                         >
-                            {isSubmitting ? 'Creating...' : 'Create Host'}
+                            {initialHost ? 'Save Changes' : 'Create Host'}
                         </button>
                     </div>
                 </form>
