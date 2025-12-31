@@ -15,7 +15,6 @@ services:
       - docker-manager-storage:/app/data
       - /home:/home
       - /var/log:/host/var/log:ro
-      - /usr/bin/last:/host/usr/bin/last:ro
       - nginx:/nginx
       - certbot:/certbot
 

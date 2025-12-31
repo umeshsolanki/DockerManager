@@ -38,13 +38,13 @@ class LogServiceImpl : ILogService {
         if (!btmpFile.exists()) return
 
         // Use host's last to parse btmp and extract user/ip ($1=user, $3=ip)
-        val output = executeCommand($$"/host/usr/bin/last -f $${btmpFile.absolutePath} | grep -v 'btmp begins' | awk '{print $1\" \"$3}'")
+        val output = executeCommand("last -f ${btmpFile.absolutePath} | grep -v 'btmp begins' | awk '{print $1\" \"$3}'")
 
         val entries = output.lineSequence()
             .filter { it.isNotBlank() }
             .map { line ->
                 val parts = line.trim().split(" ")
-                val user = if (parts.size > 0) parts[0] else "unknown"
+                val user = if (parts.isNotEmpty()) parts[0] else "unknown"
                 val ip = if (parts.size > 1) parts[1] else "unknown"
                 user to ip
             }
@@ -100,7 +100,7 @@ class LogServiceImpl : ILogService {
             val command = mutableListOf<String>()
 
             if (file.name == "wtmp" || file.name == "btmp") {
-                command.add("/host/usr/bin/last -f $path")
+                command.add("last -f $path")
             } else {
                 command.add("cat $path")
             }

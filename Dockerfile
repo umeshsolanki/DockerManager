@@ -1,9 +1,16 @@
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jre
 
 WORKDIR /app
 
-# Install Docker CLI, Compose, util-linux, utmps, firewall tools, and tzdata
-RUN apk add --no-cache docker-cli docker-cli-compose util-linux utmps iptables ipset tzdata
+# Install Docker CLI, iptables, ipset, util-linux, and tzdata
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    docker.io \
+    iptables \
+    ipset \
+    util-linux \
+    tzdata && \
+    rm -rf /var/lib/apt/lists/*
 ENV TZ=Asia/Kolkata
 
 # Copy the locally built FatJar
