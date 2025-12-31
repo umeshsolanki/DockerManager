@@ -24,6 +24,7 @@ dependencies {
     implementation(libs.ktor.serverContentNegotiation)
     implementation(libs.ktor.serverCors)
     implementation(libs.ktor.serializationKotlinxJson)
+    implementation(libs.kotlinx.coroutines.core)
     implementation(libs.docker.java)
     implementation(libs.docker.java.transport)
     testImplementation(libs.ktor.serverTestHost)

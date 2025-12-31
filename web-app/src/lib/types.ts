@@ -177,7 +177,16 @@ export interface ProxyStats {
 export interface BtmpEntry {
   user: string;
   ip: string;
+  session: string;
+  timestampString: string;
   timestamp: number;
+  duration: string;
+}
+
+export interface JailedIP {
+  ip: string;
+  reason: string;
+  expiresAt: number;
 }
 
 export interface BtmpStats {
@@ -185,6 +194,11 @@ export interface BtmpStats {
   topUsers: KotlinPair<string, number>[];
   topIps: KotlinPair<string, number>[];
   recentFailures: BtmpEntry[];
+  lastUpdated: number;
+  jailedIps: JailedIP[];
+  autoJailEnabled: boolean;
+  jailThreshold: number;
+  jailDurationMinutes: number;
 }
 
 export type Screen = 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Settings';

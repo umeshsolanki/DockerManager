@@ -9,6 +9,7 @@ interface IFirewallService {
     fun listRules(): List<FirewallRule>
     fun blockIP(request: BlockIPRequest): Boolean
     fun unblockIP(id: String): Boolean
+    fun unblockIPByAddress(ip: String): Boolean
 }
 
 class FirewallServiceImpl : IFirewallService {
@@ -92,6 +93,22 @@ class FirewallServiceImpl : IFirewallService {
                 executeCommand("ipset del dm-blocklist ${rule.ip}")
             }
 
+            rules.remove(rule)
+            saveRules(rules)
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    override fun unblockIPByAddress(ip: String): Boolean {
+        return try {
+            val rules = loadRules()
+            val rule = rules.find { it.ip == ip && it.port == null } ?: return false
+            
+            executeCommand("ipset del dm-blocklist ${rule.ip}")
+            
             rules.remove(rule)
             saveRules(rules)
             true

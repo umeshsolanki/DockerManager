@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Search, RefreshCw, FileText, XCircle, Terminal, Shield } from 'lucide-react';
+import { Search, RefreshCw, FileText, XCircle, Terminal, Shield, User, Clock, Settings, Lock, Ban } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { SystemLog, BlockIPRequest, BtmpStats } from '@/lib/types';
 import { toast } from 'sonner';
@@ -18,7 +18,55 @@ export default function LogsScreen() {
     const [ipToBlock, setIpToBlock] = useState('');
     const [btmpStats, setBtmpStats] = useState<BtmpStats | null>(null);
     const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
-    const [statsModalType, setStatsModalType] = useState<'IPS' | 'ATTEMPTS'>('IPS');
+    const [statsModalType, setStatsModalType] = useState<'IPS' | 'ATTEMPTS' | 'USERS' | 'CONFIG' | 'JAILED'>('IPS');
+    const [isRefreshingBtmp, setIsRefreshingBtmp] = useState(false);
+    const [btmpSearch, setBtmpSearch] = useState('');
+    const [btmpSortBy, setBtmpSortBy] = useState<'time' | 'user' | 'ip'>('time');
+    const [tailLines, setTailLines] = useState<number>(200);
+    const [since, setSince] = useState<string>('');
+    const [until, setUntil] = useState<string>('');
+
+    const setQuickTimeRange = (range: 'today' | 'yesterday' | 'week' | 'month') => {
+        const now = new Date();
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+
+        const format = (date: Date) => {
+            const tzoffset = (new Date()).getTimezoneOffset() * 60000;
+            return (new Date(date.getTime() - tzoffset)).toISOString().slice(0, 16);
+        };
+
+        switch (range) {
+            case 'today':
+                setSince(format(start));
+                setUntil(format(now));
+                break;
+            case 'yesterday':
+                const yesterday = new Date(start);
+                yesterday.setDate(yesterday.getDate() - 1);
+                const yesterdayEnd = new Date(start);
+                yesterdayEnd.setMilliseconds(-1);
+                setSince(format(yesterday));
+                setUntil(format(yesterdayEnd));
+                break;
+            case 'week':
+                const week = new Date(start);
+                week.setDate(week.getDate() - 7);
+                setSince(format(week));
+                setUntil(format(now));
+                break;
+            case 'month':
+                const month = new Date(start);
+                month.setMonth(month.getMonth() - 1);
+                setSince(format(month));
+                setUntil(format(now));
+                break;
+        }
+    };
+
+    const [jailThreshold, setJailThreshold] = useState(5);
+    const [jailDuration, setJailDuration] = useState(30);
+    const [isAutoJailEnabled, setIsAutoJailEnabled] = useState(false);
 
     const fetchLogs = async () => {
         setIsLoading(true);
@@ -31,10 +79,20 @@ export default function LogsScreen() {
         setIsLoading(false);
     };
 
+    const manualRefreshBtmp = async () => {
+        setIsRefreshingBtmp(true);
+        const data = await DockerClient.refreshBtmpStats();
+        if (data) {
+            setBtmpStats(data);
+            toast.success('Login stats updated');
+        }
+        setIsRefreshingBtmp(false);
+    };
+
     const fetchLogContent = async (log: SystemLog, filter?: string) => {
         setIsReadingLog(true);
         setSelectedLog(log);
-        const content = await DockerClient.getSystemLogContent(log.path, 200, filter);
+        const content = await DockerClient.getSystemLogContent(log.path, tailLines, filter, since, until);
         setLogContent(content);
         setIsReadingLog(false);
     };
@@ -75,12 +133,25 @@ export default function LogsScreen() {
             {btmpStats && btmpStats.totalFailedAttempts > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     <div className="bg-red-500/5 border border-red-500/10 rounded-2xl p-4">
-                        <div className="flex items-center gap-3 text-red-500 mb-2">
-                            <XCircle size={18} />
-                            <span className="text-xs font-bold uppercase tracking-wider">Failed Logins (btmp)</span>
+                        <div className="flex items-center justify-between text-red-500 mb-2">
+                            <div className="flex items-center gap-3">
+                                <XCircle size={18} />
+                                <span className="text-xs font-bold uppercase tracking-wider">Failed Logins (btmp)</span>
+                            </div>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); manualRefreshBtmp(); }}
+                                disabled={isRefreshingBtmp}
+                                className="p-1 hover:bg-white/10 rounded-lg transition-all"
+                                title="Force Refresh"
+                            >
+                                <RefreshCw size={12} className={isRefreshingBtmp ? 'animate-spin' : ''} />
+                            </button>
                         </div>
                         <div className="text-3xl font-bold text-red-500">{btmpStats.totalFailedAttempts}</div>
-                        <div className="text-[10px] text-on-surface-variant mt-1">Total recorded attempts</div>
+                        <div className="text-[9px] text-on-surface-variant mt-1 flex justify-between">
+                            <span>Total recorded attempts</span>
+                            {btmpStats.lastUpdated > 0 && <span>Updated: {new Date(btmpStats.lastUpdated).toLocaleTimeString()}</span>}
+                        </div>
                     </div>
 
                     <div className="bg-surface border border-outline/10 rounded-2xl p-4">
@@ -131,7 +202,7 @@ export default function LogsScreen() {
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-                <div className="relative">
+                <div className="relative max-w-xs">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={18} />
                     <input
                         type="text"
@@ -157,10 +228,40 @@ export default function LogsScreen() {
                             className="w-full bg-surface border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-sm font-mono focus:outline-none focus:border-primary transition-colors"
                         />
                     </div>
+                    <div className="flex items-center gap-2 bg-surface border border-outline/20 rounded-xl px-2">
+                        <span className="text-[10px] uppercase font-bold text-on-surface-variant/60 ml-2">Lines</span>
+                        <input
+                            type="number"
+                            min="10"
+                            max="5000"
+                            step="100"
+                            value={tailLines}
+                            onChange={(e) => setTailLines(parseInt(e.target.value) || 200)}
+                            className="w-16 bg-transparent border-none py-2 text-xs font-mono focus:outline-none text-primary font-bold"
+                        />
+                    </div>
+                    <div className="flex items-center gap-2 bg-surface border border-outline/20 rounded-xl px-2">
+                        <Clock size={14} className="text-on-surface-variant/60 ml-2" />
+                        <input
+                            type="datetime-local"
+                            value={since}
+                            onChange={(e) => setSince(e.target.value)}
+                            className="bg-transparent border-none py-2 text-[10px] font-mono focus:outline-none text-primary selection:bg-primary/30"
+                            title="Since"
+                        />
+                        <span className="text-[10px] opacity-30 px-1">→</span>
+                        <input
+                            type="datetime-local"
+                            value={until}
+                            onChange={(e) => setUntil(e.target.value)}
+                            className="bg-transparent border-none py-2 text-[10px] font-mono focus:outline-none text-primary selection:bg-primary/30 mr-2"
+                            title="Until"
+                        />
+                    </div>
                     <button
                         onClick={() => selectedLog && fetchLogContent(selectedLog, awkFilter)}
                         className="p-2 bg-primary/10 text-primary border border-primary/20 rounded-xl hover:bg-primary/20 transition-colors"
-                        title="Apply AWK"
+                        title="Apply Filters & Tail"
                     >
                         Apply
                     </button>
@@ -171,9 +272,9 @@ export default function LogsScreen() {
                             setIsBlockModalOpen(true);
                         }}
                         className="p-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-500/20 transition-colors"
-                        title="Block Detected IP"
+                        title="Block Detected IP Address"
                     >
-                        <Shield size={18} />
+                        <Ban size={18} />
                     </button>
                     <button
                         onClick={fetchLogs}
@@ -187,6 +288,23 @@ export default function LogsScreen() {
 
             <div className="flex flex-wrap items-center gap-2 mb-5 px-1">
                 <span className="text-[10px] uppercase font-bold text-on-surface-variant/60 mr-1 tracking-wider">Quick Filters:</span>
+                <div className="flex bg-surface border border-outline/10 rounded-lg p-0.5 mr-4">
+                    {(['today', 'yesterday', 'week', 'month'] as const).map(r => (
+                        <button
+                            key={r}
+                            onClick={() => setQuickTimeRange(r)}
+                            className="px-2 py-1 text-[9px] uppercase font-bold hover:bg-white/5 rounded-md transition-all text-on-surface-variant/80 hover:text-primary"
+                        >
+                            {r === 'week' ? 'this week' : r === 'month' ? 'this month' : r}
+                        </button>
+                    ))}
+                    <button
+                        onClick={() => { setSince(''); setUntil(''); }}
+                        className="px-2 py-1 text-[9px] uppercase font-bold hover:bg-red-500/10 rounded-md transition-all text-red-400"
+                    >
+                        Reset Time
+                    </button>
+                </div>
                 <QuickFilterBtn
                     label="Errors"
                     awk="/[Ee]rror|ERROR/"
@@ -354,57 +472,225 @@ export default function LogsScreen() {
             {isStatsModalOpen && btmpStats && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
                     <div className="bg-surface border border-outline/20 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh] animate-in fade-in zoom-in duration-200">
-                        <div className="p-6 border-b border-outline/10 flex items-center justify-between bg-white/5">
-                            <div className="flex items-center gap-3">
-                                {statsModalType === 'IPS' ? <Shield className="text-primary" size={24} /> : <Terminal className="text-primary" size={24} />}
-                                <h2 className="text-xl font-bold">
-                                    {statsModalType === 'IPS' ? 'Top Attacking IPs (btmp)' : 'Full Recent Authentication Failures'}
-                                </h2>
+                        <div className="p-6 border-b border-outline/10 bg-white/5 space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3 text-primary">
+                                    {statsModalType === 'IPS' && <Shield size={24} />}
+                                    {statsModalType === 'ATTEMPTS' && <Terminal size={24} />}
+                                    {statsModalType === 'USERS' && <User size={24} />}
+                                    {statsModalType === 'JAILED' && <Lock size={24} className="text-red-500" />}
+                                    {statsModalType === 'CONFIG' && <Settings size={24} />}
+                                    <h2 className="text-xl font-bold">
+                                        {statsModalType === 'IPS' && 'Top Attacking IPs'}
+                                        {statsModalType === 'ATTEMPTS' && 'Authentication Failures'}
+                                        {statsModalType === 'USERS' && 'Top Targeted Users'}
+                                        {statsModalType === 'JAILED' && 'Active Jails'}
+                                        {statsModalType === 'CONFIG' && 'System Security Config'}
+                                    </h2>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={manualRefreshBtmp}
+                                        disabled={isRefreshingBtmp}
+                                        className="p-2 hover:bg-white/10 rounded-xl transition-all"
+                                    >
+                                        <RefreshCw size={18} className={isRefreshingBtmp ? 'animate-spin' : ''} />
+                                    </button>
+                                    <button onClick={() => setIsStatsModalOpen(false)} className="p-2 hover:bg-red-500/10 text-on-surface-variant hover:text-red-500 rounded-xl transition-all">
+                                        <XCircle size={20} />
+                                    </button>
+                                </div>
                             </div>
-                            <button onClick={() => setIsStatsModalOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
-                                <RefreshCw className="rotate-45" size={20} />
-                            </button>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                                {(['IPS', 'USERS', 'ATTEMPTS', 'JAILED', 'CONFIG'] as const).map(tab => (
+                                    <button
+                                        key={tab}
+                                        onClick={() => setStatsModalType(tab)}
+                                        className={`px-3 py-1.5 text-[10px] rounded-lg border transition-all uppercase font-bold flex items-center gap-2 ${statsModalType === tab
+                                            ? 'bg-primary/20 border-primary/40 text-primary'
+                                            : 'bg-white/5 border-white/10 text-on-surface-variant hover:bg-white/10'}`}
+                                    >
+                                        {tab === 'IPS' && <Shield size={12} />}
+                                        {tab === 'USERS' && <User size={12} />}
+                                        {tab === 'ATTEMPTS' && <Terminal size={12} />}
+                                        {tab === 'JAILED' && <Lock size={12} />}
+                                        {tab === 'CONFIG' && <Settings size={12} />}
+                                        {tab}
+                                        {tab === 'JAILED' && btmpStats.jailedIps && btmpStats.jailedIps.length > 0 && (
+                                            <span className="bg-red-500 text-white px-1.5 rounded-full text-[8px]">{btmpStats.jailedIps.length}</span>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
+
                         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-                            {statsModalType === 'IPS' ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {statsModalType === 'IPS' && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                     {btmpStats.topIps.map(({ first: ip, second: count }) => (
-                                        <div key={ip} className="flex justify-between items-center bg-white/5 border border-outline/5 rounded-xl p-3">
+                                        <div key={ip} className="flex justify-between items-center bg-white/5 border border-outline/5 rounded-xl p-4 hover:border-primary/20 transition-all group">
                                             <div className="flex flex-col">
-                                                <span className="font-mono text-sm text-primary">{ip}</span>
-                                                <span className="text-[10px] text-on-surface-variant uppercase font-bold mt-1">Found in {count} attempts</span>
+                                                <span className="font-mono text-sm text-primary font-bold">{ip}</span>
+                                                <span className="text-[9px] text-on-surface-variant uppercase font-bold mt-1">Found in <span className="text-red-400">{count}</span> attempts</span>
                                             </div>
                                             <button
                                                 onClick={() => { setIpToBlock(ip); setIsBlockModalOpen(true); }}
-                                                className="px-3 py-1.5 bg-red-500/10 text-red-500 rounded-lg text-[10px] font-bold hover:bg-red-500/20 transition-all"
+                                                className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all shadow-lg shadow-red-500/0 hover:shadow-red-500/20"
+                                                title="Block IP Address"
                                             >
-                                                BLOCK
+                                                <Ban size={16} />
                                             </button>
                                         </div>
                                     ))}
                                 </div>
-                            ) : (
-                                <div className="space-y-2">
-                                    {btmpStats.recentFailures.map((entry, i) => (
-                                        <div key={i} className="flex justify-between items-center bg-white/5 border border-outline/5 rounded-xl p-3 font-mono text-xs">
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-red-500 font-bold">FAILED</span>
-                                                <span className="text-on-surface font-bold">{entry.user}</span>
-                                                <span className="text-on-surface-variant">from</span>
-                                                <span className="text-primary cursor-pointer hover:underline" onClick={() => { setIpToBlock(entry.ip); setIsBlockModalOpen(true); }}>{entry.ip}</span>
+                            )}
+
+                            {statsModalType === 'USERS' && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                    {btmpStats.topUsers.map(({ first: user, second: count }) => (
+                                        <div key={user} className="bg-white/5 border border-outline/5 rounded-xl p-3 flex flex-col items-center text-center">
+                                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-2 text-primary">
+                                                <User size={20} />
                                             </div>
-                                            <div className="text-[10px] text-on-surface-variant">
-                                                {new Date(entry.timestamp).toLocaleString()}
-                                            </div>
+                                            <span className="font-bold text-sm truncate w-full">{user}</span>
+                                            <span className="text-[10px] text-on-surface-variant font-bold uppercase mt-1">{count} Hits</span>
                                         </div>
                                     ))}
                                 </div>
                             )}
+
+                            {statsModalType === 'ATTEMPTS' && (
+                                <div className="border border-outline/10 rounded-2xl overflow-hidden bg-black/20">
+                                    <table className="w-full text-left border-collapse font-mono text-[11px]">
+                                        <thead className="bg-white/5 text-[10px] uppercase font-bold text-on-surface-variant/70">
+                                            <tr>
+                                                <th className="px-4 py-3">User</th>
+                                                <th className="px-4 py-3">IP Address</th>
+                                                <th className="px-4 py-3">Time</th>
+                                                <th className="px-4 py-3 text-right">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {btmpStats.recentFailures.map((entry, i) => (
+                                                <tr key={i} className="hover:bg-white/5 transition-colors border-b border-outline/5 last:border-0 group">
+                                                    <td className="px-4 py-3 text-red-400 font-bold uppercase">{entry.user}</td>
+                                                    <td className="px-4 py-3 text-primary font-bold">{entry.ip}</td>
+                                                    <td className="px-4 py-3 text-on-surface-variant">{entry.timestampString}</td>
+                                                    <td className="px-4 py-3 text-right">
+                                                        <button
+                                                            onClick={() => { setIpToBlock(entry.ip); setIsBlockModalOpen(true); }}
+                                                            className="p-1 text-red-500 border border-red-500/20 rounded-lg hover:bg-red-500 hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                                                            title="Block IP"
+                                                        >
+                                                            <Ban size={14} />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                            {statsModalType === 'JAILED' && (
+                                <div className="space-y-3">
+                                    {btmpStats.jailedIps.length === 0 ? (
+                                        <div className="text-center py-20 text-on-surface-variant italic opacity-50">
+                                            No IPs currently in jail. The system is secure.
+                                        </div>
+                                    ) : (
+                                        btmpStats.jailedIps.map(jail => (
+                                            <div key={jail.ip} className="flex justify-between items-center bg-red-500/5 border border-red-500/20 rounded-2xl p-4">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center text-red-500">
+                                                        <Lock size={20} />
+                                                    </div>
+                                                    <div className="flex flex-col">
+                                                        <span className="font-mono text-lg text-red-500 font-bold">{jail.ip}</span>
+                                                        <span className="text-[10px] text-on-surface-variant uppercase font-bold">{jail.reason}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right flex flex-col">
+                                                    <span className="text-[10px] uppercase font-bold text-on-surface-variant mb-1">Expires in</span>
+                                                    <span className="text-sm font-mono font-bold text-primary">
+                                                        {Math.max(0, Math.ceil((jail.expiresAt - Date.now()) / 60000))} MINUTES
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            )}
+
+                            {statsModalType === 'CONFIG' && (
+                                <div className="max-w-md mx-auto space-y-6 py-6">
+                                    <div className="flex items-center justify-between bg-white/5 border border-outline/10 p-4 rounded-2xl">
+                                        <div className="flex flex-col">
+                                            <span className="font-bold">Auto-Jail Active</span>
+                                            <span className="text-[10px] text-on-surface-variant uppercase font-bold">Automatically block offending IPs</span>
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                const newState = !isAutoJailEnabled;
+                                                setIsAutoJailEnabled(newState);
+                                                DockerClient.updateAutoJailSettings(newState, jailThreshold, jailDuration);
+                                            }}
+                                            className={`w-12 h-6 rounded-full transition-all relative ${isAutoJailEnabled ? 'bg-primary' : 'bg-white/10'}`}
+                                        >
+                                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${isAutoJailEnabled ? 'left-7' : 'left-1'}`} />
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-on-surface-variant uppercase mb-2 ml-1">Jail Threshold</label>
+                                            <div className="flex gap-4 items-center">
+                                                <input
+                                                    type="range" min="1" max="20"
+                                                    value={jailThreshold}
+                                                    onChange={(e) => setJailThreshold(parseInt(e.target.value))}
+                                                    className="flex-1 accent-primary"
+                                                />
+                                                <span className="w-12 text-center bg-white/5 border border-outline/10 rounded-lg py-1 font-bold font-mono text-primary">{jailThreshold}</span>
+                                            </div>
+                                            <p className="text-[9px] text-on-surface-variant mt-2 italic">Number of failed attempts before automatic IP block</p>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-bold text-on-surface-variant uppercase mb-2 ml-1">Jail Duration (Minutes)</label>
+                                            <div className="flex gap-4 items-center">
+                                                <input
+                                                    type="range" min="5" max="1440" step="5"
+                                                    value={jailDuration}
+                                                    onChange={(e) => setJailDuration(parseInt(e.target.value))}
+                                                    className="flex-1 accent-primary"
+                                                />
+                                                <span className="w-12 text-center bg-white/5 border border-outline/10 rounded-lg py-1 font-bold font-mono text-primary">{jailDuration}</span>
+                                            </div>
+                                            <p className="text-[9px] text-on-surface-variant mt-2 italic">How long the IP stays in jail before being automatically released</p>
+                                        </div>
+
+                                        <button
+                                            onClick={async () => {
+                                                const success = await DockerClient.updateAutoJailSettings(isAutoJailEnabled, jailThreshold, jailDuration);
+                                                if (success) toast.success('Security settings saved');
+                                            }}
+                                            className="w-full bg-primary text-white py-3 rounded-2xl font-bold hover:shadow-lg hover:shadow-primary/30 transition-all active:scale-95 mt-4"
+                                        >
+                                            SAVE CONFIGURATION
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
-                        <div className="p-4 border-t border-outline/10 bg-white/5 flex justify-end">
+                        <div className="p-4 border-t border-outline/10 bg-white/5 flex items-center justify-between">
+                            <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest opacity-50">
+                                {btmpStats.lastUpdated > 0 && `System Clock: ${new Date(btmpStats.lastUpdated).toLocaleTimeString()}`}
+                            </span>
                             <button
                                 onClick={() => setIsStatsModalOpen(false)}
-                                className="px-6 py-2 bg-primary text-white rounded-xl font-bold hover:opacity-90 transition-all"
+                                className="px-8 py-2.5 bg-primary text-white rounded-xl font-bold hover:shadow-lg hover:shadow-primary/20 transition-all active:scale-95"
                             >
                                 Close
                             </button>

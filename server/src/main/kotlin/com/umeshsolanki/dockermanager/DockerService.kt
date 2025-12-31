@@ -1,6 +1,5 @@
 package com.umeshsolanki.dockermanager
 
-
 object DockerService {
     private val dockerClient = DockerClientProvider.client
     
@@ -13,6 +12,7 @@ object DockerService {
     private val logService: ILogService = LogServiceImpl()
     private val firewallService: IFirewallService = FirewallServiceImpl()
     private val proxyService: IProxyService = ProxyServiceImpl()
+    private val btmpService: IBtmpService = BtmpServiceImpl(firewallService)
 
     fun listContainers() = containerService.listContainers()
     fun startContainer(id: String) = containerService.startContainer(id)
@@ -49,12 +49,17 @@ object DockerService {
     fun backupVolume(name: String) = volumeService.backupVolume(name)
 
     fun listSystemLogs() = logService.listSystemLogs()
-    fun getSystemLogContent(path: String, tail: Int = 100, filter: String? = null) = logService.getLogContent(path, tail, filter)
-    fun getBtmpStats() = logService.getBtmpStats()
+    fun getSystemLogContent(path: String, tail: Int = 100, filter: String? = null, since: String? = null, until: String? = null) = 
+        logService.getLogContent(path, tail, filter, since, until)
+    
+    fun getBtmpStats() = btmpService.getStats()
+    suspend fun refreshBtmpStats() = btmpService.refreshStats()
+    fun updateAutoJailSettings(enabled: Boolean, threshold: Int, durationMinutes: Int) = btmpService.updateAutoJailSettings(enabled, threshold, durationMinutes)
 
     fun listFirewallRules() = firewallService.listRules()
     fun blockIP(request: BlockIPRequest) = firewallService.blockIP(request)
     fun unblockIP(id: String) = firewallService.unblockIP(id)
+    fun unblockIPByAddress(ip: String) = firewallService.unblockIPByAddress(ip)
 
     fun listProxyHosts() = proxyService.listHosts()
     fun createProxyHost(host: ProxyHost) = proxyService.createHost(host)
@@ -63,4 +68,3 @@ object DockerService {
     fun requestProxySSL(id: String) = proxyService.requestSSL(id)
     fun getProxyStats() = proxyService.getStats()
 }
-

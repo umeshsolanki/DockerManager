@@ -5,74 +5,11 @@ import java.util.concurrent.TimeUnit
 
 interface ILogService {
     fun listSystemLogs(): List<SystemLog>
-    fun getLogContent(path: String, tail: Int = 100, filter: String? = null): String
-    fun getBtmpStats(): BtmpStats
+    fun getLogContent(path: String, tail: Int = 100, filter: String? = null, since: String? = null, until: String? = null): String
 }
 
 class LogServiceImpl : ILogService {
     private val logDir = File("/host/var/log")
-    private val btmpFile = File("/host/var/log/btmp")
-    private var cachedBtmpStats: BtmpStats = BtmpStats(0, emptyList(), emptyList(), emptyList())
-
-    init {
-        startBtmpWorker()
-    }
-
-    private fun startBtmpWorker() {
-        Thread {
-            while (true) {
-                try {
-                    updateBtmpStats()
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-                Thread.sleep(30000) // Every 30 seconds
-            }
-        }.apply {
-            isDaemon = true
-            start()
-        }
-    }
-
-    private fun updateBtmpStats() {
-        if (!btmpFile.exists()) return
-
-        // Use host's last to parse btmp and extract user/ip ($1=user, $3=ip)
-        val output = executeCommand("last -f ${btmpFile.absolutePath} | grep -v 'btmp begins' | awk '{print $1\" \"$3}'")
-
-        val entries = output.lineSequence()
-            .filter { it.isNotBlank() }
-            .map { line ->
-                val parts = line.trim().split(" ")
-                val user = if (parts.isNotEmpty()) parts[0] else "unknown"
-                val ip = if (parts.size > 1) parts[1] else "unknown"
-                user to ip
-            }
-            .filter { it.first != "unknown" && it.first != "last" && it.first != "btmp" }
-            .toList()
-
-        val totalFailed = entries.size
-        val topUsers = entries.groupingBy { it.first }.eachCount().toList().sortedByDescending { it.second }.take(50)
-        val topIps = entries.groupingBy { it.second }.eachCount().toList().sortedByDescending { it.second }.take(50)
-
-        // Last 10 failures
-        val recentFailures = entries.takeLast(10).reversed().map { (user, ip) ->
-            BtmpEntry(user, ip, System.currentTimeMillis())
-        }
-
-        cachedBtmpStats = BtmpStats(totalFailed, topUsers, topIps, recentFailures)
-    }
-
-    private fun executeCommand(command: String): String {
-        return try {
-            val process = ProcessBuilder("sh", "-c", command).start()
-            process.inputStream.bufferedReader().readText()
-        } catch (e: Exception) {
-            ""
-        }
-    }
-
-    override fun getBtmpStats(): BtmpStats = cachedBtmpStats
 
     override fun listSystemLogs(): List<SystemLog> {
         if (!logDir.exists() || !logDir.isDirectory) return emptyList()
@@ -87,9 +24,8 @@ class LogServiceImpl : ILogService {
         } ?: emptyList()
     }
 
-    override fun getLogContent(path: String, tail: Int, filter: String?): String {
+    override fun getLogContent(path: String, tail: Int, filter: String?, since: String?, until: String?): String {
         val file = File(path)
-        // Basic security check: ensure the path is within /host/var/log
         if (!file.absolutePath.startsWith("/host/var/log")) {
             return "Access denied"
         }
@@ -100,17 +36,37 @@ class LogServiceImpl : ILogService {
             val command = mutableListOf<String>()
 
             if (file.name == "wtmp" || file.name == "btmp") {
-                command.add("last -f $path")
+                val lastCmd = StringBuilder("last -f $path")
+                since?.takeIf { it.isNotBlank() }?.let {
+                    val formatted = it.replace("-", "").replace("T", "").replace(":", "") + "00"
+                    lastCmd.append(" -s $formatted")
+                }
+                until?.takeIf { it.isNotBlank() }?.let {
+                    val formatted = it.replace("-", "").replace("T", "").replace(":", "") + "00"
+                    lastCmd.append(" -t $formatted")
+                }
+                command.add(lastCmd.toString())
             } else {
                 command.add("cat $path")
             }
 
-            // Pipe through tail/awk with strictly enforced timeout and size limits
             val processBuilder = ProcessBuilder("sh", "-c", buildString {
-                // Wrap in timeout to prevent hanging the server
                 append("timeout 5s ")
                 append(command.joinToString(" "))
+                
+                // Add time filtering for text logs if not wtmp/btmp
+                if (file.name != "wtmp" && file.name != "btmp") {
+                    if (!since.isNullOrBlank() || !until.isNullOrBlank()) {
+                        // Very basic time filtering attempt for standard log formats (ISO or Syslog)
+                        // This is a best-effort approach as log formats vary wildly
+                        val s = since?.takeIf { it.isNotBlank() }?.replace("T", " ") ?: ""
+                        val u = until?.takeIf { it.isNotBlank() }?.replace("T", " ") ?: "9999-12-31"
+                        append(" | awk '$0 >= \"$s\" && $0 <= \"$u\"'")
+                    }
+                }
+
                 append(" | tail -n $tail")
+                
                 if (!filter.isNullOrBlank()) {
                     if (filter.startsWith("|")) {
                         append(" $filter")
@@ -121,11 +77,8 @@ class LogServiceImpl : ILogService {
             })
 
             val process = processBuilder.start()
-
-            // Read stream carefully
             val output = process.inputStream.bufferedReader().use { it.readText() }
             val error = process.errorStream.bufferedReader().use { it.readText() }
-
             val completed = process.waitFor(6, TimeUnit.SECONDS)
 
             if (!completed) {

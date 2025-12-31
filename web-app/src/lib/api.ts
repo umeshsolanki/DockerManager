@@ -303,9 +303,13 @@ export const DockerClient = {
         }
     },
 
-    async getSystemLogContent(path: string, tail: number = 100, filter?: string): Promise<string> {
+    async getSystemLogContent(path: string, tail: number = 100, filter?: string, since?: string, until?: string): Promise<string> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/logs/system/content?path=${encodeURIComponent(path)}&tail=${tail}${filter ? `&filter=${encodeURIComponent(filter)}` : ''}`);
+            let url = `${this.getServerUrl()}/logs/system/content?path=${encodeURIComponent(path)}&tail=${tail}`;
+            if (filter) url += `&filter=${encodeURIComponent(filter)}`;
+            if (since) url += `&since=${since}`;
+            if (until) url += `&until=${until}`;
+            const response = await fetch(url);
             return await response.text();
         } catch (e) {
             console.error(e);
@@ -320,6 +324,26 @@ export const DockerClient = {
         } catch (e) {
             console.error(e);
             return null;
+        }
+    },
+
+    async refreshBtmpStats(): Promise<BtmpStats | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/logs/system/btmp-stats/refresh`, { method: 'POST' });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    },
+
+    async updateAutoJailSettings(enabled: boolean, threshold: number, duration: number): Promise<boolean> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/logs/system/btmp-stats/auto-jail?enabled=${enabled}&threshold=${threshold}&duration=${duration}`, { method: 'POST' });
+            return response.ok;
+        } catch (e) {
+            console.error(e);
+            return false;
         }
     },
 
