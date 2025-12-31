@@ -241,7 +241,9 @@ class BtmpServiceImpl(
             jailedIps = jailedIps.toList(),
             autoJailEnabled = autoJailEnabled,
             jailThreshold = jailThreshold,
-            jailDurationMinutes = jailDurationMinutes
+            jailDurationMinutes = jailDurationMinutes,
+            refreshIntervalMinutes = refreshIntervalMinutes,
+            isMonitoringActive = isMonitoringActive
         )
     }
 }
