@@ -266,9 +266,9 @@ class ProxyServiceImpl : IProxyService {
         """.trimIndent() else ""
 
         val sslConfig = if (host.ssl) {
-            val (cert, key) = if (!host.customSslPath.isNullOrBlank() && host.customSslPath.contains("|")) {
-                val parts = host.customSslPath.split("|")
-                parts[0] to parts[1]
+            val (cert, key) = if (!host.customSslPath.isNullOrBlank() && host.customSslPath?.contains("|") == true) {
+                val parts = host.customSslPath?.split("|")
+                parts?.get(0) to parts?.get(1)
             } else {
                 "/etc/letsencrypt/live/${host.domain}/fullchain.pem" to "/etc/letsencrypt/live/${host.domain}/privkey.pem"
             }
