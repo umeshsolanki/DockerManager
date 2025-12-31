@@ -16,8 +16,8 @@ interface IProxyService {
 }
 
 class ProxyServiceImpl : IProxyService {
-    private val configDir = File("/usr/local/openresty/nginx/conf/conf.d")
-    private val logFile = File("/usr/local/openresty/nginx/logs/access.log")
+    private val configDir = File("/nginx/conf.d")
+    private val logFile = File("/nginx/logs/access.log")
     private val hostsFile = File("/app/data/proxy/hosts.json")
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
 
@@ -190,8 +190,8 @@ class ProxyServiceImpl : IProxyService {
         reloadNginx()
 
         try {
-            // Run certbot via docker
-            val certCmd = "docker exec docker-manager-certbot certbot certonly --webroot -w /var/www/certbot -d ${host.domain} --non-interactive --agree-tos --email admin@${host.domain}"
+            // Run certbot via docker using absolute paths map to the certbot volume
+            val certCmd = "docker exec docker-manager-certbot certbot certonly --webroot -w /certbot/www -d ${host.domain} --non-interactive --agree-tos --email admin@${host.domain} --config-dir /certbot/conf --work-dir /certbot/work --logs-dir /certbot/logs"
             val result = executeCommand(certCmd)
             
             if (result.contains("Successfully received certificate") || result.contains("Certificate not yet due for renewal")) {
