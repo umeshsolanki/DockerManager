@@ -503,8 +503,8 @@ $sslConfig
             ensureComposeFile()
             
             // Ensure host directories exist (as defined in docker-compose.yml bind mounts)
-            val nginxDir = File(projectRoot, "data/nginx")
-            val certbotDir = File(projectRoot, "data/certbot")
+            val nginxDir = AppConfig.proxyDir
+            val certbotDir = AppConfig.certbotDir
             
             nginxDir.mkdirs()
             File(nginxDir, "conf.d").mkdirs()
@@ -685,8 +685,8 @@ $sslConfig
             ensureComposeFile()
             
             // Ensure host directories exist
-            val nginxDir = File(projectRoot, "data/nginx")
-            val certbotDir = File(projectRoot, "data/certbot")
+            val nginxDir = AppConfig.proxyDir
+            val certbotDir = AppConfig.certbotDir
             nginxDir.mkdirs()
             File(nginxDir, "conf.d").mkdirs()
             File(nginxDir, "logs").mkdirs()
@@ -724,6 +724,10 @@ $sslConfig
     }
 
     private fun getDefaultComposeConfig(): String {
+        val projectRoot = AppConfig.projectRoot.toPath().toAbsolutePath()
+        val nginxPath = projectRoot.relativize(AppConfig.proxyDir.toPath().toAbsolutePath()).toString()
+        val certbotPath = projectRoot.relativize(AppConfig.certbotDir.toPath().toAbsolutePath()).toString()
+
         return """
             services:
               proxy:
@@ -737,8 +741,8 @@ $sslConfig
                 environment:
                   - TZ=Asia/Kolkata
                 volumes:
-                  - ./data/nginx:/nginx:ro
-                  - ./data/certbot:/certbot:ro
+                  - ./${nginxPath}:/nginx:ro
+                  - ./${certbotPath}:/certbot:ro
                 command: /bin/sh -c "mkdir -p /usr/local/openresty/nginx/conf/conf.d && ln -sf /nginx/conf.d/*.conf /usr/local/openresty/nginx/conf/conf.d/ 2>/dev/null; ln -sf /nginx/logs /usr/local/openresty/nginx/logs; ln -sf /certbot/conf /etc/letsencrypt; ln -sf /certbot/www /var/www/certbot; /usr/local/openresty/bin/openresty -g 'daemon off;'"
         """.trimIndent()
     }
