@@ -34,7 +34,7 @@ pipeline {
                         error "Docker Compose binary not found. Please ensure docker-compose-plugin is correctly linked."
                     }
                     echo "Using compose command: ${composeCmd}"
-                    sh "${composeCmd} up -d --remove-orphans -f docker-manager-ui-proxy.yml"
+                    sh "${composeCmd} -f docker-manager-ui-proxy.yml up -d --remove-orphans "
                 }
             }
         }
