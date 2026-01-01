@@ -19,6 +19,15 @@ interface IProxyService {
     fun updateHost(host: ProxyHost): Pair<Boolean, String>
     fun requestSSL(id: String): Boolean
     fun listCertificates(): List<SSLCertificate>
+    
+    // Proxy Container Management
+    fun buildProxyImage(): Pair<Boolean, String>
+    fun createProxyContainer(): Pair<Boolean, String>
+    fun startProxyContainer(): Pair<Boolean, String>
+    fun stopProxyContainer(): Pair<Boolean, String>
+    fun restartProxyContainer(): Pair<Boolean, String>
+    fun getProxyContainerStatus(): ProxyContainerStatus
+    fun ensureProxyContainerExists(): Boolean
 }
 
 class ProxyServiceImpl : IProxyService {
@@ -38,6 +47,9 @@ class ProxyServiceImpl : IProxyService {
         if (!configDir.exists()) configDir.mkdirs()
         if (!hostsFile.parentFile.exists()) hostsFile.parentFile.mkdirs()
         if (!hostsFile.exists()) hostsFile.writeText("[]")
+        
+        // Ensure log directory exists for Nginx
+        AppConfig.proxyLogFile.parentFile?.mkdirs()
 
         // Start background worker for stats
         startStatsWorker()
@@ -259,8 +271,9 @@ class ProxyServiceImpl : IProxyService {
 
         try {
             // Run certbot via docker using absolute paths map to the certbot volume
+            // Updated to run in proxy container with standard paths
             val certCmd =
-                "${AppConfig.dockerCommand} exec docker-manager-certbot certbot certonly --webroot -w /certbot/www -d ${host.domain} --non-interactive --agree-tos --email admin@${host.domain} --config-dir /certbot/conf --work-dir /certbot/work --logs-dir /certbot/logs"
+                "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --webroot -w /var/www/certbot -d ${host.domain} --non-interactive --agree-tos --email admin@${host.domain}"
             val result = executeCommand(certCmd)
 
             if (result.contains("Successfully received certificate") || result.contains("Certificate not yet due for renewal")) {
@@ -324,10 +337,17 @@ class ProxyServiceImpl : IProxyService {
 
     private fun executeCommand(command: String): String {
         return try {
-            val process = ProcessBuilder("sh", "-c", command).start()
-            process.inputStream.bufferedReader().readText()
+            val process = ProcessBuilder("sh", "-c", command)
+                .redirectErrorStream(true)
+                .start()
+            val output = process.inputStream.bufferedReader().readText()
+            val exitCode = process.waitFor()
+            if (exitCode != 0 && output.isNotBlank()) {
+                logger.warn("Command '$command' exited with code $exitCode. Output: $output")
+            }
+            output
         } catch (e: Exception) {
-            logger.error("executeCommand", e)
+            logger.error("executeCommand failed: $command", e)
             ""
         }
     }
@@ -427,6 +447,311 @@ $sslConfig
             executeCommand("${AppConfig.dockerCommand} exec docker-manager-proxy openresty -s reload")
         if (result.isNotBlank()) {
             logger.info("Nginx Reload Output: $result")
+        }
+    }
+
+    // ========== Proxy Container Management ==========
+
+    companion object {
+        const val PROXY_CONTAINER_NAME = "docker-manager-proxy"
+        const val PROXY_IMAGE_NAME = "docker-manager-proxy"
+        const val PROXY_IMAGE_TAG = "latest"
+    }
+
+    override fun buildProxyImage(): Pair<Boolean, String> {
+        return try {
+            logger.info("Building proxy Docker image...")
+            
+            // Find the Dockerfile.proxy - should be in project root
+            val projectRoot = if (AppConfig.isDocker) {
+                File("/app")
+            } else {
+                // Try to find project root by looking for Dockerfile.proxy
+                var current: File? = File(System.getProperty("user.dir"))
+                while (current != null && !File(current, "Dockerfile.proxy").exists()) {
+                    current = current.parentFile
+                }
+                current ?: File(System.getProperty("user.dir"))
+            }
+            
+            val dockerfilePath = File(projectRoot, "Dockerfile.proxy")
+            if (!dockerfilePath.exists()) {
+                logger.error("Dockerfile.proxy not found at: ${dockerfilePath.absolutePath}")
+                return false to "Dockerfile.proxy not found at: ${dockerfilePath.absolutePath}"
+            }
+
+            logger.info("Using Dockerfile at: ${dockerfilePath.absolutePath}")
+            
+            val buildCmd = "${AppConfig.dockerCommand} build -t $PROXY_IMAGE_NAME:$PROXY_IMAGE_TAG -f ${dockerfilePath.absolutePath} ${projectRoot.absolutePath}"
+            logger.info("Build command: $buildCmd")
+            
+            val process = ProcessBuilder("sh", "-c", buildCmd)
+                .redirectErrorStream(true)
+                .start()
+            
+            val output = process.inputStream.bufferedReader().readText()
+            val exitCode = process.waitFor()
+            
+            if (exitCode == 0) {
+                logger.info("Proxy image built successfully")
+                true to "Proxy image built successfully\n$output"
+            } else {
+                logger.error("Failed to build proxy image. Exit code: $exitCode")
+                false to "Failed to build proxy image. Exit code: $exitCode\n$output"
+            }
+        } catch (e: Exception) {
+            logger.error("Error building proxy image", e)
+            false to "Error building proxy image: ${e.message}"
+        }
+    }
+
+    override fun createProxyContainer(): Pair<Boolean, String> {
+        return try {
+            logger.info("Creating proxy container...")
+            
+            // Ensure host directories exist
+            val proxyDir = AppConfig.proxyDir
+            val certbotDir = AppConfig.certbotDir
+            
+            File(proxyDir, "conf.d").mkdirs()
+            File(proxyDir, "logs").mkdirs()
+            File(certbotDir, "conf").mkdirs()
+            File(certbotDir, "www").mkdirs()
+            
+            // Check if container already exists
+            val existingContainer = executeCommand("${AppConfig.dockerCommand} ps -a --filter name=$PROXY_CONTAINER_NAME --format '{{.Names}}'")
+            if (existingContainer.trim() == PROXY_CONTAINER_NAME) {
+                logger.info("Container $PROXY_CONTAINER_NAME already exists. Removing it...")
+                executeCommand("${AppConfig.dockerCommand} rm -f $PROXY_CONTAINER_NAME")
+            }
+            
+            // Build the docker run command similar to docker-compose
+            // Using bind mounts with absolute paths for persistence on host
+            val createCmd = buildString {
+                append("${AppConfig.dockerCommand} create")
+                append(" --name $PROXY_CONTAINER_NAME")
+                append(" --network host")
+                append(" --restart unless-stopped")
+                append(" -e TZ=Asia/Kolkata")
+                append(" -v ${proxyDir.absolutePath}:/nginx")
+                append(" -v ${certbotDir.absolutePath}:/certbot")
+                append(" $PROXY_IMAGE_NAME:$PROXY_IMAGE_TAG")
+                append(" /bin/sh -c \"")
+                append("mkdir -p /usr/local/openresty/nginx/conf/conf.d && ")
+                append("ln -sf /nginx/conf.d/*.conf /usr/local/openresty/nginx/conf/conf.d/ 2>/dev/null; ")
+                append("ln -sf /nginx/logs /usr/local/openresty/nginx/logs; ")
+                append("ln -sf /certbot/conf /etc/letsencrypt; ")
+                append("ln -sf /certbot/www /var/www/certbot; ")
+                append("/usr/local/openresty/bin/openresty -g 'daemon off;'")
+                append("\"")
+            }
+            
+            logger.info("Create command: $createCmd")
+            
+            val process = ProcessBuilder("sh", "-c", createCmd)
+                .redirectErrorStream(true)
+                .start()
+            
+            val output = process.inputStream.bufferedReader().readText()
+            val exitCode = process.waitFor()
+            
+            if (exitCode == 0) {
+                logger.info("Proxy container created successfully")
+                true to "Proxy container created successfully\n$output"
+            } else {
+                logger.error("Failed to create proxy container. Exit code: $exitCode")
+                false to "Failed to create proxy container. Exit code: $exitCode\n$output"
+            }
+        } catch (e: Exception) {
+            logger.error("Error creating proxy container", e)
+            false to "Error creating proxy container: ${e.message}"
+        }
+    }
+
+    override fun startProxyContainer(): Pair<Boolean, String> {
+        return try {
+            logger.info("Starting proxy container...")
+            
+            val startCmd = "${AppConfig.dockerCommand} start $PROXY_CONTAINER_NAME"
+            val process = ProcessBuilder("sh", "-c", startCmd)
+                .redirectErrorStream(true)
+                .start()
+            
+            val output = process.inputStream.bufferedReader().readText()
+            val exitCode = process.waitFor()
+            
+            if (exitCode == 0) {
+                logger.info("Proxy container started successfully")
+                true to "Proxy container started successfully"
+            } else {
+                logger.error("Failed to start proxy container. Exit code: $exitCode")
+                false to "Failed to start proxy container. Exit code: $exitCode\n$output"
+            }
+        } catch (e: Exception) {
+            logger.error("Error starting proxy container", e)
+            false to "Error starting proxy container: ${e.message}"
+        }
+    }
+
+    override fun stopProxyContainer(): Pair<Boolean, String> {
+        return try {
+            logger.info("Stopping proxy container...")
+            
+            val stopCmd = "${AppConfig.dockerCommand} stop $PROXY_CONTAINER_NAME"
+            val process = ProcessBuilder("sh", "-c", stopCmd)
+                .redirectErrorStream(true)
+                .start()
+            
+            val output = process.inputStream.bufferedReader().readText()
+            val exitCode = process.waitFor()
+            
+            if (exitCode == 0) {
+                logger.info("Proxy container stopped successfully")
+                true to "Proxy container stopped successfully"
+            } else {
+                logger.error("Failed to stop proxy container. Exit code: $exitCode")
+                false to "Failed to stop proxy container. Exit code: $exitCode\n$output"
+            }
+        } catch (e: Exception) {
+            logger.error("Error stopping proxy container", e)
+            false to "Error stopping proxy container: ${e.message}"
+        }
+    }
+
+    override fun restartProxyContainer(): Pair<Boolean, String> {
+        return try {
+            logger.info("Restarting proxy container...")
+            
+            val restartCmd = "${AppConfig.dockerCommand} restart $PROXY_CONTAINER_NAME"
+            val process = ProcessBuilder("sh", "-c", restartCmd)
+                .redirectErrorStream(true)
+                .start()
+            
+            val output = process.inputStream.bufferedReader().readText()
+            val exitCode = process.waitFor()
+            
+            if (exitCode == 0) {
+                logger.info("Proxy container restarted successfully")
+                true to "Proxy container restarted successfully"
+            } else {
+                logger.error("Failed to restart proxy container. Exit code: $exitCode")
+                false to "Failed to restart proxy container. Exit code: $exitCode\n$output"
+            }
+        } catch (e: Exception) {
+            logger.error("Error restarting proxy container", e)
+            false to "Error restarting proxy container: ${e.message}"
+        }
+    }
+
+    override fun getProxyContainerStatus(): ProxyContainerStatus {
+        return try {
+            // Check if container exists
+            val existsCmd = "${AppConfig.dockerCommand} ps -a --filter name=$PROXY_CONTAINER_NAME --format '{{.Names}}'"
+            val exists = executeCommand(existsCmd).trim() == PROXY_CONTAINER_NAME
+            
+            if (!exists) {
+                return ProxyContainerStatus(
+                    exists = false,
+                    running = false,
+                    imageExists = checkImageExists(),
+                    containerId = null,
+                    status = "not created",
+                    uptime = null
+                )
+            }
+            
+            // Get container details
+            val inspectCmd = "${AppConfig.dockerCommand} inspect $PROXY_CONTAINER_NAME --format '{{.Id}}|{{.State.Running}}|{{.State.Status}}|{{.State.StartedAt}}'"
+            val inspectOutput = executeCommand(inspectCmd).trim()
+            
+            if (inspectOutput.isBlank()) {
+                return ProxyContainerStatus(
+                    exists = exists,
+                    running = false,
+                    imageExists = checkImageExists(),
+                    containerId = null,
+                    status = "unknown",
+                    uptime = null
+                )
+            }
+            
+            val parts = inspectOutput.split("|")
+            val containerId = parts.getOrNull(0)
+            val running = parts.getOrNull(1)?.toBoolean() ?: false
+            val status = parts.getOrNull(2) ?: "unknown"
+            val startedAt = parts.getOrNull(3)
+            
+            ProxyContainerStatus(
+                exists = true,
+                running = running,
+                imageExists = checkImageExists(),
+                containerId = containerId,
+                status = status,
+                uptime = startedAt
+            )
+        } catch (e: Exception) {
+            logger.error("Error getting proxy container status", e)
+            ProxyContainerStatus(
+                exists = false,
+                running = false,
+                imageExists = false,
+                containerId = null,
+                status = "error: ${e.message}",
+                uptime = null
+            )
+        }
+    }
+
+    override fun ensureProxyContainerExists(): Boolean {
+        return try {
+            val status = getProxyContainerStatus()
+            
+            // If image doesn't exist, build it
+            if (!status.imageExists) {
+                logger.info("Proxy image doesn't exist. Building...")
+                val buildResult = buildProxyImage()
+                if (!buildResult.first) {
+                    logger.error("Failed to build proxy image: ${buildResult.second}")
+                    return false
+                }
+            }
+            
+            // If container doesn't exist, create it
+            if (!status.exists) {
+                logger.info("Proxy container doesn't exist. Creating...")
+                val createResult = createProxyContainer()
+                if (!createResult.first) {
+                    logger.error("Failed to create proxy container: ${createResult.second}")
+                    return false
+                }
+            }
+            
+            // If container is not running, start it
+            if (!status.running) {
+                logger.info("Proxy container is not running. Starting...")
+                val startResult = startProxyContainer()
+                if (!startResult.first) {
+                    logger.error("Failed to start proxy container: ${startResult.second}")
+                    return false
+                }
+            }
+            
+            logger.info("Proxy container is ready")
+            true
+        } catch (e: Exception) {
+            logger.error("Error ensuring proxy container exists", e)
+            false
+        }
+    }
+
+    private fun checkImageExists(): Boolean {
+        return try {
+            val cmd = "${AppConfig.dockerCommand} images -q $PROXY_IMAGE_NAME:$PROXY_IMAGE_TAG"
+            val output = executeCommand(cmd).trim()
+            output.isNotBlank()
+        } catch (e: Exception) {
+            logger.error("Error checking if image exists", e)
+            false
         }
     }
 }

@@ -71,4 +71,13 @@ object DockerService {
     fun requestProxySSL(id: String) = proxyService.requestSSL(id)
     fun getProxyStats() = proxyService.getStats()
     fun listProxyCertificates() = proxyService.listCertificates()
+    
+    // Proxy Container Management
+    fun buildProxyImage() = proxyService.buildProxyImage()
+    fun createProxyContainer() = proxyService.createProxyContainer()
+    fun startProxyContainer() = proxyService.startProxyContainer()
+    fun stopProxyContainer() = proxyService.stopProxyContainer()
+    fun restartProxyContainer() = proxyService.restartProxyContainer()
+    fun getProxyContainerStatus() = proxyService.getProxyContainerStatus()
+    fun ensureProxyContainerExists() = proxyService.ensureProxyContainerExists()
 }

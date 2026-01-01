@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.ViewAgenda
@@ -34,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import com.umeshsolanki.dockermanager.screens.ComposeScreen
 import com.umeshsolanki.dockermanager.screens.ContainersScreen
 import com.umeshsolanki.dockermanager.screens.ImagesScreen
+import com.umeshsolanki.dockermanager.screens.ProxyScreen
 import com.umeshsolanki.dockermanager.screens.SettingsScreen
 
 import androidx.compose.material.icons.filled.BatteryChargingFull
@@ -62,7 +64,7 @@ fun App() {
     MaterialTheme(colorScheme = darkColorScheme) {
         var selectedTab by remember { mutableStateOf(0) }
         var batteryStatus by remember { mutableStateOf<BatteryStatus?>(null) }
-        val titles = listOf("Containers", "Images", "Compose", "Settings")
+        val titles = listOf("Containers", "Images", "Compose", "Proxy", "Settings")
 
         LaunchedEffect(Unit) {
             while (true) {
@@ -146,11 +148,17 @@ fun App() {
                         icon = { Icon(Icons.Default.Layers, contentDescription = "Compose") },
                         label = { Text("Compose") }
                     )
-
-                    Spacer(modifier = Modifier.weight(1f))
                     NavigationRailItem(
                         selected = selectedTab == 3,
                         onClick = { selectedTab = 3 },
+                        icon = { Icon(Icons.Default.NetworkCheck, contentDescription = "Proxy") },
+                        label = { Text("Proxy") }
+                    )
+
+                    Spacer(modifier = Modifier.weight(1f))
+                    NavigationRailItem(
+                        selected = selectedTab == 4,
+                        onClick = { selectedTab = 4 },
                         icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
                         label = { Text("Settings") }
                     )
@@ -175,7 +183,8 @@ fun App() {
                                 0 -> ContainersScreen()
                                 1 -> ImagesScreen()
                                 2 -> ComposeScreen()
-                                3 -> SettingsScreen()
+                                3 -> ProxyScreen()
+                                4 -> SettingsScreen()
                             }
                         }
                     }

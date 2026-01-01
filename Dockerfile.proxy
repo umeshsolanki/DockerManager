@@ -1,0 +1,24 @@
+FROM openresty/openresty:alpine
+
+# Install Certbot, OpenSSL, and useful utilities
+RUN apk add --no-cache \
+    certbot \
+    certbot-nginx \
+    openssl \
+    bash \
+    curl \
+    ca-certificates
+
+# Create standard directories
+RUN mkdir -p /var/www/certbot /etc/letsencrypt /var/log/nginx
+
+# Set proper permissions
+RUN chmod 755 /var/www/certbot
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost/ || exit 1
+
+# Default command will be overridden by docker-compose
+CMD ["/usr/local/openresty/bin/openresty", "-g", "daemon off;"]
+

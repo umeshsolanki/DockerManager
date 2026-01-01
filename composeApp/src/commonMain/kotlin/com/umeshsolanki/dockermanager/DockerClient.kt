@@ -207,4 +207,74 @@ object DockerClient {
             null
         }
     }
+
+    // Proxy Container Management
+    suspend fun getProxyContainerStatus(): ProxyContainerStatus? {
+        return try {
+            client.get("$BASE_URL/proxy/container/status").body()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    suspend fun buildProxyImage(): Boolean {
+        return try {
+            client.post("$BASE_URL/proxy/container/build")
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun createProxyContainer(): Boolean {
+        return try {
+            client.post("$BASE_URL/proxy/container/create")
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun startProxyContainer(): Boolean {
+        return try {
+            client.post("$BASE_URL/proxy/container/start")
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun stopProxyContainer(): Boolean {
+        return try {
+            client.post("$BASE_URL/proxy/container/stop")
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun restartProxyContainer(): Boolean {
+        return try {
+            client.post("$BASE_URL/proxy/container/restart")
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun ensureProxyContainer(): Boolean {
+        return try {
+            client.post("$BASE_URL/proxy/container/ensure")
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
 }

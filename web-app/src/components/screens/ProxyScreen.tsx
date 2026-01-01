@@ -9,20 +9,29 @@ import { toast } from 'sonner';
 export default function ProxyScreen() {
     const [hosts, setHosts] = useState<ProxyHost[]>([]);
     const [stats, setStats] = useState<ProxyStats | null>(null);
+    const [containerStatus, setContainerStatus] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [isContainerActionLoading, setIsContainerActionLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [editingHost, setEditingHost] = useState<ProxyHost | null>(null);
 
     const fetchData = async () => {
         setIsLoading(true);
-        const [hostsData, statsData] = await Promise.all([
+        const [hostsData, statsData, containerStatusData] = await Promise.all([
             DockerClient.listProxyHosts(),
-            DockerClient.getProxyStats()
+            DockerClient.getProxyStats(),
+            DockerClient.getProxyContainerStatus()
         ]);
         setHosts(hostsData);
         setStats(statsData);
+        setContainerStatus(containerStatusData);
         setIsLoading(false);
+    };
+
+    const fetchContainerStatus = async () => {
+        const status = await DockerClient.getProxyContainerStatus();
+        setContainerStatus(status);
     };
 
     useEffect(() => {
@@ -81,6 +90,185 @@ export default function ProxyScreen() {
                     <Plus size={20} />
                     <span>Add Host</span>
                 </button>
+            </div>
+
+            {/* Container Management Section */}
+            <div className="bg-gradient-to-br from-primary/5 to-secondary/5 border border-primary/20 rounded-3xl p-6 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
+                            <Server size={20} className="text-primary" />
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-bold">Proxy Container</h2>
+                            <p className="text-xs text-on-surface-variant">Manage the OpenResty proxy container</p>
+                        </div>
+                    </div>
+                    {containerStatus && (
+                        <div className={`px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 ${containerStatus.running
+                                ? 'bg-green-500/20 text-green-500'
+                                : containerStatus.exists
+                                    ? 'bg-orange-500/20 text-orange-500'
+                                    : 'bg-red-500/20 text-red-500'
+                            }`}>
+                            <div className={`w-2 h-2 rounded-full ${containerStatus.running ? 'bg-green-500 animate-pulse' : 'bg-current'
+                                }`} />
+                            {containerStatus.running ? 'Running' : containerStatus.exists ? 'Stopped' : 'Not Created'}
+                        </div>
+                    )}
+                </div>
+
+                {containerStatus && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                        <div className="bg-surface/50 rounded-xl p-3 border border-outline/10">
+                            <div className="text-[10px] text-on-surface-variant uppercase font-bold mb-1">Container</div>
+                            <div className={`text-sm font-bold ${containerStatus.exists ? 'text-green-500' : 'text-red-500'}`}>
+                                {containerStatus.exists ? 'Exists' : 'Not Created'}
+                            </div>
+                        </div>
+                        <div className="bg-surface/50 rounded-xl p-3 border border-outline/10">
+                            <div className="text-[10px] text-on-surface-variant uppercase font-bold mb-1">Image</div>
+                            <div className={`text-sm font-bold ${containerStatus.imageExists ? 'text-green-500' : 'text-red-500'}`}>
+                                {containerStatus.imageExists ? 'Built' : 'Not Built'}
+                            </div>
+                        </div>
+                        <div className="bg-surface/50 rounded-xl p-3 border border-outline/10">
+                            <div className="text-[10px] text-on-surface-variant uppercase font-bold mb-1">Status</div>
+                            <div className="text-sm font-bold font-mono">{containerStatus.status}</div>
+                        </div>
+                        <div className="bg-surface/50 rounded-xl p-3 border border-outline/10">
+                            <div className="text-[10px] text-on-surface-variant uppercase font-bold mb-1">Container ID</div>
+                            <div className="text-sm font-bold font-mono truncate">
+                                {containerStatus.containerId?.substring(0, 12) || 'N/A'}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
+                    <button
+                        onClick={async () => {
+                            setIsContainerActionLoading(true);
+                            const result = await DockerClient.buildProxyImage();
+                            if (result.success) {
+                                toast.success('Image built successfully');
+                                await fetchContainerStatus();
+                            } else {
+                                toast.error(result.message || 'Failed to build image');
+                            }
+                            setIsContainerActionLoading(false);
+                        }}
+                        disabled={isContainerActionLoading}
+                        className="flex items-center justify-center gap-2 bg-surface hover:bg-surface-variant border border-outline/20 px-3 py-2 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <Activity size={16} />
+                        <span className="text-sm font-medium">Build</span>
+                    </button>
+                    <button
+                        onClick={async () => {
+                            setIsContainerActionLoading(true);
+                            const result = await DockerClient.createProxyContainer();
+                            if (result.success) {
+                                toast.success('Container created successfully');
+                                await fetchContainerStatus();
+                            } else {
+                                toast.error(result.message || 'Failed to create container');
+                            }
+                            setIsContainerActionLoading(false);
+                        }}
+                        disabled={isContainerActionLoading || !containerStatus?.imageExists}
+                        className="flex items-center justify-center gap-2 bg-surface hover:bg-surface-variant border border-outline/20 px-3 py-2 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <Plus size={16} />
+                        <span className="text-sm font-medium">Create</span>
+                    </button>
+                    <button
+                        onClick={async () => {
+                            setIsContainerActionLoading(true);
+                            const result = await DockerClient.startProxyContainer();
+                            if (result.success) {
+                                toast.success('Container started successfully');
+                                setTimeout(fetchContainerStatus, 1000);
+                            } else {
+                                toast.error(result.message || 'Failed to start container');
+                            }
+                            setIsContainerActionLoading(false);
+                        }}
+                        disabled={isContainerActionLoading || !containerStatus?.exists || containerStatus?.running}
+                        className="flex items-center justify-center gap-2 bg-green-500/10 hover:bg-green-500/20 text-green-500 border border-green-500/20 px-3 py-2 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <Activity size={16} />
+                        <span className="text-sm font-medium">Start</span>
+                    </button>
+                    <button
+                        onClick={async () => {
+                            setIsContainerActionLoading(true);
+                            const result = await DockerClient.stopProxyContainer();
+                            if (result.success) {
+                                toast.success('Container stopped successfully');
+                                setTimeout(fetchContainerStatus, 1000);
+                            } else {
+                                toast.error(result.message || 'Failed to stop container');
+                            }
+                            setIsContainerActionLoading(false);
+                        }}
+                        disabled={isContainerActionLoading || !containerStatus?.running}
+                        className="flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 px-3 py-2 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <Power size={16} />
+                        <span className="text-sm font-medium">Stop</span>
+                    </button>
+                    <button
+                        onClick={async () => {
+                            setIsContainerActionLoading(true);
+                            const result = await DockerClient.restartProxyContainer();
+                            if (result.success) {
+                                toast.success('Container restarted successfully');
+                                setTimeout(fetchContainerStatus, 2000);
+                            } else {
+                                toast.error(result.message || 'Failed to restart container');
+                            }
+                            setIsContainerActionLoading(false);
+                        }}
+                        disabled={isContainerActionLoading || !containerStatus?.running}
+                        className="flex items-center justify-center gap-2 bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 border border-orange-500/20 px-3 py-2 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <RefreshCw size={16} />
+                        <span className="text-sm font-medium">Restart</span>
+                    </button>
+                </div>
+
+                <button
+                    onClick={async () => {
+                        setIsContainerActionLoading(true);
+                        toast.promise(
+                            DockerClient.ensureProxyContainer(),
+                            {
+                                loading: 'Setting up proxy container...',
+                                success: (result) => {
+                                    setTimeout(fetchContainerStatus, 2000);
+                                    return result.message || 'Proxy container is ready!';
+                                },
+                                error: (err) => err.message || 'Failed to setup container'
+                            }
+                        );
+                        setIsContainerActionLoading(false);
+                    }}
+                    disabled={isContainerActionLoading}
+                    className="w-full bg-primary hover:bg-primary/90 text-on-primary px-4 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <Activity size={18} />
+                    <span>Ensure Container Ready (One-Click Setup)</span>
+                </button>
+
+                <div className="mt-3 flex items-start gap-2 text-xs text-on-surface-variant bg-primary/5 rounded-xl p-3 border border-primary/10">
+                    <Activity size={14} className="shrink-0 mt-0.5 text-primary" />
+                    <p>
+                        The proxy container runs OpenResty (Nginx) with Certbot for SSL management.
+                        Use <strong className="text-primary">Ensure Container Ready</strong> for automatic setup,
+                        or manage individual steps manually.
+                    </p>
+                </div>
             </div>
 
             {/* Stats Dashboard */}

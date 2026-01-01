@@ -254,3 +254,14 @@ class BtmpStats(
     val refreshIntervalMinutes: Int = 5,
     val isMonitoringActive: Boolean = true,
 )
+
+@Serializable
+data class ProxyContainerStatus(
+    val exists: Boolean,
+    val running: Boolean,
+    val imageExists: Boolean,
+    val containerId: String?,
+    val status: String,
+    val uptime: String?,
+)
+

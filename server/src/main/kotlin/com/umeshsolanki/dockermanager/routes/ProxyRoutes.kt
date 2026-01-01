@@ -69,5 +69,64 @@ fun Route.proxyRoutes() {
         get("/certificates") {
             call.respond(DockerService.listProxyCertificates())
         }
+
+        // Proxy Container Management
+        post("/container/build") {
+            val result = DockerService.buildProxyImage()
+            if (result.first) {
+                call.respond(HttpStatusCode.OK, mapOf("success" to true, "message" to result.second))
+            } else {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("success" to false, "message" to result.second))
+            }
+        }
+
+        post("/container/create") {
+            val result = DockerService.createProxyContainer()
+            if (result.first) {
+                call.respond(HttpStatusCode.Created, mapOf("success" to true, "message" to result.second))
+            } else {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("success" to false, "message" to result.second))
+            }
+        }
+
+        post("/container/start") {
+            val result = DockerService.startProxyContainer()
+            if (result.first) {
+                call.respond(HttpStatusCode.OK, mapOf("success" to true, "message" to result.second))
+            } else {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("success" to false, "message" to result.second))
+            }
+        }
+
+        post("/container/stop") {
+            val result = DockerService.stopProxyContainer()
+            if (result.first) {
+                call.respond(HttpStatusCode.OK, mapOf("success" to true, "message" to result.second))
+            } else {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("success" to false, "message" to result.second))
+            }
+        }
+
+        post("/container/restart") {
+            val result = DockerService.restartProxyContainer()
+            if (result.first) {
+                call.respond(HttpStatusCode.OK, mapOf("success" to true, "message" to result.second))
+            } else {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("success" to false, "message" to result.second))
+            }
+        }
+
+        get("/container/status") {
+            call.respond(DockerService.getProxyContainerStatus())
+        }
+
+        post("/container/ensure") {
+            val result = DockerService.ensureProxyContainerExists()
+            if (result) {
+                call.respond(HttpStatusCode.OK, mapOf("success" to true, "message" to "Proxy container is ready"))
+            } else {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("success" to false, "message" to "Failed to ensure proxy container"))
+            }
+        }
     }
 }

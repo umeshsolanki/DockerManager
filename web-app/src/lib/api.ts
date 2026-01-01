@@ -499,5 +499,94 @@ export const DockerClient = {
             console.error(e);
             return [];
         }
+    },
+
+    // Proxy Container Management
+    async getProxyContainerStatus(): Promise<any> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/container/status`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    },
+
+    async buildProxyImage(): Promise<{ success: boolean; message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/container/build`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            return data;
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async createProxyContainer(): Promise<{ success: boolean; message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/container/create`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            return data;
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async startProxyContainer(): Promise<{ success: boolean; message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/container/start`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            return data;
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async stopProxyContainer(): Promise<{ success: boolean; message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/container/stop`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            return data;
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async restartProxyContainer(): Promise<{ success: boolean; message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/container/restart`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            return data;
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async ensureProxyContainer(): Promise<{ success: boolean; message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/container/ensure`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            return data;
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
     }
 };

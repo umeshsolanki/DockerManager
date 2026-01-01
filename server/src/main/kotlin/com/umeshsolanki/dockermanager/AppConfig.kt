@@ -13,9 +13,11 @@ object AppConfig {
         inDocker
     }
 
-    val dockerCommand: String get() = if (isDocker) "/usr/bin/docker" else "docker"
+    val dockerCommand: String get() = if (isDocker) "/usr/bin/docker" else {
+        if (File("/usr/bin/docker").exists()) "/usr/bin/docker" else "docker"
+    }
 
-    private val dataRoot: File by lazy {
+    val dataRoot: File by lazy {
         if (isDocker) {
             File("/app/data")
         } else {
@@ -30,13 +32,15 @@ object AppConfig {
             }
         }
     }
+    
     //backup dirs
     val backupDir: File get() = File(dataRoot, "backups")
     val composeProjDir: File get() = File(dataRoot, "compose-ymls")
 
     // Proxy Service Configs
-    val proxyConfigDir: File get() = if (isDocker) File("/nginx/conf.d") else File(dataRoot, "nginx/conf.d")
-    val proxyLogFile: File get() = if (isDocker) File("/nginx/logs/access.log") else File(dataRoot, "nginx/logs/access.log")
+    val proxyDir: File get() = File(dataRoot, "nginx")
+    val proxyConfigDir: File get() = File(proxyDir, "conf.d")
+    val proxyLogFile: File get() = File(proxyDir, "logs/access.log")
     val proxyHostsFile: File get() = File(dataRoot, "proxy/hosts.json")
     
     // Log Service Configs
@@ -46,7 +50,8 @@ object AppConfig {
     val btmpLogFile: File get() = if (isDocker) File("/host/var/log/btmp") else File("/var/log/btmp")
 
     // Certs
-    val letsEncryptDir: File get() = File("/etc/letsencrypt/live") // Standard path on host or mounted in container
+    val certbotDir: File get() = File(dataRoot, "certbot")
+    val letsEncryptDir: File get() = File(certbotDir, "conf/live")
     val customCertDir: File get() = File(dataRoot, "certs")
     
     // Firewall Configs
