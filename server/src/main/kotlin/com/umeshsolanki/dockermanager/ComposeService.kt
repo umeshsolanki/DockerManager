@@ -14,8 +14,8 @@ interface IComposeService {
 }
 
 class ComposeServiceImpl : IComposeService {
-    private val composeDir = File("/app/data/compose")
-    private val backupDir = File("/app/data/backups/compose")
+    private val composeDir = AppConfig.composeProjDir
+    private val backupDir = File(AppConfig.backupDir, "compose")
 
     init {
         if (!composeDir.exists()) composeDir.mkdirs()
@@ -29,9 +29,7 @@ class ComposeServiceImpl : IComposeService {
             .filter { it.isFile && (it.name == "docker-compose.yml" || it.name == "docker-compose.yaml") }
             .map { file ->
                 ComposeFile(
-                    path = file.absolutePath,
-                    name = file.parentFile.name,
-                    status = "unknown"
+                    path = file.absolutePath, name = file.parentFile.name, status = "unknown"
                 )
             }.toList()
     }
@@ -48,7 +46,7 @@ class ComposeServiceImpl : IComposeService {
             
             val output = process.inputStream.bufferedReader().readText()
             val success = process.waitFor(5, TimeUnit.MINUTES) && process.exitValue() == 0
-            
+
             ComposeResult(success, output.ifBlank { if (success) "Up" else "Failed to start" })
         } catch (e: Exception) {
             e.printStackTrace()
@@ -68,7 +66,7 @@ class ComposeServiceImpl : IComposeService {
             
             val output = process.inputStream.bufferedReader().readText()
             val success = process.waitFor(2, TimeUnit.MINUTES) && process.exitValue() == 0
-            
+
             ComposeResult(success, output.ifBlank { if (success) "Down" else "Failed to stop" })
         } catch (e: Exception) {
             e.printStackTrace()
@@ -81,7 +79,7 @@ class ComposeServiceImpl : IComposeService {
             if (!composeDir.exists()) composeDir.mkdirs()
             val projectDir = File(composeDir, name)
             if (!projectDir.exists()) projectDir.mkdirs()
-            
+
             val file = File(projectDir, "docker-compose.yml")
             file.writeText(content)
             true
@@ -113,8 +111,8 @@ class ComposeServiceImpl : IComposeService {
             val fileName = "compose_${name}_${System.currentTimeMillis()}.tar.gz"
             val fullPath = File(backupDir, fileName).absolutePath
 
-            val process = ProcessBuilder("tar", "-czf", fullPath, "-C", projectDir.parent, name)
-                .start()
+            val process =
+                ProcessBuilder("tar", "-czf", fullPath, "-C", projectDir.parent, name).start()
             val exitCode = process.waitFor()
 
             if (exitCode == 0) {
@@ -130,13 +128,24 @@ class ComposeServiceImpl : IComposeService {
 
     override fun backupAllCompose(): BackupResult {
         return try {
-            if (!composeDir.exists()) return BackupResult(false, null, null, "No compose projects found")
+            if (!composeDir.exists()) return BackupResult(
+                false,
+                null,
+                null,
+                "No compose projects found"
+            )
 
             val fileName = "compose_all_${System.currentTimeMillis()}.tar.gz"
             val fullPath = File(backupDir, fileName).absolutePath
 
-            val process = ProcessBuilder("tar", "-czf", fullPath, "-C", composeDir.parent, composeDir.name)
-                .start()
+            val process = ProcessBuilder(
+                "tar",
+                "-czf",
+                fullPath,
+                "-C",
+                composeDir.parent,
+                composeDir.name
+            ).start()
             val exitCode = process.waitFor()
 
             if (exitCode == 0) {

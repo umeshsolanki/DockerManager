@@ -30,6 +30,9 @@ object AppConfig {
             }
         }
     }
+    //backup dirs
+    val backupDir: File get() = File(dataRoot, "backups")
+    val composeProjDir: File get() = File(dataRoot, "compose-ymls")
 
     // Proxy Service Configs
     val proxyConfigDir: File get() = if (isDocker) File("/nginx/conf.d") else File(dataRoot, "nginx/conf.d")

@@ -44,7 +44,7 @@ class VolumeServiceImpl(private val dockerClient: com.github.dockerjava.api.Dock
     override fun backupVolume(name: String): BackupResult {
         return try {
             val fileName = "backup_${name}_${System.currentTimeMillis()}.tar"
-            val backupDir = File("/app/data/backups/volumes").absoluteFile
+            val backupDir = File(AppConfig.backupDir,"volumes").absoluteFile
             if (!backupDir.exists()) backupDir.mkdirs()
 
             val fullPath = File(backupDir, fileName).absolutePath
