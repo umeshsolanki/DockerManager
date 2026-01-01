@@ -1,0 +1,28 @@
+[Unit]
+Description=Docker Manager Service
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+# Run as root to allow managing Docker, Firewall (iptables), and System Logs
+User=root
+Group=root
+
+# Path to Java and your JAR file
+# Adjust the path below to match where you install the jar
+ExecStart=/usr/bin/java -jar /opt/docker-manager/server-all.jar
+
+# Optional: Set custom data directory
+Environment="DATA_DIR=/opt/docker-manager/data"
+
+# Restart configuration
+Restart=always
+RestartSec=10
+SuccessExitStatus=143
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -73,11 +73,11 @@ export default function LogsScreen() {
 
     useEffect(() => {
         if (btmpStats) {
-            setIsAutoJailEnabled(btmpStats.autoJailEnabled);
-            setJailThreshold(btmpStats.jailThreshold);
-            setJailDuration(btmpStats.jailDurationMinutes);
-            setRefreshInterval(btmpStats.refreshIntervalMinutes);
-            setIsMonitoringActive(btmpStats.isMonitoringActive);
+            setIsAutoJailEnabled(btmpStats.autoJailEnabled ?? false);
+            setJailThreshold(btmpStats.jailThreshold ?? 5);
+            setJailDuration(btmpStats.jailDurationMinutes ?? 30);
+            setRefreshInterval(btmpStats.refreshIntervalMinutes ?? 5);
+            setIsMonitoringActive(btmpStats.isMonitoringActive ?? true);
         }
     }, [btmpStats]);
 

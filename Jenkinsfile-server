@@ -19,7 +19,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 // Copy the built jar to root so Docker context can see it
-                sh 'cp server/build/libs/server-all.jar /jenkins/deploy/server-all.jar'
+                sh 'cp server/build/libs/server-all.jar /opt/docker-manager/server-all.jar'
             }
         }
 
@@ -27,9 +27,9 @@ pipeline {
             environment {
                 BUILD_NUMBER = "${env.BUILD_NUMBER}"
             }
-            steps {
-                sh '/jenkins/bin/jar-deploy.sh /jenkins/deploy/server-all.jar'
-              }
+//            steps {
+//                sh '/jenkins/bin/jar-deploy.sh /jenkins/deploy/server-all.jar'
+//              }
         }
     }
     

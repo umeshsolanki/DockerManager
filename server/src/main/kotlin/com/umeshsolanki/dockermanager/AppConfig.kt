@@ -18,6 +18,7 @@ object AppConfig {
             if (!env.isNullOrBlank()) {
                 File(env)
             } else {
+                println("User Home: "+ System.getProperty("user.home"))
                 File(System.getProperty("user.home"), ".docker-manager/data")
             }
         }
