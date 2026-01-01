@@ -586,6 +586,31 @@ export const DockerClient = {
         }
     },
 
+    async updateProxyComposeConfig(content: string): Promise<{ success: boolean; message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/container/compose`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content })
+            });
+            return await this.safeJson(response);
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async getProxyComposeConfig(): Promise<string> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/container/compose`);
+            const data = await this.safeJson(response);
+            return data.content || '';
+        } catch (e) {
+            console.error(e);
+            return '';
+        }
+    },
+
     async ensureProxyContainer(): Promise<{ success: boolean; message: string }> {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/container/ensure`, {

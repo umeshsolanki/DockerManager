@@ -18,6 +18,7 @@ export default function ProxyScreen() {
 
     const [activeTab, setActiveTab] = useState<'domains' | 'container' | 'certs' | 'analytics'>('domains');
     const [certs, setCerts] = useState<SSLCertificate[]>([]);
+    const [isComposeModalOpen, setIsComposeModalOpen] = useState(false);
 
     const fetchData = async () => {
         setIsLoading(true);
@@ -312,6 +313,16 @@ export default function ProxyScreen() {
                                 <Activity size={20} />
                                 <span>AUTOMATIC INFRASTRUCTURE SYNC</span>
                             </button>
+
+                            <div className="mt-3 flex justify-center">
+                                <button
+                                    onClick={() => setIsComposeModalOpen(true)}
+                                    className="text-xs font-bold text-on-surface-variant hover:text-primary flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all"
+                                >
+                                    <Pencil size={12} />
+                                    <span>Edit Proxy Compose File</span>
+                                </button>
+                            </div>
                         </div>
 
                         {/* Information Guide */}
@@ -560,6 +571,12 @@ export default function ProxyScreen() {
                     onAdded={() => { setEditingHost(null); fetchData(); }}
                 />
             )}
+
+            {isComposeModalOpen && (
+                <ProxyComposeModal
+                    onClose={() => setIsComposeModalOpen(false)}
+                />
+            )}
         </div>
     );
 }
@@ -720,6 +737,79 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+    );
+}
+
+function ProxyComposeModal({ onClose }: { onClose: () => void }) {
+    const [content, setContent] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+
+    useEffect(() => {
+        DockerClient.getProxyComposeConfig().then(data => {
+            setContent(data);
+            setIsLoading(false);
+        });
+    }, []);
+
+    const handleSave = async () => {
+        setIsSaving(true);
+        const result = await DockerClient.updateProxyComposeConfig(content);
+        if (result.success) {
+            toast.success('Compose configuration updated');
+            onClose();
+        } else {
+            toast.error(result.message || 'Failed to update configuration');
+        }
+        setIsSaving(false);
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-surface border border-outline/20 rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh]">
+                <div className="p-5 border-b border-outline/10 flex justify-between items-center">
+                    <div>
+                        <h2 className="text-lg font-bold">Edit Proxy Compose</h2>
+                        <p className="text-[10px] text-on-surface-variant uppercase font-bold">docker-compose.yml</p>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-all">
+                        <Plus className="rotate-45" size={20} />
+                    </button>
+                </div>
+
+                <div className="flex-1 p-4 overflow-hidden flex flex-col">
+                    {isLoading ? (
+                        <div className="flex-1 flex items-center justify-center">
+                            <RefreshCw className="animate-spin text-primary" size={32} />
+                        </div>
+                    ) : (
+                        <textarea
+                            value={content}
+                            onChange={(e) => setContent(e.target.value)}
+                            className="flex-1 bg-black/20 border border-outline/10 rounded-xl p-4 font-mono text-xs focus:outline-none focus:border-primary resize-none scrollbar-invisible shadow-inner"
+                            placeholder="Type your docker-compose.yml content here..."
+                            spellCheck={false}
+                        />
+                    )}
+                </div>
+
+                <div className="p-4 border-t border-outline/10 flex gap-3">
+                    <button
+                        onClick={onClose}
+                        className="px-6 py-2 rounded-xl border border-outline/20 hover:bg-white/5 text-sm font-bold"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={handleSave}
+                        disabled={isSaving || isLoading}
+                        className="flex-1 bg-primary text-on-primary px-6 py-2 rounded-xl font-bold text-sm shadow-lg shadow-primary/20 disabled:opacity-50"
+                    >
+                        {isSaving ? 'Saving...' : 'Save Configuration'}
+                    </button>
+                </div>
             </div>
         </div>
     );

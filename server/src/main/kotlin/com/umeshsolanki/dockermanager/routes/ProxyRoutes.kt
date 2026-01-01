@@ -154,5 +154,23 @@ fun Route.proxyRoutes() {
                 )
             }
         }
+
+        get("/container/compose") {
+            call.respond(mapOf("content" to DockerService.getProxyComposeConfig()))
+        }
+
+        post("/container/compose") {
+            val request = call.receive<Map<String, String>>()
+            val content = request["content"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+            val result = DockerService.updateProxyComposeConfig(content)
+            if (result.first) {
+                call.respond(HttpStatusCode.OK, ProxyActionResult(true, result.second))
+            } else {
+                call.respond(
+                    HttpStatusCode.InternalServerError,
+                    ProxyActionResult(false, result.second)
+                )
+            }
+        }
     }
 }

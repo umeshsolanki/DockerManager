@@ -28,6 +28,8 @@ interface IProxyService {
     fun restartProxyContainer(): Pair<Boolean, String>
     fun getProxyContainerStatus(): ProxyContainerStatus
     fun ensureProxyContainerExists(): Boolean
+    fun getComposeConfig(): String
+    fun updateComposeConfig(content: String): Pair<Boolean, String>
 }
 
 class ProxyServiceImpl : IProxyService {
@@ -718,9 +720,48 @@ $sslConfig
         }
     }
 
+    override fun getComposeConfig(): String {
+        val composeFile = File(AppConfig.projectRoot, "docker-compose.yml")
+        return if (composeFile.exists()) {
+            composeFile.readText()
+        } else {
+            getDefaultComposeConfig()
+        }
+    }
+
+    private fun getDefaultComposeConfig(): String {
+        return """
+services:
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.proxy
+    image: docker-manager-proxy:latest
+    container_name: docker-manager-proxy
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Kolkata
+    volumes:
+      - ./data/nginx:/nginx:ro
+      - ./data/certbot:/certbot:ro
+    command: /bin/sh -c "mkdir -p /usr/local/openresty/nginx/conf/conf.d && ln -sf /nginx/conf.d/*.conf /usr/local/openresty/nginx/conf/conf.d/ 2>/dev/null; ln -sf /nginx/logs /usr/local/openresty/nginx/logs; ln -sf /certbot/conf /etc/letsencrypt; ln -sf /certbot/www /var/www/certbot; /usr/local/openresty/bin/openresty -g 'daemon off;'"
+        """.trimIndent()
+    }
+
+    override fun updateComposeConfig(content: String): Pair<Boolean, String> {
+        return try {
+            val composeFile = File(AppConfig.projectRoot, "docker-compose.yml")
+            composeFile.writeText(content)
+            true to "Compose configuration updated"
+        } catch (e: Exception) {
+            false to "Failed to update compose configuration: ${e.message}"
+        }
+    }
+
     private fun checkImageExists(): Boolean {
         return try {
-            val cmd = "${AppConfig.dockerCommand} images -q $PROXY_IMAGE_NAME:$PROXY_IMAGE_TAG"
+            val cmd = "${AppConfig.dockerCommand} images -q ${'$'}PROXY_IMAGE_NAME:${'$'}PROXY_IMAGE_TAG"
             val output = executeCommand(cmd).trim()
             output.isNotBlank()
         } catch (e: Exception) {

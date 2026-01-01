@@ -80,4 +80,6 @@ object DockerService {
     fun restartProxyContainer() = proxyService.restartProxyContainer()
     fun getProxyContainerStatus() = proxyService.getProxyContainerStatus()
     fun ensureProxyContainerExists() = proxyService.ensureProxyContainerExists()
+    fun getProxyComposeConfig() = proxyService.getComposeConfig()
+    fun updateProxyComposeConfig(content: String) = proxyService.updateComposeConfig(content)
 }
