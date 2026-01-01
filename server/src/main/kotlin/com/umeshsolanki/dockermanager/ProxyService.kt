@@ -362,19 +362,28 @@ class ProxyServiceImpl : IProxyService {
         """.trimIndent() else ""
 
         val sslConfig = if (host.ssl) {
-            val (cert, key) = if (!host.customSslPath.isNullOrBlank() && host.customSslPath?.contains(
-                    "|"
-                ) == true
-            ) {
+            val (cert, key) = if (!host.customSslPath.isNullOrBlank() && host.customSslPath?.contains("|") == true) {
                 val parts = host.customSslPath!!.split("|")
                 if (parts.size >= 2) parts[0] to parts[1] else "/etc/letsencrypt/live/${host.domain}/fullchain.pem" to "/etc/letsencrypt/live/${host.domain}/privkey.pem"
             } else {
                 "/etc/letsencrypt/live/${host.domain}/fullchain.pem" to "/etc/letsencrypt/live/${host.domain}/privkey.pem"
             }
 
-            // check if files exist
-            if (!File(cert).exists() || !File(key).exists()) {
-                logger.warn("Cert files missing for ${host.domain}")
+            // check if files exist on host
+            val hostCertFile = if (!host.customSslPath.isNullOrBlank() && host.customSslPath?.contains("|") == true) {
+                File(cert) // Custom path provided
+            } else {
+                File(AppConfig.letsEncryptDir, "${host.domain}/fullchain.pem")
+            }
+            
+            val hostKeyFile = if (!host.customSslPath.isNullOrBlank() && host.customSslPath?.contains("|") == true) {
+                File(key) // Custom path provided
+            } else {
+                File(AppConfig.letsEncryptDir, "${host.domain}/privkey.pem")
+            }
+
+            if (!hostCertFile.exists() || !hostKeyFile.exists()) {
+                logger.warn("Cert files missing on host: ${hostCertFile.absolutePath}")
                 // Fallback to HTTP config
                 return generateNginxConfig(host.copy(ssl = false)).copy(second = "SSL Certificate missing, fallback to HTTP")
             }
@@ -512,6 +521,8 @@ $sslConfig
             certbotDir.mkdirs()
             File(certbotDir, "conf").mkdirs()
             File(certbotDir, "www").mkdirs()
+            
+            ensureNginxMainConfig()
             
             val createCmd = "${AppConfig.dockerComposeCommand} up --no-start proxy"
             logger.info("Create command: $createCmd")
@@ -693,6 +704,8 @@ $sslConfig
             certbotDir.mkdirs()
             File(certbotDir, "conf").mkdirs()
             File(certbotDir, "www").mkdirs()
+            
+            ensureNginxMainConfig()
 
             // Run compose up -d proxy
             val upCmd = "${AppConfig.dockerComposeCommand} up -d proxy"
@@ -741,9 +754,12 @@ $sslConfig
                 environment:
                   - TZ=Asia/Kolkata
                 volumes:
-                  - ./${nginxPath}:/nginx:ro
-                  - ./${certbotPath}:/certbot:ro
-                command: /bin/sh -c "mkdir -p /usr/local/openresty/nginx/conf/conf.d && ln -sf /nginx/conf.d/*.conf /usr/local/openresty/nginx/conf/conf.d/ 2>/dev/null; ln -sf /nginx/logs /usr/local/openresty/nginx/logs; ln -sf /certbot/conf /etc/letsencrypt; ln -sf /certbot/www /var/www/certbot; /usr/local/openresty/bin/openresty -g 'daemon off;'"
+                  - ./${nginxPath}/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+                  - ./${nginxPath}/conf.d:/etc/nginx/conf.d:ro
+                  - ./${nginxPath}/logs:/usr/local/openresty/nginx/logs
+                  - ./${certbotPath}/conf:/etc/letsencrypt:ro
+                  - ./${certbotPath}/www:/var/www/certbot:ro
+                command: /bin/sh -c "ln -sf /etc/letsencrypt /etc/letsencrypt; ln -sf /var/www/certbot /var/www/certbot; /usr/local/openresty/bin/openresty -g 'daemon off;'"
         """.trimIndent()
     }
 
@@ -788,6 +804,38 @@ $sslConfig
             dockerfile.writeText(getDefaultDockerfileConfig())
         }
         return dockerfile
+    }
+
+    private fun ensureNginxMainConfig() {
+        val nginxConf = File(AppConfig.proxyDir, "nginx.conf")
+        if (!nginxConf.exists()) {
+            logger.info("Creating default nginx.conf in ${nginxConf.absolutePath}")
+            nginxConf.writeText(getDefaultNginxConfig())
+        }
+    }
+
+    private fun getDefaultNginxConfig(): String {
+        return """
+            worker_processes  1;
+            events {
+                worker_connections  1024;
+            }
+            http {
+                include       mime.types;
+                default_type  application/octet-stream;
+                sendfile        on;
+                keepalive_timeout  65;
+
+                log_format  main  '${'$'}remote_addr - ${'$'}remote_user [${'$'}time_local] "${'$'}request" '
+                                  '${'$'}status ${'$'}body_bytes_sent "${'$'}http_referer" '
+                                  '"${'$'}http_user_agent" "${'$'}http_x_forwarded_for"';
+
+                access_log  logs/access.log  main;
+                error_log   logs/error.log;
+
+                include /etc/nginx/conf.d/*.conf;
+            }
+        """.trimIndent()
     }
 
     override fun updateComposeConfig(content: String): Pair<Boolean, String> {
