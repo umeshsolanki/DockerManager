@@ -264,4 +264,8 @@ data class ProxyContainerStatus(
     val status: String,
     val uptime: String?,
 )
-
+@Serializable
+data class ProxyActionResult(
+    val success: Boolean,
+    val message: String,
+)
