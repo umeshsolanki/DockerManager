@@ -2,31 +2,7 @@ pipeline {
     agent any
 
     stages {
-//         stage('Test') {
-//             steps {
-//                 sh './gradlew test'
-//             }
-//         }
 
-        stage('Build FatJar') {
-            steps {
-                // Use shadowJar task to build the FatJar
-                sh './gradlew clean'
-                sh './gradlew :server:shadowJar'
-            }
-        }
-
-        stage('Build Server Docker Image') {
-            steps {
-                // Copy the built jar to root so Docker context can see it
-                sh 'cp server/build/libs/server-all.jar server-all.jar'
-                
-                script {
-                    // Add build label for tracking and selective cleanup
-                    docker.build("docker-manager-server:${env.BUILD_NUMBER}", "--label jenkins_build_id=${env.BUILD_ID} .")
-                }
-            }
-        }
         stage('Build Client Image') {
             steps {
                 script {
@@ -36,7 +12,7 @@ pipeline {
             }
         }
 
-        stage('Deploy') {
+        stage('Deploy Client App') {
             environment {
                 BUILD_NUMBER = "${env.BUILD_NUMBER}"
             }
@@ -58,7 +34,7 @@ pipeline {
                         error "Docker Compose binary not found. Please ensure docker-compose-plugin is correctly linked."
                     }
                     echo "Using compose command: ${composeCmd}"
-                    sh "${composeCmd} up -d --remove-orphans"
+                    sh "${composeCmd} up -d --remove-orphans -f docker-manager-ui-proxy.yml"
                 }
             }
         }

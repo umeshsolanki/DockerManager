@@ -1,40 +1,4 @@
 services:
-#  server:
-#    image: docker-manager-server:${BUILD_NUMBER}
-#    container_name: docker-manager
-#    network_mode: host
-#    restart: unless-stopped
-#    cap_add:
-#      - NET_ADMIN
-#      - NET_RAW
-#    environment:
-#      - TZ=Asia/Kolkata
-#    volumes:
-#      - /var/run/docker.sock:/var/run/docker.sock
-#      - /sys/class/power_supply/BAT0:/sys/class/power_supply/BAT0
-#      - docker-manager-storage:/app/data
-#      - /home:/home
-#      - /usr:/main:ro
-#      - /var/log:/host/var/log:ro
-#      - nginx:/nginx
-#      - certbot:/etc/letsencrypt:ro
-
-  proxy:
-    build:
-      context: .
-      dockerfile: Dockerfile.proxy
-    container_name: docker-manager-proxy
-    network_mode: host
-    restart: unless-stopped
-    environment:
-      - TZ=Asia/Kolkata
-    volumes:
-      - nginx:/nginx:ro
-      - certbot:/etc/letsencrypt
-#    depends_on:
-#      - server
-    command: /bin/sh -c "mkdir -p /usr/local/openresty/nginx/conf/conf.d && ln -sf /nginx/conf.d/*.conf /usr/local/openresty/nginx/conf/conf.d/ 2>/dev/null; ln -sf /nginx/logs /usr/local/openresty/nginx/logs; /usr/local/openresty/bin/openresty -g 'daemon off;'"
-
   client:
     image: docker-manager-client:${BUILD_NUMBER}
     container_name: docker-manager-client
@@ -43,8 +7,3 @@ services:
     restart: unless-stopped
     environment:
       - TZ=Asia/Kolkata
-
-volumes:
-  docker-manager-storage:
-  nginx:
-  certbot:
