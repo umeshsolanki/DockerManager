@@ -21,6 +21,7 @@ interface IBtmpService {
 class BtmpServiceImpl(
     private val firewallService: IFirewallService
 ) : IBtmpService {
+    private val logger = org.slf4j.LoggerFactory.getLogger(BtmpServiceImpl::class.java)
     val simpleDateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
     private val btmpPath = AppConfig.btmpLogFile.toPath()
     private var totalFailedAttempts = 0
@@ -59,7 +60,7 @@ class BtmpServiceImpl(
                     try {
                         updateStats()
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        logger.error("Error in Btmp worker", e)
                     }
                 }
                 delay(refreshIntervalMinutes * 60 * 1000L)
@@ -73,7 +74,7 @@ class BtmpServiceImpl(
                 try {
                     checkAndReleaseJails()
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    logger.error("Error in Unjail worker", e)
                 }
                 delay(60000)
             }
@@ -155,7 +156,7 @@ class BtmpServiceImpl(
                 updateCachedStats()
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger.error("Error updating Btmp stats", e)
         }
     }
 

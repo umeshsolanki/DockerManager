@@ -9,6 +9,7 @@ interface ILogService {
 }
 
 class LogServiceImpl : ILogService {
+    private val logger = org.slf4j.LoggerFactory.getLogger(LogServiceImpl::class.java)
     private val baseLogDir = AppConfig.systemLogDir
 
     override fun listSystemLogs(subPath: String): List<SystemLog> {
@@ -113,6 +114,7 @@ class LogServiceImpl : ILogService {
                 output.ifBlank { "No entries found (or filter returned nothing)" }
             }
         } catch (e: Exception) {
+            logger.error("Error reading log content from $path", e)
             "Error reading log: ${e.message}"
         }
     }

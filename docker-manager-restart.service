@@ -1,0 +1,7 @@
+[Unit]
+Description=Restart Docker Manager Service
+# This service is triggered by docker-manager.path when the JAR is updated
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl try-restart docker-manager.service

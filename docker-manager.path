@@ -1,0 +1,11 @@
+[Unit]
+Description=Monitor Docker Manager JAR for updates
+
+[Path]
+# Monitor the JAR file for changes
+PathChanged=/opt/docker-manager/server-all.jar
+# Trigger the restart service when the JAR changes
+Unit=docker-manager-restart.service
+
+[Install]
+WantedBy=multi-user.target

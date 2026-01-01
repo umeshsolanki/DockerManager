@@ -13,6 +13,7 @@ interface IFirewallService {
 }
 
 class FirewallServiceImpl : IFirewallService {
+    private val logger = org.slf4j.LoggerFactory.getLogger(FirewallServiceImpl::class.java)
     private val dataDir = AppConfig.firewallDataDir
     private val iptablesCmd = AppConfig.iptablesCmd
     private val ipSetCmd = AppConfig.ipsetCmd
@@ -32,6 +33,7 @@ class FirewallServiceImpl : IFirewallService {
         return try {
             json.decodeFromString<List<FirewallRule>>(rulesFile.readText()).toMutableList()
         } catch (e: Exception) {
+            logger.error("Error loading firewall rules", e)
             mutableListOf()
         }
     }
@@ -162,6 +164,7 @@ class FirewallServiceImpl : IFirewallService {
                         )
                         chains[currentChain]?.add(rule)
                     } catch (e: Exception) {
+                        logger.warn("Failed to parse iptables rule line: $trimmed", e)
                     }
                 }
             }
@@ -200,6 +203,7 @@ class FirewallServiceImpl : IFirewallService {
             process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
             process.inputStream.bufferedReader().readText()
         } catch (e: Exception) {
+            logger.error("Error executing command: $command", e)
             ""
         }
     }
