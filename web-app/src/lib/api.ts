@@ -505,10 +505,24 @@ export const DockerClient = {
     async getProxyContainerStatus(): Promise<any> {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/container/status`);
-            return await response.json();
+            const data = await this.safeJson(response);
+            if (data && data.success === false && data.message?.startsWith('Server error')) {
+                return null;
+            }
+            return data;
         } catch (e) {
             console.error(e);
             return null;
+        }
+    },
+
+    async safeJson(response: Response) {
+        const text = await response.text();
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            console.error('Failed to parse JSON:', text);
+            return { success: false, message: `Server error: ${response.status} ${response.statusText}` };
         }
     },
 
@@ -517,8 +531,7 @@ export const DockerClient = {
             const response = await fetch(`${this.getServerUrl()}/proxy/container/build`, {
                 method: 'POST'
             });
-            const data = await response.json();
-            return data;
+            return await this.safeJson(response);
         } catch (e) {
             console.error(e);
             return { success: false, message: 'Network error' };
@@ -530,8 +543,7 @@ export const DockerClient = {
             const response = await fetch(`${this.getServerUrl()}/proxy/container/create`, {
                 method: 'POST'
             });
-            const data = await response.json();
-            return data;
+            return await this.safeJson(response);
         } catch (e) {
             console.error(e);
             return { success: false, message: 'Network error' };
@@ -543,8 +555,7 @@ export const DockerClient = {
             const response = await fetch(`${this.getServerUrl()}/proxy/container/start`, {
                 method: 'POST'
             });
-            const data = await response.json();
-            return data;
+            return await this.safeJson(response);
         } catch (e) {
             console.error(e);
             return { success: false, message: 'Network error' };
@@ -556,8 +567,7 @@ export const DockerClient = {
             const response = await fetch(`${this.getServerUrl()}/proxy/container/stop`, {
                 method: 'POST'
             });
-            const data = await response.json();
-            return data;
+            return await this.safeJson(response);
         } catch (e) {
             console.error(e);
             return { success: false, message: 'Network error' };
@@ -569,8 +579,7 @@ export const DockerClient = {
             const response = await fetch(`${this.getServerUrl()}/proxy/container/restart`, {
                 method: 'POST'
             });
-            const data = await response.json();
-            return data;
+            return await this.safeJson(response);
         } catch (e) {
             console.error(e);
             return { success: false, message: 'Network error' };
@@ -582,8 +591,7 @@ export const DockerClient = {
             const response = await fetch(`${this.getServerUrl()}/proxy/container/ensure`, {
                 method: 'POST'
             });
-            const data = await response.json();
-            return data;
+            return await this.safeJson(response);
         } catch (e) {
             console.error(e);
             return { success: false, message: 'Network error' };

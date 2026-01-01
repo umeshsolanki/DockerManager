@@ -489,8 +489,15 @@ $sslConfig
                 .redirectErrorStream(true)
                 .start()
             
-            val output = process.inputStream.bufferedReader().readText()
+            val outputFull = process.inputStream.bufferedReader().readText()
             val exitCode = process.waitFor()
+            
+            // Truncate output to avoid massive JSON payloads
+            val output = if (outputFull.length > 10000) {
+                " (Truncated...)\n" + outputFull.takeLast(10000)
+            } else {
+                outputFull
+            }
             
             if (exitCode == 0) {
                 logger.info("Proxy image built successfully")

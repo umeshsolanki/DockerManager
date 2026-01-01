@@ -19,7 +19,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 // Copy the built jar to root so Docker context can see it
-                sh 'cp server/build/libs/server-all.jar /opt/docker-manager/server-all.jar'
+                sh 'cp -f server/build/libs/server-all.jar /opt/docker-manager/server-all.jar'
             }
         }
 
@@ -29,7 +29,8 @@ pipeline {
            }
            steps {
                sh 'cp docker-manager.service /opt/docker-manager/docker-manager.service'
-               sh '/jenkins/bin/jar-deploy.sh /jenkins/deploy/server-all.jar'
+               sh 'cp docker-manager.path /opt/docker-manager/docker-manager.path'
+               sh 'cp docker-manager-restart.service /opt/docker-manager/docker-manager-restart.service'
             }
         }
     }
