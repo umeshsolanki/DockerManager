@@ -23,14 +23,15 @@ pipeline {
             }
         }
 
-  //      stage('Deploy') {
-    //        environment {
-      //          BUILD_NUMBER = "${env.BUILD_NUMBER}"
-        //    }
-//            steps {
-//                sh '/jenkins/bin/jar-deploy.sh /jenkins/deploy/server-all.jar'
-//              }
-        //}
+       stage('Deploy') {
+           environment {
+               BUILD_NUMBER = "${env.BUILD_NUMBER}"
+           }
+           steps {
+               sh 'cp docker-manager.service /opt/docker-manager/docker-manager.service'
+               sh '/jenkins/bin/jar-deploy.sh /jenkins/deploy/server-all.jar'
+            }
+        }
     }
     
     post {
