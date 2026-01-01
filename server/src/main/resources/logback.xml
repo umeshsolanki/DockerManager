@@ -1,0 +1,21 @@
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{YYYY-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+
+    <logger name="com.umeshsolanki.dockermanager" level="INFO"/>
+    <logger name="org.eclipse.jetty" level="OFF"/>
+    <logger name="io.netty" level="OFF"/>
+    <logger name="org.apache.hc" level="WARN"/>
+    <logger name="org.apache.hc.client5.http.wire" level="OFF"/>
+    <logger name="org.apache.hc.client5.http.headers" level="OFF"/>
+    <logger name="org.apache.hc.client5.http.context" level="OFF"/>
+    <logger name="com.github.dockerjava" level="WARN"/>
+    <logger name="io.ktor.server.plugins.ratelimit.RateLimit" level="INFO"/>
+</configuration>

@@ -46,14 +46,21 @@ object AppConfig {
                 logger.info("Using custom PROJECT_ROOT from env: $env")
                 File(env)
             } else {
-                // Default to finding docker-compose.yml upward from user.dir
+                // Default to finding docker-compose.yml upward from user.dir, but stop at root
                 var current: File? = File(System.getProperty("user.dir"))
-                while (current != null && !File(current, "docker-compose.yml").exists()) {
+                while (current != null && current.path != "/" && !File(current, "docker-compose.yml").exists()) {
                     current = current.parentFile
                 }
-                val root = current ?: File(System.getProperty("user.dir"))
-                logger.info("Determined project root: ${root.absolutePath}")
-                root
+                
+                if (current != null && File(current, "docker-compose.yml").exists()) {
+                    logger.info("Determined project root: ${current.absolutePath}")
+                    current
+                } else {
+                    // If we didn't find a proper project root, use dataRoot as the fallback base
+                    // This avoids issues where user.dir is / and we try to write to restricted areas
+                    logger.info("Project root not found (no docker-compose.yml), using dataRoot as fallback: ${dataRoot.absolutePath}")
+                    dataRoot
+                }
             }
         }
     }

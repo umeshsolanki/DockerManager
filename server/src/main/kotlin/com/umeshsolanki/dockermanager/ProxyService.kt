@@ -464,11 +464,7 @@ $sslConfig
         return try {
             logger.info("Building proxy Docker image using compose...")
             val projectRoot = AppConfig.projectRoot
-            val composeFile = File(projectRoot, "docker-compose.yml")
-            
-            if (!composeFile.exists()) {
-                return false to "docker-compose.yml not found in ${projectRoot.absolutePath}"
-            }
+            val composeFile = ensureComposeFile()
             
             val buildCmd = "${AppConfig.dockerComposeCommand} -f ${composeFile.absolutePath} build proxy"
             logger.info("Build command: $buildCmd")
@@ -504,6 +500,7 @@ $sslConfig
         return try {
             logger.info("Creating proxy container using compose...")
             val projectRoot = AppConfig.projectRoot
+            ensureComposeFile()
             
             // Ensure host directories exist (as defined in docker-compose.yml bind mounts)
             val nginxDir = File(projectRoot, "data/nginx")
@@ -544,6 +541,7 @@ $sslConfig
         return try {
             logger.info("Starting proxy container using compose...")
             val projectRoot = AppConfig.projectRoot
+            ensureComposeFile()
             
             val startCmd = "${AppConfig.dockerComposeCommand} start proxy"
             val process = ProcessBuilder("sh", "-c", startCmd)
@@ -684,6 +682,7 @@ $sslConfig
         return try {
             logger.info("Ensuring proxy container is ready (using compose up -d)...")
             val projectRoot = AppConfig.projectRoot
+            ensureComposeFile()
             
             // Ensure host directories exist
             val nginxDir = File(projectRoot, "data/nginx")
@@ -721,32 +720,70 @@ $sslConfig
     }
 
     override fun getComposeConfig(): String {
-        val composeFile = File(AppConfig.projectRoot, "docker-compose.yml")
-        return if (composeFile.exists()) {
-            composeFile.readText()
-        } else {
-            getDefaultComposeConfig()
-        }
+        return ensureComposeFile().readText()
     }
 
     private fun getDefaultComposeConfig(): String {
         return """
-services:
-  proxy:
-    build:
-      context: .
-      dockerfile: Dockerfile.proxy
-    image: docker-manager-proxy:latest
-    container_name: docker-manager-proxy
-    network_mode: host
-    restart: unless-stopped
-    environment:
-      - TZ=Asia/Kolkata
-    volumes:
-      - ./data/nginx:/nginx:ro
-      - ./data/certbot:/certbot:ro
-    command: /bin/sh -c "mkdir -p /usr/local/openresty/nginx/conf/conf.d && ln -sf /nginx/conf.d/*.conf /usr/local/openresty/nginx/conf/conf.d/ 2>/dev/null; ln -sf /nginx/logs /usr/local/openresty/nginx/logs; ln -sf /certbot/conf /etc/letsencrypt; ln -sf /certbot/www /var/www/certbot; /usr/local/openresty/bin/openresty -g 'daemon off;'"
+            services:
+              proxy:
+                build:
+                  context: .
+                  dockerfile: Dockerfile.proxy
+                image: docker-manager-proxy:latest
+                container_name: docker-manager-proxy
+                network_mode: host
+                restart: unless-stopped
+                environment:
+                  - TZ=Asia/Kolkata
+                volumes:
+                  - ./data/nginx:/nginx:ro
+                  - ./data/certbot:/certbot:ro
+                command: /bin/sh -c "mkdir -p /usr/local/openresty/nginx/conf/conf.d && ln -sf /nginx/conf.d/*.conf /usr/local/openresty/nginx/conf/conf.d/ 2>/dev/null; ln -sf /nginx/logs /usr/local/openresty/nginx/logs; ln -sf /certbot/conf /etc/letsencrypt; ln -sf /certbot/www /var/www/certbot; /usr/local/openresty/bin/openresty -g 'daemon off;'"
         """.trimIndent()
+    }
+
+    private fun getDefaultDockerfileConfig(): String {
+        return """
+            FROM openresty/openresty:alpine
+            
+            RUN apk add --no-cache \
+                certbot \
+                certbot-nginx \
+                openssl \
+                bash \
+                curl \
+                ca-certificates
+            
+            RUN mkdir -p /var/www/certbot /etc/letsencrypt /var/log/nginx
+            RUN chmod 755 /var/www/certbot
+            
+            HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+                CMD curl -f http://localhost/ || exit 1
+                
+            CMD ["/usr/local/openresty/bin/openresty", "-g", "daemon off;"]
+        """.trimIndent()
+    }
+
+    private fun ensureComposeFile(): File {
+        val projectRoot = AppConfig.projectRoot
+        val composeFile = File(projectRoot, "docker-compose.yml")
+        if (!composeFile.exists()) {
+            logger.info("Creating default docker-compose.yml in ${projectRoot.absolutePath}")
+            composeFile.writeText(getDefaultComposeConfig())
+        }
+        ensureDockerfile()
+        return composeFile
+    }
+
+    private fun ensureDockerfile(): File {
+        val projectRoot = AppConfig.projectRoot
+        val dockerfile = File(projectRoot, "Dockerfile.proxy")
+        if (!dockerfile.exists()) {
+            logger.info("Creating default Dockerfile.proxy in ${projectRoot.absolutePath}")
+            dockerfile.writeText(getDefaultDockerfileConfig())
+        }
+        return dockerfile
     }
 
     override fun updateComposeConfig(content: String): Pair<Boolean, String> {
