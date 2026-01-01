@@ -279,6 +279,9 @@ class ProxyServiceImpl : IProxyService {
             val result = executeCommand(certCmd)
 
             if (result.contains("Successfully received certificate") || result.contains("Certificate not yet due for renewal")) {
+                // Fix permissions so host process can see them (recursive 755 for live/archive)
+                executeCommand("${AppConfig.dockerCommand} exec docker-manager-proxy chmod -R 755 /etc/letsencrypt")
+                
                 val updated = host.copy(ssl = true)
                 hosts[index] = updated
                 saveHosts(hosts)
@@ -362,31 +365,33 @@ class ProxyServiceImpl : IProxyService {
         """.trimIndent() else ""
 
         val sslConfig = if (host.ssl) {
-            val (cert, key) = if (!host.customSslPath.isNullOrBlank() && host.customSslPath?.contains("|") == true) {
+            val certsDir = AppConfig.letsEncryptDir
+            
+            val (hostCert, hostKey) = if (!host.customSslPath.isNullOrBlank() && host.customSslPath?.contains("|") == true) {
                 val parts = host.customSslPath!!.split("|")
-                if (parts.size >= 2) parts[0] to parts[1] else "/etc/letsencrypt/live/${host.domain}/fullchain.pem" to "/etc/letsencrypt/live/${host.domain}/privkey.pem"
+                if (parts.size >= 2) parts[0] to parts[1] else {
+                    val folder = findDomainFolder(certsDir, host.domain)
+                    File(folder, "fullchain.pem").absolutePath to File(folder, "privkey.pem").absolutePath
+                }
             } else {
-                "/etc/letsencrypt/live/${host.domain}/fullchain.pem" to "/etc/letsencrypt/live/${host.domain}/privkey.pem"
+                val folder = findDomainFolder(certsDir, host.domain)
+                File(folder, "fullchain.pem").absolutePath to File(folder, "privkey.pem").absolutePath
             }
 
-            // check if files exist on host
-            val hostCertFile = if (!host.customSslPath.isNullOrBlank() && host.customSslPath?.contains("|") == true) {
-                File(cert) // Custom path provided
-            } else {
-                File(AppConfig.letsEncryptDir, "${host.domain}/fullchain.pem")
-            }
-            
-            val hostKeyFile = if (!host.customSslPath.isNullOrBlank() && host.customSslPath?.contains("|") == true) {
-                File(key) // Custom path provided
-            } else {
-                File(AppConfig.letsEncryptDir, "${host.domain}/privkey.pem")
-            }
+            val hostCertFile = File(hostCert)
+            val hostKeyFile = File(hostKey)
+
+            logger.info("Checking SSL files for ${host.domain} at:\nCert: ${hostCertFile.absolutePath}\nKey: ${hostKeyFile.absolutePath}")
 
             if (!hostCertFile.exists() || !hostKeyFile.exists()) {
-                logger.warn("Cert files missing on host: ${hostCertFile.absolutePath}")
-                // Fallback to HTTP config
-                return generateNginxConfig(host.copy(ssl = false)).copy(second = "SSL Certificate missing, fallback to HTTP")
+                logger.warn("SSL fallback for ${host.domain}: Host files missing or inaccessible.")
+                return generateNginxConfig(host.copy(ssl = false)).copy(second = "SSL Certificate missing on disk (checked ${hostCertFile.parent})")
             }
+
+            val containerCert = translateToContainerPath(hostCert)
+            val containerKey = translateToContainerPath(hostKey)
+            
+            logger.info("Using SSL config for ${host.domain}: $containerCert")
 
             val hstsHeader =
                 if (host.hstsEnabled) "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;" else ""
@@ -396,8 +401,8 @@ server {
     listen 443 ssl;
     server_name ${host.domain};
 
-    ssl_certificate $cert;
-    ssl_certificate_key $key;
+    ssl_certificate $containerCert;
+    ssl_certificate_key $containerKey;
     
     $hstsHeader
 
@@ -737,9 +742,9 @@ $sslConfig
     }
 
     private fun getDefaultComposeConfig(): String {
-        val projectRoot = AppConfig.projectRoot.toPath().toAbsolutePath()
-        val nginxPath = projectRoot.relativize(AppConfig.proxyDir.toPath().toAbsolutePath()).toString()
-        val certbotPath = projectRoot.relativize(AppConfig.certbotDir.toPath().toAbsolutePath()).toString()
+        val nginxPath = AppConfig.proxyDir.absolutePath
+        val certbotPath = AppConfig.certbotDir.absolutePath
+        val customCertsPath = AppConfig.customCertDir.absolutePath
 
         return """
             services:
@@ -754,11 +759,12 @@ $sslConfig
                 environment:
                   - TZ=Asia/Kolkata
                 volumes:
-                  - ./${nginxPath}/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
-                  - ./${nginxPath}/conf.d:/etc/nginx/conf.d:ro
-                  - ./${nginxPath}/logs:/usr/local/openresty/nginx/logs
-                  - ./${certbotPath}/conf:/etc/letsencrypt:ro
-                  - ./${certbotPath}/www:/var/www/certbot:ro
+                  - ${nginxPath}/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+                  - ${nginxPath}/conf.d:/etc/nginx/conf.d:ro
+                  - ${nginxPath}/logs:/usr/local/openresty/nginx/logs
+                  - ${certbotPath}/conf:/etc/letsencrypt
+                  - ${certbotPath}/www:/var/www/certbot
+                  - ${customCertsPath}:/etc/nginx/custom_certs:ro
                 command: /bin/sh -c "ln -sf /etc/letsencrypt /etc/letsencrypt; ln -sf /var/www/certbot /var/www/certbot; /usr/local/openresty/bin/openresty -g 'daemon off;'"
         """.trimIndent()
     }
@@ -804,6 +810,41 @@ $sslConfig
             dockerfile.writeText(getDefaultDockerfileConfig())
         }
         return dockerfile
+    }
+
+    private fun translateToContainerPath(hostPath: String): String {
+        val path = File(hostPath).absolutePath
+        
+        // Map dataRoot/certbot/conf -> /etc/letsencrypt
+        val certbotConfHost = File(AppConfig.certbotDir, "conf").absolutePath
+        if (path.startsWith(certbotConfHost)) {
+            return path.replace(certbotConfHost, "/etc/letsencrypt")
+        }
+        
+        // Map dataRoot/certs -> /etc/nginx/custom_certs
+        val customCertHost = AppConfig.customCertDir.absolutePath
+        if (path.startsWith(customCertHost)) {
+            return path.replace(customCertHost, "/etc/nginx/custom_certs")
+        }
+        
+        // If already a container path mentioned in custom path
+        if (path.startsWith("/etc/letsencrypt") || path.startsWith("/etc/nginx/custom_certs")) {
+            return path
+        }
+        
+        return hostPath
+    }
+
+    private fun findDomainFolder(liveDir: File, domain: String): File {
+        if (!liveDir.exists()) return File(liveDir, domain)
+        
+        // Exact match
+        val exact = File(liveDir, domain)
+        if (exact.exists()) return exact
+        
+        // Partial match (handles domain-0001 etc)
+        val matches = liveDir.listFiles()?.filter { it.isDirectory && it.name.startsWith(domain) }
+        return matches?.firstOrNull() ?: exact
     }
 
     private fun ensureNginxMainConfig() {
