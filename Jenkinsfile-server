@@ -31,6 +31,7 @@ pipeline {
                sh 'cp docker-manager.service /opt/docker-manager/docker-manager.service'
                sh 'cp docker-manager.path /opt/docker-manager/docker-manager.path'
                sh 'cp docker-manager-restart.service /opt/docker-manager/docker-manager-restart.service'
+               sh 'cp setup-services.sh /opt/docker-manager/setup-services.sh'
             }
         }
     }
