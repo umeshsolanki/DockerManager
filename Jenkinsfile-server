@@ -23,14 +23,14 @@ pipeline {
             }
         }
 
-        stage('Deploy') {
-            environment {
-                BUILD_NUMBER = "${env.BUILD_NUMBER}"
-            }
+  //      stage('Deploy') {
+    //        environment {
+      //          BUILD_NUMBER = "${env.BUILD_NUMBER}"
+        //    }
 //            steps {
 //                sh '/jenkins/bin/jar-deploy.sh /jenkins/deploy/server-all.jar'
 //              }
-        }
+        }//
     }
     
     post {
