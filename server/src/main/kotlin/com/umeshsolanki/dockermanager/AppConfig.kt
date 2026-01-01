@@ -17,6 +17,10 @@ object AppConfig {
         if (File("/usr/bin/docker").exists()) "/usr/bin/docker" else "docker"
     }
 
+    val dockerComposeCommand: String get() = if (isDocker) "/usr/bin/docker compose" else {
+        if (File("/usr/bin/docker").exists()) "/usr/bin/docker compose" else "docker compose"
+    }
+
     val dataRoot: File by lazy {
         if (isDocker) {
             File("/app/data")
@@ -29,6 +33,27 @@ object AppConfig {
                 val home = System.getProperty("user.home")
                 logger.info("Using default data directory in user home: $home/.docker-manager/data")
                 File(home, ".docker-manager/data")
+            }
+        }
+    }
+
+    val projectRoot: File by lazy {
+        if (isDocker) {
+            File("/app")
+        } else {
+            val env = System.getenv("PROJECT_ROOT")
+            if (!env.isNullOrBlank()) {
+                logger.info("Using custom PROJECT_ROOT from env: $env")
+                File(env)
+            } else {
+                // Default to finding docker-compose.yml upward from user.dir
+                var current: File? = File(System.getProperty("user.dir"))
+                while (current != null && !File(current, "docker-compose.yml").exists()) {
+                    current = current.parentFile
+                }
+                val root = current ?: File(System.getProperty("user.dir"))
+                logger.info("Determined project root: ${root.absolutePath}")
+                root
             }
         }
     }

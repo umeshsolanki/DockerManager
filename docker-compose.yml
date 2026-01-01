@@ -20,15 +20,18 @@ services:
       - certbot:/certbot
 
   proxy:
-    image: openresty/openresty:alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.proxy
+    image: docker-manager-proxy:latest
     container_name: docker-manager-proxy
     network_mode: host
     restart: unless-stopped
     environment:
       - TZ=Asia/Kolkata
     volumes:
-      - nginx:/nginx:ro
-      - certbot:/certbot:ro
+      - ./data/nginx:/nginx:ro
+      - ./data/certbot:/certbot:ro
     depends_on:
       - server
     command: /bin/sh -c "mkdir -p /usr/local/openresty/nginx/conf/conf.d && ln -sf /nginx/conf.d/*.conf /usr/local/openresty/nginx/conf/conf.d/ 2>/dev/null; ln -sf /nginx/logs /usr/local/openresty/nginx/logs; ln -sf /certbot/conf /etc/letsencrypt; ln -sf /certbot/www /var/www/certbot; /usr/local/openresty/bin/openresty -g 'daemon off;'"

@@ -460,39 +460,25 @@ $sslConfig
 
     override fun buildProxyImage(): Pair<Boolean, String> {
         return try {
-            logger.info("Building proxy Docker image...")
+            logger.info("Building proxy Docker image using compose...")
+            val projectRoot = AppConfig.projectRoot
+            val composeFile = File(projectRoot, "docker-compose.yml")
             
-            // Find the Dockerfile.proxy - should be in project root
-            val projectRoot = if (AppConfig.isDocker) {
-                File("/app")
-            } else {
-                // Try to find project root by looking for Dockerfile.proxy
-                var current: File? = File(System.getProperty("user.dir"))
-                while (current != null && !File(current, "Dockerfile.proxy").exists()) {
-                    current = current.parentFile
-                }
-                current ?: File(System.getProperty("user.dir"))
+            if (!composeFile.exists()) {
+                return false to "docker-compose.yml not found in ${projectRoot.absolutePath}"
             }
             
-            val dockerfilePath = File(projectRoot, "Dockerfile.proxy")
-            if (!dockerfilePath.exists()) {
-                logger.error("Dockerfile.proxy not found at: ${dockerfilePath.absolutePath}")
-                return false to "Dockerfile.proxy not found at: ${dockerfilePath.absolutePath}"
-            }
-
-            logger.info("Using Dockerfile at: ${dockerfilePath.absolutePath}")
-            
-            val buildCmd = "${AppConfig.dockerCommand} build -t $PROXY_IMAGE_NAME:$PROXY_IMAGE_TAG -f ${dockerfilePath.absolutePath} ${projectRoot.absolutePath}"
+            val buildCmd = "${AppConfig.dockerComposeCommand} -f ${composeFile.absolutePath} build proxy"
             logger.info("Build command: $buildCmd")
             
             val process = ProcessBuilder("sh", "-c", buildCmd)
+                .directory(projectRoot)
                 .redirectErrorStream(true)
                 .start()
             
             val outputFull = process.inputStream.bufferedReader().readText()
             val exitCode = process.waitFor()
             
-            // Truncate output to avoid massive JSON payloads
             val output = if (outputFull.length > 10000) {
                 " (Truncated...)\n" + outputFull.takeLast(10000)
             } else {
@@ -514,48 +500,25 @@ $sslConfig
 
     override fun createProxyContainer(): Pair<Boolean, String> {
         return try {
-            logger.info("Creating proxy container...")
+            logger.info("Creating proxy container using compose...")
+            val projectRoot = AppConfig.projectRoot
             
-            // Ensure host directories exist
-            val proxyDir = AppConfig.proxyDir
-            val certbotDir = AppConfig.certbotDir
+            // Ensure host directories exist (as defined in docker-compose.yml bind mounts)
+            val nginxDir = File(projectRoot, "data/nginx")
+            val certbotDir = File(projectRoot, "data/certbot")
             
-            File(proxyDir, "conf.d").mkdirs()
-            File(proxyDir, "logs").mkdirs()
+            nginxDir.mkdirs()
+            File(nginxDir, "conf.d").mkdirs()
+            File(nginxDir, "logs").mkdirs()
+            certbotDir.mkdirs()
             File(certbotDir, "conf").mkdirs()
             File(certbotDir, "www").mkdirs()
             
-            // Check if container already exists
-            val existingContainer = executeCommand("${AppConfig.dockerCommand} ps -a --filter name=$PROXY_CONTAINER_NAME --format '{{.Names}}'")
-            if (existingContainer.trim() == PROXY_CONTAINER_NAME) {
-                logger.info("Container $PROXY_CONTAINER_NAME already exists. Removing it...")
-                executeCommand("${AppConfig.dockerCommand} rm -f $PROXY_CONTAINER_NAME")
-            }
-            
-            // Build the docker run command similar to docker-compose
-            // Using bind mounts with absolute paths for persistence on host
-            val createCmd = buildString {
-                append("${AppConfig.dockerCommand} create")
-                append(" --name $PROXY_CONTAINER_NAME")
-                append(" --network host")
-                append(" --restart unless-stopped")
-                append(" -e TZ=Asia/Kolkata")
-                append(" -v ${proxyDir.absolutePath}:/nginx")
-                append(" -v ${certbotDir.absolutePath}:/certbot")
-                append(" $PROXY_IMAGE_NAME:$PROXY_IMAGE_TAG")
-                append(" /bin/sh -c \"")
-                append("mkdir -p /usr/local/openresty/nginx/conf/conf.d && ")
-                append("ln -sf /nginx/conf.d/*.conf /usr/local/openresty/nginx/conf/conf.d/ 2>/dev/null; ")
-                append("ln -sf /nginx/logs /usr/local/openresty/nginx/logs; ")
-                append("ln -sf /certbot/conf /etc/letsencrypt; ")
-                append("ln -sf /certbot/www /var/www/certbot; ")
-                append("/usr/local/openresty/bin/openresty -g 'daemon off;'")
-                append("\"")
-            }
-            
+            val createCmd = "${AppConfig.dockerComposeCommand} up --no-start proxy"
             logger.info("Create command: $createCmd")
             
             val process = ProcessBuilder("sh", "-c", createCmd)
+                .directory(projectRoot)
                 .redirectErrorStream(true)
                 .start()
             
@@ -577,10 +540,12 @@ $sslConfig
 
     override fun startProxyContainer(): Pair<Boolean, String> {
         return try {
-            logger.info("Starting proxy container...")
+            logger.info("Starting proxy container using compose...")
+            val projectRoot = AppConfig.projectRoot
             
-            val startCmd = "${AppConfig.dockerCommand} start $PROXY_CONTAINER_NAME"
+            val startCmd = "${AppConfig.dockerComposeCommand} start proxy"
             val process = ProcessBuilder("sh", "-c", startCmd)
+                .directory(projectRoot)
                 .redirectErrorStream(true)
                 .start()
             
@@ -602,10 +567,12 @@ $sslConfig
 
     override fun stopProxyContainer(): Pair<Boolean, String> {
         return try {
-            logger.info("Stopping proxy container...")
+            logger.info("Stopping proxy container using compose...")
+            val projectRoot = AppConfig.projectRoot
             
-            val stopCmd = "${AppConfig.dockerCommand} stop $PROXY_CONTAINER_NAME"
+            val stopCmd = "${AppConfig.dockerComposeCommand} stop proxy"
             val process = ProcessBuilder("sh", "-c", stopCmd)
+                .directory(projectRoot)
                 .redirectErrorStream(true)
                 .start()
             
@@ -627,10 +594,12 @@ $sslConfig
 
     override fun restartProxyContainer(): Pair<Boolean, String> {
         return try {
-            logger.info("Restarting proxy container...")
+            logger.info("Restarting proxy container using compose...")
+            val projectRoot = AppConfig.projectRoot
             
-            val restartCmd = "${AppConfig.dockerCommand} restart $PROXY_CONTAINER_NAME"
+            val restartCmd = "${AppConfig.dockerComposeCommand} restart proxy"
             val process = ProcessBuilder("sh", "-c", restartCmd)
+                .directory(projectRoot)
                 .redirectErrorStream(true)
                 .start()
             
@@ -711,40 +680,38 @@ $sslConfig
 
     override fun ensureProxyContainerExists(): Boolean {
         return try {
-            val status = getProxyContainerStatus()
+            logger.info("Ensuring proxy container is ready (using compose up -d)...")
+            val projectRoot = AppConfig.projectRoot
             
-            // If image doesn't exist, build it
-            if (!status.imageExists) {
-                logger.info("Proxy image doesn't exist. Building...")
-                val buildResult = buildProxyImage()
-                if (!buildResult.first) {
-                    logger.error("Failed to build proxy image: ${buildResult.second}")
-                    return false
-                }
+            // Ensure host directories exist
+            val nginxDir = File(projectRoot, "data/nginx")
+            val certbotDir = File(projectRoot, "data/certbot")
+            nginxDir.mkdirs()
+            File(nginxDir, "conf.d").mkdirs()
+            File(nginxDir, "logs").mkdirs()
+            certbotDir.mkdirs()
+            File(certbotDir, "conf").mkdirs()
+            File(certbotDir, "www").mkdirs()
+
+            // Run compose up -d proxy
+            val upCmd = "${AppConfig.dockerComposeCommand} up -d proxy"
+            logger.info("Up command: $upCmd")
+            
+            val process = ProcessBuilder("sh", "-c", upCmd)
+                .directory(projectRoot)
+                .redirectErrorStream(true)
+                .start()
+            
+            val output = process.inputStream.bufferedReader().readText()
+            val exitCode = process.waitFor()
+            
+            if (exitCode == 0) {
+                logger.info("Proxy container is ready via compose")
+                true
+            } else {
+                logger.error("Failed to ensure proxy container. Exit code: $exitCode\n$output")
+                false
             }
-            
-            // If container doesn't exist, create it
-            if (!status.exists) {
-                logger.info("Proxy container doesn't exist. Creating...")
-                val createResult = createProxyContainer()
-                if (!createResult.first) {
-                    logger.error("Failed to create proxy container: ${createResult.second}")
-                    return false
-                }
-            }
-            
-            // If container is not running, start it
-            if (!status.running) {
-                logger.info("Proxy container is not running. Starting...")
-                val startResult = startProxyContainer()
-                if (!startResult.first) {
-                    logger.error("Failed to start proxy container: ${startResult.second}")
-                    return false
-                }
-            }
-            
-            logger.info("Proxy container is ready")
-            true
         } catch (e: Exception) {
             logger.error("Error ensuring proxy container exists", e)
             false
