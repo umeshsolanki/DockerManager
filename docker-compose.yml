@@ -30,11 +30,15 @@ services:
     environment:
       - TZ=Asia/Kolkata
     volumes:
-      - ./data/nginx:/nginx:ro
-      - ./data/certbot:/certbot:ro
+      - ./data/nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+      - ./data/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./data/nginx/logs:/usr/local/openresty/nginx/logs
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+      - ./data/certs:/etc/nginx/custom_certs:ro
     depends_on:
       - server
-    command: /bin/sh -c "mkdir -p /usr/local/openresty/nginx/conf/conf.d && ln -sf /nginx/conf.d/*.conf /usr/local/openresty/nginx/conf/conf.d/ 2>/dev/null; ln -sf /nginx/logs /usr/local/openresty/nginx/logs; ln -sf /certbot/conf /etc/letsencrypt; ln -sf /certbot/www /var/www/certbot; /usr/local/openresty/bin/openresty -g 'daemon off;'"
+    command: /bin/sh -c "ln -sf /etc/letsencrypt /etc/letsencrypt; ln -sf /var/www/certbot /var/www/certbot; /usr/local/openresty/bin/openresty -g 'daemon off;'"
 
   certbot:
     image: certbot/certbot

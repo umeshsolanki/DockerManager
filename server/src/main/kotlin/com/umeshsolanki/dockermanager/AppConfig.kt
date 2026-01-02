@@ -30,12 +30,15 @@ object AppConfig {
                 logger.info("Using custom DATA_DIR from env: $env")
                 File(env)
             } else {
-                val home = System.getProperty("user.home")
-                logger.info("Using default data directory in user home: $home/.docker-manager/data")
-                File(home, ".docker-manager/data")
+                // Default to 'data' directory inside project root for consistency with docker-compose
+                val root = projectRoot
+                val projectData = File(root, "data")
+                logger.info("Using data directory in project root: ${projectData.absolutePath}")
+                projectData
             }
         }
     }
+
 
     val projectRoot: File by lazy {
         if (isDocker) {
