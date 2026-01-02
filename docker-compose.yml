@@ -12,12 +12,10 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /sys/class/power_supply/BAT0:/sys/class/power_supply/BAT0
-      - docker-manager-storage:/app/data
+      - ./data:/app/data
       - /home:/home
       - /usr:/main:ro
       - /var/log:/host/var/log:ro
-      - nginx:/nginx
-      - certbot:/certbot
 
   proxy:
     build:
@@ -38,7 +36,7 @@ services:
       - ./data/certs:/etc/nginx/custom_certs:ro
     depends_on:
       - server
-    command: /bin/sh -c "ln -sf /etc/letsencrypt /etc/letsencrypt; ln -sf /var/www/certbot /var/www/certbot; /usr/local/openresty/bin/openresty -g 'daemon off;'"
+    command: /usr/local/openresty/bin/openresty -g 'daemon off;'
 
   certbot:
     image: certbot/certbot
@@ -46,7 +44,7 @@ services:
     environment:
       - TZ=Asia/Kolkata
     volumes:
-      - certbot:/certbot
+      - ./data/certbot:/certbot
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --config-dir /certbot/conf --work-dir /certbot/work --logs-dir /certbot/logs; sleep 12h & wait $${!}; done'"
 
   client:
@@ -58,7 +56,3 @@ services:
     environment:
       - TZ=Asia/Kolkata
 
-volumes:
-  docker-manager-storage:
-  nginx:
-  certbot:

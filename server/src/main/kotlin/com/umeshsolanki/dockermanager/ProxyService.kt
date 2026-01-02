@@ -742,10 +742,6 @@ $sslConfig
     }
 
     private fun getDefaultComposeConfig(): String {
-        val nginxPath = AppConfig.proxyDir.absolutePath
-        val certbotPath = AppConfig.certbotDir.absolutePath
-        val customCertsPath = AppConfig.customCertDir.absolutePath
-
         return """
             services:
               proxy:
@@ -759,13 +755,13 @@ $sslConfig
                 environment:
                   - TZ=Asia/Kolkata
                 volumes:
-                  - ${nginxPath}/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
-                  - ${nginxPath}/conf.d:/etc/nginx/conf.d:ro
-                  - ${nginxPath}/logs:/usr/local/openresty/nginx/logs
-                  - ${certbotPath}/conf:/etc/letsencrypt
-                  - ${certbotPath}/www:/var/www/certbot
-                  - ${customCertsPath}:/etc/nginx/custom_certs:ro
-                command: /bin/sh -c "ln -sf /etc/letsencrypt /etc/letsencrypt; ln -sf /var/www/certbot /var/www/certbot; /usr/local/openresty/bin/openresty -g 'daemon off;'"
+                  - ./data/nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+                  - ./data/nginx/conf.d:/etc/nginx/conf.d:ro
+                  - ./data/nginx/logs:/usr/local/openresty/nginx/logs
+                  - ./data/certbot/conf:/etc/letsencrypt
+                  - ./data/certbot/www:/var/www/certbot
+                  - ./data/certs:/etc/nginx/custom_certs:ro
+                command: /usr/local/openresty/bin/openresty -g 'daemon off;'
         """.trimIndent()
     }
 
@@ -773,15 +769,19 @@ $sslConfig
         return """
             FROM openresty/openresty:alpine
             
+            # Install Certbot, OpenSSL, and utilities
             RUN apk add --no-cache \
                 certbot \
-                certbot-nginx \
                 openssl \
                 bash \
                 curl \
-                ca-certificates
+                ca-certificates \
+                tzdata
             
-            RUN mkdir -p /var/www/certbot /etc/letsencrypt /var/log/nginx
+            # Create standard directories
+            RUN mkdir -p /var/www/certbot /etc/letsencrypt /usr/local/openresty/nginx/logs
+            
+            # Set proper permissions
             RUN chmod 755 /var/www/certbot
             
             HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

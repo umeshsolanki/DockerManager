@@ -1,16 +1,16 @@
 FROM openresty/openresty:alpine
 
-# Install Certbot, OpenSSL, and useful utilities
+# Install Certbot, OpenSSL, and utilities
 RUN apk add --no-cache \
     certbot \
-    certbot-nginx \
     openssl \
     bash \
     curl \
-    ca-certificates
+    ca-certificates \
+    tzdata
 
 # Create standard directories
-RUN mkdir -p /var/www/certbot /etc/letsencrypt /var/log/nginx
+RUN mkdir -p /var/www/certbot /etc/letsencrypt /usr/local/openresty/nginx/logs
 
 # Set proper permissions
 RUN chmod 755 /var/www/certbot
