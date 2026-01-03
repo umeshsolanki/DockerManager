@@ -182,8 +182,8 @@ class BtmpServiceImpl(
                 
                 val user = Native.toString(utmpx.ut_user)
                 val host = Native.toString(utmpx.ut_host)
-                // ut_tv is struct timeval { long tv_sec; long tv_usec; }
-                val timestamp = (utmpx.ut_tv.tv_sec * 1000L)
+                // ut_tv is struct timeval { int32_t tv_sec; int32_t tv_usec; }
+                val timestamp = (utmpx.ut_tv.tv_sec.toLong() * 1000L)
                 val type = utmpx.ut_type.toInt()
                 
                 // Usually type 7 (USER_PROCESS) or 6 (LOGIN_PROCESS) appear in btmp for failed logins
