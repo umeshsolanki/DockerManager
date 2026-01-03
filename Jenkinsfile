@@ -22,23 +22,26 @@ pipeline {
                 sh 'cp server/build/libs/server-all.jar server-all.jar'
                 
                 script {
+                    def jobName = env.JOB_NAME.replace('/', '-')
                     // Add build label for tracking and selective cleanup
-                    docker.build("docker-manager-server:${env.BUILD_NUMBER}", "--label jenkins_build_id=${env.BUILD_ID} .")
+                    docker.build("docker-manager-server:${jobName}-${env.BUILD_NUMBER}", "--label jenkins_build_id=${env.BUILD_ID} .")
                 }
             }
         }
         stage('Build Client Image') {
             steps {
                 script {
+                    def jobName = env.JOB_NAME.replace('/', '-')
                     // Dockerfile.client now handles the Next.js build using a multi-stage approach
-                    docker.build("docker-manager-client:${env.BUILD_NUMBER}", "--label jenkins_build_id=${env.BUILD_ID} -f Dockerfile.client .")
+                    docker.build("docker-manager-client:${jobName}-${env.BUILD_NUMBER}", "--label jenkins_build_id=${env.BUILD_ID} -f Dockerfile.client .")
                 }
             }
         }
 
         stage('Deploy') {
             environment {
-                BUILD_NUMBER = "${env.BUILD_NUMBER}"
+                // Using sanitized JOB_NAME + BUILD_NUMBER as the tag for docker-compose
+                BUILD_NUMBER = "${env.JOB_NAME.replace('/', '-')}-${env.BUILD_NUMBER}"
             }
             steps {
                 script {

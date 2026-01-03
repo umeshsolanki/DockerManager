@@ -16,28 +16,65 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build Web UI Image') {
             steps {
-                // Copy the built jar to root so Docker context can see it
-                sh 'cp -f server/build/libs/server-all.jar /opt/docker-manager/server-all.jar'
+                script {
+                    def jobName = env.JOB_NAME.replace('/', '-')
+                    // Build the web-app docker image
+                    sh "docker build -t docker-manager-client:${jobName}-${env.BUILD_NUMBER} --label jenkins_build_id=${env.BUILD_ID} -f Dockerfile.client ."
+                }
             }
         }
 
-       stage('Deploy') {
-           environment {
-               BUILD_NUMBER = "${env.BUILD_NUMBER}"
-           }
-           steps {
-               sh 'cp docker-manager.service /opt/docker-manager/docker-manager.service'
-               sh 'cp docker-manager.path /opt/docker-manager/docker-manager.path'
-               sh 'cp docker-manager-restart.service /opt/docker-manager/docker-manager-restart.service'
-               sh 'cp setup-services.sh /opt/docker-manager/setup-services.sh'
+        stage('Deploy Server (Systemd)') {
+            environment {
+                BUILD_NUMBER = "${env.JOB_NAME.replace('/', '-')}-${env.BUILD_NUMBER}"
+            }
+            steps {
+                // Copy the built jar to /opt/docker-manager
+                sh 'sudo mkdir -p /opt/docker-manager'
+                sh 'sudo cp -f server/build/libs/server-all.jar /opt/docker-manager/server-all.jar'
+                
+                // Copy service files
+                sh 'sudo cp docker-manager.service /opt/docker-manager/docker-manager.service'
+                sh 'sudo cp docker-manager.path /opt/docker-manager/docker-manager.path'
+                sh 'sudo cp docker-manager-restart.service /opt/docker-manager/docker-manager-restart.service'
+                sh 'sudo cp setup-services.sh /opt/docker-manager/setup-services.sh'
+                
+                // Run setup script
+               // sh 'sudo chmod +x /opt/docker-manager/setup-services.sh'
+               // sh 'sudo /opt/docker-manager/setup-services.sh'
+                
+                // Start/Restart the service
+               // sh 'sudo systemctl restart docker-manager.service'
+            }
+        }
+
+        stage('Deploy Web UI Container') {
+            environment {
+                BUILD_NUMBER = "${env.JOB_NAME.replace('/', '-')}-${env.BUILD_NUMBER}"
+            }
+            steps {
+                script {
+                    def composeCmd = ""
+                    if (sh(script: "docker compose version", returnStatus: true) == 0) {
+                        composeCmd = "docker compose"
+                    } else {
+                        composeCmd = "docker-compose"
+                    }
+                    sh "BUILD_NUMBER=${env.BUILD_NUMBER} ${composeCmd} -f docker-manager-ui.yml up -d --remove-orphans"
+                }
             }
         }
     }
     
     post {
         always {
+            script {
+                // Cleanup old containers and images from previous builds
+                sh "docker ps -a --filter 'label=jenkins_build_id' --format '{{.ID}}' | xargs -r docker inspect --format '{{.Id}} {{index .Config.Labels \"jenkins_build_id\"}}' | grep -v '${env.BUILD_ID}' | awk '{print \$1}' | xargs -r docker rm -f || true"
+                sh "docker images --filter 'label=jenkins_build_id' --format '{{.ID}}' | xargs -r docker inspect --format '{{.Id}} {{index .Config.Labels \"jenkins_build_id\"}}' | grep -v '${env.BUILD_ID}' | awk '{print \$1}' | xargs -r docker rmi -f || true"
+            }
             cleanWs()
         }
     }
