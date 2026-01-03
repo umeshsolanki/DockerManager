@@ -1,5 +1,8 @@
 package com.umeshsolanki.dockermanager
 
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
 import org.slf4j.LoggerFactory
 import java.io.File
 
@@ -7,10 +10,58 @@ fun String?.ifNullOrBlank(value: String): String {
     return if (this.isNullOrBlank()) value else this
 }
 
+@Serializable
+data class AppSettings(
+    val dockerSocket: String = "/var/run/docker.sock",
+    val jamesWebAdminUrl: String = "http://localhost:8001"
+)
 
 object AppConfig {
     private val logger = LoggerFactory.getLogger(AppConfig::class.java)
     const val PROJECT_DIR = "/opt/docker-manager"
+    
+    private val json = Json { 
+        prettyPrint = true
+        ignoreUnknownKeys = true
+    }
+
+    private val settingsFile: File by lazy {
+        File(dataRoot, "settings.json")
+    }
+
+    private var _settings: AppSettings = loadSettings()
+
+    private fun loadSettings(): AppSettings {
+        return try {
+            if (settingsFile.exists()) {
+                json.decodeFromString<AppSettings>(settingsFile.readText())
+            } else {
+                AppSettings()
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to load settings, using defaults", e)
+            AppSettings()
+        }
+    }
+
+    fun updateSettings(dockerSocket: String, jamesWebAdminUrl: String) {
+        _settings = _settings.copy(
+            dockerSocket = dockerSocket,
+            jamesWebAdminUrl = jamesWebAdminUrl
+        )
+        saveSettings()
+    }
+
+    private fun saveSettings() {
+        try {
+            settingsFile.parentFile.mkdirs()
+            settingsFile.writeText(json.encodeToString(_settings))
+            logger.info("Settings saved to ${settingsFile.absolutePath}")
+        } catch (e: Exception) {
+            logger.error("Failed to save settings", e)
+        }
+    }
+
     val isDocker: Boolean by lazy {
         val inDocker =
             File("/.dockerenv").exists() || (File("/proc/1/cgroup").exists() && File("/proc/1/cgroup").readText()
@@ -28,6 +79,9 @@ object AppConfig {
         get() = if (isDocker) "/usr/bin/docker compose" else {
             if (File("/usr/bin/docker").exists()) "/usr/bin/docker compose" else "docker compose"
         }
+
+    val dockerSocket: String
+        get() = _settings.dockerSocket
 
     val dataRoot: File by lazy {
         if (isDocker) {
@@ -80,6 +134,7 @@ object AppConfig {
     val ipsetCmd: String get() = if (isDocker) "/main/sbin/ipset" else "ipset"
 
     // James
-    val jamesWebAdminUrl: String get() = "http://localhost:8001"
+    val jamesWebAdminUrl: String
+        get() = _settings.jamesWebAdminUrl
 }
 

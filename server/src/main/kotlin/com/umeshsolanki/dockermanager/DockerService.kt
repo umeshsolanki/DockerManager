@@ -1,19 +1,29 @@
 package com.umeshsolanki.dockermanager
 
 object DockerService {
-    private val dockerClient = DockerClientProvider.client
+    private var dockerClient = DockerClientProvider.client
     
-    private val containerService: IContainerService = ContainerServiceImpl(dockerClient)
-    private val imageService: IImageService = ImageServiceImpl(dockerClient)
+    private var containerService: IContainerService = ContainerServiceImpl(dockerClient)
+    private var imageService: IImageService = ImageServiceImpl(dockerClient)
     private val composeService: IComposeService = ComposeServiceImpl()
-    private val secretService: ISecretService = SecretServiceImpl(dockerClient)
-    private val networkService: INetworkService = NetworkServiceImpl(dockerClient)
-    private val volumeService: IVolumeService = VolumeServiceImpl(dockerClient)
+    private var secretService: ISecretService = SecretServiceImpl(dockerClient)
+    private var networkService: INetworkService = NetworkServiceImpl(dockerClient)
+    private var volumeService: IVolumeService = VolumeServiceImpl(dockerClient)
     private val logService: ILogService = LogServiceImpl()
     private val firewallService: IFirewallService = FirewallServiceImpl()
     private val proxyService: IProxyService = ProxyServiceImpl()
     private val btmpService: IBtmpService = BtmpServiceImpl(firewallService)
     private val emailService: IEmailService = EmailServiceImpl()
+
+    fun refreshServices() {
+        dockerClient = DockerClientProvider.client
+        containerService = ContainerServiceImpl(dockerClient)
+        imageService = ImageServiceImpl(dockerClient)
+        secretService = SecretServiceImpl(dockerClient)
+        networkService = NetworkServiceImpl(dockerClient)
+        volumeService = VolumeServiceImpl(dockerClient)
+        emailService.refresh()
+    }
 
     fun listContainers() = containerService.listContainers()
 
@@ -98,9 +108,20 @@ object DockerService {
     fun getSystemConfig() = SystemConfig(
         dockerCommand = AppConfig.dockerCommand,
         dockerComposeCommand = AppConfig.dockerComposeCommand,
+        dockerSocket = AppConfig.dockerSocket,
         dataRoot = AppConfig.dataRoot.absolutePath,
         jamesWebAdminUrl = AppConfig.jamesWebAdminUrl
     )
+
+    fun updateSystemConfig(request: UpdateSystemConfigRequest) {
+        AppConfig.updateSettings(
+            dockerSocket = request.dockerSocket,
+            jamesWebAdminUrl = request.jamesWebAdminUrl
+        )
+        // Refresh services to use new settings
+        DockerClientProvider.refreshClient()
+        refreshServices()
+    }
 }
 
 

@@ -295,7 +295,14 @@ class UpdateEmailUserPasswordRequest(
 class SystemConfig(
     val dockerCommand: String,
     val dockerComposeCommand: String,
+    val dockerSocket: String,
     val dataRoot: String,
+    val jamesWebAdminUrl: String,
+)
+
+@Serializable
+class UpdateSystemConfigRequest(
+    val dockerSocket: String,
     val jamesWebAdminUrl: String,
 )
 

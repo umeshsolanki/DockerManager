@@ -19,11 +19,18 @@ interface IEmailService {
     suspend fun createUser(userAddress: String, request: CreateEmailUserRequest): Boolean
     suspend fun deleteUser(userAddress: String): Boolean
     suspend fun updateUserPassword(userAddress: String, request: UpdateEmailUserPasswordRequest): Boolean
+    
+    fun refresh()
 }
 
 class EmailServiceImpl : IEmailService {
     private val logger = LoggerFactory.getLogger(EmailServiceImpl::class.java)
-    private val jamesUrl = AppConfig.jamesWebAdminUrl
+    private var jamesUrl = AppConfig.jamesWebAdminUrl
+
+    override fun refresh() {
+        jamesUrl = AppConfig.jamesWebAdminUrl
+        logger.info("Email service refreshed with URL: $jamesUrl")
+    }
 
     
     private val client = HttpClient(Java) {

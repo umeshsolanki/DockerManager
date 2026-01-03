@@ -246,7 +246,13 @@ export interface UpdateEmailUserPasswordRequest {
 export interface SystemConfig {
   dockerCommand: string;
   dockerComposeCommand: string;
+  dockerSocket: string;
   dataRoot: string;
+  jamesWebAdminUrl: string;
+}
+
+export interface UpdateSystemConfigRequest {
+  dockerSocket: string;
   jamesWebAdminUrl: string;
 }
 
