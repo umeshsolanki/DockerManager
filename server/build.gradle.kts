@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.umeshsolanki.dockermanager"
-version = "1.0.4"
+version = "1.0.5"
 
 application {
     mainClass.set("com.umeshsolanki.dockermanager.ApplicationKt")

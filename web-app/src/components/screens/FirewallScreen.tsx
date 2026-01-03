@@ -133,40 +133,50 @@ export default function FirewallScreen() {
                         </button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-8">
-                        {filteredRules.map(rule => (
-                            <div key={rule.id} className="bg-surface/50 border border-outline/10 rounded-2xl p-4 hover:border-primary/30 transition-all group">
-                                <div className="flex items-start justify-between mb-3">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-on-surface-variant group-hover:text-primary transition-colors">
-                                            <Globe size={20} />
-                                        </div>
-                                        <div>
-                                            <div className="font-mono font-bold text-lg">{rule.ip}</div>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold uppercase tracking-wider">
-                                                    {rule.port ? `Port ${rule.port}` : 'All Ports'}
-                                                </span>
-                                                <span className="text-[10px] text-on-surface-variant">
-                                                    {new Date(rule.createdAt).toLocaleDateString()}
-                                                </span>
+                    <div className="bg-black/40 border border-outline/10 rounded-2xl overflow-hidden">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="border-b border-outline/10 bg-white/5">
+                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider">IP Address</th>
+                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider">Port</th>
+                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider">Created</th>
+                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider">Comment</th>
+                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-outline/5">
+                                {filteredRules.map(rule => (
+                                    <tr key={rule.id} className="hover:bg-white/5 transition-colors group">
+                                        <td className="px-4 py-3">
+                                            <div className="flex items-center gap-2">
+                                                <Globe size={14} className="text-on-surface-variant/50" />
+                                                <span className="font-mono font-bold text-sm text-primary">{rule.ip}</span>
                                             </div>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => handleDelete(rule.id)}
-                                        className="p-2 text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
-                                    >
-                                        <Trash2 size={18} />
-                                    </button>
-                                </div>
-                                {rule.comment && (
-                                    <div className="text-sm text-on-surface-variant italic bg-black/20 p-2 rounded-xl mt-2 line-clamp-2">
-                                        "{rule.comment}"
-                                    </div>
-                                )}
-                            </div>
-                        ))}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold uppercase tracking-wider">
+                                                {rule.port ? rule.port : 'All'}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-xs font-mono text-on-surface-variant">
+                                            {new Date(rule.createdAt).toLocaleDateString()}
+                                        </td>
+                                        <td className="px-4 py-3 text-xs text-on-surface-variant italic opacity-70 max-w-[200px] truncate">
+                                            {rule.comment || '-'}
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            <button
+                                                onClick={() => handleDelete(rule.id)}
+                                                className="p-1.5 text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                                                title="Unblock IP"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
 
                     {filteredRules.length === 0 && !isLoading && (
@@ -254,9 +264,9 @@ export default function FirewallScreen() {
                                                     <td className="px-4 py-3 text-xs font-mono font-bold text-on-surface-variant uppercase">{rule.prot}</td>
                                                     <td className="px-4 py-3 text-xs font-mono font-medium text-primary">
                                                         {rule.extra?.includes('match-set') ? (
-                                                            <div className="flex flex-col">
-                                                                <span className="text-[10px] uppercase font-bold text-on-surface-variant/50">From List</span>
-                                                                <span className="font-bold text-secondary">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <Database size={10} className="text-secondary opacity-70" />
+                                                                <span className="font-bold text-secondary text-[10px]">
                                                                     {rule.extra.match(/match-set\s+(\S+)/)?.[1] ?? 'Unknown Set'}
                                                                 </span>
                                                             </div>

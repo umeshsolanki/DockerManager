@@ -13,7 +13,13 @@ fun String?.ifNullOrBlank(value: String): String {
 @Serializable
 data class AppSettings(
     val dockerSocket: String = "/var/run/docker.sock",
-    val jamesWebAdminUrl: String = "http://localhost:8001"
+    val jamesWebAdminUrl: String = "http://localhost:8001",
+    // Jail Settings
+    val jailEnabled: Boolean = false,
+    val jailThreshold: Int = 5,
+    val jailDurationMinutes: Int = 30,
+    val monitoringActive: Boolean = true,
+    val monitoringIntervalMinutes: Int = 5
 )
 
 object AppConfig {
@@ -53,6 +59,25 @@ object AppConfig {
         )
         saveSettings()
     }
+
+    fun updateJailSettings(
+        enabled: Boolean, 
+        threshold: Int, 
+        durationMinutes: Int,
+        monitoringActive: Boolean? = null,
+        monitoringIntervalMinutes: Int? = null
+    ) {
+        _settings = _settings.copy(
+            jailEnabled = enabled,
+            jailThreshold = threshold,
+            jailDurationMinutes = durationMinutes,
+            monitoringActive = monitoringActive ?: _settings.monitoringActive,
+            monitoringIntervalMinutes = monitoringIntervalMinutes ?: _settings.monitoringIntervalMinutes
+        )
+        saveSettings()
+    }
+
+    val jailSettings: AppSettings get() = _settings
 
     private fun saveSettings() {
         try {

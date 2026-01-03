@@ -244,12 +244,23 @@ export default function LogsScreen() {
                                         <span className="text-xs font-bold uppercase tracking-wider">Top Attacking IPs</span>
                                     </div>
                                     <div className="space-y-2 max-h-[100px] overflow-y-hidden pr-2">
-                                        {btmpStats.topIps.slice(0, 1000).map(({ first: ip, second: count }) => (
-                                            <div key={ip} className="flex justify-between items-center text-[10px]">
-                                                <span className="font-mono text-primary cursor-pointer hover:underline" onClick={() => { setIpToBlock(ip); setIsBlockModalOpen(true); }}>{ip}</span>
-                                                <span className="bg-white/5 px-1.5 py-0.5 rounded font-bold">{count}</span>
-                                            </div>
-                                        ))}
+                                        {btmpStats.topIps.slice(0, 1000).map(({ first: ip, second: count }) => {
+                                            const isJailed = btmpStats.jailedIps?.some(j => j.ip === ip);
+                                            return (
+                                                <div key={ip} className="flex justify-between items-center text-[10px]">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="font-mono text-primary cursor-pointer hover:underline" onClick={() => { setIpToBlock(ip); setIsBlockModalOpen(true); }}>{ip}</span>
+                                                        {isJailed && (
+                                                            <span className="flex items-center gap-0.5 text-[8px] uppercase font-black bg-red-500/10 text-red-500 px-1 rounded">
+                                                                <Lock size={8} />
+                                                                Jailed
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <span className="bg-white/5 px-1.5 py-0.5 rounded font-bold">{count}</span>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                     {btmpStats.topIps.length > 4 && (
                                         <button
@@ -488,33 +499,38 @@ export default function LogsScreen() {
 
                 {/* Log Content Viewer */}
                 <div className="lg:col-span-2 bg-black/40 rounded-xl border border-outline/10 flex flex-col overflow-hidden">
-                    {!selectedLog && (
-                        <div className="flex items-center gap-2 mb-4 bg-surface/50 p-2 rounded-xl border border-outline/5 overflow-x-auto no-scrollbar">
-                            <button
-                                onClick={() => handlePathChange('')}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${!currentPath ? 'bg-primary/20 text-primary border border-primary/20' : 'text-on-surface-variant hover:bg-white/10'}`}
-                            >
-                                <Folder size={14} />
-                                root
-                            </button>
-                            {breadcrumbs.map((bc, i) => (
-                                <React.Fragment key={bc.path}>
-                                    <ChevronRight size={12} className="text-on-surface-variant/40 shrink-0" />
-                                    <button
-                                        onClick={() => handlePathChange(bc.path)}
-                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${i === breadcrumbs.length - 1 ? 'bg-primary/20 text-primary border border-primary/20' : 'text-on-surface-variant hover:bg-white/10'}`}
-                                    >
-                                        {bc.name}
-                                    </button>
-                                </React.Fragment>
-                            ))}
-                        </div>
-                    )}
+                    <div className="flex items-center gap-1 mb-2 bg-surface/50 p-1.5 rounded-xl border border-outline/5 overflow-x-auto no-scrollbar">
+                        <button
+                            onClick={() => handlePathChange('')}
+                            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-bold transition-all whitespace-nowrap ${!currentPath ? 'bg-primary/20 text-primary border border-primary/20' : 'text-on-surface-variant hover:bg-white/10'}`}
+                        >
+                            <Folder size={12} />
+                            root
+                        </button>
+                        {breadcrumbs.map((bc, i) => (
+                            <React.Fragment key={bc.path}>
+                                <ChevronRight size={10} className="text-on-surface-variant/40 shrink-0" />
+                                <button
+                                    onClick={() => handlePathChange(bc.path)}
+                                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-bold transition-all whitespace-nowrap ${i === breadcrumbs.length - 1 ? 'bg-primary/20 text-primary border border-primary/20' : 'text-on-surface-variant hover:bg-white/10'}`}
+                                >
+                                    {bc.name}
+                                </button>
+                            </React.Fragment>
+                        ))}
+                    </div>
 
                     {selectedLog ? (
                         <>
                             <div className="p-3 border-b border-outline/10 flex items-center justify-between bg-white/5">
                                 <div className="flex items-center gap-2 min-w-0">
+                                    <button
+                                        onClick={() => setSelectedLog(null)}
+                                        className="p-1.5 hover:bg-white/10 rounded-lg text-on-surface-variant hover:text-primary transition-colors mr-1"
+                                        title="Back to file list"
+                                    >
+                                        <ArrowLeft size={16} />
+                                    </button>
                                     <Terminal size={16} className="text-primary" />
                                     <span className="text-xs font-mono truncate text-on-surface-variant">{selectedLog.path}</span>
                                 </div>
@@ -662,21 +678,33 @@ export default function LogsScreen() {
                         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
                             {statsModalType === 'IPS' && (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                    {btmpStats?.topIps?.map(({ first: ip, second: count }) => (
-                                        <div key={ip} className="flex justify-between items-center bg-white/5 border border-outline/5 rounded-xl p-4 hover:border-primary/20 transition-all group">
-                                            <div className="flex flex-col">
-                                                <span className="font-mono text-sm text-primary font-bold">{ip}</span>
-                                                <span className="text-[9px] text-on-surface-variant uppercase font-bold mt-1">Found in <span className="text-red-400">{count}</span> attempts</span>
+                                    {btmpStats?.topIps?.map(({ first: ip, second: count }) => {
+                                        const isJailed = btmpStats?.jailedIps?.some(j => j.ip === ip);
+                                        return (
+                                            <div key={ip} className="flex justify-between items-center bg-white/5 border border-outline/5 rounded-xl p-4 hover:border-primary/20 transition-all group">
+                                                <div className="flex flex-col">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-mono text-sm text-primary font-bold">{ip}</span>
+                                                        {isJailed && (
+                                                            <span className="flex items-center gap-0.5 text-[8px] uppercase font-black bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded">
+                                                                <Lock size={8} />
+                                                                Jailed
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-[9px] text-on-surface-variant uppercase font-bold mt-1">Found in <span className="text-red-400">{count}</span> attempts</span>
+                                                </div>
+                                                <button
+                                                    onClick={() => { setIpToBlock(ip); setIsBlockModalOpen(true); }}
+                                                    disabled={isJailed}
+                                                    className={`p-2 rounded-lg transition-all shadow-lg ${isJailed ? 'bg-white/5 text-on-surface-variant/30 cursor-not-allowed' : 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white shadow-red-500/0 hover:shadow-red-500/20'}`}
+                                                    title={isJailed ? "IP is already jailed" : "Block IP Address"}
+                                                >
+                                                    <Ban size={16} />
+                                                </button>
                                             </div>
-                                            <button
-                                                onClick={() => { setIpToBlock(ip); setIsBlockModalOpen(true); }}
-                                                className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all shadow-lg shadow-red-500/0 hover:shadow-red-500/20"
-                                                title="Block IP Address"
-                                            >
-                                                <Ban size={16} />
-                                            </button>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
 

@@ -32,16 +32,16 @@ class BtmpServiceImpl(
     private var lastInode: Any? = null
     private var lastPosition = 0L
 
-    private var autoJailEnabled = false
-    private var jailThreshold = 5
-    private var jailDurationMinutes = 30
+    private var autoJailEnabled = AppConfig.jailSettings.jailEnabled
+    private var jailThreshold = AppConfig.jailSettings.jailThreshold
+    private var jailDurationMinutes = AppConfig.jailSettings.jailDurationMinutes
     private val jailedIps = mutableListOf<JailedIP>()
     private val failedAttemptsInWindow = mutableMapOf<String, Int>()
 
     private var cachedBtmpStats: BtmpStats = BtmpStats(0, emptyList(), emptyList(), emptyList(), 0)
     
-    private var refreshIntervalMinutes = 5
-    private var isMonitoringActive = true
+    private var refreshIntervalMinutes = AppConfig.jailSettings.monitoringIntervalMinutes
+    private var isMonitoringActive = AppConfig.jailSettings.monitoringActive
     
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var workerJob: Job? = null
@@ -105,6 +105,9 @@ class BtmpServiceImpl(
         this.autoJailEnabled = enabled
         this.jailThreshold = threshold
         this.jailDurationMinutes = durationMinutes
+        
+        AppConfig.updateJailSettings(enabled, threshold, durationMinutes)
+        
         updateCachedStats()
     }
 
@@ -113,6 +116,14 @@ class BtmpServiceImpl(
         
         this.isMonitoringActive = active
         this.refreshIntervalMinutes = intervalMinutes.coerceAtLeast(1)
+        
+        AppConfig.updateJailSettings(
+            enabled = this.autoJailEnabled,
+            threshold = this.jailThreshold,
+            durationMinutes = this.jailDurationMinutes,
+            monitoringActive = active,
+            monitoringIntervalMinutes = this.refreshIntervalMinutes
+        )
         
         updateCachedStats()
         
