@@ -53,6 +53,7 @@ object DockerService {
 
     fun listNetworks() = networkService.listNetworks()
     fun removeNetwork(id: String) = networkService.removeNetwork(id)
+    fun inspectNetwork(id: String) = networkService.inspectNetwork(id)
 
     fun listVolumes() = volumeService.listVolumes()
     fun removeVolume(name: String) = volumeService.removeVolume(name)

@@ -85,7 +85,7 @@ class LogServiceImpl : ILogService {
                         val u = until?.takeIf { it.isNotBlank() }?.replace("T", " ") ?: "9999-12-31"
                         append(" | awk '$0 >= \"$s\" && $0 <= \"$u\"'")
                     }
-                    append(" | tail-n $tail")
+                    append(" | tail -n $tail")
                 } else {
                     append(" | head -n $tail")
                 }

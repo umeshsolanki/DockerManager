@@ -61,6 +61,40 @@ class DockerVolume(
 )
 
 @Serializable
+class NetworkDetails(
+    val id: String,
+    val name: String,
+    val driver: String,
+    val scope: String,
+    val internal: Boolean,
+    val ipam: IpamConfig,
+    val containers: Map<String, NetworkContainerDetails>,
+    val options: Map<String, String>,
+    val labels: Map<String, String>,
+)
+
+@Serializable
+class IpamConfig(
+    val driver: String,
+    val config: List<IpamData>,
+)
+
+@Serializable
+class IpamData(
+    val subnet: String?,
+    val gateway: String?,
+)
+
+@Serializable
+class NetworkContainerDetails(
+    val name: String,
+    val endpointId: String,
+    val macAddress: String,
+    val ipv4Address: String,
+    val ipv6Address: String,
+)
+
+@Serializable
 class ContainerDetails(
     val id: String,
     val name: String,

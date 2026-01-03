@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Link, Save, CheckCircle, Info, Database, Server, Terminal, RefreshCw } from 'lucide-react';
+import { Link, Save, CheckCircle, Info, Database, Server, Terminal, RefreshCw, Settings2, Globe } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { SystemConfig } from '@/lib/types';
 import dynamic from 'next/dynamic';
@@ -77,107 +77,104 @@ export default function SettingsScreen() {
     };
 
     return (
-        <div className="flex flex-col h-full overflow-y-auto pb-10">
-            <div className="flex items-center justify-between mb-8">
-                <h1 className="text-3xl font-bold">Settings</h1>
+        <div className="flex flex-col h-full overflow-y-auto pb-6">
+            <div className="flex items-center justify-between mb-4">
+                <h1 className="text-2xl font-bold">Settings</h1>
                 <button
                     onClick={fetchConfig}
-                    className="p-2 hover:bg-surface rounded-full transition-colors text-on-surface-variant hover:text-primary"
+                    className="p-1.5 hover:bg-surface rounded-full transition-colors text-on-surface-variant hover:text-primary"
                     disabled={loading}
                 >
-                    <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+                    <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
                 </button>
             </div>
 
             {message && (
-                <div className="fixed top-8 right-8 z-50 animate-in fade-in slide-in-from-top-4 duration-300">
-                    <div className="flex items-center gap-3 bg-primary text-primary-foreground px-6 py-4 rounded-2xl shadow-2xl font-bold">
-                        <CheckCircle size={20} />
+                <div className="fixed top-6 right-6 z-50 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-xl shadow-lg font-medium text-sm">
+                        <CheckCircle size={16} />
                         <span>{message}</span>
                     </div>
                 </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-6xl">
-                {/* Server Configuration */}
-                <div className="bg-surface/50 border border-outline/10 rounded-3xl p-8 shadow-xl backdrop-blur-sm">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="p-3 bg-primary/10 rounded-2xl text-primary">
-                            <Server size={24} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Client Configuration */}
+                <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-sm backdrop-blur-sm">
+                    <div className="flex items-center gap-2 mb-4">
+                        <div className="p-2 bg-primary/10 rounded-lg text-primary">
+                            <Server size={20} />
                         </div>
-                        <h2 className="text-xl font-semibold">Client Configuration</h2>
+                        <h2 className="text-lg font-semibold">Client Connection</h2>
                     </div>
 
-                    <div className="space-y-6">
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-on-surface/80 px-1">Manager Server URL</label>
+                    <div className="space-y-4">
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-on-surface/70 px-1">Manager Server URL</label>
                             <div className="relative">
-                                <Link className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant" size={20} />
+                                <Link className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={16} />
                                 <input
                                     type="text"
                                     value={serverUrl}
                                     onChange={(e) => setServerUrl(e.target.value)}
                                     placeholder="e.g., http://192.168.1.100:9091"
-                                    className="w-full bg-surface border border-outline/20 rounded-xl py-4 pl-12 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors text-lg"
+                                    className="w-full bg-surface border border-outline/20 rounded-lg py-2 pl-10 pr-3 text-on-surface focus:outline-none focus:border-primary transition-colors text-sm"
                                 />
                             </div>
-                            <p className="text-xs text-on-surface-variant px-1 mt-2">
-                                Specify the Docker Manager backend server address. This is stored locally in your browser.
-                            </p>
                         </div>
 
-                        <div className="flex gap-4 pt-4">
+                        <div className="flex gap-3 pt-2">
                             <button
                                 onClick={handleSaveServer}
-                                className="flex-1 flex items-center justify-center gap-2 bg-primary text-primary-foreground font-bold px-6 py-4 rounded-xl hover:opacity-90 transition-all active:scale-95 shadow-lg shadow-primary/20"
+                                className="flex-1 flex items-center justify-center gap-2 bg-primary text-primary-foreground font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-all active:scale-95 shadow-md shadow-primary/10 text-sm"
                             >
-                                <Save size={20} />
-                                <span>Save Client URL</span>
+                                <Save size={16} />
+                                <span>Save URL</span>
                             </button>
                             <button
                                 onClick={handleUseDefault}
-                                className="flex-1 flex items-center justify-center gap-2 bg-surface border border-outline/20 text-on-surface font-bold px-6 py-4 rounded-xl hover:bg-surface-variant transition-all active:scale-95"
+                                className="flex-1 flex items-center justify-center gap-2 bg-surface border border-outline/20 text-on-surface font-semibold px-4 py-2 rounded-lg hover:bg-surface-variant transition-all active:scale-95 text-sm"
                             >
-                                <span>Use Default</span>
+                                <span>Default</span>
                             </button>
                         </div>
                     </div>
                 </div>
 
                 {/* System Configuration (Server-side) */}
-                <div className="bg-surface/50 border border-outline/10 rounded-3xl p-8 shadow-xl backdrop-blur-sm">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="p-3 bg-secondary/10 rounded-2xl text-secondary">
-                            <Terminal size={24} />
+                <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-sm backdrop-blur-sm">
+                    <div className="flex items-center gap-2 mb-4">
+                        <div className="p-2 bg-secondary/10 rounded-lg text-secondary">
+                            <Settings2 size={20} />
                         </div>
-                        <h2 className="text-xl font-semibold">System Configuration</h2>
+                        <h2 className="text-lg font-semibold">System Settings</h2>
                     </div>
 
-                    <div className="space-y-6">
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-on-surface/80 px-1">Docker Socket Path</label>
+                    <div className="grid grid-cols-1 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-on-surface/70 px-1">Docker Socket</label>
                             <div className="relative">
-                                <Database className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant" size={20} />
+                                <Database className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={16} />
                                 <input
                                     type="text"
                                     value={dockerSocket}
                                     onChange={(e) => setDockerSocket(e.target.value)}
                                     placeholder="/var/run/docker.sock"
-                                    className="w-full bg-surface border border-outline/20 rounded-xl py-4 pl-12 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors text-lg"
+                                    className="w-full bg-surface border border-outline/20 rounded-lg py-2 pl-10 pr-3 text-on-surface focus:outline-none focus:border-primary transition-colors text-sm"
                                 />
                             </div>
                         </div>
 
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-on-surface/80 px-1">James WebAdmin URL</label>
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-on-surface/70 px-1">James Admin URL</label>
                             <div className="relative">
-                                <Server className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant" size={20} />
+                                <Globe className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={16} />
                                 <input
                                     type="text"
                                     value={jamesUrl}
                                     onChange={(e) => setJamesUrl(e.target.value)}
                                     placeholder="http://localhost:8001"
-                                    className="w-full bg-surface border border-outline/20 rounded-xl py-4 pl-12 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors text-lg"
+                                    className="w-full bg-surface border border-outline/20 rounded-lg py-2 pl-10 pr-3 text-on-surface focus:outline-none focus:border-primary transition-colors text-sm"
                                 />
                             </div>
                         </div>
@@ -185,61 +182,61 @@ export default function SettingsScreen() {
                         <button
                             onClick={handleSaveSystem}
                             disabled={saving || loading}
-                            className="w-full flex items-center justify-center gap-2 bg-secondary text-secondary-foreground font-bold px-6 py-4 rounded-xl hover:opacity-90 transition-all active:scale-95 shadow-lg shadow-secondary/20 disabled:opacity-50"
+                            className="w-full flex items-center justify-center gap-2 bg-secondary text-secondary-foreground font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-all active:scale-95 shadow-md shadow-secondary/10 disabled:opacity-50 text-sm mt-1"
                         >
-                            {saving ? <RefreshCw className="animate-spin" size={20} /> : <Save size={20} />}
-                            <span>Save System Settings</span>
+                            {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
+                            <span>Apply Settings</span>
                         </button>
                     </div>
                 </div>
 
-                {/* Read-only System Info */}
-                <div className="lg:col-span-1 bg-surface/50 border border-outline/10 rounded-3xl p-8 shadow-xl backdrop-blur-sm">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="p-3 bg-blue-500/10 rounded-2xl text-blue-500">
-                            <Info size={24} />
+                {/* Environment Information */}
+                <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-sm backdrop-blur-sm">
+                    <div className="flex items-center gap-2 mb-4">
+                        <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
+                            <Info size={20} />
                         </div>
-                        <h2 className="text-xl font-semibold">Environment Information</h2>
+                        <h2 className="text-lg font-semibold">Environment Info</h2>
                     </div>
 
                     {config ? (
-                        <div className="grid grid-cols-1 gap-4">
-                            <div className="p-4 bg-surface rounded-2xl border border-outline/5">
-                                <p className="text-xs font-medium text-on-surface-variant uppercase tracking-wider">Docker Binary</p>
-                                <p className="text-on-surface font-mono text-sm mt-1">{config.dockerCommand}</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="p-3 bg-surface/80 rounded-xl border border-outline/5 overflow-hidden">
+                                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Docker Binary</p>
+                                <p className="text-on-surface font-mono text-[11px] mt-0.5 truncate" title={config.dockerCommand}>{config.dockerCommand}</p>
                             </div>
-                            <div className="p-4 bg-surface rounded-2xl border border-outline/5">
-                                <p className="text-xs font-medium text-on-surface-variant uppercase tracking-wider">Docker Compose</p>
-                                <p className="text-on-surface font-mono text-sm mt-1">{config.dockerComposeCommand}</p>
+                            <div className="p-3 bg-surface/80 rounded-xl border border-outline/5 overflow-hidden">
+                                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Docker Compose</p>
+                                <p className="text-on-surface font-mono text-[11px] mt-0.5 truncate" title={config.dockerComposeCommand}>{config.dockerComposeCommand}</p>
                             </div>
-                            <div className="p-4 bg-surface rounded-2xl border border-outline/5">
-                                <p className="text-xs font-medium text-on-surface-variant uppercase tracking-wider">Server Data Root</p>
-                                <p className="text-on-surface font-mono text-sm mt-1">{config.dataRoot}</p>
+                            <div className="p-3 bg-surface/80 rounded-xl border border-outline/5 sm:col-span-2 overflow-hidden">
+                                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Data Root</p>
+                                <p className="text-on-surface font-mono text-[11px] mt-0.5 truncate" title={config.dataRoot}>{config.dataRoot}</p>
                             </div>
                         </div>
                     ) : (
-                        <p className="text-on-surface-variant">Connect to server to view environment details.</p>
+                        <div className="flex flex-col items-center justify-center py-4 text-center">
+                            <p className="text-xs text-on-surface-variant italic">No server information available.</p>
+                        </div>
                     )}
                 </div>
 
-                {/* Server Shell Launcher */}
-                <div className="lg:col-span-1 bg-primary/5 border border-primary/10 rounded-3xl p-8 shadow-xl backdrop-blur-sm flex flex-col justify-between">
-                    <div>
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="p-3 bg-primary/20 rounded-2xl text-primary">
-                                <Terminal size={24} />
-                            </div>
-                            <h2 className="text-xl font-semibold">Server Web Shell</h2>
+                {/* Server Shell */}
+                <div className="bg-primary/5 border border-primary/10 rounded-2xl p-5 shadow-sm backdrop-blur-sm flex flex-col">
+                    <div className="flex items-center gap-2 mb-3">
+                        <div className="p-2 bg-primary/20 rounded-lg text-primary">
+                            <Terminal size={20} />
                         </div>
-                        <p className="text-on-surface-variant mb-6">
-                            Launch a powerful interactive terminal directly in your browser. Perform maintenance, manage files, and execute commands on the host server safely.
-                        </p>
+                        <h2 className="text-lg font-semibold">Host Access</h2>
                     </div>
+                    <p className="text-xs text-on-surface-variant mb-4 flex-grow">
+                        Launch an interactive web terminal session to manage the host system directly from this interface.
+                    </p>
                     <button
                         onClick={() => setIsShellOpen(true)}
-                        className="w-full flex items-center justify-center gap-3 bg-primary text-primary-foreground font-bold px-6 py-4 rounded-xl hover:opacity-90 transition-all active:scale-95 shadow-xl shadow-primary/20"
+                        className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-bold px-4 py-2.5 rounded-lg hover:opacity-90 transition-all active:scale-95 shadow-md shadow-primary/20 text-sm"
                     >
-                        <Terminal size={24} />
+                        <Terminal size={18} />
                         <span>Launch Server Terminal</span>
                     </button>
                 </div>
