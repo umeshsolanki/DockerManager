@@ -1,18 +1,26 @@
 package com.umeshsolanki.dockermanager
 
 import com.github.dockerjava.api.async.ResultCallback
-import com.github.dockerjava.api.model.Frame as DockerFrame
-import io.ktor.server.websocket.*
-import io.ktor.websocket.*
-import kotlinx.coroutines.*
+import com.pty4j.PtyProcess
+import com.pty4j.PtyProcessBuilder
+import com.pty4j.WinSize
+import io.ktor.server.websocket.DefaultWebSocketServerSession
+import io.ktor.websocket.Frame
+import io.ktor.websocket.close
+import io.ktor.websocket.send
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
-import org.jetbrains.pty4j.PtyProcess
-import org.jetbrains.pty4j.PtyProcessBuilder
-import java.io.InputStream
-import java.io.OutputStream
-import java.util.*
-import java.util.concurrent.TimeUnit
-import kotlinx.serialization.json.*
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import java.util.Locale
+import com.github.dockerjava.api.model.Frame as DockerFrame
 
 object ShellService {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -22,19 +30,16 @@ object ShellService {
         val shell = if (os.contains("win")) "cmd.exe" else "/bin/sh"
         val env = HashMap(System.getenv())
         env["TERM"] = "xterm-256color"
-        
-        val pty = PtyProcessBuilder()
-            .setCommand(arrayOf(shell))
-            .setEnvironment(env)
-            .setDirectory(System.getProperty("user.home"))
-            .start()
+
+        val pty = PtyProcessBuilder().setCommand(arrayOf(shell)).setEnvironment(env)
+            .setDirectory(System.getProperty("user.home")).start()
 
         handlePtySession(session, pty)
     }
 
     suspend fun handleContainerShell(session: DefaultWebSocketServerSession, containerId: String) {
         val dockerClient = DockerClientProvider.client
-        
+
         // Ensure container is running
         val container = dockerClient.inspectContainerCmd(containerId).exec()
         if (!container.state.running!!) {
@@ -43,13 +48,11 @@ object ShellService {
             return
         }
 
-        val execCreateCmd = dockerClient.execCreateCmd(containerId)
-            .withAttachStdout(true)
-            .withAttachStderr(true)
-            .withAttachStdin(true)
-            .withTty(true)
-            .withCmd("/bin/sh", "-c", "[ -x /bin/bash ] && exec /bin/bash || exec /bin/sh")
-            .exec()
+        val execCreateCmd =
+            dockerClient.execCreateCmd(containerId).withAttachStdout(true).withAttachStderr(true)
+                .withAttachStdin(true).withTty(true)
+                .withCmd("/bin/sh", "-c", "[ -x /bin/bash ] && exec /bin/bash || exec /bin/sh")
+                .exec()
 
         val execId = execCreateCmd.id
 
@@ -69,17 +72,13 @@ object ShellService {
             // Using attach to handle stdin/stdout bidirectionally
             // Note: execStartCmd with stdin is a bit quirky in docker-java
             // We'll use a wrapper to pipe session incoming to docker stdin
-            
+
             val pipedInputStream = java.io.PipedInputStream()
             val pipedOutputStream = java.io.PipedOutputStream(pipedInputStream)
 
             val execJob = scope.launch(Dispatchers.IO) {
-                dockerClient.execStartCmd(execId)
-                    .withDetach(false)
-                    .withTty(true)
-                    .withStdIn(pipedInputStream)
-                    .exec(callback)
-                    .awaitCompletion()
+                dockerClient.execStartCmd(execId).withDetach(false).withTty(true)
+                    .withStdIn(pipedInputStream).exec(callback).awaitCompletion()
             }
 
             try {
@@ -92,11 +91,9 @@ object ShellService {
                                 val json = AppConfig.json.parseToJsonElement(text).jsonObject
                                 val cols = json["cols"]?.jsonPrimitive?.int ?: 80
                                 val rows = json["rows"]?.jsonPrimitive?.int ?: 24
-                                dockerClient.execResizeCmd(execId)
-                                    .withCols(cols)
-                                    .withRows(rows)
-                                    .exec()
-                            } catch (e: Exception) {}
+                                dockerClient.resizeExecCmd(execId).withSize(rows, cols).exec()
+                            } catch (e: Exception) {
+                            }
                         } else {
                             pipedOutputStream.write(data)
                             pipedOutputStream.flush()
@@ -144,10 +141,11 @@ object ShellService {
                     if (text.startsWith("{\"type\":\"resize\"")) {
                         try {
                             val json = AppConfig.json.parseToJsonElement(text).jsonObject
-                            val cols = json["cols"]?.jsonPrimitive?.int ?: 80
+                            val cols = json["colscols"]?.jsonPrimitive?.int ?: 80
                             val rows = json["rows"]?.jsonPrimitive?.int ?: 24
-                            pty.setWinSize(org.jetbrains.pty4j.WinSize(cols, rows))
-                        } catch (e: Exception) {}
+                            pty.winSize = WinSize(cols, rows)
+                        } catch (e: Exception) {
+                        }
                     } else {
                         withContext(Dispatchers.IO) {
                             outputStream.write(data)
