@@ -141,7 +141,7 @@ object ShellService {
                     if (text.startsWith("{\"type\":\"resize\"")) {
                         try {
                             val json = AppConfig.json.parseToJsonElement(text).jsonObject
-                            val cols = json["colscols"]?.jsonPrimitive?.int ?: 80
+                            val cols = json["cols"]?.jsonPrimitive?.int ?: 80
                             val rows = json["rows"]?.jsonPrimitive?.int ?: 24
                             pty.winSize = WinSize(cols, rows)
                         } catch (e: Exception) {
