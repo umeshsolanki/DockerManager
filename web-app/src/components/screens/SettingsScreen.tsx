@@ -4,6 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { Link, Save, CheckCircle, Info, Database, Server, Terminal, RefreshCw } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { SystemConfig } from '@/lib/types';
+import dynamic from 'next/dynamic';
+
+const WebShell = dynamic(() => import('../Terminal'), { ssr: false });
 
 export default function SettingsScreen() {
     const [serverUrl, setServerUrl] = useState(DockerClient.getServerUrl());
@@ -264,6 +267,5 @@ export default function SettingsScreen() {
     );
 }
 
-import WebShell from '../Terminal';
 import { XCircle } from 'lucide-react';
 

@@ -4,6 +4,9 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Search, RefreshCw, Trash2, Play, Square, Trash, Info, X, XCircle, Plus, Globe, Shield, Terminal, Settings2, Box } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { DockerContainer, ContainerDetails, CreateContainerRequest, DockerNetwork, DockerVolume, DockerImage } from '@/lib/types';
+import dynamic from 'next/dynamic';
+
+const WebShell = dynamic(() => import('../Terminal'), { ssr: false });
 
 export default function ContainersScreen() {
     const [containers, setContainers] = useState<DockerContainer[]>([]);
@@ -134,7 +137,6 @@ export default function ContainersScreen() {
     );
 }
 
-import WebShell from '../Terminal';
 
 function ShellModal({ containerId, onClose }: { containerId: string; onClose: () => void }) {
     return (
