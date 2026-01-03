@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Link, Save, CheckCircle, Info, Database, Server, Terminal, RefreshCw, Settings2, Globe } from 'lucide-react';
+import { Link, Save, CheckCircle, Info, Database, Server, Terminal, RefreshCw, Settings2, Globe, XCircle } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { SystemConfig } from '@/lib/types';
 import dynamic from 'next/dynamic';
+import packageJson from '../../../package.json';
 
 const WebShell = dynamic(() => import('../Terminal'), { ssr: false });
 
@@ -240,6 +241,26 @@ export default function SettingsScreen() {
                         <span>Launch Server Terminal</span>
                     </button>
                 </div>
+
+                {/* Version Info */}
+                <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-sm backdrop-blur-sm md:col-span-2">
+                    <div className="flex items-center gap-2 mb-4">
+                        <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500">
+                            <Info size={20} />
+                        </div>
+                        <h2 className="text-lg font-semibold">Application Version</h2>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="p-3 bg-surface/80 rounded-xl border border-outline/5 flex items-center justify-between">
+                            <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Client Version</p>
+                            <p className="text-sm font-mono font-medium text-on-surface">v{packageJson.version}</p>
+                        </div>
+                        <div className="p-3 bg-surface/80 rounded-xl border border-outline/5 flex items-center justify-between">
+                            <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Server Version</p>
+                            <p className="text-sm font-mono font-medium text-on-surface">{config ? `v${config.appVersion}` : 'Checking...'}</p>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {isShellOpen && (
@@ -263,6 +284,4 @@ export default function SettingsScreen() {
         </div>
     );
 }
-
-import { XCircle } from 'lucide-react';
 

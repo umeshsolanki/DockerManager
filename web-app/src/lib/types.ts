@@ -283,6 +283,7 @@ export interface SystemConfig {
   dockerSocket: string;
   dataRoot: string;
   jamesWebAdminUrl: string;
+  appVersion: string;
 }
 
 export interface UpdateSystemConfigRequest {

@@ -153,5 +153,16 @@ object AppConfig {
 
     val jamesWebAdminUrl: String
         get() = _settings.jamesWebAdminUrl
+
+    val appVersion: String by lazy {
+        try {
+            val props = java.util.Properties()
+            props.load(AppConfig::class.java.getResourceAsStream("/version.properties"))
+            props.getProperty("version", "Unknown")
+        } catch (e: Exception) {
+            logger.warn("Failed to load version.properties", e)
+            "Unknown"
+        }
+    }
 }
 

@@ -7,13 +7,35 @@ plugins {
 }
 
 group = "com.umeshsolanki.dockermanager"
-version = "1.0.1"
+version = "1.0.2"
 
 application {
     mainClass.set("com.umeshsolanki.dockermanager.ApplicationKt")
     
     val isDevelopment: Boolean = project.ext.has("development")
     applicationDefaultJvmArgs = listOf("-Dio.ktor.development=$isDevelopment")
+}
+
+// Generate version.properties
+val generateVersionProperties by tasks.registering {
+    val propertiesFile = file("$buildDir/generated/resources/version.properties")
+    outputs.file(propertiesFile)
+    doLast {
+        propertiesFile.parentFile.mkdirs()
+        propertiesFile.writeText("version=${project.version}")
+    }
+}
+
+sourceSets {
+    main {
+        resources {
+            srcDir("$buildDir/generated/resources")
+        }
+    }
+}
+
+tasks.named("processResources") {
+    dependsOn(generateVersionProperties)
 }
 
 dependencies {

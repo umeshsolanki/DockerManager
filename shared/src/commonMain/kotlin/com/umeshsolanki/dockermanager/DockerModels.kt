@@ -337,6 +337,7 @@ class SystemConfig(
     val dockerSocket: String,
     val dataRoot: String,
     val jamesWebAdminUrl: String,
+    val appVersion: String = "Unknown",
 )
 
 @Serializable

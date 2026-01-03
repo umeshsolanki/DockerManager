@@ -115,7 +115,8 @@ object DockerService {
         dockerComposeCommand = AppConfig.dockerComposeCommand,
         dockerSocket = AppConfig.dockerSocket,
         dataRoot = AppConfig.dataRoot.absolutePath,
-        jamesWebAdminUrl = AppConfig.jamesWebAdminUrl
+        jamesWebAdminUrl = AppConfig.jamesWebAdminUrl,
+        appVersion = AppConfig.appVersion
     )
 
     fun updateSystemConfig(request: UpdateSystemConfigRequest) {
