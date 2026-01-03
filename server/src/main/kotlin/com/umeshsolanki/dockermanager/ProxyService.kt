@@ -522,7 +522,27 @@ $sslConfig
             
             nginxDir.mkdirs()
             File(nginxDir, "conf.d").mkdirs()
-            File(nginxDir, "logs").mkdirs()
+            
+            val logsDir = File(nginxDir, "logs")
+            logsDir.mkdirs()
+            logsDir.setWritable(true, false)
+            logsDir.setReadable(true, false)
+            logsDir.setExecutable(true, false)
+            
+            val accessLog = File(logsDir, "access.log")
+            if (!accessLog.exists()) {
+                accessLog.createNewFile()
+            }
+            accessLog.setWritable(true, false)
+            accessLog.setReadable(true, false)
+            
+            val errorLog = File(logsDir, "error.log")
+            if (!errorLog.exists()) {
+                errorLog.createNewFile()
+            }
+            errorLog.setWritable(true, false)
+            errorLog.setReadable(true, false)
+
             certbotDir.mkdirs()
             File(certbotDir, "conf").mkdirs()
             File(certbotDir, "www").mkdirs()
@@ -705,7 +725,27 @@ $sslConfig
             val certbotDir = AppConfig.certbotDir
             nginxDir.mkdirs()
             File(nginxDir, "conf.d").mkdirs()
-            File(nginxDir, "logs").mkdirs()
+            
+            val logsDir = File(nginxDir, "logs")
+            logsDir.mkdirs()
+            logsDir.setWritable(true, false)
+            logsDir.setReadable(true, false)
+            logsDir.setExecutable(true, false)
+            
+            val accessLog = File(logsDir, "access.log")
+            if (!accessLog.exists()) {
+                accessLog.createNewFile()
+            }
+            accessLog.setWritable(true, false)
+            accessLog.setReadable(true, false)
+            
+            val errorLog = File(logsDir, "error.log")
+            if (!errorLog.exists()) {
+                errorLog.createNewFile()
+            }
+            errorLog.setWritable(true, false)
+            errorLog.setReadable(true, false)
+            
             certbotDir.mkdirs()
             File(certbotDir, "conf").mkdirs()
             File(certbotDir, "www").mkdirs()
@@ -871,8 +911,8 @@ $sslConfig
                                   '${'$'}status ${'$'}body_bytes_sent "${'$'}http_referer" '
                                   '"${'$'}http_user_agent" "${'$'}http_x_forwarded_for"';
 
-                access_log  logs/access.log  main;
-                error_log   logs/error.log;
+                access_log  /usr/local/openresty/nginx/logs/access.log  main;
+                error_log   /usr/local/openresty/nginx/logs/error.log;
 
                 include /etc/nginx/conf.d/*.conf;
             }

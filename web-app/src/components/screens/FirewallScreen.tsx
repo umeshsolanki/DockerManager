@@ -252,11 +252,24 @@ export default function FirewallScreen() {
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-3 text-xs font-mono font-bold text-on-surface-variant uppercase">{rule.prot}</td>
-                                                    <td className="px-4 py-3 text-xs font-mono font-medium text-primary">{rule.source}</td>
-                                                    <td className="px-4 py-3 text-xs font-mono font-medium text-on-surface-variant">{rule.destination}</td>
+                                                    <td className="px-4 py-3 text-xs font-mono font-medium text-primary">
+                                                        {rule.extra?.includes('match-set') ? (
+                                                            <div className="flex flex-col">
+                                                                <span className="text-[10px] uppercase font-bold text-on-surface-variant/50">From List</span>
+                                                                <span className="font-bold text-secondary">
+                                                                    {rule.extra.match(/match-set\s+(\S+)/)?.[1] ?? 'Unknown Set'}
+                                                                </span>
+                                                            </div>
+                                                        ) : (
+                                                            rule.source === '0.0.0.0/0' ? <span className="opacity-50 italic">Anywhere</span> : rule.source
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-xs font-mono font-medium text-on-surface-variant">
+                                                        {rule.destination === '0.0.0.0/0' ? <span className="opacity-50 italic">Anywhere</span> : rule.destination}
+                                                    </td>
                                                     <td className="px-4 py-3">
                                                         <div className="max-w-md truncate text-[10px] font-bold text-on-surface-variant/60 group-hover:text-on-surface-variant transition-colors">
-                                                            {rule.extra || '--'}
+                                                            {rule.extra?.replace(/match-set\s+\S+\s+src/, '') || '--'}
                                                         </div>
                                                     </td>
                                                     <td className="px-4 py-3 text-right">
