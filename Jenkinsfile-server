@@ -1,7 +1,18 @@
+def VERSION = ""
+
 pipeline {
     agent any
 
     stages {
+        stage('Initialize') {
+            steps {
+                script {
+                    // Extract version from server's build.gradle.kts
+                    VERSION = sh(script: "./gradlew :server:properties -q | grep '^version:' | awk '{print \$2}'", returnStdout: true).trim()
+                    echo "Building Version: ${VERSION}"
+                }
+            }
+        }
 //         stage('Test') {
 //             steps {
 //                 sh './gradlew test'
@@ -19,16 +30,15 @@ pipeline {
         stage('Build Web UI Image') {
             steps {
                 script {
-                    def jobName = env.JOB_NAME.replace('/', '-')
-                    // Build the web-app docker image
-                    sh "docker build -t docker-manager-client:${jobName}-${env.BUILD_NUMBER} --label jenkins_build_id=${env.BUILD_ID} -f Dockerfile.client ."
+                    // Build the web-app docker image with semantic version
+                    sh "docker build -t docker-manager-client:${VERSION} --label jenkins_build_id=${env.BUILD_ID} -f Dockerfile.client ."
                 }
             }
         }
 
         stage('Deploy Server (Systemd)') {
             environment {
-                BUILD_NUMBER = "${env.JOB_NAME.replace('/', '-')}-${env.BUILD_NUMBER}"
+                BUILD_NUMBER = "${VERSION}"
             }
             steps {
                 // Copy the built jar to /opt/docker-manager
@@ -52,7 +62,7 @@ pipeline {
 
         stage('Deploy Web UI Container') {
             environment {
-                BUILD_NUMBER = "${env.JOB_NAME.replace('/', '-')}-${env.BUILD_NUMBER}"
+                BUILD_NUMBER = "${VERSION}"
             }
             steps {
                 script {

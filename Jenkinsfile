@@ -1,3 +1,5 @@
+def VERSION = ""
+
 pipeline {
     agent any
 
@@ -7,6 +9,17 @@ pipeline {
 //                 sh './gradlew test'
 //             }
 //         }
+
+    stages {
+        stage('Initialize') {
+            steps {
+                script {
+                    // Extract version from server's build.gradle.kts
+                    VERSION = sh(script: "./gradlew :server:properties -q | grep '^version:' | awk '{print \$2}'", returnStdout: true).trim()
+                    echo "Building Version: ${VERSION}"
+                }
+            }
+        }
 
         stage('Build FatJar') {
             steps {
@@ -22,26 +35,24 @@ pipeline {
                 sh 'cp server/build/libs/server-all.jar server-all.jar'
                 
                 script {
-                    def jobName = env.JOB_NAME.replace('/', '-')
-                    // Add build label for tracking and selective cleanup
-                    docker.build("docker-manager-server:${jobName}-${env.BUILD_NUMBER}", "--label jenkins_build_id=${env.BUILD_ID} .")
+                    // Using semantic version instead of job/build numbers
+                    docker.build("docker-manager-server:${VERSION}", "--label jenkins_build_id=${env.BUILD_ID} .")
                 }
             }
         }
         stage('Build Client Image') {
             steps {
                 script {
-                    def jobName = env.JOB_NAME.replace('/', '-')
                     // Dockerfile.client now handles the Next.js build using a multi-stage approach
-                    docker.build("docker-manager-client:${jobName}-${env.BUILD_NUMBER}", "--label jenkins_build_id=${env.BUILD_ID} -f Dockerfile.client .")
+                    docker.build("docker-manager-client:${VERSION}", "--label jenkins_build_id=${env.BUILD_ID} -f Dockerfile.client .")
                 }
             }
         }
 
         stage('Deploy') {
             environment {
-                // Using sanitized JOB_NAME + BUILD_NUMBER as the tag for docker-compose
-                BUILD_NUMBER = "${env.JOB_NAME.replace('/', '-')}-${env.BUILD_NUMBER}"
+                // Pass VERSION to docker-compose via BUILD_NUMBER environment variable
+                BUILD_NUMBER = "${VERSION}"
             }
             steps {
                 script {

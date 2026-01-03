@@ -1,21 +1,31 @@
+def VERSION = ""
+
 pipeline {
     agent any
 
     stages {
+        stage('Initialize') {
+            steps {
+                script {
+                    // Extract version from web-app/package.json
+                    VERSION = sh(script: "grep '\"version\":' web-app/package.json | head -1 | cut -d'\"' -f4", returnStdout: true).trim()
+                    echo "Building Version: ${VERSION}"
+                }
+            }
+        }
 
         stage('Build Client Image') {
             steps {
                 script {
-                    def jobName = env.JOB_NAME.replace('/', '-')
-                    // Dockerfile.client now handles the Next.js build using a multi-stage approach
-                    docker.build("docker-manager-client:${jobName}-${env.BUILD_NUMBER}", "--label jenkins_build_id=${env.BUILD_ID} -f Dockerfile.client .")
+                    // Dockerfile.client now handles the Next.js build using a multi-stage approach with semantic version
+                    docker.build("docker-manager-client:${VERSION}", "--label jenkins_build_id=${env.BUILD_ID} -f Dockerfile.client .")
                 }
             }
         }
 
         stage('Deploy Client App') {
             environment {
-                BUILD_NUMBER = "${env.JOB_NAME.replace('/', '-')}-${env.BUILD_NUMBER}"
+                BUILD_NUMBER = "${VERSION}"
             }
             steps {
                 script {
