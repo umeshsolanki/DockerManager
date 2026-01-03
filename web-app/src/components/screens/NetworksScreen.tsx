@@ -1,14 +1,15 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Search, RefreshCw, Trash, Share2 } from 'lucide-react';
+import { Search, RefreshCw, Trash, Share2, Eye, XCircle, Box } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { DockerNetwork } from '@/lib/types';
+import { DockerNetwork, NetworkDetails } from '@/lib/types';
 
 export default function NetworksScreen() {
     const [networks, setNetworks] = useState<DockerNetwork[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [inspectNetworkId, setInspectNetworkId] = useState<string | null>(null);
 
     const fetchNetworks = async () => {
         setIsLoading(true);
@@ -72,17 +73,26 @@ export default function NetworksScreen() {
                             key={network.id}
                             network={network}
                             onAction={handleAction}
+                            onInspect={() => setInspectNetworkId(network.id)}
                         />
                     ))}
                 </div>
+            )}
+
+            {inspectNetworkId && (
+                <NetworkInspectModal
+                    networkId={inspectNetworkId}
+                    onClose={() => setInspectNetworkId(null)}
+                />
             )}
         </div>
     );
 }
 
-function NetworkCard({ network, onAction }: {
+function NetworkCard({ network, onAction, onInspect }: {
     network: DockerNetwork;
     onAction: (action: () => Promise<void>) => Promise<void>;
+    onInspect: () => void;
 }) {
     return (
         <div className="bg-surface/50 border border-outline/10 rounded-xl p-4 flex items-center justify-between hover:bg-surface transition-colors">
@@ -110,6 +120,13 @@ function NetworkCard({ network, onAction }: {
 
             <div className="flex items-center gap-2">
                 <button
+                    onClick={onInspect}
+                    className="p-2 hover:bg-blue-500/10 text-blue-500 rounded-lg transition-colors"
+                    title="Inspect"
+                >
+                    <Eye size={20} />
+                </button>
+                <button
                     onClick={() => onAction(() => DockerClient.removeNetwork(network.id))}
                     className="p-2 hover:bg-red-500/10 text-red-500 rounded-lg transition-colors"
                     title="Remove"
@@ -117,6 +134,140 @@ function NetworkCard({ network, onAction }: {
                     <Trash size={20} />
                 </button>
             </div>
+        </div>
+    );
+}
+
+function NetworkInspectModal({ networkId, onClose }: { networkId: string; onClose: () => void }) {
+    const [details, setDetails] = useState<NetworkDetails | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetch = async () => {
+            const data = await DockerClient.inspectNetwork(networkId);
+            setDetails(data);
+            setLoading(false);
+        };
+        fetch();
+    }, [networkId]);
+
+    if (!details && !loading) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-surface border border-outline/20 rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl animate-in zoom-in duration-200">
+                <div className="flex items-center justify-between p-6 border-b border-outline/10">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-primary/10 rounded-lg text-primary">
+                            <Share2 size={24} />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold">Network Details</h2>
+                            <p className="text-sm text-on-surface-variant font-mono">{networkId.substring(0, 12)}</p>
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+                        <XCircle size={24} />
+                    </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6">
+                    {loading ? (
+                        <div className="flex justify-center items-center py-20">
+                            <RefreshCw className="animate-spin text-primary" size={32} />
+                        </div>
+                    ) : details ? (
+                        <div className="space-y-8">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <InfoItem label="Name" value={details.name} />
+                                <InfoItem label="Driver" value={details.driver} />
+                                <InfoItem label="Scope" value={details.scope} />
+                                <InfoItem label="Internal" value={details.internal ? 'Yes' : 'No'} />
+                            </div>
+
+                            {details.ipam.config.length > 0 && (
+                                <div className="space-y-3">
+                                    <h3 className="text-sm font-bold text-on-surface-variant uppercase tracking-wider">IPAM Configuration</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {details.ipam.config.map((config, i) => (
+                                            <div key={i} className="bg-surface-variant/30 rounded-xl p-4 border border-outline/5">
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <InfoItem label="Subnet" value={config.subnet || '-'} compact />
+                                                    <InfoItem label="Gateway" value={config.gateway || '-'} compact />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-bold text-on-surface-variant uppercase tracking-wider">Connected Containers ({Object.keys(details.containers).length})</h3>
+                                </div>
+                                {Object.keys(details.containers).length === 0 ? (
+                                    <p className="text-on-surface-variant italic">No containers connected to this network.</p>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {Object.entries(details.containers).map(([id, container]) => (
+                                            <div key={id} className="bg-surface-variant/30 rounded-xl p-4 border border-outline/5 flex items-start gap-3">
+                                                <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500 mt-1">
+                                                    <Box size={18} />
+                                                </div>
+                                                <div className="space-y-1 min-w-0">
+                                                    <div className="font-medium truncate" title={container.name}>{container.name}</div>
+                                                    <div className="text-xs text-on-surface-variant font-mono">{container.ipv4Address.split('/')[0]}</div>
+                                                    {container.macAddress && <div className="text-[10px] text-on-surface-variant/70 font-mono">MAC: {container.macAddress}</div>}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {(Object.keys(details.labels).length > 0 || Object.keys(details.options).length > 0) && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {Object.keys(details.labels).length > 0 && (
+                                        <div className="space-y-3">
+                                            <h3 className="text-sm font-bold text-on-surface-variant uppercase tracking-wider">Labels</h3>
+                                            <div className="bg-surface-variant/30 rounded-xl p-4 border border-outline/5 space-y-2">
+                                                {Object.entries(details.labels).map(([k, v]) => (
+                                                    <div key={k} className="flex justify-between text-sm">
+                                                        <span className="text-on-surface-variant">{k}:</span>
+                                                        <span className="font-mono text-on-surface truncate ml-4" title={v}>{v}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {Object.keys(details.options).length > 0 && (
+                                        <div className="space-y-3">
+                                            <h3 className="text-sm font-bold text-on-surface-variant uppercase tracking-wider">Options</h3>
+                                            <div className="bg-surface-variant/30 rounded-xl p-4 border border-outline/5 space-y-2">
+                                                {Object.entries(details.options).map(([k, v]) => (
+                                                    <div key={k} className="flex justify-between text-sm">
+                                                        <span className="text-on-surface-variant">{k}:</span>
+                                                        <span className="font-mono text-on-surface truncate ml-4" title={v}>{v}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    ) : null}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function InfoItem({ label, value, compact = false }: { label: string, value: string, compact?: boolean }) {
+    return (
+        <div>
+            <p className="text-xs font-medium text-on-surface-variant uppercase tracking-wider">{label}</p>
+            <p className={`text-on-surface font-medium truncate ${compact ? 'text-sm' : 'text-base'} mt-0.5`} title={value}>{value}</p>
         </div>
     );
 }

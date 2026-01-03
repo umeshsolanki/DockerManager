@@ -62,6 +62,36 @@ export interface DockerNetwork {
   internal: boolean;
 }
 
+export interface NetworkDetails {
+  id: string;
+  name: string;
+  driver: string;
+  scope: string;
+  internal: boolean;
+  ipam: IpamConfig;
+  containers: Record<string, NetworkContainerDetails>;
+  options: Record<string, string>;
+  labels: Record<string, string>;
+}
+
+export interface IpamConfig {
+  driver: string;
+  config: IpamData[];
+}
+
+export interface IpamData {
+  subnet?: string;
+  gateway?: string;
+}
+
+export interface NetworkContainerDetails {
+  name: string;
+  endpointId: string;
+  macAddress: string;
+  ipv4Address: string;
+  ipv6Address: string;
+}
+
 export interface DockerVolume {
   name: string;
   driver: string;

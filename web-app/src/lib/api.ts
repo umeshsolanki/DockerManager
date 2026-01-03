@@ -1,4 +1,4 @@
-import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest, ComposeResult, SystemLog, FirewallRule, BlockIPRequest, ProxyHost, ProxyHit, ProxyStats, BtmpStats, BtmpEntry, IptablesRule, SSLCertificate, EmailDomain, EmailUser, CreateEmailUserRequest, UpdateEmailUserPasswordRequest, SystemConfig, UpdateSystemConfigRequest, EmailMailbox } from './types';
+import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest, ComposeResult, SystemLog, FirewallRule, BlockIPRequest, ProxyHost, ProxyHit, ProxyStats, BtmpStats, BtmpEntry, IptablesRule, SSLCertificate, EmailDomain, EmailUser, CreateEmailUserRequest, UpdateEmailUserPasswordRequest, SystemConfig, UpdateSystemConfigRequest, EmailMailbox, NetworkDetails } from './types';
 
 const DEFAULT_SERVER_URL = "http://192.168.1.3:9091";
 
@@ -235,6 +235,17 @@ export const DockerClient = {
         } catch (e) {
             console.error(e);
             return [];
+        }
+    },
+
+    async inspectNetwork(id: string): Promise<NetworkDetails | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/networks/${id}`);
+            if (response.status === 404) return null;
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
         }
     },
 

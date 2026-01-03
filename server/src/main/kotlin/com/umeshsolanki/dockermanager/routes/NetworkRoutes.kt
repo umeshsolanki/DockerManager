@@ -12,6 +12,16 @@ fun Route.networkRoutes() {
             call.respond(DockerService.listNetworks())
         }
         
+        get("/{id}") {
+            val id = call.parameters["id"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+            val details = DockerService.inspectNetwork(id)
+            if (details != null) {
+                call.respond(details)
+            } else {
+                call.respond(HttpStatusCode.NotFound)
+            }
+        }
+
         delete("/{id}") {
             val id = call.parameters["id"] ?: return@delete call.respond(HttpStatusCode.BadRequest)
             if (DockerService.removeNetwork(id)) {
