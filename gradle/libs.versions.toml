@@ -31,7 +31,9 @@ ktor-serverContentNegotiation = { module = "io.ktor:ktor-server-content-negotiat
 ktor-serverCors = { module = "io.ktor:ktor-server-cors", version.ref = "ktor" }
 ktor-serializationKotlinxJson = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
 ktor-clientCore = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-clientJava = { module = "io.ktor:ktor-client-java", version.ref = "ktor" }
 ktor-clientContentNegotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
+
 kotlinx-serializationJson = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version = "1.8.0" }
 docker-java = { module = "com.github.docker-java:docker-java-core", version = "3.4.1" }
 docker-java-transport = { module = "com.github.docker-java:docker-java-transport-httpclient5", version = "3.4.1" }

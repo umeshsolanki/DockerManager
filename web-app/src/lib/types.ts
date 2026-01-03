@@ -227,4 +227,30 @@ export interface BtmpStats {
   isMonitoringActive: boolean;
 }
 
-export type Screen = 'Dashboard' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Settings';
+export interface EmailDomain {
+  name: string;
+}
+
+export interface EmailUser {
+  userAddress: string;
+}
+
+export interface CreateEmailUserRequest {
+  password: string;
+}
+
+export interface UpdateEmailUserPasswordRequest {
+  password: string;
+}
+
+export interface SystemConfig {
+  dockerCommand: string;
+  dockerComposeCommand: string;
+  dataRoot: string;
+  jamesWebAdminUrl: string;
+}
+
+export type Screen = 'Dashboard' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Settings';
+
+
+

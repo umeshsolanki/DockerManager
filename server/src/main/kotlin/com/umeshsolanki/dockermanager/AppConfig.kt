@@ -78,4 +78,8 @@ object AppConfig {
     // NOTE: If user runs jar on valid linux, iptables should be in path.
     val iptablesCmd: String get() = if (isDocker) "/main/sbin/iptables" else "iptables"
     val ipsetCmd: String get() = if (isDocker) "/main/sbin/ipset" else "ipset"
+
+    // James
+    val jamesWebAdminUrl: String get() = "http://localhost:8001"
 }
+

@@ -1,44 +1,8 @@
-import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest, ComposeResult, SystemLog, FirewallRule, BlockIPRequest, ProxyHost, ProxyHit, ProxyStats, BtmpStats, BtmpEntry, IptablesRule, SSLCertificate } from './types';
+import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest, ComposeResult, SystemLog, FirewallRule, BlockIPRequest, ProxyHost, ProxyHit, ProxyStats, BtmpStats, BtmpEntry, IptablesRule, SSLCertificate, EmailDomain, EmailUser, CreateEmailUserRequest, UpdateEmailUserPasswordRequest, SystemConfig } from './types';
 
 const DEFAULT_SERVER_URL = "http://192.168.1.3:9091";
 
 export const DockerClient = {
-    // ... rest of the code ...
-    async createContainer(request: CreateContainerRequest): Promise<string | null> {
-        try {
-            const response = await fetch(`${this.getServerUrl()}/containers`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(request)
-            });
-            if (response.ok) return await response.text();
-            return null;
-        } catch (e) {
-            console.error(e);
-            return null;
-        }
-    },
-    // ... rest of the code ...
-    async inspectVolume(name: string): Promise<VolumeDetails | null> {
-        try {
-            const response = await fetch(`${this.getServerUrl()}/volumes/${name}/inspect`);
-            return await response.json();
-        } catch (e) {
-            console.error(e);
-            return null;
-        }
-    },
-
-    async backupVolume(name: string): Promise<BackupResult | null> {
-        try {
-            const response = await fetch(`${this.getServerUrl()}/volumes/${name}/backup`, { method: 'POST' });
-            return await response.json();
-        } catch (e) {
-            console.error(e);
-            return null;
-        }
-    },
-    // ... rest of the code ...
     getServerUrl(): string {
         if (typeof window === 'undefined') return DEFAULT_SERVER_URL;
         return localStorage.getItem('SERVER_URL') || DEFAULT_SERVER_URL;
@@ -64,6 +28,21 @@ export const DockerClient = {
         try {
             const response = await fetch(`${this.getServerUrl()}/containers/${id}/inspect`);
             return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    },
+
+    async createContainer(request: CreateContainerRequest): Promise<string | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/containers`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(request)
+            });
+            if (response.ok) return await response.text();
+            return null;
         } catch (e) {
             console.error(e);
             return null;
@@ -293,6 +272,26 @@ export const DockerClient = {
         }
     },
 
+    async inspectVolume(name: string): Promise<VolumeDetails | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/volumes/${name}/inspect`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    },
+
+    async backupVolume(name: string): Promise<BackupResult | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/volumes/${name}/backup`, { method: 'POST' });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    },
+
     async listSystemLogs(path?: string): Promise<SystemLog[]> {
         try {
             let url = `${this.getServerUrl()}/logs/system`;
@@ -501,7 +500,6 @@ export const DockerClient = {
         }
     },
 
-    // Proxy Container Management
     async getProxyContainerStatus(): Promise<any> {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/container/status`);
@@ -621,5 +619,94 @@ export const DockerClient = {
             console.error(e);
             return { success: false, message: 'Network error' };
         }
-    }
+    },
+
+    // Email Management
+    async listEmailDomains(): Promise<EmailDomain[]> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/domains`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return [];
+        }
+    },
+
+    async createEmailDomain(domain: string): Promise<{ success: boolean; message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/domains/${domain}`, { method: 'PUT' });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async deleteEmailDomain(domain: string): Promise<{ success: boolean; message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/domains/${domain}`, { method: 'DELETE' });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async listEmailUsers(): Promise<EmailUser[]> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/users`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return [];
+        }
+    },
+
+    async createEmailUser(userAddress: string, request: CreateEmailUserRequest): Promise<{ success: boolean; message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/users/${userAddress}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(request)
+            });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async deleteEmailUser(userAddress: string): Promise<{ success: boolean; message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/users/${userAddress}`, { method: 'DELETE' });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async updateEmailUserPassword(userAddress: string, request: UpdateEmailUserPasswordRequest): Promise<{ success: boolean; message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/users/${userAddress}/password`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(request)
+            });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async getSystemConfig(): Promise<SystemConfig | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/system/config`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    },
 };

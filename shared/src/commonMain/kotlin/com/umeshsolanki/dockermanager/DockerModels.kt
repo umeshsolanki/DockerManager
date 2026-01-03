@@ -269,3 +269,34 @@ data class ProxyActionResult(
     val success: Boolean,
     val message: String,
 )
+
+@Serializable
+class EmailDomain(
+    val name: String,
+)
+
+@Serializable
+class EmailUser(
+    val userAddress: String,
+)
+
+@Serializable
+class CreateEmailUserRequest(
+    val userAddress: String,
+    val password: String,
+)
+
+@Serializable
+class UpdateEmailUserPasswordRequest(
+    val password: String,
+)
+
+@Serializable
+class SystemConfig(
+    val dockerCommand: String,
+    val dockerComposeCommand: String,
+    val dataRoot: String,
+    val jamesWebAdminUrl: String,
+)
+
+

@@ -13,8 +13,10 @@ object DockerService {
     private val firewallService: IFirewallService = FirewallServiceImpl()
     private val proxyService: IProxyService = ProxyServiceImpl()
     private val btmpService: IBtmpService = BtmpServiceImpl(firewallService)
+    private val emailService: IEmailService = EmailServiceImpl()
 
     fun listContainers() = containerService.listContainers()
+
     fun startContainer(id: String) = containerService.startContainer(id)
     fun stopContainer(id: String) = containerService.stopContainer(id)
     fun removeContainer(id: String) = containerService.removeContainer(id)
@@ -82,4 +84,23 @@ object DockerService {
     fun ensureProxyContainerExists() = proxyService.ensureProxyContainerExists()
     fun getProxyComposeConfig() = proxyService.getComposeConfig()
     fun updateProxyComposeConfig(content: String) = proxyService.updateComposeConfig(content)
+
+    // Email Management
+    suspend fun listEmailDomains() = emailService.listDomains()
+    suspend fun createEmailDomain(domain: String) = emailService.createDomain(domain)
+    suspend fun deleteEmailDomain(domain: String) = emailService.deleteDomain(domain)
+    
+    suspend fun listEmailUsers() = emailService.listUsers()
+    suspend fun createEmailUser(userAddress: String, request: CreateEmailUserRequest) = emailService.createUser(userAddress, request)
+    suspend fun deleteEmailUser(userAddress: String) = emailService.deleteUser(userAddress)
+    suspend fun updateEmailUserPassword(userAddress: String, request: UpdateEmailUserPasswordRequest) = emailService.updateUserPassword(userAddress, request)
+
+    fun getSystemConfig() = SystemConfig(
+        dockerCommand = AppConfig.dockerCommand,
+        dockerComposeCommand = AppConfig.dockerComposeCommand,
+        dataRoot = AppConfig.dataRoot.absolutePath,
+        jamesWebAdminUrl = AppConfig.jamesWebAdminUrl
+    )
 }
+
+

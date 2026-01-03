@@ -21,5 +21,7 @@ fun Application.configureRouting() {
         logRoutes()
         firewallRoutes()
         proxyRoutes()
+        emailRoutes()
     }
 }
+
