@@ -199,9 +199,26 @@ class FirewallServiceImpl : IFirewallService {
 
     private fun executeCommand(command: String): String {
         return try {
-            val process = ProcessBuilder("sh", "-c", command).start()
-            process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
-            process.inputStream.bufferedReader().readText()
+            val processBuilder = ProcessBuilder("sh", "-c", command)
+            processBuilder.environment()["LC_ALL"] = "C"
+            val process = processBuilder.start()
+            val output = process.inputStream.bufferedReader().readText()
+            val error = process.errorStream.bufferedReader().readText()
+            
+            if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.destroy()
+                logger.error("Command timed out: $command")
+                return ""
+            }
+
+            if (process.exitValue() != 0) {
+                logger.warn("Command failed with exit code ${process.exitValue()}: $command")
+                if (error.isNotBlank()) logger.warn("Error output: $error")
+            } else {
+                logger.debug("Command executed successfully: $command")
+            }
+            
+            output
         } catch (e: Exception) {
             logger.error("Error executing command: $command", e)
             ""

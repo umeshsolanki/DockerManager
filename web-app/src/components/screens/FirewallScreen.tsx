@@ -208,7 +208,7 @@ export default function FirewallScreen() {
                                 <div className="flex flex-col">
                                     <h3 className="text-lg font-bold flex items-center gap-2 leading-none">
                                         <Terminal size={18} className="text-primary" />
-                                        Chain <span className="text-primary">{expandedChain}</span>
+                                        Chain <span className="text-primary">{expandedChain || 'None'}</span>
                                     </h3>
                                     <span className="text-[10px] uppercase font-bold text-on-surface-variant/40 tracking-wider mt-1.5 ml-0.5">Active packet filtering rules</span>
                                 </div>
@@ -216,13 +216,19 @@ export default function FirewallScreen() {
                                     <div className="px-3 py-1.5 rounded-lg bg-white/5 border border-outline/5 flex items-center gap-2">
                                         <Database size={14} className="text-blue-400" />
                                         <span className="text-xs font-mono font-bold text-blue-400">
-                                            {iptables[expandedChain || '']?.reduce((acc, r) => acc + (parseInt(r.pkts) || 0), 0).toLocaleString()} <span className="text-[10px] opacity-40">PKTS</span>
+                                            {iptables[expandedChain || '']?.reduce((acc, r) => acc + (parseInt(r.pkts) || 0), 0).toLocaleString() ?? 0} <span className="text-[10px] opacity-40">PKTS</span>
                                         </span>
                                     </div>
                                 </div>
                             </div>
                             <div className="flex-1 overflow-auto custom-scrollbar">
-                                {expandedChain && iptables[expandedChain] && (
+                                {!expandedChain || !iptables[expandedChain] ? (
+                                    <div className="flex flex-col items-center justify-center h-full text-on-surface-variant/50 gap-2">
+                                        <ShieldAlert size={48} className="opacity-20" />
+                                        <p className="font-bold">No chain data available</p>
+                                        <p className="text-xs">Check server logs or permissions (iptables access required)</p>
+                                    </div>
+                                ) : (
                                     <table className="w-full text-left border-collapse">
                                         <thead className="sticky top-0 bg-surface z-10">
                                             <tr className="border-b border-outline/10">
@@ -239,8 +245,8 @@ export default function FirewallScreen() {
                                                 <tr key={i} className="hover:bg-white/2 transition-colors group">
                                                     <td className="px-4 py-3">
                                                         <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${rule.target === 'DROP' || rule.target === 'REJECT' ? 'bg-red-500/20 text-red-500' :
-                                                                rule.target === 'ACCEPT' ? 'bg-green-500/20 text-green-500' :
-                                                                    'bg-primary/20 text-primary'
+                                                            rule.target === 'ACCEPT' ? 'bg-green-500/20 text-green-500' :
+                                                                'bg-primary/20 text-primary'
                                                             }`}>
                                                             {rule.target}
                                                         </span>

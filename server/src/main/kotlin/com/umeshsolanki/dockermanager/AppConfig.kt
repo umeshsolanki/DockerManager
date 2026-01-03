@@ -131,11 +131,26 @@ object AppConfig {
     val firewallDataDir: File get() = File(dataRoot, "firewall")
 
     // When running in docker, we mount these binaries. When running locally, assume they are in PATH or sbin.
-    // NOTE: If user runs jar on valid linux, iptables should be in path.
-    val iptablesCmd: String get() = if (isDocker) "/main/sbin/iptables" else "iptables"
-    val ipsetCmd: String get() = if (isDocker) "/main/sbin/ipset" else "ipset"
+    // NOTE: If user runs jar on valid linux, iptables should be in path, but systemd path might be limited.
+    val iptablesCmd: String get() {
+        if (isDocker) return "/main/sbin/iptables"
+        if (File("/usr/sbin/iptables").exists()) return "/usr/sbin/iptables"
+        if (File("/sbin/iptables").exists()) return "/sbin/iptables"
+        return "iptables"
+    }
+
+    val ipsetCmd: String get() {
+        if (isDocker) return "/main/sbin/ipset"
+        if (File("/usr/sbin/ipset").exists()) return "/usr/sbin/ipset"
+        if (File("/sbin/ipset").exists()) return "/sbin/ipset"
+        return "ipset"
+    }
 
     // James
+    val jamesDir: File get() = File(dataRoot, "james")
+    val jamesConfigDir: File get() = File(jamesDir, "conf")
+    val jamesVarDir: File get() = File(jamesDir, "var")
+
     val jamesWebAdminUrl: String
         get() = _settings.jamesWebAdminUrl
 }
