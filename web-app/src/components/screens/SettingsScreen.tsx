@@ -13,6 +13,7 @@ export default function SettingsScreen() {
     const [config, setConfig] = useState<SystemConfig | null>(null);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [isShellOpen, setIsShellOpen] = useState(false);
 
     const fetchConfig = async () => {
         setLoading(true);
@@ -190,7 +191,7 @@ export default function SettingsScreen() {
                 </div>
 
                 {/* Read-only System Info */}
-                <div className="lg:col-span-2 bg-surface/50 border border-outline/10 rounded-3xl p-8 shadow-xl backdrop-blur-sm">
+                <div className="lg:col-span-1 bg-surface/50 border border-outline/10 rounded-3xl p-8 shadow-xl backdrop-blur-sm">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="p-3 bg-blue-500/10 rounded-2xl text-blue-500">
                             <Info size={24} />
@@ -199,7 +200,7 @@ export default function SettingsScreen() {
                     </div>
 
                     {config ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 gap-4">
                             <div className="p-4 bg-surface rounded-2xl border border-outline/5">
                                 <p className="text-xs font-medium text-on-surface-variant uppercase tracking-wider">Docker Binary</p>
                                 <p className="text-on-surface font-mono text-sm mt-1">{config.dockerCommand}</p>
@@ -217,8 +218,52 @@ export default function SettingsScreen() {
                         <p className="text-on-surface-variant">Connect to server to view environment details.</p>
                     )}
                 </div>
+
+                {/* Server Shell Launcher */}
+                <div className="lg:col-span-1 bg-primary/5 border border-primary/10 rounded-3xl p-8 shadow-xl backdrop-blur-sm flex flex-col justify-between">
+                    <div>
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="p-3 bg-primary/20 rounded-2xl text-primary">
+                                <Terminal size={24} />
+                            </div>
+                            <h2 className="text-xl font-semibold">Server Web Shell</h2>
+                        </div>
+                        <p className="text-on-surface-variant mb-6">
+                            Launch a powerful interactive terminal directly in your browser. Perform maintenance, manage files, and execute commands on the host server safely.
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => setIsShellOpen(true)}
+                        className="w-full flex items-center justify-center gap-3 bg-primary text-primary-foreground font-bold px-6 py-4 rounded-xl hover:opacity-90 transition-all active:scale-95 shadow-xl shadow-primary/20"
+                    >
+                        <Terminal size={24} />
+                        <span>Launch Server Terminal</span>
+                    </button>
+                </div>
             </div>
+
+            {isShellOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+                    <div className="bg-surface border border-outline/20 rounded-3xl w-full max-w-5xl h-[80vh] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in duration-300">
+                        <div className="p-6 border-b border-outline/10 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <Terminal size={24} className="text-primary" />
+                                <h2 className="text-2xl font-bold">Host Server Shell</h2>
+                            </div>
+                            <button onClick={() => setIsShellOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                                <XCircle size={24} />
+                            </button>
+                        </div>
+                        <div className="flex-1 p-4 bg-black">
+                            <WebShell url={`${DockerClient.getServerUrl()}/shell/server`} onClose={() => setIsShellOpen(false)} />
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
+
+import WebShell from '../Terminal';
+import { XCircle } from 'lucide-react';
 

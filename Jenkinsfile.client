@@ -7,7 +7,7 @@ pipeline {
             steps {
                 script {
                     // Dockerfile.client now handles the Next.js build using a multi-stage approach
-                    docker.build("docker-manager-client:${env.BUILD_NUMBER}", "--label jenkins_build_id=${env.BUILD_ID} -f Dockerfile.client .")
+                    docker.build("docker-manager-ui:${env.BUILD_NUMBER}", "--label jenkins_build_id=${env.BUILD_ID} -f Dockerfile.client .")
                 }
             }
         }

@@ -10,6 +10,7 @@ export default function ContainersScreen() {
     const [isLoading, setIsLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [inspectingContainer, setInspectingContainer] = useState<ContainerDetails | null>(null);
+    const [shellContainerId, setShellContainerId] = useState<string | null>(null);
     const [isWizardOpen, setIsWizardOpen] = useState(false);
 
     const fetchContainers = async () => {
@@ -34,6 +35,10 @@ export default function ContainersScreen() {
         const details = await DockerClient.inspectContainer(id);
         setInspectingContainer(details);
         setIsLoading(false);
+    };
+
+    const handleShell = (id: string) => {
+        setShellContainerId(id);
     };
 
     const filteredContainers = useMemo(() => {
@@ -96,6 +101,7 @@ export default function ContainersScreen() {
                             container={container}
                             onAction={handleAction}
                             onInspect={() => handleInspect(container.id)}
+                            onShell={() => handleShell(container.id)}
                         />
                     ))}
                 </div>
@@ -105,6 +111,13 @@ export default function ContainersScreen() {
                 <InspectModal
                     details={inspectingContainer}
                     onClose={() => setInspectingContainer(null)}
+                />
+            )}
+
+            {shellContainerId && (
+                <ShellModal
+                    containerId={shellContainerId}
+                    onClose={() => setShellContainerId(null)}
                 />
             )}
 
@@ -121,14 +134,38 @@ export default function ContainersScreen() {
     );
 }
 
+import WebShell from '../Terminal';
+
+function ShellModal({ containerId, onClose }: { containerId: string; onClose: () => void }) {
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <div className="bg-surface border border-outline/20 rounded-3xl w-full max-w-5xl h-[80vh] overflow-hidden flex flex-col shadow-2xl">
+                <div className="p-6 border-b border-outline/10 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <Terminal size={24} className="text-primary" />
+                        <h2 className="text-2xl font-bold">Container Shell: {containerId.substring(0, 12)}</h2>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                        <XCircle size={24} />
+                    </button>
+                </div>
+                <div className="flex-1 p-4 bg-black">
+                    <WebShell url={`${DockerClient.getServerUrl()}/shell/container/${containerId}`} onClose={onClose} />
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function InspectModal({ details, onClose }: { details: ContainerDetails; onClose: () => void }) {
     const [activeTab, setActiveTab] = React.useState<'details' | 'logs'>('details');
     const [logs, setLogs] = React.useState<string>('');
     const [isLoadingLogs, setIsLoadingLogs] = React.useState(false);
+    const [logTail, setLogTail] = React.useState<number>(100);
 
-    const fetchLogs = async () => {
+    const fetchLogs = async (tail: number = logTail) => {
         setIsLoadingLogs(true);
-        const logData = await DockerClient.getContainerLogs(details.id, 100);
+        const logData = await DockerClient.getContainerLogs(details.id, tail);
         setLogs(logData);
         setIsLoadingLogs(false);
     };
@@ -157,8 +194,8 @@ function InspectModal({ details, onClose }: { details: ContainerDetails; onClose
                     <button
                         onClick={() => setActiveTab('details')}
                         className={`flex-1 px-6 py-3 font-medium transition-colors ${activeTab === 'details'
-                                ? 'text-primary border-b-2 border-primary'
-                                : 'text-on-surface-variant hover:text-on-surface'
+                            ? 'text-primary border-b-2 border-primary'
+                            : 'text-on-surface-variant hover:text-on-surface'
                             }`}
                     >
                         Details
@@ -166,8 +203,8 @@ function InspectModal({ details, onClose }: { details: ContainerDetails; onClose
                     <button
                         onClick={() => setActiveTab('logs')}
                         className={`flex-1 px-6 py-3 font-medium transition-colors ${activeTab === 'logs'
-                                ? 'text-primary border-b-2 border-primary'
-                                : 'text-on-surface-variant hover:text-on-surface'
+                            ? 'text-primary border-b-2 border-primary'
+                            : 'text-on-surface-variant hover:text-on-surface'
                             }`}
                     >
                         Logs
@@ -247,17 +284,34 @@ function InspectModal({ details, onClose }: { details: ContainerDetails; onClose
                     ) : (
                         <div className="h-full">
                             <div className="flex items-center justify-between mb-3">
-                                <h3 className="text-lg font-bold">Container Logs (Last 100 lines)</h3>
-                                <button
-                                    onClick={fetchLogs}
-                                    disabled={isLoadingLogs}
-                                    className="px-3 py-1 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors text-sm disabled:opacity-50"
-                                >
-                                    {isLoadingLogs ? 'Refreshing...' : 'Refresh'}
-                                </button>
+                                <h3 className="text-lg font-bold">Container Logs (Last {logTail} lines)</h3>
+                                <div className="flex items-center gap-3">
+                                    <div className="flex items-center bg-black/20 rounded-lg px-3 h-8 border border-outline/10 group focus-within:border-primary/50 transition-all">
+                                        <span className="text-[10px] text-on-surface-variant uppercase font-bold mr-2 opacity-50">Lines</span>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="10000"
+                                            step="50"
+                                            value={logTail}
+                                            onChange={(e) => setLogTail(parseInt(e.target.value) || 0)}
+                                            className="w-14 bg-transparent py-1 text-xs outline-none font-mono text-primary font-bold"
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={() => fetchLogs()}
+                                        disabled={isLoadingLogs}
+                                        className="h-8 px-4 bg-primary text-on-primary rounded-lg hover:opacity-90 transition-all text-xs font-bold disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        {isLoadingLogs ? <RefreshCw className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+                                        {isLoadingLogs ? 'Loading...' : 'Refresh'}
+                                    </button>
+                                </div>
                             </div>
-                            <div className="bg-black/40 rounded-xl p-4 font-mono text-xs overflow-auto max-h-[60vh]">
-                                <pre className="whitespace-pre-wrap text-green-400/90">{logs || 'No logs available'}</pre>
+                            <div className="bg-black/60 rounded-2xl p-4 font-mono text-[11px] overflow-auto max-h-[60vh] border border-outline/5 shadow-inner">
+                                <pre className="whitespace-pre-wrap text-green-400/90 selection:bg-primary/30 leading-relaxed">
+                                    {logs || 'No logs available. Refresh to fetch.'}
+                                </pre>
                             </div>
                         </div>
                     )}
@@ -277,10 +331,11 @@ function DetailItem({ label, value }: { label: string; value: string }) {
 }
 
 
-function ContainerCard({ container, onAction, onInspect }: {
+function ContainerCard({ container, onAction, onInspect, onShell }: {
     container: DockerContainer;
     onAction: (action: () => Promise<void>) => Promise<void>;
     onInspect: () => void;
+    onShell: () => void;
 }) {
     const isRunning = container.state.toLowerCase().includes('running');
 
@@ -322,6 +377,14 @@ function ContainerCard({ container, onAction, onInspect }: {
                         <Play size={20} fill="currentColor" />
                     </button>
                 )}
+                <button
+                    onClick={onShell}
+                    disabled={!isRunning}
+                    className={`p-2 rounded-lg transition-colors ${!isRunning ? 'opacity-20 cursor-not-allowed' : 'hover:bg-primary/10 text-primary'}`}
+                    title="Terminal Shell"
+                >
+                    <Terminal size={20} />
+                </button>
                 <button
                     onClick={() => onAction(() => DockerClient.removeContainer(container.id))}
                     disabled={isRunning}
