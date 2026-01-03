@@ -22,10 +22,6 @@ fun Application.configurePlugins() {
     }
 
     install(ContentNegotiation) {
-        json(Json {
-            prettyPrint = true
-            isLenient = true
-            ignoreUnknownKeys = true
-        })
+        json(AppConfig.json)
     }
 }

@@ -37,7 +37,7 @@ class ProxyServiceImpl : IProxyService {
     private val configDir = AppConfig.proxyConfigDir
     private val logFile = AppConfig.proxyLogFile
     private val hostsFile = AppConfig.proxyHostsFile
-    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    private val json = AppConfig.json
 
     private var cachedStats: ProxyStats =
         ProxyStats(0, emptyMap(), emptyMap(), emptyList(), emptyList())

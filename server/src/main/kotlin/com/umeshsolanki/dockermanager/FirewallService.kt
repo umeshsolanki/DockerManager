@@ -18,7 +18,7 @@ class FirewallServiceImpl : IFirewallService {
     private val iptablesCmd = AppConfig.iptablesCmd
     private val ipSetCmd = AppConfig.ipsetCmd
     private val rulesFile = File(dataDir, "rules.json")
-    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    private val json = AppConfig.json
 
     init {
         if (!dataDir.exists()) dataDir.mkdirs()

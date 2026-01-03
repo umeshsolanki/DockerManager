@@ -20,9 +20,11 @@ object AppConfig {
     private val logger = LoggerFactory.getLogger(AppConfig::class.java)
     const val PROJECT_DIR = "/opt/docker-manager"
     
-    private val json = Json { 
-        prettyPrint = true
+    val json = Json { 
+        prettyPrint = false
         ignoreUnknownKeys = true
+        encodeDefaults = true
+        isLenient = true
     }
 
     private val settingsFile: File by lazy {

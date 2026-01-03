@@ -35,10 +35,7 @@ class EmailServiceImpl : IEmailService {
     
     private val client = HttpClient(Java) {
         install(ContentNegotiation) {
-            json(Json {
-                ignoreUnknownKeys = true
-                isLenient = true
-            })
+            json(AppConfig.json)
         }
     }
 
