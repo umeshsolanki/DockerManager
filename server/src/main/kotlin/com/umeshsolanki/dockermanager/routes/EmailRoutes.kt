@@ -45,6 +45,25 @@ fun Route.emailRoutes() {
                 val success = DockerService.updateEmailUserPassword(userAddress, request)
                 call.respond(ProxyActionResult(success, if (success) "Password updated" else "Failed to update password"))
             }
+
+            route("/{userAddress}/mailboxes") {
+                get {
+                    val userAddress = call.parameters["userAddress"] ?: return@get call.respond(ProxyActionResult(false, "User address required"))
+                    call.respond(DockerService.listEmailMailboxes(userAddress))
+                }
+                put("/{mailboxName}") {
+                    val userAddress = call.parameters["userAddress"] ?: return@put call.respond(ProxyActionResult(false, "User address required"))
+                    val mailboxName = call.parameters["mailboxName"] ?: return@put call.respond(ProxyActionResult(false, "Mailbox name required"))
+                    val success = DockerService.createEmailMailbox(userAddress, mailboxName)
+                    call.respond(ProxyActionResult(success, if (success) "Mailbox created" else "Failed to create mailbox"))
+                }
+                delete("/{mailboxName}") {
+                    val userAddress = call.parameters["userAddress"] ?: return@delete call.respond(ProxyActionResult(false, "User address required"))
+                    val mailboxName = call.parameters["mailboxName"] ?: return@delete call.respond(ProxyActionResult(false, "Mailbox name required"))
+                    val success = DockerService.deleteEmailMailbox(userAddress, mailboxName)
+                    call.respond(ProxyActionResult(success, if (success) "Mailbox deleted" else "Failed to delete mailbox"))
+                }
+            }
         }
     }
 }

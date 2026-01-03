@@ -243,6 +243,10 @@ export interface UpdateEmailUserPasswordRequest {
   password: string;
 }
 
+export interface EmailMailbox {
+  name: string;
+}
+
 export interface SystemConfig {
   dockerCommand: string;
   dockerComposeCommand: string;

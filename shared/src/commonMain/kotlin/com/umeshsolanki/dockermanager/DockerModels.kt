@@ -292,6 +292,11 @@ class UpdateEmailUserPasswordRequest(
 )
 
 @Serializable
+class EmailMailbox(
+    val name: String,
+)
+
+@Serializable
 class SystemConfig(
     val dockerCommand: String,
     val dockerComposeCommand: String,

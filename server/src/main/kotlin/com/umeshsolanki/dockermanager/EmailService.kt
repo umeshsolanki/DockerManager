@@ -20,6 +20,10 @@ interface IEmailService {
     suspend fun deleteUser(userAddress: String): Boolean
     suspend fun updateUserPassword(userAddress: String, request: UpdateEmailUserPasswordRequest): Boolean
     
+    suspend fun listMailboxes(userAddress: String): List<EmailMailbox>
+    suspend fun createMailbox(userAddress: String, mailboxName: String): Boolean
+    suspend fun deleteMailbox(userAddress: String, mailboxName: String): Boolean
+    
     fun refresh()
 }
 
@@ -114,6 +118,39 @@ class EmailServiceImpl : IEmailService {
             response.status.value in 200..299
         } catch (e: Exception) {
             logger.error("Failed to update password for user: $userAddress", e)
+            false
+        }
+    }
+
+    override suspend fun listMailboxes(userAddress: String): List<EmailMailbox> {
+        return try {
+            val mailboxes: List<JsonElement> = client.get("$jamesUrl/users/$userAddress/mailboxes").body()
+            mailboxes.map { 
+                val name = it.jsonObject["mailboxName"]?.jsonPrimitive?.content ?: ""
+                EmailMailbox(name)
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to list mailboxes for user: $userAddress", e)
+            emptyList()
+        }
+    }
+
+    override suspend fun createMailbox(userAddress: String, mailboxName: String): Boolean {
+        return try {
+            val response = client.put("$jamesUrl/users/$userAddress/mailboxes/$mailboxName")
+            response.status.value in 200..299
+        } catch (e: Exception) {
+            logger.error("Failed to create mailbox: $mailboxName for user: $userAddress", e)
+            false
+        }
+    }
+
+    override suspend fun deleteMailbox(userAddress: String, mailboxName: String): Boolean {
+        return try {
+            val response = client.delete("$jamesUrl/users/$userAddress/mailboxes/$mailboxName")
+            response.status.value in 200..299
+        } catch (e: Exception) {
+            logger.error("Failed to delete mailbox: $mailboxName for user: $userAddress", e)
             false
         }
     }

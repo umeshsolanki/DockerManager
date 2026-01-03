@@ -105,6 +105,10 @@ object DockerService {
     suspend fun deleteEmailUser(userAddress: String) = emailService.deleteUser(userAddress)
     suspend fun updateEmailUserPassword(userAddress: String, request: UpdateEmailUserPasswordRequest) = emailService.updateUserPassword(userAddress, request)
 
+    suspend fun listEmailMailboxes(userAddress: String) = emailService.listMailboxes(userAddress)
+    suspend fun createEmailMailbox(userAddress: String, mailboxName: String) = emailService.createMailbox(userAddress, mailboxName)
+    suspend fun deleteEmailMailbox(userAddress: String, mailboxName: String) = emailService.deleteMailbox(userAddress, mailboxName)
+
     fun getSystemConfig() = SystemConfig(
         dockerCommand = AppConfig.dockerCommand,
         dockerComposeCommand = AppConfig.dockerComposeCommand,

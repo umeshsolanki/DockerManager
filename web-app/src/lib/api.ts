@@ -1,4 +1,4 @@
-import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest, ComposeResult, SystemLog, FirewallRule, BlockIPRequest, ProxyHost, ProxyHit, ProxyStats, BtmpStats, BtmpEntry, IptablesRule, SSLCertificate, EmailDomain, EmailUser, CreateEmailUserRequest, UpdateEmailUserPasswordRequest, SystemConfig, UpdateSystemConfigRequest } from './types';
+import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest, ComposeResult, SystemLog, FirewallRule, BlockIPRequest, ProxyHost, ProxyHit, ProxyStats, BtmpStats, BtmpEntry, IptablesRule, SSLCertificate, EmailDomain, EmailUser, CreateEmailUserRequest, UpdateEmailUserPasswordRequest, SystemConfig, UpdateSystemConfigRequest, EmailMailbox } from './types';
 
 const DEFAULT_SERVER_URL = "http://192.168.1.3:9091";
 
@@ -692,6 +692,40 @@ export const DockerClient = {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(request)
+            });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async listEmailMailboxes(userAddress: string): Promise<EmailMailbox[]> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/users/${userAddress}/mailboxes`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return [];
+        }
+    },
+
+    async createEmailMailbox(userAddress: string, mailboxName: string): Promise<{ success: boolean, message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/users/${userAddress}/mailboxes/${mailboxName}`, {
+                method: 'PUT'
+            });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async deleteEmailMailbox(userAddress: string, mailboxName: string): Promise<{ success: boolean, message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/users/${userAddress}/mailboxes/${mailboxName}`, {
+                method: 'DELETE'
             });
             return await response.json();
         } catch (e) {
