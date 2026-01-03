@@ -32,21 +32,21 @@ pipeline {
             }
             steps {
                 // Copy the built jar to /opt/docker-manager
-                sh 'sudo mkdir -p /opt/docker-manager'
-                sh 'sudo cp -f server/build/libs/server-all.jar /opt/docker-manager/server-all.jar'
+                sh 'mkdir -p /opt/docker-manager'
+                sh 'cp -f server/build/libs/server-all.jar /opt/docker-manager/server-all.jar'
                 
                 // Copy service files
-                sh 'sudo cp docker-manager.service /opt/docker-manager/docker-manager.service'
-                sh 'sudo cp docker-manager.path /opt/docker-manager/docker-manager.path'
-                sh 'sudo cp docker-manager-restart.service /opt/docker-manager/docker-manager-restart.service'
-                sh 'sudo cp setup-services.sh /opt/docker-manager/setup-services.sh'
+                sh 'cp docker-manager.service /opt/docker-manager/docker-manager.service'
+                sh 'cp docker-manager.path /opt/docker-manager/docker-manager.path'
+                sh 'cp docker-manager-restart.service /opt/docker-manager/docker-manager-restart.service'
+                sh 'cp setup-services.sh /opt/docker-manager/setup-services.sh'
                 
                 // Run setup script
-               // sh 'sudo chmod +x /opt/docker-manager/setup-services.sh'
-               // sh 'sudo /opt/docker-manager/setup-services.sh'
+               // sh 'chmod +x /opt/docker-manager/setup-services.sh'
+               // sh '/opt/docker-manager/setup-services.sh'
                 
                 // Start/Restart the service
-               // sh 'sudo systemctl restart docker-manager.service'
+               // sh 'systemctl restart docker-manager.service'
             }
         }
 
