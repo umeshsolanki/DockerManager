@@ -20,9 +20,10 @@ application {
 val generateVersionProperties by tasks.registering {
     val propertiesFile = file("$buildDir/generated/resources/version.properties")
     outputs.file(propertiesFile)
+    val appVersion = project.version.toString()
     doLast {
         propertiesFile.parentFile.mkdirs()
-        propertiesFile.writeText("version=${project.version}")
+        propertiesFile.writeText("version=$appVersion")
     }
 }
 
