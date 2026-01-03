@@ -27,11 +27,27 @@ object ShellService {
 
     suspend fun handleServerShell(session: DefaultWebSocketServerSession) {
         val os = System.getProperty("os.name").lowercase(Locale.ENGLISH)
-        val shell = if (os.contains("win")) "cmd.exe" else "/bin/sh"
+        val shell = if (os.contains("win")) "cmd.exe" else {
+            // Try to use a richer shell for better experience (colors, autocompletion)
+            val preferredShells = listOf(
+                System.getenv("SHELL"),
+                "/bin/zsh",
+                "/bin/bash",
+                "/usr/bin/zsh",
+                "/usr/bin/bash"
+            )
+            preferredShells.filterNotNull().find { java.io.File(it).exists() } ?: "/bin/sh"
+        }
+        
         val env = HashMap(System.getenv())
         env["TERM"] = "xterm-256color"
-
-        val pty = PtyProcessBuilder().setCommand(arrayOf(shell)).setEnvironment(env)
+        // Ensure some localization which often helps with character rendering and shell behavior
+        if (env["LANG"] == null) env["LANG"] = "en_US.UTF-8"
+        
+        // Start as login shell to load aliases and profile (colors, completion)
+        val command = if (os.contains("win")) arrayOf(shell) else arrayOf(shell, "-l")
+        
+        val pty = PtyProcessBuilder().setCommand(command).setEnvironment(env)
             .setDirectory(System.getProperty("user.home")).start()
 
         handlePtySession(session, pty)
@@ -86,7 +102,7 @@ object ShellService {
                     if (frame is Frame.Text || frame is Frame.Binary) {
                         val data = frame.data
                         val text = String(data)
-                        if (text.startsWith("{\"type\":\"resize\"")) {
+                        if (text.contains("\"type\":\"resize\"")) {
                             try {
                                 val json = AppConfig.json.parseToJsonElement(text).jsonObject
                                 val cols = json["cols"]?.jsonPrimitive?.int ?: 80
@@ -138,7 +154,7 @@ object ShellService {
                 if (frame is Frame.Text || frame is Frame.Binary) {
                     val data = frame.data
                     val text = String(data)
-                    if (text.startsWith("{\"type\":\"resize\"")) {
+                    if (text.contains("\"type\":\"resize\"")) {
                         try {
                             val json = AppConfig.json.parseToJsonElement(text).jsonObject
                             val cols = json["cols"]?.jsonPrimitive?.int ?: 80
