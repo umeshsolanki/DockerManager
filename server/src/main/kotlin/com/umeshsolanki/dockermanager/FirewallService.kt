@@ -23,8 +23,14 @@ class FirewallServiceImpl : IFirewallService {
     init {
         if (!dataDir.exists()) dataDir.mkdirs()
         if (!rulesFile.exists()) rulesFile.writeText("[]")
-        // Initialize ipset if it doesn't exist
-        executeCommand("$ipSetCmd create dm-blocklist hash:ip-port timeout 0 -exist")
+        
+        // Initialize ipset
+        // We use hash:ip because we only put raw IPs here. Port-specific blocks use direct iptables rules.
+        val createSet = executeCommand("$ipSetCmd create dm-blocklist-ip hash:ip timeout 0 -exist")
+        if (createSet.exitCode != 0) {
+            logger.error("Failed to create ipset: ${createSet.error}")
+        }
+        
         // Apply existing rules to iptables on startup
         syncRules()
     }
@@ -60,32 +66,28 @@ class FirewallServiceImpl : IFirewallService {
             if (request.port != null) {
                 val proto = if (request.protocol == "ALL") "tcp" else request.protocol.lowercase()
                 // Use iptables for specific port blocking - For both Container and Host
+                // Use -w to wait for lock
                 val cmdDocker =
-                    "$iptablesCmd -I DOCKER-USER -s ${request.ip} -p $proto --dport ${request.port} -j DROP -m comment --comment \"dm-rule-$id\""
+                    "$iptablesCmd -w -I DOCKER-USER -s ${request.ip} -p $proto --dport ${request.port} -j DROP -m comment --comment \"dm-rule-$id\""
                 val cmdHost =
-                    "$iptablesCmd -I INPUT -s ${request.ip} -p $proto --dport ${request.port} -j DROP -m comment --comment \"dm-rule-$id\""
+                    "$iptablesCmd -w -I INPUT -s ${request.ip} -p $proto --dport ${request.port} -j DROP -m comment --comment \"dm-rule-$id\""
 
-                executeCommand(cmdDocker).isNotEmpty() || executeCommand(cmdHost).isNotEmpty()
-                true // Assume success if code reached here
+                val resDocker = executeCommand(cmdDocker)
+                val resHost = executeCommand(cmdHost)
+                
+                if (resDocker.exitCode != 0) logger.warn("Failed to apply Docker rule: ${resDocker.error}")
+                if (resHost.exitCode != 0) logger.warn("Failed to apply Host rule: ${resHost.error}")
+
+                (resDocker.exitCode == 0 || resHost.exitCode == 0)
             } else {
                 // Use ipset for general IP blocking (more efficient)
-                executeCommand("$ipSetCmd add dm-blocklist ${request.ip} -exist")
+                val resSet = executeCommand("$ipSetCmd add dm-blocklist-ip ${request.ip} -exist")
+                if (resSet.exitCode != 0) {
+                     logger.error("Failed to add to ipset: ${resSet.error}")
+                     return false
+                }
 
-                // Ensure iptables is tracking the ipset for CONTAINER traffic
-                executeCommand("$iptablesCmd -C DOCKER-USER -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed\"").isEmpty()
-                    .let { isMissing ->
-                        if (isMissing) {
-                            executeCommand("$iptablesCmd -I DOCKER-USER -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed\"")
-                        }
-                    }
-
-                // Ensure iptables is tracking the ipset for HOST traffic
-                executeCommand("$iptablesCmd -C INPUT -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed-host\"").isEmpty()
-                    .let { isMissing ->
-                        if (isMissing) {
-                            executeCommand("$iptablesCmd -I INPUT -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed-host\"")
-                        }
-                    }
+                ensureBaseRules()
                 true
             }
 
@@ -93,7 +95,7 @@ class FirewallServiceImpl : IFirewallService {
             saveRules(rules)
             true
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger.error("Exception in blockIP", e)
             false
         }
     }
@@ -105,17 +107,17 @@ class FirewallServiceImpl : IFirewallService {
 
             if (rule.port != null) {
                 val proto = if (rule.protocol == "ALL") "tcp" else rule.protocol.lowercase()
-                executeCommand("$iptablesCmd -D DOCKER-USER -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-$id\"")
-                executeCommand("$iptablesCmd -D INPUT -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-$id\"")
+                executeCommand("$iptablesCmd -w -D DOCKER-USER -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-$id\"")
+                executeCommand("$iptablesCmd -w -D INPUT -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-$id\"")
             } else {
-                executeCommand("$ipSetCmd del dm-blocklist ${rule.ip}")
+                executeCommand("$ipSetCmd del dm-blocklist-ip ${rule.ip}")
             }
 
             rules.remove(rule)
             saveRules(rules)
             true
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger.error("Exception in unblockIP", e)
             false
         }
     }
@@ -125,19 +127,24 @@ class FirewallServiceImpl : IFirewallService {
             val rules = loadRules()
             val rule = rules.find { it.ip == ip && it.port == null } ?: return false
 
-            executeCommand("$ipSetCmd del dm-blocklist ${rule.ip}")
+            executeCommand("$ipSetCmd del dm-blocklist-ip ${rule.ip}")
 
             rules.remove(rule)
             saveRules(rules)
             true
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger.error("Exception in unblockIPByAddress", e)
             false
         }
     }
 
     override fun getIptablesVisualisation(): Map<String, List<IptablesRule>> {
-        val output = executeCommand("$iptablesCmd -L -n -v")
+        val res = executeCommand("$iptablesCmd -w -L -n -v")
+        if (res.exitCode != 0) {
+            logger.warn("Failed to list iptables: ${res.error}")
+            return emptyMap()
+        }
+        val output = res.output
         val chains = mutableMapOf<String, MutableList<IptablesRule>>()
         var currentChain = ""
 
@@ -172,32 +179,51 @@ class FirewallServiceImpl : IFirewallService {
         return chains
     }
 
+    private fun ensureBaseRules() {
+        // Ensure iptables is tracking the ipset for CONTAINER traffic
+        // Check exit code of -C. 0 = exists, 1 = missing.
+        val checkDocker = executeCommand("$iptablesCmd -w -C DOCKER-USER -m set --match-set dm-blocklist-ip src -j DROP -m comment --comment \"dm-managed\"")
+        if (checkDocker.exitCode != 0) {
+             executeCommand("$iptablesCmd -w -I DOCKER-USER -m set --match-set dm-blocklist-ip src -j DROP -m comment --comment \"dm-managed\"")
+        }
+
+        // Ensure iptables is tracking the ipset for HOST traffic
+        val checkHost = executeCommand("$iptablesCmd -w -C INPUT -m set --match-set dm-blocklist-ip src -j DROP -m comment --comment \"dm-managed-host\"")
+        if (checkHost.exitCode != 0) {
+             executeCommand("$iptablesCmd -w -I INPUT -m set --match-set dm-blocklist-ip src -j DROP -m comment --comment \"dm-managed-host\"")
+        }
+    }
+
     private fun syncRules() {
-        // This would re-apply all rules from the JSON to iptables/ipset
-        // Useful after a host or container restart
         val rules = loadRules()
-        // Ensure the iptables jump to ipset exists for both chains
-        executeCommand("$iptablesCmd -C DOCKER-USER -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed\"").isEmpty()
-            .let { isMissing ->
-                if (isMissing) executeCommand("$iptablesCmd -I DOCKER-USER -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed\"")
-            }
-        executeCommand("$iptablesCmd -C INPUT -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed-host\"").isEmpty()
-            .let { isMissing ->
-                if (isMissing) executeCommand("$iptablesCmd -I INPUT -m set --match-set dm-blocklist src -j DROP -m comment --comment \"dm-managed-host\"")
-            }
+        ensureBaseRules()
 
         rules.forEach { rule ->
             if (rule.port != null) {
                 val proto = if (rule.protocol == "ALL") "tcp" else rule.protocol.lowercase()
-                executeCommand("$iptablesCmd -I DOCKER-USER -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-${rule.id}\"")
-                executeCommand("$iptablesCmd -I INPUT -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-${rule.id}\"")
+                // Just try to insert. If checks are hard, we might duplicate, but -C is better.
+                // Simple approach: Delete then Insert (to avoid dupes) or just Insert (might dupe).
+                // Let's check first.
+                val comment = "dm-rule-${rule.id}"
+                
+                val checkD = executeCommand("$iptablesCmd -w -C DOCKER-USER -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"$comment\"")
+                if (checkD.exitCode != 0) {
+                    executeCommand("$iptablesCmd -w -I DOCKER-USER -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"$comment\"")
+                }
+
+                val checkH = executeCommand("$iptablesCmd -w -C INPUT -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"$comment\"")
+                if (checkH.exitCode != 0) {
+                    executeCommand("$iptablesCmd -w -I INPUT -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"$comment\"")
+                }
             } else {
-                executeCommand("$ipSetCmd add dm-blocklist ${rule.ip} -exist")
+                executeCommand("$ipSetCmd add dm-blocklist-ip ${rule.ip} -exist")
             }
         }
     }
 
-    private fun executeCommand(command: String): String {
+    data class ExecuteResult(val output: String, val error: String, val exitCode: Int)
+
+    private fun executeCommand(command: String): ExecuteResult {
         return try {
             val processBuilder = ProcessBuilder("sh", "-c", command)
             processBuilder.environment()["LC_ALL"] = "C"
@@ -208,20 +234,22 @@ class FirewallServiceImpl : IFirewallService {
             if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
                 process.destroy()
                 logger.error("Command timed out: $command")
-                return ""
+                return ExecuteResult("", "Timed out", -1)
             }
 
             if (process.exitValue() != 0) {
-                logger.warn("Command failed with exit code ${process.exitValue()}: $command")
-                if (error.isNotBlank()) logger.warn("Error output: $error")
+                // Log only if it's not a Check command (checking usually fails which is fine)
+                if (!command.contains(" -C ")) {
+                    logger.warn("Command failed [${process.exitValue()}]: $command\nError: $error")
+                }
             } else {
-                logger.debug("Command executed successfully: $command")
+                logger.debug("Command success: $command")
             }
             
-            output
+            ExecuteResult(output, error, process.exitValue())
         } catch (e: Exception) {
             logger.error("Error executing command: $command", e)
-            ""
+            ExecuteResult("", e.message ?: "Unknown error", -1)
         }
     }
 }
