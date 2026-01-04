@@ -19,20 +19,28 @@ pipeline {
 //             }
 //         }
 
+        stage('Build Web UI') {
+            steps {
+                dir('web-app') {
+                    sh 'npm install'
+                    sh 'npm run build'
+                }
+                script {
+                    // Create directory for static resources in server module
+                    sh 'mkdir -p server/src/main/resources/ui'
+                    // Clear existing resources if any
+                    sh 'rm -rf server/src/main/resources/ui/*'
+                    // Copy built UI to server resources
+                    sh 'cp -r web-app/out/* server/src/main/resources/ui/'
+                }
+            }
+        }
+
         stage('Build FatJar') {
             steps {
                 // Use shadowJar task to build the FatJar
                 sh './gradlew clean'
                 sh './gradlew :server:shadowJar'
-            }
-        }
-
-        stage('Build Web UI Image') {
-            steps {
-                script {
-                    // Build the web-app docker image with semantic version
-                    sh "docker build -t docker-manager-client:${VERSION} --label jenkins_build_id=${env.BUILD_ID} -f Dockerfile.client ."
-                }
             }
         }
 
@@ -57,23 +65,6 @@ pipeline {
                 
                 // Start/Restart the service
                // sh 'systemctl restart docker-manager.service'
-            }
-        }
-
-        stage('Deploy Web UI Container') {
-            environment {
-                BUILD_NUMBER = "${VERSION}"
-            }
-            steps {
-                script {
-                    def composeCmd = ""
-                    if (sh(script: "docker compose version", returnStatus: true) == 0) {
-                        composeCmd = "docker compose"
-                    } else {
-                        composeCmd = "docker-compose"
-                    }
-                    sh "BUILD_NUMBER=${env.BUILD_NUMBER} ${composeCmd} -f docker-manager-ui.yml up -d --remove-orphans"
-                }
             }
         }
     }
