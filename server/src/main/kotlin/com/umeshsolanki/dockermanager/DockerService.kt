@@ -137,7 +137,9 @@ object DockerService {
         dockerSocket = AppConfig.dockerSocket,
         dataRoot = AppConfig.dataRoot.absolutePath,
         jamesWebAdminUrl = AppConfig.jamesWebAdminUrl,
-        appVersion = AppConfig.appVersion
+        appVersion = AppConfig.appVersion,
+        twoFactorEnabled = AuthService.is2FAEnabled(),
+        username = AuthService.getUsername()
     )
 
     fun updateSystemConfig(request: UpdateSystemConfigRequest) {

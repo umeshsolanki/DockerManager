@@ -94,17 +94,29 @@ object AuthService {
         return true
     }
 
+    fun updateUsername(currentPassword: String, newUsername: String): Boolean {
+        if (currentPassword != currentAccess.password) return false
+        saveAccessInfo(currentAccess.copy(username = newUsername))
+        activeTokens.clear() // Revoke all sessions on username change for security
+        return true
+    }
+
+    fun is2FAEnabled(): Boolean = currentAccess.twoFactorEnabled
+    fun getUsername(): String = currentAccess.username
+
     // --- 2FA Logic ---
 
     fun generate2FASecret(): TwoFactorSetupResponse {
-        val secret = generateRandomSecret(16) // 16 bytes -> Base32
-        // Encode secret to Base32
+        val secret = generateRandomSecret(20) // 160 bits is standard for TOTP
         val base32Secret = Base32.encode(secret)
         
-        // Use a dummy hostname/issuer
-        val issuer = "DockerManager"
-        val account = "Admin"
-        val qrUri = "otpauth://totp/$issuer:$account?secret=$base32Secret&issuer=$issuer"
+        val issuer = "UCpanel"
+        val account = currentAccess.username
+        
+        // Correctly URL encode labels
+        val encodedIssuer = URLEncoder.encode(issuer, "UTF-8").replace("+", "%20")
+        val encodedAccount = URLEncoder.encode(account, "UTF-8").replace("+", "%20")
+        val qrUri = "otpauth://totp/$encodedIssuer:$encodedAccount?secret=$base32Secret&issuer=$encodedIssuer"
         
         return TwoFactorSetupResponse(base32Secret, qrUri)
     }
@@ -136,6 +148,7 @@ object AuthService {
             val hash = generateHOTP(decodedSecret, currentInterval + i)
             if (hash == code) return true
         }
+        logger.warn("TOTP Verification failed for code: $code")
         return false
     }
 

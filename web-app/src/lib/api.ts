@@ -85,6 +85,19 @@ export const DockerClient = {
         }
     },
 
+    async updateUsername(request: import('./types').UpdateUsernameRequest): Promise<{ success: boolean; message?: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/auth/username`, {
+                method: 'POST',
+                headers: this.getHeaders(),
+                body: JSON.stringify(request)
+            });
+            return await response.json();
+        } catch (e) {
+            return { success: false, message: 'Network error' };
+        }
+    },
+
     async setup2FA(): Promise<import('./types').TwoFactorSetupResponse | null> {
         try {
             const response = await fetch(`${this.getServerUrl()}/auth/2fa/setup`, {

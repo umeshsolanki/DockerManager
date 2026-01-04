@@ -292,6 +292,8 @@ export interface SystemConfig {
   dataRoot: string;
   jamesWebAdminUrl: string;
   appVersion: string;
+  twoFactorEnabled: boolean;
+  username: string;
 }
 
 export interface UpdateSystemConfigRequest {
@@ -341,6 +343,11 @@ export interface AuthResponse {
 export interface UpdatePasswordRequest {
   currentPassword: string;
   newPassword: string;
+}
+
+export interface UpdateUsernameRequest {
+  currentPassword: string;
+  newUsername: string;
 }
 
 export interface TwoFactorSetupResponse {

@@ -47,6 +47,15 @@ fun Route.authRoutes() {
                     call.respond(HttpStatusCode.BadRequest, mapOf("success" to false, "message" to "Invalid current password"))
                 }
             }
+
+            post("/username") {
+                val request = call.receive<UpdateUsernameRequest>()
+                if (AuthService.updateUsername(request.currentPassword, request.newUsername)) {
+                    call.respond(mapOf("success" to true))
+                } else {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("success" to false, "message" to "Invalid current password"))
+                }
+            }
             
             route("/2fa") {
                 get("/setup") {

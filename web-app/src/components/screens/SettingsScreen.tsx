@@ -29,6 +29,9 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [verifyPassword, setVerifyPassword] = useState('');
     const [updatingPassword, setUpdatingPassword] = useState(false);
 
+    const [newUsername, setNewUsername] = useState('');
+    const [updatingUsername, setUpdatingUsername] = useState(false);
+
     const [twoFactorSetup, setTwoFactorSetup] = useState<TwoFactorSetupResponse | null>(null);
     const [verificationCode, setVerificationCode] = useState('');
     const [configuring2FA, setConfiguring2FA] = useState(false);
@@ -110,6 +113,30 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
         }
     };
 
+    const handleUpdateUsername = async () => {
+        if (!newUsername) return;
+
+        setUpdatingUsername(true);
+        try {
+            const result = await DockerClient.updateUsername({
+                currentPassword,
+                newUsername
+            });
+            if (result.success) {
+                setMessage('Username updated successfully! Logging out...');
+                setTimeout(() => onLogout?.(), 2000);
+            } else {
+                setMessage(result.message || 'Failed to update username');
+                setTimeout(() => setMessage(''), 3000);
+            }
+        } catch (e) {
+            setMessage('Error updating username');
+            setTimeout(() => setMessage(''), 3000);
+        } finally {
+            setUpdatingUsername(false);
+        }
+    };
+
     const handleSetup2FA = async () => {
         try {
             const response = await DockerClient.setup2FA();
@@ -132,6 +159,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 setMessage('2FA enabled successfully!');
                 setTwoFactorSetup(null);
                 setVerificationCode('');
+                fetchConfig();
             } else {
                 setMessage(result.message || 'Invalid verification code');
             }
@@ -139,6 +167,25 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
             setMessage('Error enabling 2FA');
         } finally {
             setConfiguring2FA(false);
+            setTimeout(() => setMessage(''), 3000);
+        }
+    };
+
+    const handleDisable2FA = async () => {
+        const password = prompt("Please enter your current administrator password to disable 2FA:");
+        if (!password) return;
+
+        try {
+            const result = await DockerClient.disable2FA(password);
+            if (result.success) {
+                setMessage('Two-factor authentication disabled.');
+                fetchConfig();
+            } else {
+                setMessage(result.message || 'Failed to disable 2FA');
+            }
+        } catch (e) {
+            setMessage('Error disabling 2FA');
+        } finally {
             setTimeout(() => setMessage(''), 3000);
         }
     };
@@ -283,38 +330,68 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                         <div className="p-2 bg-red-500/10 rounded-lg text-red-500">
                             <Key size={20} />
                         </div>
-                        <h2 className="text-lg font-semibold">Update Password</h2>
+                        <h2 className="text-lg font-semibold">Update Account</h2>
                     </div>
 
-                    <div className="space-y-3">
-                        <input
-                            type="password"
-                            placeholder="Current Password"
-                            value={currentPassword}
-                            onChange={(e) => setCurrentPassword(e.target.value)}
-                            className="w-full bg-surface border border-outline/20 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-primary"
-                        />
-                        <input
-                            type="password"
-                            placeholder="New Password"
-                            value={newPassword}
-                            onChange={(e) => setNewPassword(e.target.value)}
-                            className="w-full bg-surface border border-outline/20 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-primary"
-                        />
-                        <input
-                            type="password"
-                            placeholder="Verify New Password"
-                            value={verifyPassword}
-                            onChange={(e) => setVerifyPassword(e.target.value)}
-                            className="w-full bg-surface border border-outline/20 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-primary"
-                        />
-                        <button
-                            onClick={handleUpdatePassword}
-                            disabled={updatingPassword || !newPassword}
-                            className="w-full bg-primary text-primary-foreground py-2 rounded-lg font-bold text-sm hover:opacity-90 transition-all disabled:opacity-50"
-                        >
-                            {updatingPassword ? 'Updating...' : 'Update Password'}
-                        </button>
+                    <div className="space-y-6">
+                        {/* Password Section */}
+                        <div className="space-y-3">
+                            <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider ml-1">Change Password</h3>
+                            <input
+                                type="password"
+                                placeholder="Current Password"
+                                value={currentPassword}
+                                onChange={(e) => setCurrentPassword(e.target.value)}
+                                className="w-full bg-surface border border-outline/20 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-primary shadow-inner"
+                            />
+                            <input
+                                type="password"
+                                placeholder="New Password"
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                className="w-full bg-surface border border-outline/20 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-primary shadow-inner"
+                            />
+                            <input
+                                type="password"
+                                placeholder="Verify New Password"
+                                value={verifyPassword}
+                                onChange={(e) => setVerifyPassword(e.target.value)}
+                                className="w-full bg-surface border border-outline/20 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-primary shadow-inner"
+                            />
+                            <button
+                                onClick={handleUpdatePassword}
+                                disabled={updatingPassword || !newPassword || !currentPassword}
+                                className="w-full bg-primary text-primary-foreground py-2 rounded-lg font-bold text-sm hover:opacity-90 transition-all disabled:opacity-50 shadow-lg shadow-primary/20"
+                            >
+                                {updatingPassword ? 'Updating...' : 'Update Password'}
+                            </button>
+                        </div>
+
+                        <div className="h-px bg-outline/10 mx-2" />
+
+                        {/* Username Section */}
+                        <div className="space-y-3">
+                            <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider ml-1">Change Username</h3>
+                            <div className="p-3 bg-blue-500/5 rounded-xl border border-blue-500/10 mb-2">
+                                <p className="text-[10px] text-blue-300 leading-relaxed font-medium">
+                                    Current Username: <span className="font-bold text-white uppercase ml-1">{config?.username || 'admin'}</span>
+                                </p>
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="New Username"
+                                value={newUsername}
+                                onChange={(e) => setNewUsername(e.target.value)}
+                                className="w-full bg-surface border border-outline/20 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-primary shadow-inner"
+                            />
+                            <button
+                                onClick={handleUpdateUsername}
+                                disabled={updatingUsername || !newUsername || !currentPassword}
+                                className="w-full bg-surface border border-outline/30 text-on-surface py-2 rounded-lg font-bold text-sm hover:bg-white/5 transition-all disabled:opacity-50"
+                            >
+                                {updatingUsername ? 'Updating...' : 'Update Username'}
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -327,59 +404,86 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                         <h2 className="text-lg font-semibold">Two-Factor Auth</h2>
                     </div>
 
-                    {!twoFactorSetup ? (
+                    {config?.twoFactorEnabled ? (
                         <div className="space-y-4">
-                            <p className="text-xs text-on-surface-variant">
-                                Add an extra layer of security to your account by enabling TOTP-based two-factor authentication.
+                            <div className="flex items-center gap-2 p-3 bg-green-500/10 rounded-xl border border-green-500/20">
+                                <ShieldCheck size={18} className="text-green-500" />
+                                <span className="text-xs font-bold text-green-500 uppercase tracking-wider">Active & Secure</span>
+                            </div>
+                            <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                                Your account is protected with two-factor authentication. You will be prompted for a security code when logging in from remote locations.
                             </p>
                             <button
-                                onClick={handleSetup2FA}
-                                className="w-full bg-blue-500 text-white py-2 rounded-lg font-bold text-sm hover:bg-blue-600 transition-all"
+                                onClick={handleDisable2FA}
+                                className="w-full bg-red-500/10 text-red-500 py-2 rounded-lg font-bold text-xs hover:bg-red-500/20 transition-all border border-red-500/20"
                             >
-                                Setup 2FA
+                                Disable 2FA
                             </button>
                         </div>
                     ) : (
-                        <div className="space-y-4 animate-in fade-in duration-300">
-                            <p className="text-xs font-medium text-center">Scan this QR code with your authenticator app</p>
-                            <div className="bg-white p-2 rounded-xl mx-auto w-fit">
-                                {/* Using a simple QR generation service for demonstration */}
-                                <img
-                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(twoFactorSetup.qrUri)}`}
-                                    alt="2FA QR Code"
-                                    className="w-32 h-32"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] uppercase font-bold text-gray-500">Manual Entry Secret</label>
-                                <code className="block bg-surface p-2 rounded text-[10px] break-all font-mono border border-outline/10">
-                                    {twoFactorSetup.secret}
-                                </code>
-                            </div>
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    placeholder="Enter 6-digit code"
-                                    value={verificationCode}
-                                    onChange={(e) => setVerificationCode(e.target.value)}
-                                    className="flex-1 bg-surface border border-outline/20 rounded-lg py-2 px-3 text-sm font-mono text-center tracking-widest"
-                                    maxLength={6}
-                                />
-                                <button
-                                    onClick={handleEnable2FA}
-                                    disabled={configuring2FA || verificationCode.length !== 6}
-                                    className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-50"
-                                >
-                                    Enable
-                                </button>
-                            </div>
-                            <button
-                                onClick={() => setTwoFactorSetup(null)}
-                                className="w-full text-[10px] text-on-surface-variant hover:text-red-400 transition-colors uppercase font-bold"
-                            >
-                                Cancel Setup
-                            </button>
-                        </div>
+                        <>
+                            {!twoFactorSetup ? (
+                                <div className="space-y-4">
+                                    <p className="text-xs text-on-surface-variant leading-relaxed">
+                                        Add an extra layer of security by enabling TOTP-based two-factor authentication.
+                                    </p>
+                                    <button
+                                        onClick={handleSetup2FA}
+                                        className="w-full bg-blue-500 text-white py-2 rounded-lg font-bold text-sm hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20"
+                                    >
+                                        Configure 2FA
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                    <p className="text-[10px] font-bold text-center text-on-surface-variant uppercase tracking-widest">Setup Verification</p>
+                                    <div className="bg-white p-3 rounded-2xl mx-auto w-fit shadow-xl shadow-black/20">
+                                        <img
+                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(twoFactorSetup.qrUri)}`}
+                                            alt="2FA QR Code"
+                                            className="w-32 h-32"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between px-1">
+                                            <label className="text-[10px] uppercase font-bold text-on-surface-variant/60 tracking-wider">Manual Secret</label>
+                                            <span className="text-[9px] text-blue-400 font-bold uppercase">Base32</span>
+                                        </div>
+                                        <code className="block bg-surface p-2.5 rounded-xl text-[10px] break-all font-mono border border-outline/10 text-primary/80">
+                                            {twoFactorSetup.secret}
+                                        </code>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                placeholder="000 000"
+                                                value={verificationCode}
+                                                onChange={(e) => setVerificationCode(e.target.value)}
+                                                className="flex-1 bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-sm font-mono text-center tracking-[0.3em] font-bold focus:border-primary outline-none transition-all"
+                                                maxLength={6}
+                                            />
+                                            <button
+                                                onClick={handleEnable2FA}
+                                                disabled={configuring2FA || verificationCode.length !== 6}
+                                                className="bg-primary text-primary-foreground px-5 py-2 rounded-xl text-sm font-bold disabled:opacity-50 hover:opacity-90 active:scale-95 transition-all"
+                                            >
+                                                Enable
+                                            </button>
+                                        </div>
+                                        <p className="text-[9px] text-on-surface-variant/60 text-center italic">
+                                            Tip: Ensure your phone&apos;s time is synchronized with the network.
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={() => setTwoFactorSetup(null)}
+                                        className="w-full text-[10px] text-on-surface-variant hover:text-red-400 transition-colors uppercase font-black tracking-widest pt-1"
+                                    >
+                                        Cancel Setup
+                                    </button>
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
 

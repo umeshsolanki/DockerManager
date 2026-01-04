@@ -375,6 +375,8 @@ class SystemConfig(
     val dataRoot: String,
     val jamesWebAdminUrl: String,
     val appVersion: String = "Unknown",
+    val twoFactorEnabled: Boolean = false,
+    val username: String = "admin"
 )
 
 @Serializable
@@ -400,6 +402,12 @@ class AuthResponse(
 class UpdatePasswordRequest(
     val currentPassword: String,
     val newPassword: String
+)
+
+@Serializable
+class UpdateUsernameRequest(
+    val currentPassword: String,
+    val newUsername: String
 )
 
 @Serializable
