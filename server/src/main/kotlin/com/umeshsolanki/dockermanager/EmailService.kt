@@ -184,26 +184,23 @@ class EmailServiceImpl : IEmailService {
 services:
   james:
     image: apache/james:jpa-latest
-    container_name: james
+    container_name: docker-manager-james
     hostname: james.local
-    restart: unless-stopped
     ports:
-      - "25:25"
-      - "143:143"
-      - "993:993"
-      - "465:465"
-      - "587:587"
-      - "8000:8000"
+      - "25:25"     # SMTP
+      - "143:143"   # IMAP
+      - "465:465"   # SMTPS
+      - "587:587"   # Submission
+      - "993:993"   # IMAPS
+      - "8001:8000" # WebAdmin API
     volumes:
-      - ./var:/root/var
-      - ./conf/webadmin.properties:/root/conf/webadmin.properties
+      - /opt/docker-manager/data/james/conf:/root/conf
+      - /opt/docker-manager/data/james/var:/root/var
+      - /opt/docker-manager/data/james/conf/webadmin.properties:/root/conf/webadmin.properties
     command: --generate-keystore
-    networks:
-      - dockermanager_network
-
-networks:
-  dockermanager_network:
-    external: true
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Kolkata
         """.trimIndent()
     }
 

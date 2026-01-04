@@ -31,8 +31,8 @@ fi
 
 echo "Creating git commit and tag..."
 git add web-app/package.json server/build.gradle.kts
-git commit -m "chore: bump version to $NEW_VERSION"
-git tag "v$NEW_VERSION"
+#git commit -m "chore: bump version to $NEW_VERSION"
+#git tag "v$NEW_VERSION"
 
 echo "Done! Version bumped to $NEW_VERSION. You can now push:"
 echo "git push && git push --tags"
