@@ -1,0 +1,35 @@
+#!/bin/sh
+# Sync server version with web-app version automatically before commit
+
+# Paths relative to repo root
+JSON_FILE="web-app/package.json"
+GRADLE_FILE="server/build.gradle.kts"
+
+if [ ! -f "$JSON_FILE" ]; then
+    exit 0
+fi
+
+# Get version from package.json
+# Using node is safer than grep/sed for json
+JSON_VERSION=$(node -p "require('./$JSON_FILE').version")
+
+if [ -z "$JSON_VERSION" ]; then
+    exit 0
+fi
+
+# Check if Gradle file needs update
+# We look for: version = "X.Y.Z"
+if ! grep -q "version = \"$JSON_VERSION\"" "$GRADLE_FILE"; then
+    echo "🔄 Syncing server version to $JSON_VERSION to match package.json..."
+    
+    # Update Gradle file
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      sed -i "" "s/version = \".*\"/version = \"$JSON_VERSION\"/" "$GRADLE_FILE"
+    else
+      sed -i "s/version = \".*\"/version = \"$JSON_VERSION\"/" "$GRADLE_FILE"
+    fi
+    
+    # Stage the file so it's included in the pending commit
+    git add "$GRADLE_FILE"
+    echo "✅ Updated server/build.gradle.kts"
+fi
