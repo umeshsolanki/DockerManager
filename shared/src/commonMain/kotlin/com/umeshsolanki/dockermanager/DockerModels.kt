@@ -349,6 +349,26 @@ class EmailMailbox(
 )
 
 @Serializable
+class EmailGroup(
+    val address: String, // The alias address (e.g. sales@domain.com)
+    val members: List<String>, // List of targets (e.g. user1@domain.com)
+)
+
+@Serializable
+class EmailQuota(
+    val type: String, // "count" or "size"
+    val value: Long, // Used amount
+    val limit: Long?, // Max amount (-1 or null for unlimited)
+)
+
+@Serializable
+class EmailUserDetail(
+    val userAddress: String,
+    val quotaSize: EmailQuota?,
+    val quotaCount: EmailQuota?,
+)
+
+@Serializable
 class SystemConfig(
     val dockerCommand: String,
     val dockerComposeCommand: String,

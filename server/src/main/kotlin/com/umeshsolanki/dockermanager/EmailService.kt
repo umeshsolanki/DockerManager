@@ -26,6 +26,18 @@ interface IEmailService {
     suspend fun createMailbox(userAddress: String, mailboxName: String): Boolean
     suspend fun deleteMailbox(userAddress: String, mailboxName: String): Boolean
     
+    // Groups / Aliases
+    suspend fun listGroups(): List<EmailGroup>
+    suspend fun getGroupMembers(groupAddress: String): List<String>
+    suspend fun createGroup(groupAddress: String, memberAddress: String): Boolean // James creates group by adding first member
+    suspend fun addToGroup(groupAddress: String, memberAddress: String): Boolean
+    suspend fun removeFromGroup(groupAddress: String, memberAddress: String): Boolean
+    
+    // Quotas
+    suspend fun getUserQuota(userAddress: String): EmailUserDetail?
+    suspend fun setUserQuota(userAddress: String, type: String, value: Long): Boolean // type: "count" or "size"
+    suspend fun deleteUserQuota(userAddress: String): Boolean
+
     fun refresh()
 
     // James Container Management
@@ -292,6 +304,111 @@ networks:
             response.status.value in 200..299
         } catch (e: Exception) {
             logger.error("Failed to delete mailbox: $mailboxName for user: $userAddress", e)
+            false
+        }
+    }
+
+    // --- Groups / Aliases ---
+
+    override suspend fun listGroups(): List<EmailGroup> {
+        return try {
+            // 1. Get all group addresses
+            val groupAddresses: List<String> = client.get("$jamesUrl/groups").body()
+            
+            // 2. Fetch members for each (parallel map would be better but simple map for now)
+            groupAddresses.map { addr ->
+                val members: List<JsonElement> = client.get("$jamesUrl/groups/$addr").body()
+                val memberStrings = members.map { it.jsonObject["member"]?.jsonPrimitive?.content ?: "" }
+                EmailGroup(addr, memberStrings)
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to list groups", e)
+            emptyList()
+        }
+    }
+
+    override suspend fun getGroupMembers(groupAddress: String): List<String> {
+        return try {
+             val members: List<JsonElement> = client.get("$jamesUrl/groups/$groupAddress").body()
+             members.map { it.jsonObject["member"]?.jsonPrimitive?.content ?: "" }
+        } catch (e: Exception) {
+            logger.error("Failed to get members for group: $groupAddress", e)
+            emptyList()
+        }
+    }
+
+    override suspend fun createGroup(groupAddress: String, memberAddress: String): Boolean {
+        return addToGroup(groupAddress, memberAddress)
+    }
+
+    override suspend fun addToGroup(groupAddress: String, memberAddress: String): Boolean {
+        return try {
+            val response = client.put("$jamesUrl/groups/$groupAddress/$memberAddress")
+            response.status.value in 200..299
+        } catch (e: Exception) {
+            logger.error("Failed to add $memberAddress to $groupAddress", e)
+            false
+        }
+    }
+
+    override suspend fun removeFromGroup(groupAddress: String, memberAddress: String): Boolean {
+        return try {
+            val response = client.delete("$jamesUrl/groups/$groupAddress/$memberAddress")
+            response.status.value in 200..299
+        } catch (e: Exception) {
+            logger.error("Failed to remove $memberAddress from $groupAddress", e)
+            false
+        }
+    }
+
+    // --- Quotas ---
+
+    override suspend fun getUserQuota(userAddress: String): EmailUserDetail? {
+        return try {
+            // 1. Get Usage
+            val usageJson: JsonObject = client.get("$jamesUrl/quota/users/$userAddress/usage").body()
+            // 2. Get Limits (Definition)
+            val limitsJson: JsonObject = client.get("$jamesUrl/quota/users/$userAddress").body()
+
+            val usedCount = usageJson["count"]?.jsonPrimitive?.longOrNull ?: 0L
+            val usedSize = usageJson["size"]?.jsonPrimitive?.longOrNull ?: 0L
+
+            // computed or user or global
+            val computed = limitsJson["computed"]?.jsonObject
+            val limitCount = computed?.get("count")?.jsonPrimitive?.longOrNull
+            val limitSize = computed?.get("size")?.jsonPrimitive?.longOrNull
+
+            EmailUserDetail(
+                userAddress = userAddress,
+                quotaCount = EmailQuota("count", usedCount, limitCount),
+                quotaSize = EmailQuota("size", usedSize, limitSize)
+            )
+        } catch (e: Exception) {
+            logger.error("Failed to get quota for $userAddress", e)
+            null
+        }
+    }
+
+    override suspend fun setUserQuota(userAddress: String, type: String, value: Long): Boolean {
+        return try {
+            val endpoint = if (type == "count") "count" else "size"
+            val response = client.put("$jamesUrl/quota/users/$userAddress/$endpoint") {
+                 setBody(value.toString()) // Body is just the number
+            }
+            response.status.value in 200..299
+        } catch (e: Exception) {
+            logger.error("Failed to set $type quota for $userAddress", e)
+            false
+        }
+    }
+
+    override suspend fun deleteUserQuota(userAddress: String): Boolean {
+        return try {
+            val res1 = client.delete("$jamesUrl/quota/users/$userAddress/count")
+            val res2 = client.delete("$jamesUrl/quota/users/$userAddress/size")
+            res1.status.value in 200..299 && res2.status.value in 200..299
+        } catch (e: Exception) {
+            logger.error("Failed to delete quota for $userAddress", e)
             false
         }
     }

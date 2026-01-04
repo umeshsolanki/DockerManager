@@ -145,6 +145,47 @@ fun Route.emailRoutes() {
             }
         }
 
+        route("/groups") {
+            get {
+                call.respond(DockerService.listEmailGroups())
+            }
+            get("/{groupAddress}") {
+                val groupAddress = call.parameters["groupAddress"] ?: return@get call.respond(emptyList<String>())
+                call.respond(DockerService.getEmailGroupMembers(groupAddress))
+            }
+            put("/{groupAddress}/{memberAddress}") {
+                val groupAddress = call.parameters["groupAddress"] ?: return@put
+                val memberAddress = call.parameters["memberAddress"] ?: return@put
+                val success = DockerService.addEmailGroupMember(groupAddress, memberAddress)
+                call.respond(ProxyActionResult(success, if (success) "Added to group" else "Failed to add"))
+            }
+            delete("/{groupAddress}/{memberAddress}") {
+                val groupAddress = call.parameters["groupAddress"] ?: return@delete
+                val memberAddress = call.parameters["memberAddress"] ?: return@delete
+                val success = DockerService.removeEmailGroupMember(groupAddress, memberAddress)
+                call.respond(ProxyActionResult(success, if (success) "Removed from group" else "Failed to remove"))
+            }
+        }
+
+        route("/quota") {
+            get("/{userAddress}") {
+                val userAddress = call.parameters["userAddress"] ?: return@get
+                call.respond(DockerService.getEmailUserQuota(userAddress) ?: io.ktor.http.HttpStatusCode.NotFound)
+            }
+            put("/{userAddress}/{type}") { // Type: count or size
+                val userAddress = call.parameters["userAddress"] ?: return@put
+                val type = call.parameters["type"] ?: return@put // "count" or "size"
+                val value = call.receive<String>().toLongOrNull() ?: -1L
+                val success = DockerService.setEmailUserQuota(userAddress, type, value)
+                call.respond(ProxyActionResult(success, if (success) "Quota set" else "Failed"))
+            }
+            delete("/{userAddress}") {
+                val userAddress = call.parameters["userAddress"] ?: return@delete
+                val success = DockerService.deleteEmailUserQuota(userAddress)
+                call.respond(ProxyActionResult(success, if (success) "Quota deleted" else "Failed"))
+            }
+        }
+
         // James Container Management
         route("/james") {
             get("/status") {

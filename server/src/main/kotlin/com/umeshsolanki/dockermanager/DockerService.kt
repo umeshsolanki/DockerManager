@@ -110,6 +110,18 @@ object DockerService {
     suspend fun createEmailMailbox(userAddress: String, mailboxName: String) = emailService.createMailbox(userAddress, mailboxName)
     suspend fun deleteEmailMailbox(userAddress: String, mailboxName: String) = emailService.deleteMailbox(userAddress, mailboxName)
 
+    // Groups
+    suspend fun listEmailGroups() = emailService.listGroups()
+    suspend fun getEmailGroupMembers(groupAddress: String) = emailService.getGroupMembers(groupAddress)
+    suspend fun createEmailGroup(groupAddress: String, memberAddress: String) = emailService.createGroup(groupAddress, memberAddress)
+    suspend fun addEmailGroupMember(groupAddress: String, memberAddress: String) = emailService.addToGroup(groupAddress, memberAddress)
+    suspend fun removeEmailGroupMember(groupAddress: String, memberAddress: String) = emailService.removeFromGroup(groupAddress, memberAddress)
+
+    // Quotas
+    suspend fun getEmailUserQuota(userAddress: String) = emailService.getUserQuota(userAddress)
+    suspend fun setEmailUserQuota(userAddress: String, type: String, value: Long) = emailService.setUserQuota(userAddress, type, value)
+    suspend fun deleteEmailUserQuota(userAddress: String) = emailService.deleteUserQuota(userAddress)
+
     // James Container Management
     fun getJamesStatus() = emailService.getStatus()
     fun ensureJamesConfig() = emailService.ensureJamesConfig()

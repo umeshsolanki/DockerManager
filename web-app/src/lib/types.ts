@@ -307,6 +307,23 @@ export interface JamesContainerStatus {
   uptime?: string;
 }
 
+export interface EmailGroup {
+  address: string;
+  members: string[];
+}
+
+export interface EmailQuota {
+  type: string;
+  value: number;
+  limit?: number;
+}
+
+export interface EmailUserDetail {
+  userAddress: string;
+  quotaSize?: EmailQuota;
+  quotaCount?: EmailQuota;
+}
+
 export type Screen = 'Dashboard' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Settings';
 
 

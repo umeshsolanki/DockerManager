@@ -745,6 +745,88 @@ export const DockerClient = {
         }
     },
 
+    // Email Groups
+    async listEmailGroups(): Promise<import('./types').EmailGroup[]> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/groups`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return [];
+        }
+    },
+
+    async getEmailGroupMembers(groupAddress: string): Promise<string[]> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/groups/${groupAddress}`);
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return [];
+        }
+    },
+
+    async addEmailGroupMember(groupAddress: string, memberAddress: string): Promise<{ success: boolean, message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/groups/${groupAddress}/${memberAddress}`, {
+                method: 'PUT'
+            });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async removeEmailGroupMember(groupAddress: string, memberAddress: string): Promise<{ success: boolean, message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/groups/${groupAddress}/${memberAddress}`, {
+                method: 'DELETE'
+            });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    // Email Quotas
+    async getEmailUserQuota(userAddress: string): Promise<import('./types').EmailUserDetail | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/quota/${userAddress}`);
+            if (response.status === 404) return null;
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    },
+
+    async setEmailUserQuota(userAddress: string, type: 'count' | 'size', value: number): Promise<{ success: boolean, message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/quota/${userAddress}/${type}`, {
+                method: 'PUT',
+                body: value.toString()
+            });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async deleteEmailUserQuota(userAddress: string): Promise<{ success: boolean, message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/quota/${userAddress}`, {
+                method: 'DELETE'
+            });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
     // James Management
     async getJamesStatus(): Promise<any> {
         try {
