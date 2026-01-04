@@ -63,7 +63,7 @@ class BtmpServiceImpl(
                         logger.error("Error in Btmp worker", e)
                     }
                 }
-                delay(refreshIntervalMinutes * 60 * 1000L)
+                delay(refreshIntervalMinutes * 60_000L)
             }
         }
     }

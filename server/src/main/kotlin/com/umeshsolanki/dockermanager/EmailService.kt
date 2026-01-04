@@ -90,13 +90,29 @@ class EmailServiceImpl : IEmailService {
     override fun ensureJamesConfig() {
         if (!jamesDir.exists()) jamesDir.mkdirs()
         
+        // Ensure conf and var directory exists
+        val confDir = File(jamesDir, "conf")
+        if (!confDir.exists()) confDir.mkdirs()
+        File(jamesDir, "var").mkdirs()
+
+        // Create default webadmin.properties properly
+        val webAdminProp = File(confDir, "webadmin.properties")
+        if (!webAdminProp.exists()) {
+            webAdminProp.writeText("""
+                enabled=true
+                port=8000
+                host=0.0.0.0
+                secure=false
+                url_prefix=
+                cors.enable=true
+                cors.origin=*
+            """.trimIndent())
+        }
+
         if (!composeFile.exists()) {
             logger.info("Creating default James docker-compose.yml in ${jamesDir.absolutePath}")
             composeFile.writeText(getDefaultComposeConfig())
         }
-        
-        // Ensure var directory exists
-        File(jamesDir, "var").mkdirs()
     }
 
     override fun getComposeConfig(): String {
@@ -119,12 +135,12 @@ class EmailServiceImpl : IEmailService {
         ensureJamesConfig()
         val cmd = "${AppConfig.dockerComposeCommand} -f ${composeFile.absolutePath} up -d"
         val output = executeCommand(cmd, jamesDir)
-        return output.isNotBlank() // Weak check, but standard
+        return output.isNotBlank() 
     }
 
     override fun stopJames(): Boolean {
         if (!composeFile.exists()) return true
-        val cmd = "${AppConfig.dockerComposeCommand} -f ${composeFile.absolutePath} stop" // or down
+        val cmd = "${AppConfig.dockerComposeCommand} -f ${composeFile.absolutePath} stop" 
         executeCommand(cmd, jamesDir)
         return true
     }
@@ -142,9 +158,6 @@ class EmailServiceImpl : IEmailService {
         }
 
         // Check if container running
-        // We can use docker compose ps --format json
-        // Or check `docker ps` for name `james`
-        
         val psOutput = executeCommand("${AppConfig.dockerCommand} ps --filter name=james --format \"{{.ID}}|{{.Status}}|{{.State}}\"")
         if (psOutput.isBlank()) {
              // Check if it exists but stopped
@@ -162,7 +175,7 @@ class EmailServiceImpl : IEmailService {
             running = true,
             containerId = parts.getOrNull(0),
             status = parts.getOrNull(1) ?: "Running",
-            uptime = parts.getOrNull(1) // Status often contains uptime
+            uptime = parts.getOrNull(1) 
         )
     }
 
@@ -183,7 +196,7 @@ services:
       - "8000:8000"
     volumes:
       - ./var:/root/var
-      - ./conf:/root/conf
+      - ./conf/webadmin.properties:/root/conf/webadmin.properties
     command: --generate-keystore
     networks:
       - dockermanager_network
