@@ -13,11 +13,15 @@ fun Route.authRoutes() {
     route("/auth") {
         post("/login") {
             val request = call.receive<AuthRequest>()
+            val remoteIp = call.request.header("X-Forwarded-For")?.split(",")?.firstOrNull()?.trim()
+                ?: call.request.header("X-Real-IP")
+                ?: call.request.origin.remoteHost
+
             when (val result = AuthService.authenticate(
                 request.password,
                 request.username,
                 request.otpCode,
-                call.request.origin.remoteHost
+                remoteIp
             )) {
                 is AuthResult.Success -> {
                     call.respond(AuthResponse(result.token))

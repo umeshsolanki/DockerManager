@@ -15,7 +15,7 @@ data class AppSettings(
     val dockerSocket: String = "/var/run/docker.sock",
     val jamesWebAdminUrl: String = "http://localhost:8001",
     // Jail Settings
-    val jailEnabled: Boolean = false,
+    val jailEnabled: Boolean = true,
     val jailThreshold: Int = 5,
     val jailDurationMinutes: Int = 30,
     val monitoringActive: Boolean = true,

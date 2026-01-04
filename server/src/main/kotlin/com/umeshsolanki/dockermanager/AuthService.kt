@@ -61,6 +61,35 @@ object AuthService {
     }
 
     fun authenticate(password: String, username: String? = null, code: String? = null, remoteHost: String? = null): AuthResult {
+        // Guard against jailed IPs
+        remoteHost?.let { ip ->
+            if (DockerService.isIPJailed(ip)) {
+                logger.warn("Blocking login attempt from jailed IP: $ip")
+                return AuthResult.InvalidCredentials
+            }
+        }
+
+        val result = internalAuthenticate(password, username, code, remoteHost)
+        
+        // Record failure if not from a local IP
+        if (result is AuthResult.InvalidCredentials || result is AuthResult.Invalid2FA) {
+            remoteHost?.let { ip ->
+                val isLocallyAccessed = ip == "localhost" || ip == "127.0.0.1" || ip == "0:0:0:0:0:0:0:1" || 
+                                       ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172.16.")
+                if (!isLocallyAccessed) {
+                    DockerService.recordFailedLoginAttempt(username ?: "unknown", ip)
+                }
+            }
+        } else if (result is AuthResult.Success) {
+            remoteHost?.let { ip ->
+                DockerService.clearFailedLoginAttempts(ip)
+            }
+        }
+        
+        return result
+    }
+
+    private fun internalAuthenticate(password: String, username: String? = null, code: String? = null, remoteHost: String? = null): AuthResult {
         if (username != null && username != currentAccess.username) return AuthResult.InvalidCredentials
         if (password != currentAccess.password) return AuthResult.InvalidCredentials
         

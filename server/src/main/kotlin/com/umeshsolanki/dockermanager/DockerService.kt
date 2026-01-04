@@ -69,6 +69,9 @@ object DockerService {
     suspend fun refreshBtmpStats() = btmpService.refreshStats()
     fun updateAutoJailSettings(enabled: Boolean, threshold: Int, durationMinutes: Int) = btmpService.updateAutoJailSettings(enabled, threshold, durationMinutes)
     fun updateBtmpMonitoring(active: Boolean, intervalMinutes: Int) = btmpService.updateMonitoringSettings(active, intervalMinutes)
+    fun recordFailedLoginAttempt(user: String, ip: String) = btmpService.recordFailedAttempt(user, ip)
+    fun clearFailedLoginAttempts(ip: String) = btmpService.clearFailedAttempts(ip)
+    fun isIPJailed(ip: String) = btmpService.isIPJailed(ip)
 
     fun listFirewallRules() = firewallService.listRules()
     fun blockIP(request: BlockIPRequest) = firewallService.blockIP(request)

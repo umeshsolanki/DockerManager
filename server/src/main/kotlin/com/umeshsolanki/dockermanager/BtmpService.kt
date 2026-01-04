@@ -16,6 +16,9 @@ interface IBtmpService {
     suspend fun refreshStats(): BtmpStats
     fun updateAutoJailSettings(enabled: Boolean, threshold: Int, durationMinutes: Int)
     fun updateMonitoringSettings(active: Boolean, intervalMinutes: Int)
+    fun recordFailedAttempt(user: String, ip: String)
+    fun clearFailedAttempts(ip: String)
+    fun isIPJailed(ip: String): Boolean
 }
 
 class BtmpServiceImpl(
@@ -130,6 +133,20 @@ class BtmpServiceImpl(
         if (needRestart) {
             startWorker()
         }
+    }
+
+    override fun recordFailedAttempt(user: String, ip: String) {
+        handleFailedAttempt(user, ip, System.currentTimeMillis())
+        updateCachedStats()
+    }
+
+    override fun clearFailedAttempts(ip: String) {
+        failedAttemptsInWindow.remove(ip)
+    }
+
+    override fun isIPJailed(ip: String): Boolean {
+        val now = System.currentTimeMillis()
+        return jailedIps.any { it.ip == ip && it.expiresAt > now }
     }
 
     private fun updateStats() {
