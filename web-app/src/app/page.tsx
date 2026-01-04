@@ -17,28 +17,46 @@ import ProxyScreen from '@/components/screens/ProxyScreen';
 import DashboardScreen from '@/components/screens/DashboardScreen';
 import ResourcesScreen from '@/components/screens/ResourcesScreen';
 import EmailsScreen from '@/components/screens/EmailsScreen';
-
-
+import LoginScreen from '@/components/screens/LoginScreen';
+import { DockerClient } from '@/lib/api';
 
 function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [selectedScreen, setSelectedScreen] = useState<Screen>('Dashboard');
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [authToken, setAuthToken] = useState<string | null>(null);
 
-  // Initialize from URL on mount
+  // Initialize from URL and check auth on mount
   useEffect(() => {
     const screenParam = searchParams.get('screen') as Screen;
     const validScreens: Screen[] = ['Dashboard', 'Containers', 'Images', 'Compose', 'Networks', 'Resources', 'Volumes', 'Secrets', 'Logs', 'Firewall', 'Proxy', 'Emails', 'Settings'];
 
-
     if (screenParam && validScreens.includes(screenParam)) {
       setSelectedScreen(screenParam);
     }
-  }, [searchParams]);
+
+    const token = DockerClient.getAuthToken();
+    if (token) {
+      setAuthToken(token);
+      checkAuthStatus();
+    } else {
+      setIsAuthenticated(false);
+    }
+  }, []);
+
+  const checkAuthStatus = async () => {
+    const valid = await DockerClient.checkAuth();
+    setIsAuthenticated(valid);
+    if (!valid) {
+      DockerClient.setAuthToken(null);
+      setAuthToken(null);
+    }
+  };
 
   // Update document title dynamically
   useEffect(() => {
-    document.title = `${selectedScreen} | Docker Manager`;
+    document.title = `${selectedScreen} | UCpanel`;
   }, [selectedScreen]);
 
   const handleScreenChange = (screen: Screen) => {
@@ -49,26 +67,45 @@ function HomeContent() {
     router.push(`?${params.toString()}`);
   };
 
+  const handleLoginSuccess = (token: string) => {
+    setAuthToken(token);
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    DockerClient.setAuthToken(null);
+    setAuthToken(null);
+    setIsAuthenticated(false);
+  };
+
+  if (isAuthenticated === null) {
+    return <div className="flex h-screen items-center justify-center bg-background text-white">
+      <div className="flex flex-col items-center gap-4">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-500 border-t-transparent"></div>
+        <p className="text-sm font-medium tracking-wide text-gray-400">Securing Session...</p>
+      </div>
+    </div>;
+  }
+
+  if (!isAuthenticated) {
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+  }
+
   const renderScreen = () => {
     switch (selectedScreen) {
       case 'Dashboard': return <DashboardScreen />;
       case 'Containers': return <ContainersScreen />;
       case 'Compose': return <ComposeScreen />;
       case 'Images':
-
       case 'Networks':
       case 'Volumes':
       case 'Secrets':
       case 'Resources': return <ResourcesScreen initialTab={(selectedScreen === 'Resources' ? 'Images' : selectedScreen) as any} />;
       case 'Logs': return <LogsScreen />;
-
-
-
       case 'Firewall': return <FirewallScreen />;
       case 'Proxy': return <ProxyScreen />;
       case 'Emails': return <EmailsScreen />;
-
-      case 'Settings': return <SettingsScreen />;
+      case 'Settings': return <SettingsScreen onLogout={handleLogout} />;
       default: return <DashboardScreen />;
     }
   };
@@ -78,6 +115,7 @@ function HomeContent() {
       <NavigationRail
         selectedScreen={selectedScreen}
         onScreenChange={handleScreenChange}
+        onLogout={handleLogout}
       />
       <main className="flex-1 overflow-y-auto px-6 py-6 md:px-10 lg:px-16">
         {renderScreen()}
@@ -88,7 +126,7 @@ function HomeContent() {
 
 export default function Home() {
   return (
-    <Suspense fallback={<div className="flex h-screen items-center justify-center bg-background">Loading...</div>}>
+    <Suspense fallback={<div className="flex h-screen items-center justify-center bg-background text-white">Loading...</div>}>
       <HomeContent />
     </Suspense>
   );

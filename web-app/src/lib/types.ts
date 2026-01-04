@@ -327,4 +327,30 @@ export interface EmailUserDetail {
 export type Screen = 'Dashboard' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Settings';
 
 
+export interface AuthRequest {
+  username?: string;
+  password: string;
+  otpCode?: string;
+}
+
+export interface AuthResponse {
+  token: string;
+  requires2FA?: boolean;
+}
+
+export interface UpdatePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface TwoFactorSetupResponse {
+  secret: string;
+  qrUri: string;
+}
+
+export interface Enable2FARequest {
+  secret: string;
+  code: string;
+}
+
 

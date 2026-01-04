@@ -11,6 +11,7 @@ fun main() {
 
 fun Application.module() {
     JamesSetupService.initialize()
+    AuthService.initialize()
     configurePlugins()
     configureRouting()
 }

@@ -383,4 +383,41 @@ class UpdateSystemConfigRequest(
     val jamesWebAdminUrl: String,
 )
 
+@Serializable
+data class AuthRequest(
+    val username: String? = null,
+    val password: String,
+    val otpCode: String? = null
+)
+
+@Serializable
+class AuthResponse(
+    val token: String,
+    val requires2FA: Boolean = false
+)
+
+@Serializable
+class UpdatePasswordRequest(
+    val currentPassword: String,
+    val newPassword: String
+)
+
+@Serializable
+class TwoFactorSetupResponse(
+    val secret: String,
+    val qrUri: String
+)
+
+@Serializable
+class TwoFactorVerifyRequest(
+    val code: String
+)
+
+@Serializable
+class Enable2FARequest(
+    val secret: String,
+    val code: String
+)
+
+
 

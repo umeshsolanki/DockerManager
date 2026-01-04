@@ -45,7 +45,7 @@ fun SettingsScreen() {
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
-                    text = "Specify the Docker Manager server address. If left blank, the app will try to auto-detect the host.",
+                    text = "Specify the UCpanel server address. If left blank, the app will try to auto-detect the host.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

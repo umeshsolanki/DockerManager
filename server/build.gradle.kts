@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.umeshsolanki.dockermanager"
-version = "1.1.2"
+version = "2.0.0"
 
 application {
     mainClass.set("com.umeshsolanki.dockermanager.ApplicationKt")
@@ -48,6 +48,8 @@ dependencies {
     implementation(libs.ktor.serverContentNegotiation)
     implementation(libs.ktor.serverCors)
     implementation(libs.ktor.serverWebsockets)
+    implementation(libs.ktor.serverAuth)
+    implementation(libs.ktor.serverSessions)
     implementation(libs.ktor.serializationKotlinxJson)
     implementation(libs.pty4j)
     implementation(libs.ktor.clientCore)

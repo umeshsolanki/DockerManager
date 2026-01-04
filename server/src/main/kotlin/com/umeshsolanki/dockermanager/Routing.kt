@@ -7,24 +7,30 @@ import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.CloseReason
 import io.ktor.websocket.close
 import com.umeshsolanki.dockermanager.routes.*
+import io.ktor.server.auth.authenticate
 
 fun Application.configureRouting() {
     routing {
         get("/") {
-            call.respondText("Docker Manager API is running")
+            call.respondText("UCpanel API is running")
         }
         
-        containerRoutes()
-        imageRoutes()
-        composeRoutes()
-        secretRoutes()
-        networkRoutes()
-        volumeRoutes()
-        systemRoutes()
-        logRoutes()
-        firewallRoutes()
-        proxyRoutes()
-        emailRoutes()
+        
+        authRoutes()
+
+        authenticate("auth-bearer") {
+            containerRoutes()
+            imageRoutes()
+            composeRoutes()
+            secretRoutes()
+            networkRoutes()
+            volumeRoutes()
+            systemRoutes()
+            logRoutes()
+            firewallRoutes()
+            proxyRoutes()
+            emailRoutes()
+        }
 
         webSocket("/shell/server") {
             ShellService.handleServerShell(this)

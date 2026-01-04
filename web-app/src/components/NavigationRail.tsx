@@ -1,6 +1,6 @@
 'use client';
 
-import { LayoutDashboard, Database, Layers, Settings, Lock, Network, HardDrive, FileText, Shield, Globe, Box, Mail } from 'lucide-react';
+import { LayoutDashboard, Database, Layers, Settings, Lock, Network, HardDrive, FileText, Shield, Globe, Box, Mail, LogOut } from 'lucide-react';
 
 import { Screen } from '@/lib/types';
 import BatteryIndicator from './BatteryIndicator';
@@ -8,9 +8,10 @@ import BatteryIndicator from './BatteryIndicator';
 interface Props {
     selectedScreen: Screen;
     onScreenChange: (screen: Screen) => void;
+    onLogout: () => void;
 }
 
-export default function NavigationRail({ selectedScreen, onScreenChange }: Props) {
+export default function NavigationRail({ selectedScreen, onScreenChange, onLogout }: Props) {
     const items: { label: Screen; icon: React.ReactNode }[] = [
         { label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
         { label: 'Containers', icon: <Box size={20} /> },
@@ -26,7 +27,7 @@ export default function NavigationRail({ selectedScreen, onScreenChange }: Props
 
     return (
         <div className="flex flex-col h-full w-20 bg-surface border-r border-white/5 items-center py-4">
-            <div className="mb-2 text-primary font-bold text-xl">DM</div>
+            <div className="mb-2 text-primary font-bold text-xl tracking-tight">UC</div>
 
             <BatteryIndicator />
 
@@ -61,6 +62,15 @@ export default function NavigationRail({ selectedScreen, onScreenChange }: Props
             >
                 <Settings size={20} />
                 <span className="text-[9px] mt-1 font-medium">Settings</span>
+            </button>
+
+            <button
+                onClick={onLogout}
+                className="nav-rail-item py-2 text-red-400 hover:text-red-300 transition-colors mt-2"
+                title="Logout"
+            >
+                <LogOut size={20} />
+                <span className="text-[9px] mt-1 font-medium text-white/40">Log Out</span>
             </button>
         </div>
     );

@@ -14,9 +14,117 @@ export const DockerClient = {
         }
     },
 
+    getAuthToken(): string | null {
+        if (typeof window === 'undefined') return null;
+        return localStorage.getItem('AUTH_TOKEN');
+    },
+
+    setAuthToken(token: string | null) {
+        if (typeof window !== 'undefined') {
+            if (token) localStorage.setItem('AUTH_TOKEN', token);
+            else localStorage.removeItem('AUTH_TOKEN');
+        }
+    },
+
+    getHeaders(): HeadersInit {
+        const headers: HeadersInit = {
+            'Content-Type': 'application/json',
+        };
+        const token = this.getAuthToken();
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        return headers;
+    },
+
+    // --- Auth ---
+
+    async login(request: import('./types').AuthRequest): Promise<import('./types').AuthResponse | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/auth/login`, {
+                method: 'POST',
+                headers: this.getHeaders(),
+                body: JSON.stringify(request)
+            });
+
+            if (response.status === 401) {
+                const data = await response.json();
+                if (data.requires2FA) return { token: '', requires2FA: true };
+                return null;
+            }
+
+            if (!response.ok) return null;
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    },
+
+    async checkAuth(): Promise<boolean> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/auth/check`, {
+                headers: this.getHeaders()
+            });
+            return response.ok;
+        } catch (e) {
+            return false;
+        }
+    },
+
+    async updatePassword(request: import('./types').UpdatePasswordRequest): Promise<{ success: boolean; message?: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/auth/password`, {
+                method: 'POST',
+                headers: this.getHeaders(),
+                body: JSON.stringify(request)
+            });
+            return await response.json();
+        } catch (e) {
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async setup2FA(): Promise<import('./types').TwoFactorSetupResponse | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/auth/2fa/setup`, {
+                headers: this.getHeaders()
+            });
+            return await response.json();
+        } catch (e) {
+            return null;
+        }
+    },
+
+    async enable2FA(request: import('./types').Enable2FARequest): Promise<{ success: boolean; message?: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/auth/2fa/enable`, {
+                method: 'POST',
+                headers: this.getHeaders(),
+                body: JSON.stringify(request)
+            });
+            return await response.json();
+        } catch (e) {
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async disable2FA(password: string): Promise<{ success: boolean; message?: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/auth/2fa/disable`, {
+                method: 'POST',
+                headers: this.getHeaders(),
+                body: JSON.stringify({ password })
+            });
+            return await response.json();
+        } catch (e) {
+            return { success: false, message: 'Network error' };
+        }
+    },
+
     async listContainers(): Promise<DockerContainer[]> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/containers`);
+            const response = await fetch(`${this.getServerUrl()}/containers`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -26,7 +134,7 @@ export const DockerClient = {
 
     async inspectContainer(id: string): Promise<ContainerDetails | null> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/containers/${id}/inspect`);
+            const response = await fetch(`${this.getServerUrl()}/containers/${id}/inspect`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -38,7 +146,7 @@ export const DockerClient = {
         try {
             const response = await fetch(`${this.getServerUrl()}/containers`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: this.getHeaders(),
                 body: JSON.stringify(request)
             });
             if (response.ok) return await response.text();
@@ -51,7 +159,7 @@ export const DockerClient = {
 
     async startContainer(id: string) {
         try {
-            await fetch(`${this.getServerUrl()}/containers/${id}/start`, { method: 'POST' });
+            await fetch(`${this.getServerUrl()}/containers/${id}/start`, { method: 'POST', headers: this.getHeaders() });
         } catch (e) {
             console.error(e);
         }
@@ -59,7 +167,7 @@ export const DockerClient = {
 
     async stopContainer(id: string) {
         try {
-            await fetch(`${this.getServerUrl()}/containers/${id}/stop`, { method: 'POST' });
+            await fetch(`${this.getServerUrl()}/containers/${id}/stop`, { method: 'POST', headers: this.getHeaders() });
         } catch (e) {
             console.error(e);
         }
@@ -67,7 +175,7 @@ export const DockerClient = {
 
     async removeContainer(id: string) {
         try {
-            await fetch(`${this.getServerUrl()}/containers/${id}`, { method: 'DELETE' });
+            await fetch(`${this.getServerUrl()}/containers/${id}`, { method: 'DELETE', headers: this.getHeaders() });
         } catch (e) {
             console.error(e);
         }
@@ -75,7 +183,7 @@ export const DockerClient = {
 
     async pruneContainers() {
         try {
-            await fetch(`${this.getServerUrl()}/containers/prune`, { method: 'POST' });
+            await fetch(`${this.getServerUrl()}/containers/prune`, { method: 'POST', headers: this.getHeaders() });
         } catch (e) {
             console.error(e);
         }
@@ -83,7 +191,7 @@ export const DockerClient = {
 
     async getContainerLogs(id: string, tail: number = 100): Promise<string> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/containers/${id}/logs?tail=${tail}`);
+            const response = await fetch(`${this.getServerUrl()}/containers/${id}/logs?tail=${tail}`, { headers: this.getHeaders() });
             return await response.text();
         } catch (e) {
             console.error(e);
@@ -93,7 +201,7 @@ export const DockerClient = {
 
     async listImages(): Promise<DockerImage[]> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/images`);
+            const response = await fetch(`${this.getServerUrl()}/images`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -103,7 +211,7 @@ export const DockerClient = {
 
     async pullImage(name: string) {
         try {
-            await fetch(`${this.getServerUrl()}/images/pull?image=${encodeURIComponent(name)}`, { method: 'POST' });
+            await fetch(`${this.getServerUrl()}/images/pull?image=${encodeURIComponent(name)}`, { method: 'POST', headers: this.getHeaders() });
         } catch (e) {
             console.error(e);
         }
@@ -111,7 +219,7 @@ export const DockerClient = {
 
     async removeImage(id: string) {
         try {
-            await fetch(`${this.getServerUrl()}/images/${id}`, { method: 'DELETE' });
+            await fetch(`${this.getServerUrl()}/images/${id}`, { method: 'DELETE', headers: this.getHeaders() });
         } catch (e) {
             console.error(e);
         }
@@ -119,7 +227,7 @@ export const DockerClient = {
 
     async listComposeFiles(): Promise<ComposeFile[]> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/compose`);
+            const response = await fetch(`${this.getServerUrl()}/compose`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -129,7 +237,7 @@ export const DockerClient = {
 
     async composeUp(path: string): Promise<ComposeResult | null> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/compose/up?file=${encodeURIComponent(path)}`, { method: 'POST' });
+            const response = await fetch(`${this.getServerUrl()}/compose/up?file=${encodeURIComponent(path)}`, { method: 'POST', headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -139,7 +247,7 @@ export const DockerClient = {
 
     async composeDown(path: string): Promise<ComposeResult | null> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/compose/down?file=${encodeURIComponent(path)}`, { method: 'POST' });
+            const response = await fetch(`${this.getServerUrl()}/compose/down?file=${encodeURIComponent(path)}`, { method: 'POST', headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -151,7 +259,7 @@ export const DockerClient = {
         try {
             const response = await fetch(`${this.getServerUrl()}/compose/save`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: this.getHeaders(),
                 body: JSON.stringify(request)
             });
             return response.ok;
@@ -163,7 +271,7 @@ export const DockerClient = {
 
     async getComposeFileContent(path: string): Promise<string> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/compose/content?file=${encodeURIComponent(path)}`);
+            const response = await fetch(`${this.getServerUrl()}/compose/content?file=${encodeURIComponent(path)}`, { headers: this.getHeaders() });
             if (response.ok) return await response.text();
             return "";
         } catch (e) {
@@ -174,7 +282,7 @@ export const DockerClient = {
 
     async backupCompose(name: string): Promise<BackupResult | null> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/compose/${name}/backup`, { method: 'POST' });
+            const response = await fetch(`${this.getServerUrl()}/compose/${name}/backup`, { method: 'POST', headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -184,7 +292,7 @@ export const DockerClient = {
 
     async backupAllCompose(): Promise<BackupResult | null> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/compose/backup-all`, { method: 'POST' });
+            const response = await fetch(`${this.getServerUrl()}/compose/backup-all`, { method: 'POST', headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -194,7 +302,7 @@ export const DockerClient = {
 
     async getBatteryStatus(): Promise<BatteryStatus | null> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/system/battery`);
+            const response = await fetch(`${this.getServerUrl()}/system/battery`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -204,7 +312,7 @@ export const DockerClient = {
 
     async listSecrets(): Promise<DockerSecret[]> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/secrets`);
+            const response = await fetch(`${this.getServerUrl()}/secrets`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -214,7 +322,7 @@ export const DockerClient = {
 
     async createSecret(name: string, data: string) {
         try {
-            await fetch(`${this.getServerUrl()}/secrets?name=${encodeURIComponent(name)}&data=${encodeURIComponent(data)}`, { method: 'POST' });
+            await fetch(`${this.getServerUrl()}/secrets?name=${encodeURIComponent(name)}&data=${encodeURIComponent(data)}`, { method: 'POST', headers: this.getHeaders() });
         } catch (e) {
             console.error(e);
         }
@@ -222,7 +330,7 @@ export const DockerClient = {
 
     async removeSecret(id: string) {
         try {
-            await fetch(`${this.getServerUrl()}/secrets/${id}`, { method: 'DELETE' });
+            await fetch(`${this.getServerUrl()}/secrets/${id}`, { method: 'DELETE', headers: this.getHeaders() });
         } catch (e) {
             console.error(e);
         }
@@ -230,7 +338,7 @@ export const DockerClient = {
 
     async listNetworks(): Promise<DockerNetwork[]> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/networks`);
+            const response = await fetch(`${this.getServerUrl()}/networks`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -240,7 +348,7 @@ export const DockerClient = {
 
     async inspectNetwork(id: string): Promise<NetworkDetails | null> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/networks/${id}`);
+            const response = await fetch(`${this.getServerUrl()}/networks/${id}`, { headers: this.getHeaders() });
             if (response.status === 404) return null;
             return await response.json();
         } catch (e) {
@@ -251,7 +359,7 @@ export const DockerClient = {
 
     async removeNetwork(id: string) {
         try {
-            await fetch(`${this.getServerUrl()}/networks/${id}`, { method: 'DELETE' });
+            await fetch(`${this.getServerUrl()}/networks/${id}`, { method: 'DELETE', headers: this.getHeaders() });
         } catch (e) {
             console.error(e);
         }
@@ -259,7 +367,7 @@ export const DockerClient = {
 
     async listVolumes(): Promise<DockerVolume[]> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/volumes`);
+            const response = await fetch(`${this.getServerUrl()}/volumes`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -269,7 +377,7 @@ export const DockerClient = {
 
     async removeVolume(name: string) {
         try {
-            await fetch(`${this.getServerUrl()}/volumes/${name}`, { method: 'DELETE' });
+            await fetch(`${this.getServerUrl()}/volumes/${name}`, { method: 'DELETE', headers: this.getHeaders() });
         } catch (e) {
             console.error(e);
         }
@@ -277,7 +385,7 @@ export const DockerClient = {
 
     async pruneVolumes() {
         try {
-            await fetch(`${this.getServerUrl()}/volumes/prune`, { method: 'POST' });
+            await fetch(`${this.getServerUrl()}/volumes/prune`, { method: 'POST', headers: this.getHeaders() });
         } catch (e) {
             console.error(e);
         }
@@ -285,7 +393,7 @@ export const DockerClient = {
 
     async inspectVolume(name: string): Promise<VolumeDetails | null> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/volumes/${name}/inspect`);
+            const response = await fetch(`${this.getServerUrl()}/volumes/${name}/inspect`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -295,7 +403,7 @@ export const DockerClient = {
 
     async backupVolume(name: string): Promise<BackupResult | null> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/volumes/${name}/backup`, { method: 'POST' });
+            const response = await fetch(`${this.getServerUrl()}/volumes/${name}/backup`, { method: 'POST', headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -307,7 +415,7 @@ export const DockerClient = {
         try {
             let url = `${this.getServerUrl()}/logs/system`;
             if (path) url += `?path=${encodeURIComponent(path)}`;
-            const response = await fetch(url);
+            const response = await fetch(url, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -321,7 +429,7 @@ export const DockerClient = {
             if (filter) url += `&filter=${encodeURIComponent(filter)}`;
             if (since) url += `&since=${since}`;
             if (until) url += `&until=${until}`;
-            const response = await fetch(url);
+            const response = await fetch(url, { headers: this.getHeaders() });
             return await response.text();
         } catch (e) {
             console.error(e);
@@ -331,7 +439,7 @@ export const DockerClient = {
 
     async getBtmpStats(): Promise<BtmpStats | null> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/logs/system/btmp-stats`);
+            const response = await fetch(`${this.getServerUrl()}/logs/system/btmp-stats`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -341,7 +449,7 @@ export const DockerClient = {
 
     async refreshBtmpStats(): Promise<BtmpStats | null> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/logs/system/btmp-stats/refresh`, { method: 'POST' });
+            const response = await fetch(`${this.getServerUrl()}/logs/system/btmp-stats/refresh`, { method: 'POST', headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -351,7 +459,7 @@ export const DockerClient = {
 
     async updateAutoJailSettings(enabled: boolean, threshold: number, duration: number): Promise<boolean> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/logs/system/btmp-stats/auto-jail?enabled=${enabled}&threshold=${threshold}&duration=${duration}`, { method: 'POST' });
+            const response = await fetch(`${this.getServerUrl()}/logs/system/btmp-stats/auto-jail?enabled=${enabled}&threshold=${threshold}&duration=${duration}`, { method: 'POST', headers: this.getHeaders() });
             return response.ok;
         } catch (e) {
             console.error(e);
@@ -361,7 +469,7 @@ export const DockerClient = {
 
     async updateBtmpMonitoring(active: boolean, interval: number): Promise<boolean> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/logs/system/btmp-stats/monitoring?active=${active}&interval=${interval}`, { method: 'POST' });
+            const response = await fetch(`${this.getServerUrl()}/logs/system/btmp-stats/monitoring?active=${active}&interval=${interval}`, { method: 'POST', headers: this.getHeaders() });
             return response.ok;
         } catch (e) {
             console.error(e);
@@ -371,7 +479,7 @@ export const DockerClient = {
 
     async listFirewallRules(): Promise<FirewallRule[]> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/firewall/rules`);
+            const response = await fetch(`${this.getServerUrl()}/firewall/rules`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -383,7 +491,7 @@ export const DockerClient = {
         try {
             const response = await fetch(`${this.getServerUrl()}/firewall/block`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: this.getHeaders(),
                 body: JSON.stringify(request)
             });
             return response.ok;
@@ -396,7 +504,8 @@ export const DockerClient = {
     async unblockIP(id: string): Promise<boolean> {
         try {
             const response = await fetch(`${this.getServerUrl()}/firewall/rules/${id}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: this.getHeaders()
             });
             return response.ok;
         } catch (e) {
@@ -407,7 +516,7 @@ export const DockerClient = {
 
     async getIptablesVisualisation(): Promise<Record<string, IptablesRule[]>> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/firewall/iptables`);
+            const response = await fetch(`${this.getServerUrl()}/firewall/iptables`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -417,7 +526,7 @@ export const DockerClient = {
 
     async listProxyHosts(): Promise<ProxyHost[]> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/proxy/hosts`);
+            const response = await fetch(`${this.getServerUrl()}/proxy/hosts`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -429,7 +538,7 @@ export const DockerClient = {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/hosts`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: this.getHeaders(),
                 body: JSON.stringify(host)
             });
             const text = await response.text();
@@ -444,7 +553,7 @@ export const DockerClient = {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/hosts/${host.id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: this.getHeaders(),
                 body: JSON.stringify(host)
             });
             const text = await response.text();
@@ -458,7 +567,8 @@ export const DockerClient = {
     async deleteProxyHost(id: string): Promise<boolean> {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/hosts/${id}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: this.getHeaders()
             });
             return response.ok;
         } catch (e) {
@@ -470,7 +580,8 @@ export const DockerClient = {
     async toggleProxyHost(id: string): Promise<boolean> {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/hosts/${id}/toggle`, {
-                method: 'POST'
+                method: 'POST',
+                headers: this.getHeaders()
             });
             return response.ok;
         } catch (e) {
@@ -482,7 +593,8 @@ export const DockerClient = {
     async requestProxySSL(id: string): Promise<boolean> {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/hosts/${id}/request-ssl`, {
-                method: 'POST'
+                method: 'POST',
+                headers: this.getHeaders()
             });
             return response.ok;
         } catch (e) {
@@ -493,7 +605,7 @@ export const DockerClient = {
 
     async getProxyStats(): Promise<ProxyStats | null> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/proxy/stats`);
+            const response = await fetch(`${this.getServerUrl()}/proxy/stats`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -503,7 +615,7 @@ export const DockerClient = {
 
     async listProxyCertificates(): Promise<SSLCertificate[]> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/proxy/certificates`);
+            const response = await fetch(`${this.getServerUrl()}/proxy/certificates`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -513,7 +625,7 @@ export const DockerClient = {
 
     async getProxyContainerStatus(): Promise<any> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/proxy/container/status`);
+            const response = await fetch(`${this.getServerUrl()}/proxy/container/status`, { headers: this.getHeaders() });
             const data = await this.safeJson(response);
             if (data && data.success === false && data.message?.startsWith('Server error')) {
                 return null;
@@ -538,7 +650,8 @@ export const DockerClient = {
     async buildProxyImage(): Promise<{ success: boolean; message: string }> {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/container/build`, {
-                method: 'POST'
+                method: 'POST',
+                headers: this.getHeaders()
             });
             return await this.safeJson(response);
         } catch (e) {
@@ -550,7 +663,8 @@ export const DockerClient = {
     async createProxyContainer(): Promise<{ success: boolean; message: string }> {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/container/create`, {
-                method: 'POST'
+                method: 'POST',
+                headers: this.getHeaders()
             });
             return await this.safeJson(response);
         } catch (e) {
@@ -562,7 +676,8 @@ export const DockerClient = {
     async startProxyContainer(): Promise<{ success: boolean; message: string }> {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/container/start`, {
-                method: 'POST'
+                method: 'POST',
+                headers: this.getHeaders()
             });
             return await this.safeJson(response);
         } catch (e) {
@@ -574,7 +689,8 @@ export const DockerClient = {
     async stopProxyContainer(): Promise<{ success: boolean; message: string }> {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/container/stop`, {
-                method: 'POST'
+                method: 'POST',
+                headers: this.getHeaders()
             });
             return await this.safeJson(response);
         } catch (e) {
@@ -586,7 +702,8 @@ export const DockerClient = {
     async restartProxyContainer(): Promise<{ success: boolean; message: string }> {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/container/restart`, {
-                method: 'POST'
+                method: 'POST',
+                headers: this.getHeaders()
             });
             return await this.safeJson(response);
         } catch (e) {
@@ -599,7 +716,7 @@ export const DockerClient = {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/container/compose`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: this.getHeaders(),
                 body: JSON.stringify({ content })
             });
             return await this.safeJson(response);
@@ -611,7 +728,7 @@ export const DockerClient = {
 
     async getProxyComposeConfig(): Promise<string> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/proxy/container/compose`);
+            const response = await fetch(`${this.getServerUrl()}/proxy/container/compose`, { headers: this.getHeaders() });
             const data = await this.safeJson(response);
             return data.content || '';
         } catch (e) {
@@ -623,7 +740,8 @@ export const DockerClient = {
     async ensureProxyContainer(): Promise<{ success: boolean; message: string }> {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/container/ensure`, {
-                method: 'POST'
+                method: 'POST',
+                headers: this.getHeaders()
             });
             return await this.safeJson(response);
         } catch (e) {
@@ -635,7 +753,7 @@ export const DockerClient = {
     // Email Management
     async listEmailDomains(): Promise<EmailDomain[]> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/emails/domains`);
+            const response = await fetch(`${this.getServerUrl()}/emails/domains`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -645,7 +763,7 @@ export const DockerClient = {
 
     async createEmailDomain(domain: string): Promise<{ success: boolean; message: string }> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/emails/domains/${domain}`, { method: 'PUT' });
+            const response = await fetch(`${this.getServerUrl()}/emails/domains/${domain}`, { method: 'PUT', headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -655,7 +773,7 @@ export const DockerClient = {
 
     async deleteEmailDomain(domain: string): Promise<{ success: boolean; message: string }> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/emails/domains/${domain}`, { method: 'DELETE' });
+            const response = await fetch(`${this.getServerUrl()}/emails/domains/${domain}`, { method: 'DELETE', headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -665,7 +783,7 @@ export const DockerClient = {
 
     async listEmailUsers(): Promise<EmailUser[]> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/emails/users`);
+            const response = await fetch(`${this.getServerUrl()}/emails/users`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -677,7 +795,7 @@ export const DockerClient = {
         try {
             const response = await fetch(`${this.getServerUrl()}/emails/users/${userAddress}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: this.getHeaders(),
                 body: JSON.stringify(request)
             });
             return await response.json();
@@ -689,7 +807,7 @@ export const DockerClient = {
 
     async deleteEmailUser(userAddress: string): Promise<{ success: boolean; message: string }> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/emails/users/${userAddress}`, { method: 'DELETE' });
+            const response = await fetch(`${this.getServerUrl()}/emails/users/${userAddress}`, { method: 'DELETE', headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -701,7 +819,7 @@ export const DockerClient = {
         try {
             const response = await fetch(`${this.getServerUrl()}/emails/users/${userAddress}/password`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
+                headers: this.getHeaders(),
                 body: JSON.stringify(request)
             });
             return await response.json();
@@ -713,7 +831,7 @@ export const DockerClient = {
 
     async listEmailMailboxes(userAddress: string): Promise<EmailMailbox[]> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/emails/users/${userAddress}/mailboxes`);
+            const response = await fetch(`${this.getServerUrl()}/emails/users/${userAddress}/mailboxes`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -724,7 +842,8 @@ export const DockerClient = {
     async createEmailMailbox(userAddress: string, mailboxName: string): Promise<{ success: boolean, message: string }> {
         try {
             const response = await fetch(`${this.getServerUrl()}/emails/users/${userAddress}/mailboxes/${mailboxName}`, {
-                method: 'PUT'
+                method: 'PUT',
+                headers: this.getHeaders()
             });
             return await response.json();
         } catch (e) {
@@ -736,7 +855,8 @@ export const DockerClient = {
     async deleteEmailMailbox(userAddress: string, mailboxName: string): Promise<{ success: boolean, message: string }> {
         try {
             const response = await fetch(`${this.getServerUrl()}/emails/users/${userAddress}/mailboxes/${mailboxName}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: this.getHeaders()
             });
             return await response.json();
         } catch (e) {
@@ -748,7 +868,7 @@ export const DockerClient = {
     // Email Groups
     async listEmailGroups(): Promise<import('./types').EmailGroup[]> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/emails/groups`);
+            const response = await fetch(`${this.getServerUrl()}/emails/groups`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -758,7 +878,7 @@ export const DockerClient = {
 
     async getEmailGroupMembers(groupAddress: string): Promise<string[]> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/emails/groups/${groupAddress}`);
+            const response = await fetch(`${this.getServerUrl()}/emails/groups/${groupAddress}`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -773,7 +893,8 @@ export const DockerClient = {
     async addEmailGroupMember(groupAddress: string, memberAddress: string): Promise<{ success: boolean, message: string }> {
         try {
             const response = await fetch(`${this.getServerUrl()}/emails/groups/${groupAddress}/${memberAddress}`, {
-                method: 'PUT'
+                method: 'PUT',
+                headers: this.getHeaders()
             });
             return await response.json();
         } catch (e) {
@@ -785,7 +906,8 @@ export const DockerClient = {
     async removeEmailGroupMember(groupAddress: string, memberAddress: string): Promise<{ success: boolean, message: string }> {
         try {
             const response = await fetch(`${this.getServerUrl()}/emails/groups/${groupAddress}/${memberAddress}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: this.getHeaders()
             });
             return await response.json();
         } catch (e) {
@@ -797,7 +919,7 @@ export const DockerClient = {
     // Email Quotas
     async getEmailUserQuota(userAddress: string): Promise<import('./types').EmailUserDetail | null> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/emails/quota/${userAddress}`);
+            const response = await fetch(`${this.getServerUrl()}/emails/quota/${userAddress}`, { headers: this.getHeaders() });
             if (response.status === 404) return null;
             return await response.json();
         } catch (e) {
@@ -810,6 +932,7 @@ export const DockerClient = {
         try {
             const response = await fetch(`${this.getServerUrl()}/emails/quota/${userAddress}/${type}`, {
                 method: 'PUT',
+                headers: this.getHeaders(),
                 body: value.toString()
             });
             return await response.json();
@@ -822,7 +945,8 @@ export const DockerClient = {
     async deleteEmailUserQuota(userAddress: string): Promise<{ success: boolean, message: string }> {
         try {
             const response = await fetch(`${this.getServerUrl()}/emails/quota/${userAddress}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: this.getHeaders()
             });
             return await response.json();
         } catch (e) {
@@ -834,7 +958,7 @@ export const DockerClient = {
     // James Management
     async getJamesStatus(): Promise<any> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/emails/james/status`);
+            const response = await fetch(`${this.getServerUrl()}/emails/james/status`, { headers: this.getHeaders() });
             return await this.safeJson(response);
         } catch (e) {
             console.error(e);
@@ -844,7 +968,7 @@ export const DockerClient = {
 
     async ensureJamesConfig(): Promise<{ success: boolean, message: string }> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/emails/james/config`, { method: 'POST' });
+            const response = await fetch(`${this.getServerUrl()}/emails/james/config`, { method: 'POST', headers: this.getHeaders() });
             return await this.safeJson(response);
         } catch (e) {
             console.error(e);
@@ -854,7 +978,7 @@ export const DockerClient = {
 
     async getJamesComposeConfig(): Promise<string> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/emails/james/compose`);
+            const response = await fetch(`${this.getServerUrl()}/emails/james/compose`, { headers: this.getHeaders() });
             const data = await this.safeJson(response);
             return data.content || '';
         } catch (e) {
@@ -867,7 +991,7 @@ export const DockerClient = {
         try {
             const response = await fetch(`${this.getServerUrl()}/emails/james/compose`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: this.getHeaders(),
                 body: JSON.stringify({ name: 'james', content })
             });
             return await this.safeJson(response);
@@ -879,7 +1003,7 @@ export const DockerClient = {
 
     async startJames(): Promise<{ success: boolean, message: string }> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/emails/james/start`, { method: 'POST' });
+            const response = await fetch(`${this.getServerUrl()}/emails/james/start`, { method: 'POST', headers: this.getHeaders() });
             return await this.safeJson(response);
         } catch (e) {
             console.error(e);
@@ -889,7 +1013,7 @@ export const DockerClient = {
 
     async stopJames(): Promise<{ success: boolean, message: string }> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/emails/james/stop`, { method: 'POST' });
+            const response = await fetch(`${this.getServerUrl()}/emails/james/stop`, { method: 'POST', headers: this.getHeaders() });
             return await this.safeJson(response);
         } catch (e) {
             console.error(e);
@@ -899,7 +1023,7 @@ export const DockerClient = {
 
     async restartJames(): Promise<{ success: boolean, message: string }> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/emails/james/restart`, { method: 'POST' });
+            const response = await fetch(`${this.getServerUrl()}/emails/james/restart`, { method: 'POST', headers: this.getHeaders() });
             return await this.safeJson(response);
         } catch (e) {
             console.error(e);
@@ -909,7 +1033,7 @@ export const DockerClient = {
 
     async getSystemConfig(): Promise<SystemConfig | null> {
         try {
-            const response = await fetch(`${this.getServerUrl()}/system/config`);
+            const response = await fetch(`${this.getServerUrl()}/system/config`, { headers: this.getHeaders() });
             return await response.json();
         } catch (e) {
             console.error(e);
@@ -921,7 +1045,7 @@ export const DockerClient = {
         try {
             const response = await fetch(`${this.getServerUrl()}/system/config`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: this.getHeaders(),
                 body: JSON.stringify(request)
             });
             return await response.json();

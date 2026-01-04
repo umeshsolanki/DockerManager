@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Docker Manager",
+  title: "UCpanel",
   description: "A premium dashboard for managing Docker containers, images, and compose stacks.",
 };
 

@@ -1,15 +1,19 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Link, Save, CheckCircle, Info, Database, Server, Terminal, RefreshCw, Settings2, Globe, XCircle } from 'lucide-react';
+import { Link, Save, CheckCircle, Info, Database, Server, Terminal, RefreshCw, Settings2, Globe, XCircle, ShieldCheck, Key, LogOut } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { SystemConfig } from '@/lib/types';
+import { SystemConfig, TwoFactorSetupResponse } from '@/lib/types';
 import dynamic from 'next/dynamic';
 import packageJson from '../../../package.json';
 
 const WebShell = dynamic(() => import('../Terminal'), { ssr: false });
 
-export default function SettingsScreen() {
+interface SettingsScreenProps {
+    onLogout?: () => void;
+}
+
+export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [serverUrl, setServerUrl] = useState(DockerClient.getServerUrl());
     const [dockerSocket, setDockerSocket] = useState('');
     const [jamesUrl, setJamesUrl] = useState('');
@@ -18,6 +22,16 @@ export default function SettingsScreen() {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [isShellOpen, setIsShellOpen] = useState(false);
+
+    // Auth & 2FA state
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [verifyPassword, setVerifyPassword] = useState('');
+    const [updatingPassword, setUpdatingPassword] = useState(false);
+
+    const [twoFactorSetup, setTwoFactorSetup] = useState<TwoFactorSetupResponse | null>(null);
+    const [verificationCode, setVerificationCode] = useState('');
+    const [configuring2FA, setConfiguring2FA] = useState(false);
 
     const fetchConfig = async () => {
         setLoading(true);
@@ -68,6 +82,67 @@ export default function SettingsScreen() {
         }
     };
 
+    const handleUpdatePassword = async () => {
+        if (newPassword !== verifyPassword) {
+            setMessage('Passwords do not match');
+            setTimeout(() => setMessage(''), 3000);
+            return;
+        }
+
+        setUpdatingPassword(true);
+        try {
+            const result = await DockerClient.updatePassword({
+                currentPassword,
+                newPassword
+            });
+            if (result.success) {
+                setMessage('Password updated successfully! Logging out...');
+                setTimeout(() => onLogout?.(), 2000);
+            } else {
+                setMessage(result.message || 'Failed to update password');
+                setTimeout(() => setMessage(''), 3000);
+            }
+        } catch (e) {
+            setMessage('Error updating password');
+            setTimeout(() => setMessage(''), 3000);
+        } finally {
+            setUpdatingPassword(false);
+        }
+    };
+
+    const handleSetup2FA = async () => {
+        try {
+            const response = await DockerClient.setup2FA();
+            setTwoFactorSetup(response);
+        } catch (e) {
+            setMessage('Failed to initiate 2FA setup');
+            setTimeout(() => setMessage(''), 3000);
+        }
+    };
+
+    const handleEnable2FA = async () => {
+        if (!twoFactorSetup) return;
+        setConfiguring2FA(true);
+        try {
+            const result = await DockerClient.enable2FA({
+                secret: twoFactorSetup.secret,
+                code: verificationCode
+            });
+            if (result.success) {
+                setMessage('2FA enabled successfully!');
+                setTwoFactorSetup(null);
+                setVerificationCode('');
+            } else {
+                setMessage(result.message || 'Invalid verification code');
+            }
+        } catch (e) {
+            setMessage('Error enabling 2FA');
+        } finally {
+            setConfiguring2FA(false);
+            setTimeout(() => setMessage(''), 3000);
+        }
+    };
+
     const handleUseDefault = () => {
         const DEFAULT_URL = "http://192.168.1.3:9091";
         setServerUrl(DEFAULT_URL);
@@ -81,13 +156,24 @@ export default function SettingsScreen() {
         <div className="flex flex-col h-full overflow-y-auto pb-6">
             <div className="flex items-center justify-between mb-4">
                 <h1 className="text-2xl font-bold">Settings</h1>
-                <button
-                    onClick={fetchConfig}
-                    className="p-1.5 hover:bg-surface rounded-full transition-colors text-on-surface-variant hover:text-primary"
-                    disabled={loading}
-                >
-                    <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-                </button>
+                <div className="flex items-center gap-2">
+                    {onLogout && (
+                        <button
+                            onClick={onLogout}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg transition-colors text-xs font-semibold"
+                        >
+                            <LogOut size={14} />
+                            <span>Log Out</span>
+                        </button>
+                    )}
+                    <button
+                        onClick={fetchConfig}
+                        className="p-1.5 hover:bg-surface rounded-full transition-colors text-on-surface-variant hover:text-primary"
+                        disabled={loading}
+                    >
+                        <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                    </button>
+                </div>
             </div>
 
             {message && (
@@ -191,10 +277,116 @@ export default function SettingsScreen() {
                     </div>
                 </div>
 
-                {/* Environment Information */}
+                {/* Authentication Management */}
+                <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-sm backdrop-blur-sm">
+                    <div className="flex items-center gap-2 mb-4">
+                        <div className="p-2 bg-red-500/10 rounded-lg text-red-500">
+                            <Key size={20} />
+                        </div>
+                        <h2 className="text-lg font-semibold">Update Password</h2>
+                    </div>
+
+                    <div className="space-y-3">
+                        <input
+                            type="password"
+                            placeholder="Current Password"
+                            value={currentPassword}
+                            onChange={(e) => setCurrentPassword(e.target.value)}
+                            className="w-full bg-surface border border-outline/20 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-primary"
+                        />
+                        <input
+                            type="password"
+                            placeholder="New Password"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            className="w-full bg-surface border border-outline/20 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-primary"
+                        />
+                        <input
+                            type="password"
+                            placeholder="Verify New Password"
+                            value={verifyPassword}
+                            onChange={(e) => setVerifyPassword(e.target.value)}
+                            className="w-full bg-surface border border-outline/20 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-primary"
+                        />
+                        <button
+                            onClick={handleUpdatePassword}
+                            disabled={updatingPassword || !newPassword}
+                            className="w-full bg-primary text-primary-foreground py-2 rounded-lg font-bold text-sm hover:opacity-90 transition-all disabled:opacity-50"
+                        >
+                            {updatingPassword ? 'Updating...' : 'Update Password'}
+                        </button>
+                    </div>
+                </div>
+
+                {/* 2FA Configuration */}
                 <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-sm backdrop-blur-sm">
                     <div className="flex items-center gap-2 mb-4">
                         <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
+                            <ShieldCheck size={20} />
+                        </div>
+                        <h2 className="text-lg font-semibold">Two-Factor Auth</h2>
+                    </div>
+
+                    {!twoFactorSetup ? (
+                        <div className="space-y-4">
+                            <p className="text-xs text-on-surface-variant">
+                                Add an extra layer of security to your account by enabling TOTP-based two-factor authentication.
+                            </p>
+                            <button
+                                onClick={handleSetup2FA}
+                                className="w-full bg-blue-500 text-white py-2 rounded-lg font-bold text-sm hover:bg-blue-600 transition-all"
+                            >
+                                Setup 2FA
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            <p className="text-xs font-medium text-center">Scan this QR code with your authenticator app</p>
+                            <div className="bg-white p-2 rounded-xl mx-auto w-fit">
+                                {/* Using a simple QR generation service for demonstration */}
+                                <img
+                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(twoFactorSetup.qrUri)}`}
+                                    alt="2FA QR Code"
+                                    className="w-32 h-32"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] uppercase font-bold text-gray-500">Manual Entry Secret</label>
+                                <code className="block bg-surface p-2 rounded text-[10px] break-all font-mono border border-outline/10">
+                                    {twoFactorSetup.secret}
+                                </code>
+                            </div>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    placeholder="Enter 6-digit code"
+                                    value={verificationCode}
+                                    onChange={(e) => setVerificationCode(e.target.value)}
+                                    className="flex-1 bg-surface border border-outline/20 rounded-lg py-2 px-3 text-sm font-mono text-center tracking-widest"
+                                    maxLength={6}
+                                />
+                                <button
+                                    onClick={handleEnable2FA}
+                                    disabled={configuring2FA || verificationCode.length !== 6}
+                                    className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-50"
+                                >
+                                    Enable
+                                </button>
+                            </div>
+                            <button
+                                onClick={() => setTwoFactorSetup(null)}
+                                className="w-full text-[10px] text-on-surface-variant hover:text-red-400 transition-colors uppercase font-bold"
+                            >
+                                Cancel Setup
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Environment Information */}
+                <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-sm backdrop-blur-sm">
+                    <div className="flex items-center gap-2 mb-4">
+                        <div className="p-2 bg-indigo-500/10 rounded-lg text-indigo-500">
                             <Info size={20} />
                         </div>
                         <h2 className="text-lg font-semibold">Environment Info</h2>

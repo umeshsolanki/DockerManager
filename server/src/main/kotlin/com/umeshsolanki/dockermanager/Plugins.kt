@@ -10,6 +10,7 @@ import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.pingPeriod
 import io.ktor.server.websocket.timeout
+import io.ktor.server.auth.*
 import kotlin.time.Duration.Companion.seconds
 
 fun Application.configurePlugins() {
@@ -33,5 +34,17 @@ fun Application.configurePlugins() {
 
     install(ContentNegotiation) {
         json(AppConfig.json)
+    }
+
+    install(Authentication) {
+        bearer("auth-bearer") {
+            authenticate { tokenCredential ->
+                if (AuthService.validateToken(tokenCredential.token)) {
+                    UserIdPrincipal("admin")
+                } else {
+                    null
+                }
+            }
+        }
     }
 }

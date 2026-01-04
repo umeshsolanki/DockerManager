@@ -1,5 +1,5 @@
 [Unit]
-Description=Docker Manager Service
+Description=UCpanel Service
 After=network.target docker.service
 Requires=docker.service
 
