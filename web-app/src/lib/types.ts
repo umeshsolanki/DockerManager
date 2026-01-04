@@ -299,6 +299,14 @@ export interface UpdateSystemConfigRequest {
   jamesWebAdminUrl: string;
 }
 
+export interface JamesContainerStatus {
+  exists: boolean;
+  running: boolean;
+  containerId?: string;
+  status: string;
+  uptime?: string;
+}
+
 export type Screen = 'Dashboard' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Settings';
 
 

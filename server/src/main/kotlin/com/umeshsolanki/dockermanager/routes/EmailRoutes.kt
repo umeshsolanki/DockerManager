@@ -13,14 +13,34 @@ fun Route.emailRoutes() {
                 call.respond(DockerService.listEmailDomains())
             }
             put("/{domain}") {
-                val domain = call.parameters["domain"] ?: return@put call.respond(ProxyActionResult(false, "Domain required"))
+                val domain = call.parameters["domain"] ?: return@put call.respond(
+                    ProxyActionResult(
+                        false,
+                        "Domain required"
+                    )
+                )
                 val success = DockerService.createEmailDomain(domain)
-                call.respond(ProxyActionResult(success, if (success) "Domain created" else "Failed to create domain"))
+                call.respond(
+                    ProxyActionResult(
+                        success,
+                        if (success) "Domain created" else "Failed to create domain"
+                    )
+                )
             }
             delete("/{domain}") {
-                val domain = call.parameters["domain"] ?: return@delete call.respond(ProxyActionResult(false, "Domain required"))
+                val domain = call.parameters["domain"] ?: return@delete call.respond(
+                    ProxyActionResult(
+                        false,
+                        "Domain required"
+                    )
+                )
                 val success = DockerService.deleteEmailDomain(domain)
-                call.respond(ProxyActionResult(success, if (success) "Domain deleted" else "Failed to delete domain"))
+                call.respond(
+                    ProxyActionResult(
+                        success,
+                        if (success) "Domain deleted" else "Failed to delete domain"
+                    )
+                )
             }
         }
 
@@ -29,40 +49,150 @@ fun Route.emailRoutes() {
                 call.respond(DockerService.listEmailUsers())
             }
             put("/{userAddress}") {
-                val userAddress = call.parameters["userAddress"] ?: return@put call.respond(ProxyActionResult(false, "User address required"))
+                val userAddress = call.parameters["userAddress"] ?: return@put call.respond(
+                    ProxyActionResult(
+                        false,
+                        "User address required"
+                    )
+                )
                 val request = call.receive<CreateEmailUserRequest>()
                 val success = DockerService.createEmailUser(userAddress, request)
-                call.respond(ProxyActionResult(success, if (success) "User created" else "Failed to create user"))
+                call.respond(
+                    ProxyActionResult(
+                        success,
+                        if (success) "User created" else "Failed to create user"
+                    )
+                )
             }
             delete("/{userAddress}") {
-                val userAddress = call.parameters["userAddress"] ?: return@delete call.respond(ProxyActionResult(false, "User address required"))
+                val userAddress = call.parameters["userAddress"] ?: return@delete call.respond(
+                    ProxyActionResult(
+                        false,
+                        "User address required"
+                    )
+                )
                 val success = DockerService.deleteEmailUser(userAddress)
-                call.respond(ProxyActionResult(success, if (success) "User deleted" else "Failed to delete user"))
+                call.respond(
+                    ProxyActionResult(
+                        success,
+                        if (success) "User deleted" else "Failed to delete user"
+                    )
+                )
             }
             patch("/{userAddress}/password") {
-                val userAddress = call.parameters["userAddress"] ?: return@patch call.respond(ProxyActionResult(false, "User address required"))
+                val userAddress = call.parameters["userAddress"] ?: return@patch call.respond(
+                    ProxyActionResult(
+                        false,
+                        "User address required"
+                    )
+                )
                 val request = call.receive<UpdateEmailUserPasswordRequest>()
                 val success = DockerService.updateEmailUserPassword(userAddress, request)
-                call.respond(ProxyActionResult(success, if (success) "Password updated" else "Failed to update password"))
+                call.respond(
+                    ProxyActionResult(
+                        success,
+                        if (success) "Password updated" else "Failed to update password"
+                    )
+                )
             }
 
             route("/{userAddress}/mailboxes") {
                 get {
-                    val userAddress = call.parameters["userAddress"] ?: return@get call.respond(ProxyActionResult(false, "User address required"))
+                    val userAddress = call.parameters["userAddress"] ?: return@get call.respond(
+                        ProxyActionResult(
+                            false,
+                            "User address required"
+                        )
+                    )
                     call.respond(DockerService.listEmailMailboxes(userAddress))
                 }
                 put("/{mailboxName}") {
-                    val userAddress = call.parameters["userAddress"] ?: return@put call.respond(ProxyActionResult(false, "User address required"))
-                    val mailboxName = call.parameters["mailboxName"] ?: return@put call.respond(ProxyActionResult(false, "Mailbox name required"))
+                    val userAddress = call.parameters["userAddress"] ?: return@put call.respond(
+                        ProxyActionResult(
+                            false,
+                            "User address required"
+                        )
+                    )
+                    val mailboxName = call.parameters["mailboxName"] ?: return@put call.respond(
+                        ProxyActionResult(
+                            false,
+                            "Mailbox name required"
+                        )
+                    )
                     val success = DockerService.createEmailMailbox(userAddress, mailboxName)
-                    call.respond(ProxyActionResult(success, if (success) "Mailbox created" else "Failed to create mailbox"))
+                    call.respond(
+                        ProxyActionResult(
+                            success,
+                            if (success) "Mailbox created" else "Failed to create mailbox"
+                        )
+                    )
                 }
                 delete("/{mailboxName}") {
-                    val userAddress = call.parameters["userAddress"] ?: return@delete call.respond(ProxyActionResult(false, "User address required"))
-                    val mailboxName = call.parameters["mailboxName"] ?: return@delete call.respond(ProxyActionResult(false, "Mailbox name required"))
+                    val userAddress = call.parameters["userAddress"] ?: return@delete call.respond(
+                        ProxyActionResult(false, "User address required")
+                    )
+                    val mailboxName = call.parameters["mailboxName"] ?: return@delete call.respond(
+                        ProxyActionResult(false, "Mailbox name required")
+                    )
                     val success = DockerService.deleteEmailMailbox(userAddress, mailboxName)
-                    call.respond(ProxyActionResult(success, if (success) "Mailbox deleted" else "Failed to delete mailbox"))
+                    call.respond(
+                        ProxyActionResult(
+                            success,
+                            if (success) "Mailbox deleted" else "Failed to delete mailbox"
+                        )
+                    )
                 }
+            }
+        }
+
+        // James Container Management
+        route("/james") {
+            get("/status") {
+                call.respond(DockerService.getJamesStatus())
+            }
+            post("/config") {
+                DockerService.ensureJamesConfig()
+                call.respond(ProxyActionResult(true, "Config ensured"))
+            }
+            get("/compose") {
+                call.respond(mapOf("content" to DockerService.getJamesComposeConfig()))
+            }
+            post("/compose") {
+                val request = call.receive<SaveComposeRequest>()
+                val success = DockerService.updateJamesComposeConfig(request.content)
+                call.respond(
+                    ProxyActionResult(
+                        success,
+                        if (success) "Compose config updated" else "Failed to update"
+                    )
+                )
+            }
+            post("/start") {
+                val success = DockerService.startJames()
+                call.respond(
+                    ProxyActionResult(
+                        success,
+                        if (success) "James started" else "Failed to start James"
+                    )
+                )
+            }
+            post("/stop") {
+                val success = DockerService.stopJames()
+                call.respond(
+                    ProxyActionResult(
+                        success,
+                        if (success) "James stopped" else "Failed to stop James"
+                    )
+                )
+            }
+            post("/restart") {
+                val success = DockerService.restartJames()
+                call.respond(
+                    ProxyActionResult(
+                        success,
+                        if (success) "James restarted" else "Failed to restart James"
+                    )
+                )
             }
         }
     }

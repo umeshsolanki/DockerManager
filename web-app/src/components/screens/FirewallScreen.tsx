@@ -344,7 +344,7 @@ function AddBlockModal({ onClose, onAdded }: { onClose: () => void, onAdded: () 
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-surface border border-outline/20 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="bg-surface border border-outline/20 rounded-3xl w-full max-w-md shadow-2xl overflow-y-auto animate-in fade-in zoom-in duration-200">
                 <div className="p-6 border-b border-outline/10 flex items-center justify-between bg-primary/5">
                     <div className="flex items-center gap-3">
                         <Lock className="text-primary" size={24} />

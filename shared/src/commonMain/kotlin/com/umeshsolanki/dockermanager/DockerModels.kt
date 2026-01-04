@@ -314,6 +314,15 @@ data class ProxyActionResult(
 )
 
 @Serializable
+data class JamesContainerStatus(
+    val exists: Boolean,
+    val running: Boolean,
+    val containerId: String?,
+    val status: String,
+    val uptime: String?,
+)
+
+@Serializable
 class EmailDomain(
     val name: String,
 )

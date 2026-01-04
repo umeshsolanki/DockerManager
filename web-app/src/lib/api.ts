@@ -745,6 +745,82 @@ export const DockerClient = {
         }
     },
 
+    // James Management
+    async getJamesStatus(): Promise<any> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/james/status`);
+            return await this.safeJson(response);
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    },
+
+    async ensureJamesConfig(): Promise<{ success: boolean, message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/james/config`, { method: 'POST' });
+            return await this.safeJson(response);
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async getJamesComposeConfig(): Promise<string> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/james/compose`);
+            const data = await this.safeJson(response);
+            return data.content || '';
+        } catch (e) {
+            console.error(e);
+            return '';
+        }
+    },
+
+    async updateJamesComposeConfig(content: string): Promise<{ success: boolean, message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/james/compose`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: 'james', content })
+            });
+            return await this.safeJson(response);
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async startJames(): Promise<{ success: boolean, message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/james/start`, { method: 'POST' });
+            return await this.safeJson(response);
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async stopJames(): Promise<{ success: boolean, message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/james/stop`, { method: 'POST' });
+            return await this.safeJson(response);
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async restartJames(): Promise<{ success: boolean, message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/james/restart`, { method: 'POST' });
+            return await this.safeJson(response);
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
     async getSystemConfig(): Promise<SystemConfig | null> {
         try {
             const response = await fetch(`${this.getServerUrl()}/system/config`);

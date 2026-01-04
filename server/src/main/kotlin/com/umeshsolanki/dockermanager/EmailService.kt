@@ -9,6 +9,8 @@ import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
+import java.io.File
+import java.util.concurrent.TimeUnit
 
 interface IEmailService {
     suspend fun listDomains(): List<EmailDomain>
@@ -25,23 +27,162 @@ interface IEmailService {
     suspend fun deleteMailbox(userAddress: String, mailboxName: String): Boolean
     
     fun refresh()
+
+    // James Container Management
+    fun getStatus(): JamesContainerStatus
+    fun ensureJamesConfig()
+    fun getComposeConfig(): String
+    fun updateComposeConfig(content: String): Boolean
+    fun startJames(): Boolean
+    fun stopJames(): Boolean
+    fun restartJames(): Boolean
 }
 
 class EmailServiceImpl : IEmailService {
     private val logger = LoggerFactory.getLogger(EmailServiceImpl::class.java)
     private var jamesUrl = AppConfig.jamesWebAdminUrl
+    
+    private val jamesDir = AppConfig.jamesDir
+    private val composeFile = File(jamesDir, "docker-compose.yml")
 
     override fun refresh() {
         jamesUrl = AppConfig.jamesWebAdminUrl
         logger.info("Email service refreshed with URL: $jamesUrl")
     }
 
-    
     private val client = HttpClient(Java) {
         install(ContentNegotiation) {
             json(AppConfig.json)
         }
     }
+
+    private fun executeCommand(command: String, workingDir: File? = null): String {
+        return try {
+            val parts = command.split("\\s+".toRegex())
+            val proc = ProcessBuilder(parts)
+                .directory(workingDir ?: AppConfig.projectRoot)
+                .redirectOutput(ProcessBuilder.Redirect.PIPE)
+                .redirectError(ProcessBuilder.Redirect.PIPE)
+                .start()
+
+            proc.waitFor(60, TimeUnit.SECONDS)
+            proc.inputStream.bufferedReader().readText()
+        } catch (e: Exception) {
+            logger.error("Command failed: $command", e)
+            ""
+        }
+    }
+
+    // --- Container Management ---
+
+    override fun ensureJamesConfig() {
+        if (!jamesDir.exists()) jamesDir.mkdirs()
+        
+        if (!composeFile.exists()) {
+            logger.info("Creating default James docker-compose.yml in ${jamesDir.absolutePath}")
+            composeFile.writeText(getDefaultComposeConfig())
+        }
+        
+        // Ensure var directory exists
+        File(jamesDir, "var").mkdirs()
+    }
+
+    override fun getComposeConfig(): String {
+        ensureJamesConfig()
+        return composeFile.readText()
+    }
+
+    override fun updateComposeConfig(content: String): Boolean {
+        return try {
+            ensureJamesConfig()
+            composeFile.writeText(content)
+            true
+        } catch (e: Exception) {
+            logger.error("Failed to update James compose config", e)
+            false
+        }
+    }
+
+    override fun startJames(): Boolean {
+        ensureJamesConfig()
+        val cmd = "${AppConfig.dockerComposeCommand} -f ${composeFile.absolutePath} up -d"
+        val output = executeCommand(cmd, jamesDir)
+        return output.isNotBlank() // Weak check, but standard
+    }
+
+    override fun stopJames(): Boolean {
+        if (!composeFile.exists()) return true
+        val cmd = "${AppConfig.dockerComposeCommand} -f ${composeFile.absolutePath} stop" // or down
+        executeCommand(cmd, jamesDir)
+        return true
+    }
+
+    override fun restartJames(): Boolean {
+        ensureJamesConfig()
+        val cmd = "${AppConfig.dockerComposeCommand} -f ${composeFile.absolutePath} restart"
+        executeCommand(cmd, jamesDir)
+        return true
+    }
+
+    override fun getStatus(): JamesContainerStatus {
+        if (!composeFile.exists()) {
+            return JamesContainerStatus(exists = false, running = false, containerId = null, status = "Not Configured", uptime = null)
+        }
+
+        // Check if container running
+        // We can use docker compose ps --format json
+        // Or check `docker ps` for name `james`
+        
+        val psOutput = executeCommand("${AppConfig.dockerCommand} ps --filter name=james --format \"{{.ID}}|{{.Status}}|{{.State}}\"")
+        if (psOutput.isBlank()) {
+             // Check if it exists but stopped
+             val psAll = executeCommand("${AppConfig.dockerCommand} ps -a --filter name=james --format \"{{.ID}}|{{.Status}}|{{.State}}\"")
+             if (psAll.isNotBlank()) {
+                 val parts = psAll.trim().split("|")
+                 return JamesContainerStatus(exists = true, running = false, containerId = parts[0], status = parts[1], uptime = null)
+             }
+             return JamesContainerStatus(exists = true, running = false, containerId = null, status = "Stopped", uptime = null)
+        }
+        
+        val parts = psOutput.trim().split("|")
+        return JamesContainerStatus(
+            exists = true,
+            running = true,
+            containerId = parts.getOrNull(0),
+            status = parts.getOrNull(1) ?: "Running",
+            uptime = parts.getOrNull(1) // Status often contains uptime
+        )
+    }
+
+    private fun getDefaultComposeConfig(): String {
+        return """
+services:
+  james:
+    image: apache/james:jpa-latest
+    container_name: james
+    hostname: james.local
+    restart: unless-stopped
+    ports:
+      - "25:25"
+      - "143:143"
+      - "993:993"
+      - "465:465"
+      - "587:587"
+      - "8000:8000"
+    volumes:
+      - ./var:/root/var
+      - ./conf:/root/conf
+    command: --generate-keystore
+    networks:
+      - dockermanager_network
+
+networks:
+  dockermanager_network:
+    external: true
+        """.trimIndent()
+    }
+
+    // --- API Methods ---
 
     override suspend fun listDomains(): List<EmailDomain> {
         return try {

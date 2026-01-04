@@ -110,6 +110,15 @@ object DockerService {
     suspend fun createEmailMailbox(userAddress: String, mailboxName: String) = emailService.createMailbox(userAddress, mailboxName)
     suspend fun deleteEmailMailbox(userAddress: String, mailboxName: String) = emailService.deleteMailbox(userAddress, mailboxName)
 
+    // James Container Management
+    fun getJamesStatus() = emailService.getStatus()
+    fun ensureJamesConfig() = emailService.ensureJamesConfig()
+    fun getJamesComposeConfig() = emailService.getComposeConfig()
+    fun updateJamesComposeConfig(content: String) = emailService.updateComposeConfig(content)
+    fun startJames() = emailService.startJames()
+    fun stopJames() = emailService.stopJames()
+    fun restartJames() = emailService.restartJames()
+
     fun getSystemConfig() = SystemConfig(
         dockerCommand = AppConfig.dockerCommand,
         dockerComposeCommand = AppConfig.dockerComposeCommand,

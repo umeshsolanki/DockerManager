@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Mail, Shield, Plus, Trash, Key, Globe, User, RefreshCw, Inbox } from 'lucide-react';
+import { Mail, Shield, Plus, Trash, Key, Globe, User, RefreshCw, Inbox, Server, Play, Square, RotateCw, Save, Activity } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { EmailDomain, EmailUser, EmailMailbox } from '@/lib/types';
+import { EmailDomain, EmailUser, EmailMailbox, JamesContainerStatus } from '@/lib/types';
 import { toast } from 'sonner';
 
 export default function EmailsScreen() {
-    const [activeTab, setActiveTab] = useState<'Domains' | 'Users' | 'Mailboxes'>('Domains');
+    const [activeTab, setActiveTab] = useState<'Domains' | 'Users' | 'Mailboxes' | 'Manage'>('Domains');
     const [isLoading, setIsLoading] = useState(false);
     const [domains, setDomains] = useState<EmailDomain[]>([]);
     const [users, setUsers] = useState<EmailUser[]>([]);
@@ -60,6 +60,12 @@ export default function EmailsScreen() {
                     >
                         Mailboxes
                     </button>
+                    <button
+                        onClick={() => setActiveTab('Manage')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'Manage' ? 'bg-primary text-primary-foreground shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}
+                    >
+                        Server
+                    </button>
                 </div>
             </div>
 
@@ -67,7 +73,145 @@ export default function EmailsScreen() {
                 {activeTab === 'Domains' && <DomainsList domains={domains} onRefresh={fetchData} />}
                 {activeTab === 'Users' && <UsersList users={users} onRefresh={fetchData} />}
                 {activeTab === 'Mailboxes' && <MailboxesList />}
+                {activeTab === 'Manage' && <ManageJames />}
             </div>
+        </div>
+    );
+}
+
+function ManageJames() {
+    const [status, setStatus] = useState<JamesContainerStatus | null>(null);
+    const [composeConfig, setComposeConfig] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+
+    const fetchStatus = async () => {
+        setIsLoading(true);
+        const s = await DockerClient.getJamesStatus();
+        setStatus(s);
+        const c = await DockerClient.getJamesComposeConfig();
+        setComposeConfig(c);
+        setIsLoading(false);
+    };
+
+    useEffect(() => {
+        fetchStatus();
+        const interval = setInterval(fetchStatus, 10000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const handleAction = async (action: 'start' | 'stop' | 'restart' | 'install') => {
+        let res;
+        setIsLoading(true);
+        if (action === 'install') res = await DockerClient.ensureJamesConfig();
+        else if (action === 'start') res = await DockerClient.startJames();
+        else if (action === 'stop') res = await DockerClient.stopJames();
+        else if (action === 'restart') res = await DockerClient.restartJames();
+
+        if (res?.success) {
+            toast.success(`James ${action}ed successfully`);
+            fetchStatus();
+        } else {
+            toast.error(res?.message || 'Action failed');
+            setIsLoading(false);
+        }
+    };
+
+    const handleSaveConfig = async () => {
+        setIsSaving(true);
+        const res = await DockerClient.updateJamesComposeConfig(composeConfig);
+        if (res.success) {
+            toast.success('Config saved');
+        } else {
+            toast.error(res.message);
+        }
+        setIsSaving(false);
+    };
+
+    if (isLoading && !status && !composeConfig) {
+        return <div className="flex items-center justify-center h-full"><RefreshCw className="animate-spin text-primary" size={32} /></div>;
+    }
+
+    const isInstalled = status?.exists;
+    const isRunning = status?.running;
+
+    return (
+        <div className="max-w-4xl mx-auto flex flex-col gap-6 p-4">
+            {/* Status Card */}
+            <div className={`p-6 rounded-2xl border ${isRunning ? 'bg-green-500/5 border-green-500/20' : 'bg-surface border-outline/10'} transition-all`}>
+                <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isRunning ? 'bg-green-500/20 text-green-500' : 'bg-surface text-on-surface-variant'}`}>
+                            <Server size={24} />
+                        </div>
+                        <div className="flex flex-col">
+                            <h2 className="text-xl font-bold">James Mail Server</h2>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className={`w-2 h-2 rounded-full ${isRunning ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+                                <span className="text-sm font-mono text-on-surface-variant">{status?.status || 'Unknown'}</span>
+                            </div>
+                        </div>
+                    </div>
+                    {isInstalled ? (
+                        <div className="flex gap-2">
+                            {!isRunning ? (
+                                <button onClick={() => handleAction('start')} disabled={isLoading} className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl font-bold transition-all">
+                                    <Play size={18} fill="currentColor" /> Start
+                                </button>
+                            ) : (
+                                <button onClick={() => handleAction('stop')} disabled={isLoading} className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl font-bold transition-all">
+                                    <Square size={18} fill="currentColor" /> Stop
+                                </button>
+                            )}
+                            <button onClick={() => handleAction('restart')} disabled={isLoading} className="flex items-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-xl font-bold transition-all">
+                                <RotateCw size={18} /> Restart
+                            </button>
+                        </div>
+                    ) : (
+                        <button onClick={() => handleAction('install')} disabled={isLoading} className="flex items-center gap-2 px-6 py-3 bg-primary hover:bg-primary/80 text-white rounded-xl font-bold transition-all shadow-lg shadow-primary/20">
+                            <Plus size={20} /> Install Server
+                        </button>
+                    )}
+                </div>
+
+                {status?.uptime && (
+                    <div className="flex gap-8 border-t border-outline/10 pt-4 mt-4">
+                        <div className="flex flex-col">
+                            <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Uptime</span>
+                            <span className="font-mono text-sm">{status.uptime}</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Container ID</span>
+                            <span className="font-mono text-sm">{status.containerId?.substring(0, 12)}</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Config Editor */}
+            {isInstalled && (
+                <div className="flex flex-col gap-4 bg-surface/30 border border-outline/10 rounded-2xl p-6">
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-bold flex items-center gap-2">
+                            <Activity size={20} className="text-primary" />
+                            Configuration (docker-compose.yml)
+                        </h3>
+                        <button onClick={handleSaveConfig} disabled={isSaving} className="flex items-center gap-2 px-4 py-2 bg-surface hover:bg-white/10 border border-outline/20 rounded-lg text-sm font-bold transition-all">
+                            <Save size={16} /> {isSaving ? 'Saving...' : 'Save Config'}
+                        </button>
+                    </div>
+                    <p className="text-sm text-on-surface-variant">
+                        Edit the internal docker-compose.yml for James. You can add the Postgres service here if needed.
+                        Default configuration uses embedded Derby database.
+                    </p>
+                    <textarea
+                        value={composeConfig}
+                        onChange={(e) => setComposeConfig(e.target.value)}
+                        className="w-full h-[400px] bg-black/50 border border-outline/20 rounded-xl p-4 font-mono text-sm text-on-surface focus:outline-none focus:border-primary resize-y"
+                        spellCheck={false}
+                    />
+                </div>
+            )}
         </div>
     );
 }
