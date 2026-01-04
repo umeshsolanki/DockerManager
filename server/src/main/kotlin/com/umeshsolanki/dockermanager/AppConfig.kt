@@ -41,13 +41,17 @@ object AppConfig {
 
     private fun loadSettings(): AppSettings {
         return try {
+            logger.info("Loading settings from ${settingsFile.absolutePath}")
             if (settingsFile.exists()) {
-                json.decodeFromString<AppSettings>(settingsFile.readText())
+                val content = settingsFile.readText()
+                logger.debug("Settings content: $content")
+                json.decodeFromString<AppSettings>(content)
             } else {
+                logger.info("Settings file not found, using defaults")
                 AppSettings()
             }
         } catch (e: Exception) {
-            logger.error("Failed to load settings, using defaults", e)
+            logger.error("Failed to load settings (corrupted?), using defaults", e)
             AppSettings()
         }
     }
@@ -81,11 +85,16 @@ object AppConfig {
 
     private fun saveSettings() {
         try {
-            settingsFile.parentFile.mkdirs()
+            if (!settingsFile.parentFile.exists()) {
+                val created = settingsFile.parentFile.mkdirs()
+                if (!created) {
+                    logger.error("Failed to create directory: ${settingsFile.parentFile.absolutePath}")
+                }
+            }
             settingsFile.writeText(json.encodeToString(_settings))
-            logger.info("Settings saved to ${settingsFile.absolutePath}")
+            logger.info("Settings saved to ${settingsFile.absolutePath}. Content: ${json.encodeToString(_settings)}")
         } catch (e: Exception) {
-            logger.error("Failed to save settings", e)
+            logger.error("Failed to save settings to ${settingsFile.absolutePath}", e)
         }
     }
 
