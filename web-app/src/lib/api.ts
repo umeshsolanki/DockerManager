@@ -766,6 +766,10 @@ export const DockerClient = {
         }
     },
 
+    async createEmailGroup(groupAddress: string, memberAddress: string): Promise<{ success: boolean, message: string }> {
+        return this.addEmailGroupMember(groupAddress, memberAddress);
+    },
+
     async addEmailGroupMember(groupAddress: string, memberAddress: string): Promise<{ success: boolean, message: string }> {
         try {
             const response = await fetch(`${this.getServerUrl()}/emails/groups/${groupAddress}/${memberAddress}`, {
