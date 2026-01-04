@@ -334,7 +334,6 @@ class EmailUser(
 
 @Serializable
 class CreateEmailUserRequest(
-    val userAddress: String,
     val password: String,
 )
 
