@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.shadowJar)
     application
     `maven-publish`
+    alias(libs.plugins.kotlinSerialization)
 }
 
 group = "com.umeshsolanki.dockermanager"
