@@ -244,12 +244,13 @@ export default function LogsScreen() {
                                         <span className="text-xs font-bold uppercase tracking-wider">Top Attacking IPs</span>
                                     </div>
                                     <div className="space-y-2 max-h-[100px] overflow-y-hidden pr-2">
-                                        {btmpStats.topIps.slice(0, 1000).map(({ first: ip, second: count }) => {
+                                        {btmpStats.topIps.slice(0, 1000).map(({ ip, count, country }) => {
                                             const isJailed = btmpStats.jailedIps?.some(j => j.ip === ip);
                                             return (
                                                 <div key={ip} className="flex justify-between items-center text-[10px]">
                                                     <div className="flex items-center gap-1.5">
                                                         <span className="font-mono text-primary cursor-pointer hover:underline" onClick={() => { setIpToBlock(ip); setIsBlockModalOpen(true); }}>{ip}</span>
+                                                        {country && <span className="opacity-40 font-bold text-[8px] bg-white/5 px-1 rounded">{country}</span>}
                                                         {isJailed && (
                                                             <span className="flex items-center gap-0.5 text-[8px] uppercase font-black bg-red-500/10 text-red-500 px-1 rounded">
                                                                 <Lock size={8} />
@@ -678,13 +679,14 @@ export default function LogsScreen() {
                         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
                             {statsModalType === 'IPS' && (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                    {btmpStats?.topIps?.map(({ first: ip, second: count }) => {
+                                    {btmpStats?.topIps?.map(({ ip, count, country }) => {
                                         const isJailed = btmpStats?.jailedIps?.some(j => j.ip === ip);
                                         return (
                                             <div key={ip} className="flex justify-between items-center bg-white/5 border border-outline/5 rounded-xl p-4 hover:border-primary/20 transition-all group">
                                                 <div className="flex flex-col">
                                                     <div className="flex items-center gap-2">
                                                         <span className="font-mono text-sm text-primary font-bold">{ip}</span>
+                                                        {country && <span className="text-[9px] font-bold text-on-surface-variant/40 bg-white/5 px-1 rounded">{country}</span>}
                                                         {isJailed && (
                                                             <span className="flex items-center gap-0.5 text-[8px] uppercase font-black bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded">
                                                                 <Lock size={8} />

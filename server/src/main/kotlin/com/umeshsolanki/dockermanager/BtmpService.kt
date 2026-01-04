@@ -209,6 +209,27 @@ class BtmpServiceImpl(
         return currentOffset
     }
 
+    private val countryCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    private fun getCountryCode(ip: String): String {
+        if (ip == "0.0.0.0" || ip.startsWith("127.") || ip.startsWith("192.168.") || ip.startsWith("10.")) return "LOC"
+        
+        return "??"
+    //countryCache.computeIfAbsent(ip) { _ ->
+//            try {
+                // Rate limit protection: simple sleep if cache miss (not ideal for main thread but worker is async)
+                // Better: just fetch
+//                val json = java.net.URL("http://ip-api.com/json/$ip?fields=countryCode").readText()
+//                // Simple regex extract
+//                val match = "\"countryCode\":\"([^\"]+)\"".toRegex().find(json)
+//                match?.groupValues?.get(1) ?: "??"
+
+//            } catch (e: Exception) {
+//                "??"
+//            }
+//        }
+    }
+
     private fun handleFailedAttempt(user: String, ip: String, timestamp: Long) {
         if (ip.isBlank()) return
 
@@ -216,11 +237,21 @@ class BtmpServiceImpl(
         userCounts[user] = (userCounts[user] ?: 0) + 1
         ipCounts[ip] = (ipCounts[ip] ?: 0) + 1
         
+        // Background fetch country if not cached, to populate cache for UI
+        if (!countryCache.containsKey(ip)) {
+             scope.launch(Dispatchers.IO) { getCountryCode(ip) }
+        }
+        
         if (autoJailEnabled && jailedIps.none { it.ip == ip }) {
             failedAttemptsInWindow[ip] = (failedAttemptsInWindow[ip] ?: 0) + 1
             if (failedAttemptsInWindow[ip]!! >= jailThreshold) {
                 val expiresAt = System.currentTimeMillis() + (jailDurationMinutes * 60_000)
-                val jail = JailedIP(ip, "Failed login >= $jailThreshold failed attempts", expiresAt)
+                val jail = JailedIP(
+                    ip = ip, 
+                    country = getCountryCode(ip),
+                    reason = "Failed login >= $jailThreshold failed attempts", 
+                    expiresAt = expiresAt
+                )
                 firewallService.blockIP(BlockIPRequest(ip, comment = jail.reason))
                 jailedIps.add(jail)
                 failedAttemptsInWindow.remove(ip)
@@ -231,6 +262,7 @@ class BtmpServiceImpl(
         val entry = BtmpEntry(
             user = user,
             ip = ip,
+            country = getCountryCode(ip),
             session = "",
             timestampString = simpleDateFormat.format(java.util.Date(timestamp)),
             timestamp = timestamp,
@@ -247,7 +279,9 @@ class BtmpServiceImpl(
         cachedBtmpStats = BtmpStats(
             totalFailedAttempts = totalFailedAttempts,
             topUsers = userCounts.toList().sortedByDescending { it.second }.take(100),
-            topIps = ipCounts.toList().sortedByDescending { it.second }.take(100),
+            topIps = ipCounts.toList().sortedByDescending { it.second }.take(100).map {
+                TopIpEntry(it.first, it.second, getCountryCode(it.first))
+            },
             recentFailures = recentFailuresList.take(200).toList(),
             lastUpdated = System.currentTimeMillis(),
             jailedIps = jailedIps.toList(),

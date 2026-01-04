@@ -231,6 +231,7 @@ export interface ProxyStats {
 export interface BtmpEntry {
   user: string;
   ip: string;
+  country?: string;
   session: string;
   timestampString: string;
   timestamp: number;
@@ -239,14 +240,21 @@ export interface BtmpEntry {
 
 export interface JailedIP {
   ip: string;
+  country?: string;
   reason: string;
   expiresAt: number;
+}
+
+export interface TopIpEntry {
+  ip: string;
+  count: number;
+  country?: string;
 }
 
 export interface BtmpStats {
   totalFailedAttempts: number;
   topUsers: KotlinPair<string, number>[];
-  topIps: KotlinPair<string, number>[];
+  topIps: TopIpEntry[];
   recentFailures: BtmpEntry[];
   lastUpdated: number;
   jailedIps: JailedIP[];

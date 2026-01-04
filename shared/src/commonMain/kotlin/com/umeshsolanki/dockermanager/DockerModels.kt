@@ -260,6 +260,7 @@ class ProxyStats(
 class BtmpEntry(
     val user: String,
     val ip: String,
+    val country: String? = null,
     val session: String = "",
     val timestampString: String = "",
     val timestamp: Long = 0,
@@ -269,16 +270,24 @@ class BtmpEntry(
 @Serializable
 class JailedIP(
     val ip: String,
+    val country: String? = null,
     val reason: String,
     val expiresAt: Long,
     val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
 )
 
 @Serializable
+class TopIpEntry(
+    val ip: String,
+    val count: Int,
+    val country: String? = null,
+)
+
+@Serializable
 class BtmpStats(
     val totalFailedAttempts: Int,
     val topUsers: List<Pair<String, Int>>,
-    val topIps: List<Pair<String, Int>>,
+    val topIps: List<TopIpEntry>,
     val recentFailures: List<BtmpEntry>,
     val lastUpdated: Long = 0,
     val jailedIps: List<JailedIP> = emptyList(),
