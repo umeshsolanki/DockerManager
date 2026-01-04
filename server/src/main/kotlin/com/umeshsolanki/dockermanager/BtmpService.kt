@@ -272,6 +272,13 @@ class BtmpServiceImpl(
                 firewallService.blockIP(BlockIPRequest(ip, comment = jail.reason))
                 jailedIps.add(jail)
                 failedAttemptsInWindow.remove(ip)
+                
+                // Send notification
+                FcmService.sendNotification(
+                    title = "Security Alert: IP Jailed",
+                    body = "IP $ip has been jailed for $jailThreshold failed attempts.",
+                    data = mapOf("type" to "security", "ip" to ip, "action" to "jail")
+                )
             }
         }
         

@@ -84,6 +84,12 @@ fun Route.authRoutes() {
                      }
                 }
             }
+
+            post("/fcm/register") {
+                val request = call.receive<RegisterFcmTokenRequest>()
+                FcmService.registerToken(request)
+                call.respond(mapOf("success" to true))
+            }
         }
     }
 }

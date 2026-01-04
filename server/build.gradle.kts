@@ -50,7 +50,7 @@ dependencies {
     implementation(libs.ktor.serverWebsockets)
     implementation(libs.ktor.serverAuth)
     implementation(libs.ktor.serverSessions)
-    implementation(libs.ktor.serverStaticContent)
+//    implementation(libs.ktor.serverStaticContent)
     implementation(libs.ktor.serializationKotlinxJson)
     implementation(libs.pty4j)
     implementation(libs.ktor.clientCore)
@@ -60,6 +60,7 @@ dependencies {
 
     implementation(libs.docker.java)
     implementation(libs.docker.java.transport)
+    implementation(libs.firebase.admin)
     testImplementation(libs.ktor.serverTestHost)
     testImplementation(libs.kotlin.testJunit)
 }

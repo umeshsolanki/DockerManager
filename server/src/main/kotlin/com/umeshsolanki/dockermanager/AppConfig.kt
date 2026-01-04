@@ -19,7 +19,8 @@ data class AppSettings(
     val jailThreshold: Int = 5,
     val jailDurationMinutes: Int = 30,
     val monitoringActive: Boolean = true,
-    val monitoringIntervalMinutes: Int = 5
+    val monitoringIntervalMinutes: Int = 5,
+    val fcmServiceAccountPath: String = "fcm-service-account.json"
 )
 
 object AppConfig {
@@ -208,5 +209,8 @@ object AppConfig {
             "Unknown"
         }
     }
+
+    val fcmServiceAccountFile: File get() = File(dataRoot, _settings.fcmServiceAccountPath)
+    val fcmTokensFile: File get() = File(dataRoot, "fcm-tokens.json")
 }
 

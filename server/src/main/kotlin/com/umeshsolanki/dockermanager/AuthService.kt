@@ -156,6 +156,11 @@ object AuthService {
                 twoFactorEnabled = true,
                 twoFactorSecret = secret
             ))
+            FcmService.sendNotification(
+                title = "Security Alert: 2FA Enabled",
+                body = "Two-factor authentication has been successfully enabled for your account.",
+                data = mapOf("type" to "security", "action" to "2fa_enable")
+            )
             return true
         }
         return false
@@ -164,6 +169,11 @@ object AuthService {
     fun disable2FA(currentPassword: String): Boolean {
         if (currentPassword != currentAccess.password) return false
         saveAccessInfo(currentAccess.copy(twoFactorEnabled = false, twoFactorSecret = null))
+        FcmService.sendNotification(
+            title = "Security Alert: 2FA Disabled",
+            body = "Two-factor authentication has been disabled for your account.",
+            data = mapOf("type" to "security", "action" to "2fa_disable")
+        )
         return true
     }
 

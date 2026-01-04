@@ -257,6 +257,21 @@ class ProxyStats(
 )
 
 @Serializable
+class RegisterFcmTokenRequest(
+    val token: String,
+    val platform: String? = null,
+    val deviceName: String? = null
+)
+
+@Serializable
+class FcmTokenDetail(
+    val token: String,
+    val platform: String? = null,
+    val deviceName: String? = null,
+    val createdAt: Long = 0
+)
+
+@Serializable
 class BtmpEntry(
     val user: String,
     val ip: String,
