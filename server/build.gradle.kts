@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.umeshsolanki.dockermanager"
-version = "1.0.7"
+version = "1.0.8"
 
 application {
     mainClass.set("com.umeshsolanki.dockermanager.ApplicationKt")
@@ -18,7 +18,7 @@ application {
 
 // Generate version.properties
 val generateVersionProperties by tasks.registering {
-    val propertiesFile = file("${layout.buildDirectory}/generated/resources/version.properties")
+    val propertiesFile = layout.buildDirectory.file("generated/resources/version.properties").get().asFile
     outputs.file(propertiesFile)
     val appVersion = project.version.toString()
     doLast {
@@ -30,7 +30,7 @@ val generateVersionProperties by tasks.registering {
 sourceSets {
     main {
         resources {
-            srcDir("$buildDir/generated/resources")
+            srcDir(layout.buildDirectory.dir("generated/resources"))
         }
     }
 }

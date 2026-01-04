@@ -78,25 +78,40 @@ class ProxyServiceImpl : IProxyService {
         // Hits by Status
         val statusCounts =
             executeCommand("awk '{print \$9}' ${logFile.absolutePath} | sort | uniq -c").lineSequence()
-                .filter { it.isNotBlank() }.associate {
+                .filter { it.isNotBlank() }
+                .mapNotNull {
                     val parts = it.trim().split("\\s+".toRegex())
-                    parts[1].toInt() to parts[0].toLong()
-                }
+                    if (parts.size >= 2) {
+                        val count = parts[0].toLongOrNull() ?: 0L
+                        val status = parts[1].toIntOrNull()
+                        if (status != null) status to count else null
+                    } else null
+                }.toMap()
 
         // Hits over time (Last 24 hours approximation from last 5000 lines)
         val timeCounts =
             executeCommand("tail -n 5000 ${logFile.absolutePath} | awk -F'[' '{print \$2}' | awk -F':' '{print \$2\":00\"}' | sort | uniq -c").lineSequence()
-                .filter { it.isNotBlank() }.associate {
+                .filter { it.isNotBlank() }
+                .mapNotNull {
                     val parts = it.trim().split("\\s+".toRegex())
-                    parts[1] to parts[0].toLong()
-                }
+                    if (parts.size >= 2) {
+                        val time = parts[1]
+                        val count = parts[0].toLongOrNull() ?: 0L
+                        time to count
+                    } else null
+                }.toMap()
 
         // Top Paths
         val topPaths =
             executeCommand("awk '{print \$7}' ${logFile.absolutePath} | sort | uniq -c | sort -rn | head -n 5").lineSequence()
-                .filter { it.isNotBlank() }.map {
+                .filter { it.isNotBlank() }
+                .mapNotNull {
                     val parts = it.trim().split("\\s+".toRegex())
-                    parts[1] to parts[0].toLong()
+                    if (parts.size >= 2) {
+                        val path = parts[1]
+                        val count = parts[0].toLongOrNull() ?: 0L
+                        path to count
+                    } else null
                 }.toList()
 
         // Recent Hits (Last 20)
