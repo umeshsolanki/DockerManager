@@ -190,13 +190,16 @@ export default function DashboardScreen() {
                         <span className="text-[9px] uppercase font-bold text-on-surface-variant/30 tracking-wider">Top attacking IPs</span>
                     </div>
                     <div className="flex flex-col gap-2">
-                        {btmpStats?.topIps?.slice(0, 4).map(({ first: ip, second: count }, i) => (
+                        {btmpStats?.topIps?.slice(0, 4).map(({ ip, count, country }, i) => (
                             <div key={ip} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 group hover:border-red-500/20 transition-all">
                                 <div className="flex items-center gap-3">
                                     <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-red-500/10 text-red-500 text-[10px] font-bold">
                                         #{i + 1}
                                     </div>
-                                    <span className="font-mono text-xs font-bold group-hover:text-red-400 transition-colors">{ip}</span>
+                                    <div className="flex flex-col">
+                                        <span className="font-mono text-xs font-bold group-hover:text-red-400 transition-colors">{ip}</span>
+                                        {country && <span className="text-[8px] font-bold text-on-surface-variant/40">{country}</span>}
+                                    </div>
                                 </div>
                                 <div className="flex flex-col items-end">
                                     <span className="text-xs font-black">{count}</span>
