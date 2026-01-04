@@ -129,6 +129,16 @@ object AppConfig {
         }
     }
 
+    val uiRoot: File by lazy {
+        if (isDocker) {
+            File("/app/ui")
+        } else {
+            val env = System.getenv("UI_DIR").ifNullOrBlank(PROJECT_DIR.plus("/ui"))
+            logger.info("Using custom UI_DIR from env: $env")
+            File(env)
+        }
+    }
+
 
     val projectRoot: File by lazy {
         if (isDocker) {

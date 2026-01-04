@@ -36,6 +36,7 @@ ktor-clientJava = { module = "io.ktor:ktor-client-java", version.ref = "ktor" }
 ktor-clientContentNegotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
 ktor-serverAuth = { module = "io.ktor:ktor-server-auth", version.ref = "ktor" }
 ktor-serverSessions = { module = "io.ktor:ktor-server-sessions", version.ref = "ktor" }
+ktor-serverStaticContent = { module = "io.ktor:ktor-server-static-content", version.ref = "ktor" }
 
 kotlinx-serializationJson = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version = "1.8.0" }
 pty4j = { module = "org.jetbrains.pty4j:pty4j", version = "0.13.11" }

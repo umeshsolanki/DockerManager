@@ -5,7 +5,15 @@ const DEFAULT_SERVER_URL = "http://192.168.1.3:9091";
 export const DockerClient = {
     getServerUrl(): string {
         if (typeof window === 'undefined') return DEFAULT_SERVER_URL;
-        return localStorage.getItem('SERVER_URL') || DEFAULT_SERVER_URL;
+
+        const stored = localStorage.getItem('SERVER_URL');
+        if (stored) return stored;
+
+        // If developing locally on Next.js dev port, use the default backend URL
+        if (window.location.port === '3000') return DEFAULT_SERVER_URL;
+
+        // Otherwise assume the UI is being served by the UCpanel backend itself
+        return window.location.origin;
     },
 
     setServerUrl(url: string) {

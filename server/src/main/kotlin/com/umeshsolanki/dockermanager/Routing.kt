@@ -9,13 +9,11 @@ import io.ktor.websocket.close
 import com.umeshsolanki.dockermanager.routes.*
 import io.ktor.server.auth.authenticate
 
+import io.ktor.server.http.content.*
+
 fun Application.configureRouting() {
     routing {
-        get("/") {
-            call.respondText("UCpanel API is running")
-        }
-        
-        
+        // API Routes
         authRoutes()
 
         authenticate("auth-bearer") {
@@ -39,6 +37,13 @@ fun Application.configureRouting() {
         webSocket("/shell/container/{id}") {
             val id = call.parameters["id"] ?: return@webSocket close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "Container ID required"))
             ShellService.handleContainerShell(this, id)
+        }
+
+        // Serve UI (React App)
+        singlePageApplication {
+            useResources = false
+            filesPath = AppConfig.uiRoot.absolutePath
+            defaultPage = "index.html"
         }
     }
 }
