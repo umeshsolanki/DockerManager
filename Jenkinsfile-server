@@ -21,11 +21,13 @@ pipeline {
 
         stage('Build Web UI') {
             steps {
-                dir('web-app') {
-                    sh 'npm install'
-                    sh 'npm run build'
-                }
                 script {
+                    docker.image('node:20-alpine').inside {
+                        dir('web-app') {
+                            sh 'npm install'
+                            sh 'npm run build'
+                        }
+                    }
                     // Create directory for static resources in server module
                     sh 'mkdir -p server/src/main/resources/ui'
                     // Clear existing resources if any
