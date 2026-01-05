@@ -368,4 +368,16 @@ export interface ProxyActionResult {
   message: string;
 }
 
+export interface EmailTestRequest {
+  userAddress: string;
+  password: string;
+  testType?: string;
+}
+
+export interface EmailTestResult {
+  success: boolean;
+  message: string;
+  logs: string[];
+}
+
 

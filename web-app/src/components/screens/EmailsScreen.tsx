@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Mail, Shield, Plus, Trash, Key, Globe, User, RefreshCw, Inbox, Server, Play, Square, RotateCw, Save, Activity, FileText, Undo, AlertCircle } from 'lucide-react';
+import { Mail, Shield, Plus, Trash, Key, Globe, User, RefreshCw, Inbox, Server, Play, Square, RotateCw, Save, Activity, FileText, Undo, AlertCircle, ShieldCheck, Terminal, CheckCircle2, XCircle } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { EmailDomain, EmailUser, EmailMailbox, JamesContainerStatus } from '@/lib/types';
+import { EmailDomain, EmailUser, EmailMailbox, JamesContainerStatus, EmailTestResult } from '@/lib/types';
 import { toast } from 'sonner';
 import Editor from '@monaco-editor/react';
 
 export default function EmailsScreen() {
-    const [activeTab, setActiveTab] = useState<'Domains' | 'Users' | 'Mailboxes' | 'Aliases' | 'Manage' | 'Config'>('Domains');
+    const [activeTab, setActiveTab] = useState<'Domains' | 'Users' | 'Mailboxes' | 'Aliases' | 'Manage' | 'Config' | 'Test'>('Domains');
     const [isLoading, setIsLoading] = useState(false);
     const [domains, setDomains] = useState<EmailDomain[]>([]);
     const [users, setUsers] = useState<EmailUser[]>([]);
@@ -53,6 +53,7 @@ export default function EmailsScreen() {
                     <button onClick={() => setActiveTab('Mailboxes')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'Mailboxes' ? 'bg-primary text-primary-foreground shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}>Mailboxes</button>
                     <button onClick={() => setActiveTab('Manage')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'Manage' ? 'bg-primary text-primary-foreground shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}>Server</button>
                     <button onClick={() => setActiveTab('Config')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'Config' ? 'bg-primary text-primary-foreground shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}>Config</button>
+                    <button onClick={() => setActiveTab('Test')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'Test' ? 'bg-primary text-primary-foreground shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}>Test</button>
                 </div>
             </div>
 
@@ -63,6 +64,7 @@ export default function EmailsScreen() {
                 {activeTab === 'Mailboxes' && <MailboxesList />}
                 {activeTab === 'Manage' && <ManageJames />}
                 {activeTab === 'Config' && <JamesConfigFiles />}
+                {activeTab === 'Test' && <EmailTester users={users} />}
             </div>
         </div>
     );
@@ -818,6 +820,125 @@ function MailboxesList() {
                     </div>
                 )}
             </div>
+        </div>
+    );
+}
+
+function EmailTester({ users }: { users: EmailUser[] }) {
+    const [selectedUser, setSelectedUser] = useState('');
+    const [password, setPassword] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [result, setResult] = useState<EmailTestResult | null>(null);
+
+    const handleTest = async () => {
+        if (!selectedUser || !password) {
+            toast.error('Please select a user and enter the password');
+            return;
+        }
+
+        setIsLoading(true);
+        setResult(null);
+        try {
+            const res = await DockerClient.testJamesEmail({
+                userAddress: selectedUser,
+                password: password,
+                testType: 'smtp'
+            });
+            setResult(res);
+            if (res.success) {
+                toast.success('Test passed!');
+            } else {
+                toast.error('Test failed');
+            }
+        } catch (e) {
+            toast.error('An error occurred during testing');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="max-w-4xl mx-auto flex flex-col gap-6 p-4 overflow-y-auto h-full pb-20">
+            <div className="bg-surface border border-outline/10 rounded-2xl p-6 shadow-sm">
+                <h2 className="text-xl font-bold mb-2 flex items-center gap-2">
+                    <ShieldCheck className="text-primary" size={24} />
+                    Email Connection Tester
+                </h2>
+                <p className="text-sm text-on-surface-variant mb-6">
+                    Verify SMTP connectivity and authentication for your email accounts.
+                    This will attempt to connect to the local mail server and send a self-test message.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium px-1">Email Account</label>
+                        <select
+                            value={selectedUser}
+                            onChange={(e) => setSelectedUser(e.target.value)}
+                            className="w-full bg-white/5 border border-outline/20 rounded-xl py-2.5 px-4 text-on-surface focus:outline-none focus:border-primary transition-all appearance-none"
+                        >
+                            <option value="" className="bg-surface">Select a user...</option>
+                            {users.map(u => (
+                                <option key={u.userAddress} value={u.userAddress} className="bg-surface">{u.userAddress}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium px-1">Password</label>
+                        <input
+                            type="password"
+                            placeholder="Account password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className="w-full bg-white/5 border border-outline/20 rounded-xl py-2.5 px-4 text-on-surface focus:outline-none focus:border-primary transition-all"
+                        />
+                    </div>
+                </div>
+
+                <button
+                    onClick={handleTest}
+                    disabled={isLoading || !selectedUser || !password}
+                    className="w-full flex items-center justify-center gap-2 bg-primary text-white py-3 rounded-xl font-bold hover:bg-primary/90 transition-all disabled:opacity-50 shadow-lg shadow-primary/20"
+                >
+                    {isLoading ? <RefreshCw className="animate-spin" size={20} /> : <Play size={20} fill="currentColor" />}
+                    {isLoading ? 'Running Tests...' : 'Start Connection Test'}
+                </button>
+            </div>
+
+            {result && (
+                <div className={`border rounded-2xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500 ${result.success ? 'border-green-500/30' : 'border-red-500/30'}`}>
+                    <div className={`${result.success ? 'bg-green-500/10' : 'bg-red-500/10'} p-4 flex items-center justify-between`}>
+                        <div className="flex items-center gap-3">
+                            {result.success ? <CheckCircle2 className="text-green-500" size={24} /> : <XCircle className="text-red-500" size={24} />}
+                            <h3 className={`font-bold ${result.success ? 'text-green-500' : 'text-red-500'}`}>
+                                Test {result.success ? 'Passed' : 'Failed'}
+                            </h3>
+                        </div>
+                        <span className="text-xs font-mono opacity-50">{new Date().toLocaleTimeString()}</span>
+                    </div>
+
+                    <div className="bg-black/40 p-6 space-y-4">
+                        <div className="flex items-center gap-2 text-on-surface-variant mb-2">
+                            <Terminal size={16} />
+                            <span className="text-xs font-bold uppercase tracking-widest">Test Execution Logs</span>
+                        </div>
+                        <div className="font-mono text-sm space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar">
+                            {result.logs.map((log, i) => (
+                                <div key={i} className={`flex gap-3 ${log.toLowerCase().includes('error') ? 'text-red-400' : 'text-green-400/80'}`}>
+                                    <span className="opacity-30 shrink-0">[{i + 1}]</span>
+                                    <span>{log}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="p-4 bg-surface flex justify-center">
+                        <p className="text-sm text-on-surface-variant italic">
+                            {result.message}
+                        </p>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

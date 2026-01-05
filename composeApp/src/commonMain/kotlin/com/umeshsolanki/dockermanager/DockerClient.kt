@@ -285,7 +285,7 @@ object DockerClient {
     suspend fun listProxyHosts(): List<ProxyHost> {
         return try {
             client.get("$BASE_URL/proxy/hosts").body()
-        } catch (e) {
+        } catch (e: Exception) {
             e.printStackTrace()
             emptyList()
         }
@@ -332,6 +332,19 @@ object DockerClient {
         } catch (e: Exception) {
             e.printStackTrace()
             false
+        }
+    }
+
+    // Email Management
+    suspend fun testEmail(request: EmailTestRequest): EmailTestResult {
+        return try {
+            val response = client.post("$BASE_URL/emails/james/test") {
+                setBody(request)
+            }
+            response.body()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            EmailTestResult(false, "Network error: ${e.message}")
         }
     }
 }
