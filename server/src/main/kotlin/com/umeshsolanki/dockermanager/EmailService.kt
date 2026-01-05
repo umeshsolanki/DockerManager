@@ -53,6 +53,12 @@ interface IEmailService {
     fun restartJames(): Boolean
 
     suspend fun testEmailConnection(request: EmailTestRequest): EmailTestResult
+
+    // Configuration Files Management
+    fun listJamesConfigFiles(): List<String>
+    fun getJamesConfigContent(filename: String): String?
+    fun updateJamesConfigContent(filename: String, content: String): Boolean
+    fun getDefaultJamesConfigContent(filename: String): String?
 }
 
 class EmailServiceImpl : IEmailService {
@@ -502,5 +508,30 @@ services:
             logs.add("Error: ${e.message}")
             EmailTestResult(false, "Email test failed: ${e.message}", logs)
         }
+    }
+
+    override fun listJamesConfigFiles(): List<String> {
+        val configDir = AppConfig.jamesConfigDir
+        return configDir.listFiles()?.filter { it.isFile }?.map { it.name } ?: emptyList()
+    }
+
+    override fun getJamesConfigContent(filename: String): String? {
+        val file = File(AppConfig.jamesConfigDir, filename)
+        return if (file.exists()) file.readText() else null
+    }
+
+    override fun updateJamesConfigContent(filename: String, content: String): Boolean {
+        return try {
+            val file = File(AppConfig.jamesConfigDir, filename)
+            file.writeText(content)
+            true
+        } catch (e: Exception) {
+            logger.error("Failed to update James config file: $filename", e)
+            false
+        }
+    }
+
+    override fun getDefaultJamesConfigContent(filename: String): String? {
+        return JamesSetupService.getDefaultContent(filename)
     }
 }

@@ -294,6 +294,8 @@ export interface SystemConfig {
   appVersion: string;
   twoFactorEnabled: boolean;
   username: string;
+  proxyStatsActive?: boolean;
+  proxyStatsIntervalMs?: number;
 }
 
 export interface UpdateSystemConfigRequest {
@@ -358,6 +360,11 @@ export interface TwoFactorSetupResponse {
 export interface Enable2FARequest {
   secret: string;
   code: string;
+}
+
+export interface ProxyActionResult {
+  success: boolean;
+  message: string;
 }
 
 

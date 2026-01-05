@@ -135,6 +135,10 @@ object DockerService {
     fun stopJames() = emailService.stopJames()
     fun restartJames() = emailService.restartJames()
     suspend fun testEmailConnection(request: EmailTestRequest) = emailService.testEmailConnection(request)
+    fun listJamesConfigFiles() = emailService.listJamesConfigFiles()
+    fun getJamesConfigContent(filename: String) = emailService.getJamesConfigContent(filename)
+    fun updateJamesConfigContent(filename: String, content: String) = emailService.updateJamesConfigContent(filename, content)
+    fun getDefaultJamesConfigContent(filename: String) = emailService.getDefaultJamesConfigContent(filename)
 
     fun getSystemConfig() = SystemConfig(
         dockerCommand = AppConfig.dockerCommand,

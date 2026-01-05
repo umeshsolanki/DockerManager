@@ -1052,6 +1052,52 @@ export const DockerClient = {
         }
     },
 
+    async listJamesConfigFiles(): Promise<string[]> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/james/files`, { headers: this.getHeaders() });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return [];
+        }
+    },
+
+    async getJamesConfigContent(filename: string): Promise<string> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/james/files/${filename}`, { headers: this.getHeaders() });
+            const data = await response.json();
+            return data.content || '';
+        } catch (e) {
+            console.error(e);
+            return '';
+        }
+    },
+
+    async updateJamesConfigContent(filename: string, content: string): Promise<{ success: boolean, message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/james/files/${filename}`, {
+                method: 'POST',
+                headers: this.getHeaders(),
+                body: JSON.stringify({ content })
+            });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
+    async getDefaultJamesConfigContent(filename: string): Promise<string> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/emails/james/files/${filename}/default`, { headers: this.getHeaders() });
+            const data = await response.json();
+            return data.content || '';
+        } catch (e) {
+            console.error(e);
+            return '';
+        }
+    },
+
     async getSystemConfig(): Promise<SystemConfig | null> {
         try {
             const response = await fetch(`${this.getServerUrl()}/system/config`, { headers: this.getHeaders() });

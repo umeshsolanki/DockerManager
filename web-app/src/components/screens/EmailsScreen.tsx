@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Mail, Shield, Plus, Trash, Key, Globe, User, RefreshCw, Inbox, Server, Play, Square, RotateCw, Save, Activity } from 'lucide-react';
+import { Mail, Shield, Plus, Trash, Key, Globe, User, RefreshCw, Inbox, Server, Play, Square, RotateCw, Save, Activity, FileText, Undo, AlertCircle } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { EmailDomain, EmailUser, EmailMailbox, JamesContainerStatus } from '@/lib/types';
 import { toast } from 'sonner';
+import Editor from '@monaco-editor/react';
 
 export default function EmailsScreen() {
-    const [activeTab, setActiveTab] = useState<'Domains' | 'Users' | 'Mailboxes' | 'Aliases' | 'Manage'>('Domains');
+    const [activeTab, setActiveTab] = useState<'Domains' | 'Users' | 'Mailboxes' | 'Aliases' | 'Manage' | 'Config'>('Domains');
     const [isLoading, setIsLoading] = useState(false);
     const [domains, setDomains] = useState<EmailDomain[]>([]);
     const [users, setUsers] = useState<EmailUser[]>([]);
@@ -51,6 +52,7 @@ export default function EmailsScreen() {
                     <button onClick={() => setActiveTab('Aliases')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'Aliases' ? 'bg-primary text-primary-foreground shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}>Aliases</button>
                     <button onClick={() => setActiveTab('Mailboxes')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'Mailboxes' ? 'bg-primary text-primary-foreground shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}>Mailboxes</button>
                     <button onClick={() => setActiveTab('Manage')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'Manage' ? 'bg-primary text-primary-foreground shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}>Server</button>
+                    <button onClick={() => setActiveTab('Config')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'Config' ? 'bg-primary text-primary-foreground shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}>Config</button>
                 </div>
             </div>
 
@@ -60,6 +62,7 @@ export default function EmailsScreen() {
                 {activeTab === 'Aliases' && <AliasesList groups={groups} onRefresh={fetchData} />}
                 {activeTab === 'Mailboxes' && <MailboxesList />}
                 {activeTab === 'Manage' && <ManageJames />}
+                {activeTab === 'Config' && <JamesConfigFiles />}
             </div>
         </div>
     );
@@ -333,6 +336,177 @@ function ManageJames() {
                     />
                 </div>
             )}
+        </div>
+    );
+}
+
+function JamesConfigFiles() {
+    const [files, setFiles] = useState<string[]>([]);
+    const [selectedFile, setSelectedFile] = useState<string>('');
+    const [content, setContent] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+
+    useEffect(() => {
+        const fetchFiles = async () => {
+            const list = await DockerClient.listJamesConfigFiles();
+            setFiles(list);
+            if (list.length > 0 && !selectedFile) {
+                handleSelectFile(list[0]);
+            }
+        };
+        fetchFiles();
+    }, []);
+
+    const handleSelectFile = async (name: string) => {
+        setSelectedFile(name);
+        setIsLoading(true);
+        try {
+            const data = await DockerClient.getJamesConfigContent(name);
+            setContent(data);
+        } catch (e) {
+            toast.error('Failed to load file');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleSave = async () => {
+        if (!selectedFile) return;
+        setIsSaving(true);
+        const res = await DockerClient.updateJamesConfigContent(selectedFile, content);
+        if (res.success) {
+            toast.success('File saved successfully');
+        } else {
+            toast.error(res.message || 'Failed to save file');
+        }
+        setIsSaving(false);
+    };
+
+    const handleReset = async () => {
+        if (!selectedFile) return;
+        if (!confirm(`Reset ${selectedFile} to default? Current changes will be lost.`)) return;
+
+        setIsLoading(true);
+        try {
+            const data = await DockerClient.getDefaultJamesConfigContent(selectedFile);
+            if (data) {
+                setContent(data);
+                toast.success('Reset to default template');
+            } else {
+                toast.error('No default template found for this file');
+            }
+        } catch (e) {
+            toast.error('Failed to load default template');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const getLanguage = (filename: string) => {
+        if (filename.endsWith('.xml')) return 'xml';
+        if (filename.endsWith('.properties')) return 'ini';
+        return 'text';
+    };
+
+    return (
+        <div className="flex flex-col h-full gap-4">
+            <div className="flex flex-col md:flex-row gap-4 h-full overflow-hidden">
+                {/* File List */}
+                <div className="w-full md:w-64 flex flex-col gap-2 bg-surface/30 border border-outline/10 rounded-2xl p-4 overflow-y-auto">
+                    <h3 className="text-sm font-bold text-on-surface-variant uppercase tracking-wider px-2 mb-2">Config Files</h3>
+                    {files.map(file => (
+                        <button
+                            key={file}
+                            onClick={() => handleSelectFile(file)}
+                            className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all text-left ${selectedFile === file ? 'bg-primary/20 text-primary border border-primary/30' : 'hover:bg-surface border border-transparent'}`}
+                        >
+                            <FileText size={16} className={selectedFile === file ? 'text-primary' : 'text-on-surface-variant'} />
+                            <span className="truncate">{file}</span>
+                        </button>
+                    ))}
+                    {files.length === 0 && (
+                        <div className="text-center py-10 text-on-surface-variant text-xs italic">
+                            No files found
+                        </div>
+                    )}
+                </div>
+
+                {/* Editor Container */}
+                <div className="flex-1 flex flex-col gap-4 bg-surface/30 border border-outline/10 rounded-2xl overflow-hidden min-h-0">
+                    <div className="flex items-center justify-between p-4 border-b border-outline/10 bg-surface/50">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                <FileText size={18} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold">{selectedFile || 'Select a file'}</h3>
+                                <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-widest">
+                                    {getLanguage(selectedFile || '')} editor
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={handleReset}
+                                disabled={!selectedFile || isLoading}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-surface hover:bg-white/10 border border-outline/20 rounded-lg text-xs font-bold transition-all text-on-surface-variant"
+                                title="Reset to default template"
+                            >
+                                <Undo size={14} /> Reset
+                            </button>
+                            <button
+                                onClick={handleSave}
+                                disabled={!selectedFile || isSaving || isLoading}
+                                className="flex items-center gap-2 px-4 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-bold transition-all shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95"
+                            >
+                                <Save size={14} /> {isSaving ? 'Saving...' : 'Save Changes'}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 relative min-h-0">
+                        {isLoading ? (
+                            <div className="absolute inset-0 flex items-center justify-center z-10 bg-surface/50">
+                                <RefreshCw className="animate-spin text-primary" size={32} />
+                            </div>
+                        ) : null}
+
+                        {!selectedFile ? (
+                            <div className="h-full flex flex-col items-center justify-center text-on-surface-variant opacity-50">
+                                <FileText size={48} className="mb-4" />
+                                <p>Select a configuration file on the left to edit</p>
+                            </div>
+                        ) : (
+                            <Editor
+                                height="100%"
+                                language={getLanguage(selectedFile)}
+                                theme="vs-dark"
+                                value={content}
+                                onChange={(val) => setContent(val || '')}
+                                options={{
+                                    minimap: { enabled: false },
+                                    fontSize: 14,
+                                    lineNumbers: 'on',
+                                    scrollBeyondLastLine: false,
+                                    automaticLayout: true,
+                                    tabSize: 4,
+                                    padding: { top: 16 }
+                                }}
+                            />
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex items-center gap-3 bg-primary/5 border border-primary/10 p-4 rounded-2xl">
+                <AlertCircle className="text-primary shrink-0" size={20} />
+                <p className="text-sm text-on-surface-variant">
+                    <span className="font-bold text-primary">Note:</span> Configuration changes require a
+                    <span className="font-bold mx-1">Server Restart</span> to take effect. You can restart the server from the
+                    <span className="font-bold ml-1 italic">Server</span> tab.
+                </p>
+            </div>
         </div>
     );
 }
