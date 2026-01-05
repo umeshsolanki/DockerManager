@@ -8,8 +8,11 @@ import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
+import io.ktor.client.request.put
+import io.ktor.client.request.setBody
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import com.umeshsolanki.dockermanager.ProxyHost
 
 object DockerClient {
     private val client = HttpClient {
@@ -271,6 +274,60 @@ object DockerClient {
     suspend fun ensureProxyContainer(): Boolean {
         return try {
             client.post("$BASE_URL/proxy/container/ensure")
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    // Proxy Host Management
+    suspend fun listProxyHosts(): List<ProxyHost> {
+        return try {
+            client.get("$BASE_URL/proxy/hosts").body()
+        } catch (e) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun createProxyHost(host: ProxyHost): Boolean {
+        return try {
+            client.post("$BASE_URL/proxy/hosts") {
+                setBody(host)
+            }
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun updateProxyHost(host: ProxyHost): Boolean {
+        return try {
+            client.put("$BASE_URL/proxy/hosts/${host.id}") {
+                setBody(host)
+            }
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun deleteProxyHost(id: String): Boolean {
+        return try {
+            client.delete("$BASE_URL/proxy/hosts/$id")
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun toggleProxyHost(id: String): Boolean {
+        return try {
+            client.post("$BASE_URL/proxy/hosts/$id/toggle")
             true
         } catch (e: Exception) {
             e.printStackTrace()

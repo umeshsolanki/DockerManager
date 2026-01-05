@@ -225,6 +225,7 @@ data class ProxyHost(
     val websocketEnabled: Boolean = false,
     val hstsEnabled: Boolean = false,
     val customSslPath: String? = null,
+    val allowedIps: List<String> = emptyList(),
     val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
 )
 

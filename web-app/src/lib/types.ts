@@ -195,6 +195,7 @@ export interface ProxyHost {
   websocketEnabled: boolean;
   hstsEnabled: boolean;
   customSslPath?: string;
+  allowedIps?: string[];
   createdAt: number;
 }
 

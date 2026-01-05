@@ -163,6 +163,7 @@ export default function ProxyScreen() {
                                                 <div className="flex gap-1.5 mt-1.5">
                                                     {host.hstsEnabled && <span className="text-[8px] bg-purple-500/10 text-purple-500 px-1 py-0.5 rounded font-bold uppercase">HSTS</span>}
                                                     {host.websocketEnabled && <span className="text-[8px] bg-blue-500/10 text-blue-500 px-1 py-0.5 rounded font-bold uppercase">WS</span>}
+                                                    {host.allowedIps && host.allowedIps.length > 0 && <span className="text-[8px] bg-amber-500/10 text-amber-500 px-1 py-0.5 rounded font-bold uppercase flex items-center gap-0.5"><ShieldCheck size={8} /> IP RESTRICTED</span>}
                                                 </div>
                                             </div>
                                         </div>
@@ -592,6 +593,8 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
     const [selectedCert, setSelectedCert] = useState<string>(initialHost?.customSslPath || '');
     const [certs, setCerts] = useState<SSLCertificate[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [allowedIps, setAllowedIps] = useState<string[]>(initialHost?.allowedIps || []);
+    const [newIp, setNewIp] = useState('');
 
     useEffect(() => {
         DockerClient.listProxyCertificates().then(setCerts);
@@ -610,6 +613,7 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
             websocketEnabled,
             hstsEnabled: sslEnabled ? hstsEnabled : false,
             customSslPath: (sslEnabled && selectedCert) ? selectedCert : undefined,
+            allowedIps,
             createdAt: initialHost?.createdAt || Date.now()
         };
 
@@ -720,6 +724,58 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
                                 </div>
                             </div>
                         )}
+                    </div>
+
+                    {/* IP Restrictions */}
+                    <div className="pt-2 border-t border-outline/10">
+                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-2 ml-1">IP Restrictions</label>
+                        <div className="flex gap-2 mb-2">
+                            <input
+                                type="text"
+                                placeholder="IP or CIDR (e.g. 1.2.3.4)"
+                                value={newIp}
+                                onChange={(e) => setNewIp(e.target.value)}
+                                className="flex-1 bg-white/5 border border-outline/20 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:border-primary"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        if (newIp.trim()) {
+                                            setAllowedIps([...allowedIps, newIp.trim()]);
+                                            setNewIp('');
+                                        }
+                                    }
+                                }}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (newIp.trim()) {
+                                        setAllowedIps([...allowedIps, newIp.trim()]);
+                                        setNewIp('');
+                                    }
+                                }}
+                                className="bg-primary/20 text-primary p-2 rounded-xl hover:bg-primary/30 transition-all"
+                            >
+                                <Plus size={16} />
+                            </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto no-scrollbar p-1">
+                            {allowedIps.map(ip => (
+                                <div key={ip} className="flex items-center gap-2 bg-surface border border-outline/20 px-2 py-1 rounded-lg text-[10px] font-mono group">
+                                    <span>{ip}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAllowedIps(allowedIps.filter(i => i !== ip))}
+                                        className="text-on-surface-variant hover:text-red-500 transition-colors"
+                                    >
+                                        <Plus size={10} className="rotate-45" />
+                                    </button>
+                                </div>
+                            ))}
+                            {allowedIps.length === 0 && (
+                                <span className="text-[10px] text-on-surface-variant italic">No restrictions (Public)</span>
+                            )}
+                        </div>
                     </div>
 
                     <div className="flex gap-2 pt-2">

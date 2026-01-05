@@ -404,6 +404,10 @@ class ProxyServiceImpl : IProxyService {
             proxy_set_header Connection "upgrade";
         """.trimIndent() else ""
 
+        val ipConfig = if (host.allowedIps.isNotEmpty()) {
+            host.allowedIps.joinToString("\n        ") { "allow $it;" } + "\n        deny all;"
+        } else ""
+
         val sslConfig = if (host.ssl) {
             val certsDir = AppConfig.letsEncryptDir
             
@@ -454,6 +458,7 @@ server {
         proxy_set_header X-Forwarded-Proto ${'$'}scheme;
         
         $wsConfig
+        $ipConfig
     }
 }
             """.trimIndent()
@@ -479,6 +484,7 @@ server {
         proxy_set_header X-Forwarded-Proto ${'$'}scheme;
         
         $wsConfig
+        $ipConfig
         """.trimIndent() else ""
         }
     }
