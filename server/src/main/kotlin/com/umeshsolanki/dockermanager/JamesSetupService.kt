@@ -26,6 +26,7 @@ object JamesSetupService {
             <usersrepository name="LocalUsersRepository">
                 <repository name="LocalUsersRepository" class="org.apache.james.user.jpa.JPAUsersRepository">
                     <algorithm>MD5</algorithm>
+                    <enableVirtualHosting>true</enableVirtualHosting>
                 </repository>
             </usersrepository>
         """.trimIndent())
@@ -40,6 +41,76 @@ object JamesSetupService {
                 <autodetectIP>true</autodetectIP>
                 <defaultDomain>localhost</defaultDomain>
             </domainlist>
+        """.trimIndent())
+
+        val tlsConfig = """
+            <tls socketTLS="false" startTLS="true">
+                <privateKey>file://conf/privkey.pem</privateKey>
+                <certificates>file://conf/fullchain.pem</certificates>
+            </tls>
+        """.trimIndent()
+
+        val tlsSslConfig = """
+            <tls socketTLS="true" startTLS="false">
+                <privateKey>file://conf/privkey.pem</privateKey>
+                <certificates>file://conf/fullchain.pem</certificates>
+            </tls>
+        """.trimIndent()
+
+        ensureFile(configDir, "smtpserver.xml", """
+            <?xml version="1.0"?>
+            <smtpservers>
+                <smtpserver enabled="true">
+                    <jmxName>smtpserver</jmxName>
+                    <bind>0.0.0.0:25</bind>
+                    $tlsConfig
+                    <auth>
+                        <announce>true</announce>
+                    </auth>
+                </smtpserver>
+                <smtpserver enabled="true">
+                    <jmxName>smtpserver-tls</jmxName>
+                    <bind>0.0.0.0:465</bind>
+                    $tlsSslConfig
+                    <auth>
+                        <announce>always</announce>
+                    </auth>
+                </smtpserver>
+                <smtpserver enabled="true">
+                    <jmxName>smtpserver-submission</jmxName>
+                    <bind>0.0.0.0:587</bind>
+                    $tlsConfig
+                    <auth>
+                        <announce>always</announce>
+                    </auth>
+                </smtpserver>
+            </smtpservers>
+        """.trimIndent())
+
+        ensureFile(configDir, "imapserver.xml", """
+            <?xml version="1.0"?>
+            <imapservers>
+                <imapserver enabled="true">
+                    <jmxName>imapserver</jmxName>
+                    <bind>0.0.0.0:143</bind>
+                    $tlsConfig
+                </imapserver>
+                <imapserver enabled="true">
+                    <jmxName>imapserver-ssl</jmxName>
+                    <bind>0.0.0.0:993</bind>
+                    $tlsSslConfig
+                </imapserver>
+            </imapservers>
+        """.trimIndent())
+
+        ensureFile(configDir, "lmtpserver.xml", """
+            <?xml version="1.0"?>
+            <lmtpservers>
+                <lmtpserver enabled="true">
+                    <jmxName>lmtpserver</jmxName>
+                    <bind>0.0.0.0:24</bind>
+                </lmtpserver>
+            </lmtpservers>
         """.trimIndent())
         
         // Ensure var directory exists

@@ -20,7 +20,9 @@ data class AppSettings(
     val jailDurationMinutes: Int = 30,
     val monitoringActive: Boolean = true,
     val monitoringIntervalMinutes: Int = 5,
-    val fcmServiceAccountPath: String = "fcm-service-account.json"
+    val fcmServiceAccountPath: String = "fcm-service-account.json",
+    val proxyStatsActive: Boolean = true,
+    val proxyStatsIntervalMs: Long = 10000L
 )
 
 object AppConfig {
@@ -82,7 +84,16 @@ object AppConfig {
         saveSettings()
     }
 
+    fun updateProxyStatsSettings(active: Boolean, intervalMs: Long) {
+        _settings = _settings.copy(
+            proxyStatsActive = active,
+            proxyStatsIntervalMs = intervalMs
+        )
+        saveSettings()
+    }
+
     val jailSettings: AppSettings get() = _settings
+    val proxyStatsSettings: AppSettings get() = _settings
 
     private fun saveSettings() {
         try {

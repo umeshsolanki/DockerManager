@@ -11,6 +11,9 @@ import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.util.concurrent.TimeUnit
+import jakarta.mail.*
+import jakarta.mail.internet.*
+import java.util.Properties
 
 interface IEmailService {
     suspend fun listDomains(): List<EmailDomain>
@@ -48,6 +51,8 @@ interface IEmailService {
     fun startJames(): Boolean
     fun stopJames(): Boolean
     fun restartJames(): Boolean
+
+    suspend fun testEmailConnection(request: EmailTestRequest): EmailTestResult
 }
 
 class EmailServiceImpl : IEmailService {
@@ -107,6 +112,36 @@ class EmailServiceImpl : IEmailService {
                 cors.enable=true
                 cors.origin=*
             """.trimIndent())
+        }
+
+        // --- SSL Certificate Discovery ---
+        val fullchain = File(confDir, "fullchain.pem")
+        val privkey = File(confDir, "privkey.pem")
+
+        if (!fullchain.exists() || !privkey.exists()) {
+            // Try to find a valid certificate from Let's Encrypt
+            val leDir = AppConfig.letsEncryptDir
+            val bestCertDir = leDir.listFiles()?.filter { it.isDirectory }?.firstOrNull { 
+                File(it, "fullchain.pem").exists() && File(it, "privkey.pem").exists()
+            }
+
+            if (bestCertDir != null) {
+                logger.info("Found Let's Encrypt certificate in ${bestCertDir.absolutePath}. Linking to James conf.")
+                // Copy or Link? Bind mount in docker is easier if we just know the path, 
+                // but James config expects them at fixed local paths in conf/.
+                // To keep it simple, we will copy them if they change or just use them.
+                // Since this is a setup service, we'll copy for now to ensure they are available to the container.
+                try {
+                    File(bestCertDir, "fullchain.pem").copyTo(fullchain, overwrite = true)
+                    File(bestCertDir, "privkey.pem").copyTo(privkey, overwrite = true)
+                } catch (e: Exception) {
+                    logger.error("Failed to copy SSL certs to James conf", e)
+                }
+            } else {
+                // Generate dummy if not exists to prevent James from failing to start
+                if (!fullchain.exists()) fullchain.writeText("Dummy Cert - Replace with real PEM")
+                if (!privkey.exists()) privkey.writeText("Dummy Key - Replace with real PEM")
+            }
         }
 
         if (!composeFile.exists()) {
@@ -180,6 +215,7 @@ class EmailServiceImpl : IEmailService {
     }
 
     private fun getDefaultComposeConfig(): String {
+        val jamesPath = jamesDir.absolutePath
         return """
 services:
   james:
@@ -194,10 +230,9 @@ services:
       - "993:993"   # IMAPS
       - "8001:8000" # WebAdmin API
     volumes:
-      - /opt/docker-manager/data/james/conf:/root/conf
-      - /opt/docker-manager/data/james/var:/root/var
-      - /opt/docker-manager/data/james/conf/webadmin.properties:/root/conf/webadmin.properties
-    command: --generate-keystore
+      - $jamesPath/conf:/root/conf
+      - $jamesPath/var:/root/var
+      - $jamesPath/conf/webadmin.properties:/root/conf/webadmin.properties
     restart: unless-stopped
     environment:
       - TZ=Asia/Kolkata
@@ -420,6 +455,52 @@ services:
         } catch (e: Exception) {
             logger.error("Failed to delete quota for $userAddress", e)
             false
+        }
+    }
+    override suspend fun testEmailConnection(request: EmailTestRequest): EmailTestResult {
+        val logs = mutableListOf<String>()
+        return try {
+            val props = Properties().apply {
+                put("mail.smtp.auth", "true")
+                put("mail.smtp.starttls.enable", "true")
+                put("mail.smtp.host", "localhost") // Assuming james is accessible on localhost
+                put("mail.smtp.port", "587")
+                put("mail.smtp.ssl.trust", "localhost")
+                put("mail.smtp.timeout", "10000")
+                put("mail.smtp.connectiontimeout", "10000")
+            }
+
+            val session = Session.getInstance(props, object : Authenticator() {
+                override fun getPasswordAuthentication(): PasswordAuthentication {
+                    return PasswordAuthentication(request.userAddress, request.password)
+                }
+            })
+
+            logs.add("Checking SMTP connection to localhost:587 for ${request.userAddress}...")
+            
+            val transport = session.getTransport("smtp")
+            transport.connect()
+            
+            logs.add("Successfully connected and authenticated via SMTP.")
+
+            // Create and send a self-test email
+            val message = MimeMessage(session).apply {
+                setFrom(InternetAddress(request.userAddress))
+                setRecipients(Message.RecipientType.TO, InternetAddress.parse(request.userAddress))
+                setSubject("UCpanel Email Test")
+                setText("This is a test email sent from UCpanel to verify your email server configuration.")
+            }
+
+            logs.add("Sending test email to ${request.userAddress}...")
+            transport.sendMessage(message, message.allRecipients)
+            transport.close()
+            
+            logs.add("Test email sent successfully.")
+            EmailTestResult(true, "Email test passed successfully.", logs)
+        } catch (e: Exception) {
+            logger.error("Email test failed", e)
+            logs.add("Error: ${e.message}")
+            EmailTestResult(false, "Email test failed: ${e.message}", logs)
         }
     }
 }

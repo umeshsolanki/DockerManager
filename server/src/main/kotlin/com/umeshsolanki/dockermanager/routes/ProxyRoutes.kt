@@ -74,6 +74,12 @@ fun Route.proxyRoutes() {
             call.respond(DockerService.getProxyStats())
         }
 
+        post("/stats/settings") {
+            val request = call.receive<com.umeshsolanki.dockermanager.UpdateProxyStatsRequest>()
+            DockerService.updateProxyStatsSettings(request.active, request.intervalMs)
+            call.respond(HttpStatusCode.OK, ProxyActionResult(true, "Proxy stats settings updated"))
+        }
+
         get("/certificates") {
             call.respond(DockerService.listProxyCertificates())
         }

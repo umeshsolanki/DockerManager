@@ -245,6 +245,7 @@ class ProxyHit(
     val status: Int,
     val responseTime: Int,
     val userAgent: String,
+    val domain: String? = null,
 )
 
 @Serializable
@@ -254,6 +255,7 @@ class ProxyStats(
     val hitsOverTime: Map<String, Long>, // Key: HH:00
     val topPaths: List<Pair<String, Long>>,
     val recentHits: List<ProxyHit>,
+    val hitsByDomain: Map<String, Long> = emptyMap(),
 )
 
 @Serializable
@@ -391,7 +393,15 @@ class SystemConfig(
     val jamesWebAdminUrl: String,
     val appVersion: String = "Unknown",
     val twoFactorEnabled: Boolean = false,
-    val username: String = "admin"
+    val username: String = "admin",
+    val proxyStatsActive: Boolean = true,
+    val proxyStatsIntervalMs: Long = 10000L
+)
+
+@Serializable
+class UpdateProxyStatsRequest(
+    val active: Boolean,
+    val intervalMs: Long
 )
 
 @Serializable
@@ -441,6 +451,16 @@ class Enable2FARequest(
     val secret: String,
     val code: String
 )
+@Serializable
+class EmailTestRequest(
+    val userAddress: String,
+    val password: String,
+    val testType: String = "smtp" // "smtp" or "imap" or "full"
+)
 
-
-
+@Serializable
+class EmailTestResult(
+    val success: Boolean,
+    val message: String,
+    val logs: List<String> = emptyList()
+)

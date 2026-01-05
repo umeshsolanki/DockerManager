@@ -30,6 +30,7 @@ interface IProxyService {
     fun ensureProxyContainerExists(): Boolean
     fun getComposeConfig(): String
     fun updateComposeConfig(content: String): Pair<Boolean, String>
+    fun updateStatsSettings(active: Boolean, intervalMs: Long)
 }
 
 class ProxyServiceImpl : IProxyService {
@@ -39,8 +40,13 @@ class ProxyServiceImpl : IProxyService {
     private val hostsFile = AppConfig.proxyHostsFile
     private val json = AppConfig.json
 
-    private var cachedStats: ProxyStats =
-        ProxyStats(0, emptyMap(), emptyMap(), emptyList(), emptyList())
+    private var cachedStats: ProxyStats = ProxyStats(
+            totalHits = 0,
+            hitsByStatus = emptyMap(),
+            hitsOverTime = emptyMap(),
+            topPaths = emptyList(),
+            recentHits = emptyList()
+        )
     private val refreshIntervalMs = 10000L // Configurable interval: 10 seconds
     private val scope =
         CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -61,11 +67,15 @@ class ProxyServiceImpl : IProxyService {
         scope.launch {
             while (isActive) {
                 try {
-                    updateStatsNatively()
+                    val settings = AppConfig.proxyStatsSettings
+                    if (settings.proxyStatsActive) {
+                        updateStatsNatively()
+                    }
+                    delay(settings.proxyStatsIntervalMs)
                 } catch (e: Exception) {
                     logger.error("Error updating stats", e)
+                    delay(10000) // Fallback delay on error
                 }
-                delay(refreshIntervalMs)
             }
         }
     }
@@ -85,6 +95,19 @@ class ProxyServiceImpl : IProxyService {
                         val count = parts[0].toLongOrNull() ?: 0L
                         val status = parts[1].toIntOrNull()
                         if (status != null) status to count else null
+                    } else null
+                }.toMap()
+
+        // Hits by Domain
+        val domainCounts =
+            executeCommand("awk -F'\"' '{print \$(NF-1)}' ${logFile.absolutePath} | sort | uniq -c").lineSequence()
+                .filter { it.isNotBlank() }
+                .mapNotNull {
+                    val parts = it.trim().split("\\s+".toRegex())
+                    if (parts.size >= 2) {
+                        val count = parts[0].toLongOrNull() ?: 0L
+                        val domain = parts[1]
+                        domain to count
                     } else null
                 }.toMap()
 
@@ -117,13 +140,13 @@ class ProxyServiceImpl : IProxyService {
         // Recent Hits (Last 20)
         val recentHits = mutableListOf<ProxyHit>()
         val lineRegex =
-            """^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) (\S+) \S+" (\d+) (\d+) "([^"]*)" "([^"]*)"$""".toRegex()
+            """^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) (\S+) \S+" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)" "([^"]*)"$""".toRegex()
         val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
 
         executeCommand("tail -n 20 ${logFile.absolutePath}").lineSequence()
             .filter { it.isNotBlank() }.forEach { line ->
                 lineRegex.find(line)?.let { match ->
-                    val (ip, dateStr, method, path, status, _, _, ua) = match.destructured
+                    val (ip, dateStr, method, path, status, _, _, referer, ua, domain) = match.destructured
                     recentHits.add(
                         ProxyHit(
                             timestamp = try {
@@ -136,7 +159,8 @@ class ProxyServiceImpl : IProxyService {
                             path = path,
                             status = status.toInt(),
                             responseTime = 0,
-                            userAgent = ua
+                            userAgent = ua,
+                            domain = domain
                         )
                     )
                 }
@@ -145,6 +169,7 @@ class ProxyServiceImpl : IProxyService {
         cachedStats = ProxyStats(
             totalHits = totalHits,
             hitsByStatus = statusCounts,
+            hitsByDomain = domainCounts,
             hitsOverTime = timeCounts.toSortedMap(),
             topPaths = topPaths,
             recentHits = recentHits
@@ -924,7 +949,7 @@ $sslConfig
 
                 log_format  main  '${'$'}remote_addr - ${'$'}remote_user [${'$'}time_local] "${'$'}request" '
                                   '${'$'}status ${'$'}body_bytes_sent "${'$'}http_referer" '
-                                  '"${'$'}http_user_agent" "${'$'}http_x_forwarded_for"';
+                                  '"${'$'}http_user_agent" "${'$'}http_x_forwarded_for" "${'$'}host"';
 
                 access_log  /usr/local/openresty/nginx/logs/access.log  main;
                 error_log   /usr/local/openresty/nginx/logs/error.log;
@@ -942,6 +967,10 @@ $sslConfig
         } catch (e: Exception) {
             false to "Failed to update compose configuration: ${e.message}"
         }
+    }
+
+    override fun updateStatsSettings(active: Boolean, intervalMs: Long) {
+        AppConfig.updateProxyStatsSettings(active, intervalMs)
     }
 
     private fun checkImageExists(): Boolean {

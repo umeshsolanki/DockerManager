@@ -235,6 +235,10 @@ fun Route.emailRoutes() {
                     )
                 )
             }
+            post("/test") {
+                val request = call.receive<EmailTestRequest>()
+                call.respond(DockerService.testEmailConnection(request))
+            }
         }
     }
 }

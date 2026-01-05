@@ -98,6 +98,7 @@ object DockerService {
     fun ensureProxyContainerExists() = proxyService.ensureProxyContainerExists()
     fun getProxyComposeConfig() = proxyService.getComposeConfig()
     fun updateProxyComposeConfig(content: String) = proxyService.updateComposeConfig(content)
+    fun updateProxyStatsSettings(active: Boolean, intervalMs: Long) = proxyService.updateStatsSettings(active, intervalMs)
 
     // Email Management
     suspend fun listEmailDomains() = emailService.listDomains()
@@ -133,6 +134,7 @@ object DockerService {
     fun startJames() = emailService.startJames()
     fun stopJames() = emailService.stopJames()
     fun restartJames() = emailService.restartJames()
+    suspend fun testEmailConnection(request: EmailTestRequest) = emailService.testEmailConnection(request)
 
     fun getSystemConfig() = SystemConfig(
         dockerCommand = AppConfig.dockerCommand,
@@ -142,7 +144,9 @@ object DockerService {
         jamesWebAdminUrl = AppConfig.jamesWebAdminUrl,
         appVersion = AppConfig.appVersion,
         twoFactorEnabled = AuthService.is2FAEnabled(),
-        username = AuthService.getUsername()
+        username = AuthService.getUsername(),
+        proxyStatsActive = AppConfig.proxyStatsSettings.proxyStatsActive,
+        proxyStatsIntervalMs = AppConfig.proxyStatsSettings.proxyStatsIntervalMs
     )
 
     fun updateSystemConfig(request: UpdateSystemConfigRequest) {

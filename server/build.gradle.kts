@@ -61,6 +61,7 @@ dependencies {
     implementation(libs.docker.java)
     implementation(libs.docker.java.transport)
     implementation(libs.firebase.admin)
+    implementation(libs.jakarta.mail)
     testImplementation(libs.ktor.serverTestHost)
     testImplementation(libs.kotlin.testJunit)
 }
