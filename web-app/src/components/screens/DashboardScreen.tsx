@@ -248,7 +248,7 @@ export default function DashboardScreen() {
                         <span className="text-[9px] uppercase font-bold text-on-surface-variant/30 tracking-wider">Most visited routes</span>
                     </div>
                     <div className="space-y-2">
-                        {proxyStats?.topPaths?.slice(0, 4).map(({ first: path, second: count }, i) => (
+                        {proxyStats?.topPaths?.slice(0, 4).map(({ path, count }, i) => (
                             <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
                                 <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500">
                                     <Server size={14} />
@@ -261,7 +261,7 @@ export default function DashboardScreen() {
                                     <div className="mt-1.5 w-full h-1 bg-white/5 rounded-full overflow-hidden">
                                         <div
                                             className="h-full bg-blue-500/50"
-                                            style={{ width: `${Math.min(100, (count / (proxyStats?.topPaths?.[0]?.second || 1)) * 100)}%` }}
+                                            style={{ width: `${Math.min(100, (count / (proxyStats?.topPaths?.[0]?.count || 1)) * 100)}%` }}
                                         />
                                     </div>
                                 </div>

@@ -1,6 +1,6 @@
 import { DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret, DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult, CreateContainerRequest, SaveComposeRequest, ComposeResult, SystemLog, FirewallRule, BlockIPRequest, ProxyHost, ProxyHit, ProxyStats, BtmpStats, BtmpEntry, IptablesRule, SSLCertificate, EmailDomain, EmailUser, CreateEmailUserRequest, UpdateEmailUserPasswordRequest, SystemConfig, UpdateSystemConfigRequest, EmailMailbox, NetworkDetails, EmailTestRequest, EmailTestResult } from './types';
 
-const DEFAULT_SERVER_URL = "http://192.168.1.3:9091";
+const DEFAULT_SERVER_URL = "http://localhost:9091";
 
 export const DockerClient = {
     getServerUrl(): string {
