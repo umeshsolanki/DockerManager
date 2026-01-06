@@ -124,29 +124,36 @@ class ProxyServiceImpl : IProxyService {
                     } else null
                 }.toMap()
 
-        // Top Paths
+        // Top Paths (Top 15)
         val topPaths =
-            executeCommand("awk '{print \$7}' ${logFile.absolutePath} | sort | uniq -c | sort -rn | head -n 5").lineSequence()
+            executeCommand("awk '{print \$7}' ${logFile.absolutePath} | sort | uniq -c | sort -rn | head -n 15").lineSequence()
                 .filter { it.isNotBlank() }
                 .mapNotNull {
                     val parts = it.trim().split("\\s+".toRegex())
                     if (parts.size >= 2) {
-                        val path = parts[1]
                         val count = parts[0].toLongOrNull() ?: 0L
-                        path to count
+                        val path = parts[1]
+                        PathHit(path, count)
                     } else null
                 }.toList()
 
-        // Recent Hits (Last 20)
+        // Recent Hits (Last 40)
         val recentHits = mutableListOf<ProxyHit>()
+        // More flexible regex to catch malformed requests (often 404s/400s)
         val lineRegex =
-            """^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) (\S+) \S+" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)" "([^"]*)"$""".toRegex()
+            """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)" "([^"]*)"$""".toRegex()
         val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
 
-        executeCommand("tail -n 20 ${logFile.absolutePath}").lineSequence()
+        executeCommand("tail -n 40 ${logFile.absolutePath}").lineSequence()
             .filter { it.isNotBlank() }.forEach { line ->
-                lineRegex.find(line)?.let { match ->
-                    val (ip, dateStr, method, path, status, _, _, referer, ua, domain) = match.destructured
+                lineRegex.find(line.trim())?.let { match ->
+                    val (ip, dateStr, fullRequest, status, _, _, ua, _, domain) = match.destructured
+                    
+                    // Parse method and path from fullRequest (e.g., "GET /api HTTP/1.1")
+                    val reqParts = fullRequest.split(" ")
+                    val method = reqParts.getOrNull(0) ?: "-"
+                    val path = reqParts.getOrNull(1) ?: fullRequest
+
                     recentHits.add(
                         ProxyHit(
                             timestamp = try {

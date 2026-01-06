@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Globe, Plus, Search, RefreshCw, Trash2, Power, BarChart3, Activity, Clock, Server, ExternalLink, ShieldCheck, Lock, Network, FileKey, Pencil, Layers, Database } from 'lucide-react';
+import { Globe, Plus, Search, RefreshCw, Trash2, Power, BarChart3, Activity, Clock, Server, ExternalLink, ShieldCheck, Shield, Lock, Network, FileKey, Pencil, Layers, Database } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { ProxyHost, ProxyStats, SSLCertificate } from '@/lib/types';
 import { toast } from 'sonner';
@@ -501,8 +501,8 @@ export default function ProxyScreen() {
                                         </div>
                                     </div>
                                 </div>
-                                <div className="space-y-3 flex-1">
-                                    {stats?.topPaths.map(({ first: path, second: count }) => (
+                                <div className="space-y-3 flex-1 overflow-y-auto max-h-[300px] pr-2 scrollbar-invisible">
+                                    {stats?.topPaths.slice(0, 10).map(({ path, count }) => (
                                         <div key={path} className="group">
                                             <div className="flex justify-between items-center mb-1 px-1">
                                                 <span className="text-[11px] font-mono font-bold truncate pr-4 group-hover:text-primary transition-colors">{path}</span>
@@ -516,6 +516,79 @@ export default function ProxyScreen() {
                                             </div>
                                         </div>
                                     ))}
+                                    {(!stats?.topPaths || stats.topPaths.length === 0) && (
+                                        <div className="text-center py-6 text-[10px] text-on-surface-variant italic">No path data available</div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Hits by Domain */}
+                            <div className="bg-surface border border-outline/10 rounded-2xl p-4 shadow-sm flex flex-col">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-9 h-9 rounded-xl bg-secondary/10 flex items-center justify-center">
+                                            <Globe size={18} className="text-secondary" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-bold">Hostwise Access</h3>
+                                            <p className="text-[9px] text-on-surface-variant uppercase font-bold">Traffic by Domain</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="space-y-3 flex-1 overflow-y-auto max-h-[300px] pr-2 scrollbar-invisible">
+                                    {stats?.hitsByDomain && Object.entries(stats.hitsByDomain).sort((a, b) => b[1] - a[1]).map(([domain, count]) => (
+                                        <div key={domain} className="group">
+                                            <div className="flex justify-between items-center mb-1 px-1">
+                                                <span className="text-[11px] font-bold truncate pr-4 group-hover:text-secondary transition-colors">{domain}</span>
+                                                <span className="text-xs font-bold text-on-surface-variant">{count}</span>
+                                            </div>
+                                            <div className="h-1.5 bg-surface-variant/20 rounded-full overflow-hidden border border-outline/5">
+                                                <div
+                                                    className="h-full bg-gradient-to-r from-secondary to-secondary/40 rounded-full transition-all duration-1000"
+                                                    style={{ width: `${(count / (stats.totalHits || 1)) * 100}%` }}
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {(!stats?.hitsByDomain || Object.keys(stats.hitsByDomain).length === 0) && (
+                                        <div className="text-center py-6 text-[10px] text-on-surface-variant italic">No domain data available</div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            {/* Analytics Errors & Troubleshooting */}
+                            <div className="bg-surface border border-outline/10 rounded-2xl p-4 shadow-sm flex flex-col">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-9 h-9 rounded-xl bg-red-500/10 flex items-center justify-center">
+                                            <Shield size={18} className="text-red-500" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-bold">Top Errors</h3>
+                                            <p className="text-[9px] text-on-surface-variant uppercase font-bold">Status 4xx & 5xx</p>
+                                        </div>
+                                    </div>
+                                    <div className="bg-red-500/10 text-red-500 px-3 py-1 rounded-full text-[10px] font-bold">
+                                        {Object.entries(stats?.hitsByStatus || {}).filter(([s]) => parseInt(s) >= 400).reduce((acc, [_, c]) => acc + c, 0)} Total Errors
+                                    </div>
+                                </div>
+                                <div className="flex-1 space-y-2 overflow-y-auto max-h-[300px] pr-2 scrollbar-invisible">
+                                    {Object.entries(stats?.hitsByStatus || {}).filter(([s]) => parseInt(s) >= 400).sort((a, b) => b[1] - a[1]).map(([status, count]) => (
+                                        <div key={status} className="flex items-center justify-between bg-red-500/5 p-2 rounded-xl border border-red-500/10">
+                                            <div className="flex items-center gap-3">
+                                                <span className="w-10 text-base font-black text-red-500">{status}</span>
+                                                <span className="text-[10px] font-bold text-on-surface-variant uppercase">
+                                                    {status === '404' ? 'Not Found' : status === '403' ? 'Forbidden' : status === '500' ? 'Server Error' : status === '502' ? 'Bad Gateway' : 'Client Error'}
+                                                </span>
+                                            </div>
+                                            <span className="text-sm font-bold text-red-500">{count} hits</span>
+                                        </div>
+                                    ))}
+                                    {Object.entries(stats?.hitsByStatus || {}).filter(([s]) => parseInt(s) >= 400).length === 0 && (
+                                        <div className="text-center py-10 text-[10px] text-on-surface-variant italic">No errors detected. Perfect health!</div>
+                                    )}
                                 </div>
                             </div>
 

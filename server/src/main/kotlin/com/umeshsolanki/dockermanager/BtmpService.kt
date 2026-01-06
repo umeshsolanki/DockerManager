@@ -302,7 +302,7 @@ class BtmpServiceImpl(
     private fun updateCachedStats() {
         cachedBtmpStats = BtmpStats(
             totalFailedAttempts = totalFailedAttempts,
-            topUsers = userCounts.toList().sortedByDescending { it.second }.take(100),
+            topUsers = userCounts.toList().sortedByDescending { it.second }.take(100).map { TopUserEntry(it.first, it.second) },
             topIps = ipCounts.toList().sortedByDescending { it.second }.take(100).map {
                 TopIpEntry(it.first, it.second, getCountryCode(it.first))
             },

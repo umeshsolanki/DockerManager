@@ -133,7 +133,7 @@ export default function FirewallScreen() {
                         </button>
                     </div>
 
-                    <div className="bg-black/40 border border-outline/10 rounded-2xl overflow-hidden">
+                    <div className="bg-black/40 border border-outline/10 rounded-2xl overflow-y-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="border-b border-outline/10 bg-white/5">

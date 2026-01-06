@@ -712,7 +712,7 @@ export default function LogsScreen() {
 
                             {statsModalType === 'USERS' && (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                    {btmpStats?.topUsers?.map(({ first: user, second: count }) => (
+                                    {btmpStats?.topUsers?.map(({ user, count }) => (
                                         <div key={user} className="bg-white/5 border border-outline/5 rounded-xl p-3 flex flex-col items-center text-center">
                                             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-2 text-primary">
                                                 <User size={20} />

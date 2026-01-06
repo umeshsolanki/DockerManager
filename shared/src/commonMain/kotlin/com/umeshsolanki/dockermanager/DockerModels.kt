@@ -250,11 +250,23 @@ class ProxyHit(
 )
 
 @Serializable
+data class PathHit(
+    val path: String,
+    val count: Long
+)
+
+@Serializable
+data class StatusHit(
+    val status: Int,
+    val count: Long
+)
+
+@Serializable
 class ProxyStats(
     val totalHits: Long,
     val hitsByStatus: Map<Int, Long>,
     val hitsOverTime: Map<String, Long>, // Key: HH:00
-    val topPaths: List<Pair<String, Long>>,
+    val topPaths: List<PathHit>,
     val recentHits: List<ProxyHit>,
     val hitsByDomain: Map<String, Long> = emptyMap(),
 )
@@ -302,9 +314,15 @@ class TopIpEntry(
 )
 
 @Serializable
+data class TopUserEntry(
+    val user: String,
+    val count: Int
+)
+
+@Serializable
 class BtmpStats(
     val totalFailedAttempts: Int,
-    val topUsers: List<Pair<String, Int>>,
+    val topUsers: List<TopUserEntry>,
     val topIps: List<TopIpEntry>,
     val recentFailures: List<BtmpEntry>,
     val lastUpdated: Long = 0,

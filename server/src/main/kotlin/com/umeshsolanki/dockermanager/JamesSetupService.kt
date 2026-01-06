@@ -62,6 +62,9 @@ object JamesSetupService {
                     <auth>
                         <announce>true</announce>
                     </auth>
+                    <handlerchain>
+                        <handler class="org.apache.james.smtpserver.CoreCmdHandlerLoader"/>
+                    </handlerchain>
                 </smtpserver>
                 <smtpserver enabled="true">
                     <jmxName>smtpserver-tls</jmxName>
@@ -70,6 +73,9 @@ object JamesSetupService {
                     <auth>
                         <announce>always</announce>
                     </auth>
+                    <handlerchain>
+                        <handler class="org.apache.james.smtpserver.CoreCmdHandlerLoader"/>
+                    </handlerchain>
                 </smtpserver>
                 <smtpserver enabled="true">
                     <jmxName>smtpserver-submission</jmxName>
@@ -78,6 +84,9 @@ object JamesSetupService {
                     <auth>
                         <announce>always</announce>
                     </auth>
+                    <handlerchain>
+                        <handler class="org.apache.james.smtpserver.CoreCmdHandlerLoader"/>
+                    </handlerchain>
                 </smtpserver>
             </smtpservers>
         """.trimIndent(),
@@ -104,6 +113,9 @@ object JamesSetupService {
                 <lmtpserver enabled="true">
                     <jmxName>lmtpserver</jmxName>
                     <bind>0.0.0.0:24</bind>
+                    <handlerchain>
+                        <handler class="org.apache.james.lmtpserver.CoreCmdHandlerLoader"/>
+                    </handlerchain>
                 </lmtpserver>
             </lmtpservers>
         """.trimIndent()
@@ -137,7 +149,7 @@ object JamesSetupService {
     private fun ensureFile(dir: File, filename: String, content: String) {
         val file = File(dir, filename)
         if (!file.exists()) {
-            logger.info("Generating default James configuration: ${'$'}filename")
+            logger.info("Generating default James configuration: $filename")
             file.writeText(content)
         }
     }

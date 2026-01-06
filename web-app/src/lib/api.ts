@@ -9,9 +9,6 @@ export const DockerClient = {
         const stored = localStorage.getItem('SERVER_URL');
         if (stored) return stored;
 
-        // If developing locally on Next.js dev port, use the default backend URL
-        if (window.location.port === '3000') return DEFAULT_SERVER_URL;
-
         // Otherwise assume the UI is being served by the UCpanel backend itself
         return window.location.origin;
     },
