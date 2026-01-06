@@ -2,7 +2,6 @@ package com.umeshsolanki.dockermanager
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.encodeToString
 import org.slf4j.LoggerFactory
 import java.io.File
 
@@ -141,7 +140,13 @@ object AppConfig {
 
     val dockerComposeCommand: String
         get() = if (isDocker) "/usr/bin/docker compose" else {
-            if (File("/usr/bin/docker").exists()) "/usr/bin/docker compose" else "docker compose"
+            if (File("/opt/homebrew/bin/docker-compose").exists()) {
+                "/opt/homebrew/bin/docker-compose"
+            } else if (File("/usr/bin/docker").exists()) {
+                "/usr/bin/docker compose"
+            } else {
+                "docker compose"
+            }
         }
 
     val dockerSocket: String
