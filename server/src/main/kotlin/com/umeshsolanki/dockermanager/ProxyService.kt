@@ -1,8 +1,6 @@
 package com.umeshsolanki.dockermanager
 
 import kotlinx.coroutines.*
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import java.io.File
 import java.util.*
 import java.text.SimpleDateFormat
@@ -39,6 +37,20 @@ class ProxyServiceImpl : IProxyService {
     private val logFile = AppConfig.proxyLogFile
     private val hostsFile = AppConfig.proxyHostsFile
     private val json = AppConfig.json
+
+    val proxyDockerComposeDir: File
+        get() {
+            return File(AppConfig.projectRoot,"proxy").let {
+                if (!it.exists()) {
+                    it.mkdirs()
+                }
+                it
+            }
+        }
+
+    private val nginxPath = AppConfig.proxyDir.absolutePath
+    private val certbotPath = AppConfig.certbotDir.absolutePath
+    private val customCertsPath = AppConfig.customCertDir.absolutePath
 
     private var cachedStats: ProxyStats = ProxyStats(
             totalHits = 0,
@@ -530,14 +542,14 @@ $sslConfig
     override fun buildProxyImage(): Pair<Boolean, String> {
         return try {
             logger.info("Building proxy Docker image using compose...")
-            val projectRoot = AppConfig.projectRoot
+            
             val composeFile = ensureComposeFile()
             
             val buildCmd = "${AppConfig.dockerComposeCommand} -f ${composeFile.absolutePath} build proxy"
             logger.info("Build command: $buildCmd")
             
             val process = ProcessBuilder("sh", "-c", buildCmd)
-                .directory(projectRoot)
+                .directory(proxyDockerComposeDir)
                 .redirectErrorStream(true)
                 .start()
             
@@ -566,7 +578,7 @@ $sslConfig
     override fun createProxyContainer(): Pair<Boolean, String> {
         return try {
             logger.info("Creating proxy container using compose...")
-            val projectRoot = AppConfig.projectRoot
+            
             ensureComposeFile()
             
             // Ensure host directories exist (as defined in docker-compose.yml bind mounts)
@@ -606,7 +618,7 @@ $sslConfig
             logger.info("Create command: $createCmd")
             
             val process = ProcessBuilder("sh", "-c", createCmd)
-                .directory(projectRoot)
+                .directory(proxyDockerComposeDir)
                 .redirectErrorStream(true)
                 .start()
             
@@ -629,12 +641,12 @@ $sslConfig
     override fun startProxyContainer(): Pair<Boolean, String> {
         return try {
             logger.info("Starting proxy container using compose...")
-            val projectRoot = AppConfig.projectRoot
+            
             ensureComposeFile()
             
             val startCmd = "${AppConfig.dockerComposeCommand} start proxy"
             val process = ProcessBuilder("sh", "-c", startCmd)
-                .directory(projectRoot)
+                .directory(proxyDockerComposeDir)
                 .redirectErrorStream(true)
                 .start()
             
@@ -657,11 +669,11 @@ $sslConfig
     override fun stopProxyContainer(): Pair<Boolean, String> {
         return try {
             logger.info("Stopping proxy container using compose...")
-            val projectRoot = AppConfig.projectRoot
+            
             
             val stopCmd = "${AppConfig.dockerComposeCommand} stop proxy"
             val process = ProcessBuilder("sh", "-c", stopCmd)
-                .directory(projectRoot)
+                .directory(proxyDockerComposeDir)
                 .redirectErrorStream(true)
                 .start()
             
@@ -684,11 +696,11 @@ $sslConfig
     override fun restartProxyContainer(): Pair<Boolean, String> {
         return try {
             logger.info("Restarting proxy container using compose...")
-            val projectRoot = AppConfig.projectRoot
+            
             
             val restartCmd = "${AppConfig.dockerComposeCommand} restart proxy"
             val process = ProcessBuilder("sh", "-c", restartCmd)
-                .directory(projectRoot)
+                .directory(proxyDockerComposeDir)
                 .redirectErrorStream(true)
                 .start()
             
@@ -770,7 +782,7 @@ $sslConfig
     override fun ensureProxyContainerExists(): Boolean {
         return try {
             logger.info("Ensuring proxy container is ready (using compose up -d)...")
-            val projectRoot = AppConfig.projectRoot
+            
             ensureComposeFile()
             
             // Ensure host directories exist
@@ -810,7 +822,7 @@ $sslConfig
             logger.info("Up command: $upCmd")
             
             val process = ProcessBuilder("sh", "-c", upCmd)
-                .directory(projectRoot)
+                .directory(proxyDockerComposeDir)
                 .redirectErrorStream(true)
                 .start()
             
@@ -848,12 +860,12 @@ $sslConfig
                 environment:
                   - TZ=Asia/Kolkata
                 volumes:
-                  - ./data/nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
-                  - ./data/nginx/conf.d:/etc/nginx/conf.d:ro
-                  - ./data/nginx/logs:/usr/local/openresty/nginx/logs
-                  - ./data/certbot/conf:/etc/letsencrypt
-                  - ./data/certbot/www:/var/www/certbot
-                  - ./data/certs:/etc/nginx/custom_certs:ro
+                  - ${nginxPath}/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+                  - ${nginxPath}/conf.d:/etc/nginx/conf.d:ro
+                  - ${nginxPath}/logs:/usr/local/openresty/nginx/logs
+                  - ${certbotPath}/conf:/etc/letsencrypt
+                  - ${certbotPath}/www:/var/www/certbot
+                  - ${customCertsPath}:/etc/nginx/custom_certs:ro
                 command: /usr/local/openresty/bin/openresty -g 'daemon off;'
         """.trimIndent()
     }
@@ -885,10 +897,10 @@ $sslConfig
     }
 
     private fun ensureComposeFile(): File {
-        val projectRoot = AppConfig.projectRoot
-        val composeFile = File(projectRoot, "docker-compose.yml")
+        
+        val composeFile = File(proxyDockerComposeDir, "docker-compose.yml")
         if (!composeFile.exists()) {
-            logger.info("Creating default docker-compose.yml in ${projectRoot.absolutePath}")
+            logger.info("Creating default docker-compose.yml in ${proxyDockerComposeDir.absolutePath}")
             composeFile.writeText(getDefaultComposeConfig())
         }
         ensureDockerfile()
@@ -896,10 +908,10 @@ $sslConfig
     }
 
     private fun ensureDockerfile(): File {
-        val projectRoot = AppConfig.projectRoot
-        val dockerfile = File(projectRoot, "Dockerfile.proxy")
+        
+        val dockerfile = File(proxyDockerComposeDir, "Dockerfile.proxy")
         if (!dockerfile.exists()) {
-            logger.info("Creating default Dockerfile.proxy in ${projectRoot.absolutePath}")
+            logger.info("Creating default Dockerfile.proxy in ${proxyDockerComposeDir.absolutePath}")
             dockerfile.writeText(getDefaultDockerfileConfig())
         }
         return dockerfile
@@ -974,7 +986,7 @@ $sslConfig
 
     override fun updateComposeConfig(content: String): Pair<Boolean, String> {
         return try {
-            val composeFile = File(AppConfig.projectRoot, "docker-compose.yml")
+            val composeFile = File(proxyDockerComposeDir, "docker-compose.yml")
             composeFile.writeText(content)
             true to "Compose configuration updated"
         } catch (e: Exception) {

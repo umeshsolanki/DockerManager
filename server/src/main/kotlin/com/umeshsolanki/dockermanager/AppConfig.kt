@@ -2,7 +2,6 @@ package com.umeshsolanki.dockermanager
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.encodeToString
 import org.slf4j.LoggerFactory
 import java.io.File
 
@@ -22,14 +21,14 @@ data class AppSettings(
     val monitoringIntervalMinutes: Int = 5,
     val fcmServiceAccountPath: String = "fcm-service-account.json",
     val proxyStatsActive: Boolean = true,
-    val proxyStatsIntervalMs: Long = 10000L
+    val proxyStatsIntervalMs: Long = 10000L,
 )
 
 object AppConfig {
     private val logger = LoggerFactory.getLogger(AppConfig::class.java)
-    const val PROJECT_DIR = "/opt/docker-manager"
-    
-    val json = Json { 
+    private const val DEFAULT_DATA_DIR = "/opt/docker-manager/data"
+
+    val json = Json {
         prettyPrint = false
         ignoreUnknownKeys = true
         encodeDefaults = true
@@ -61,33 +60,32 @@ object AppConfig {
 
     fun updateSettings(dockerSocket: String, jamesWebAdminUrl: String) {
         _settings = _settings.copy(
-            dockerSocket = dockerSocket,
-            jamesWebAdminUrl = jamesWebAdminUrl
+            dockerSocket = dockerSocket, jamesWebAdminUrl = jamesWebAdminUrl
         )
         saveSettings()
     }
 
     fun updateJailSettings(
-        enabled: Boolean, 
-        threshold: Int, 
+        enabled: Boolean,
+        threshold: Int,
         durationMinutes: Int,
         monitoringActive: Boolean? = null,
-        monitoringIntervalMinutes: Int? = null
+        monitoringIntervalMinutes: Int? = null,
     ) {
         _settings = _settings.copy(
             jailEnabled = enabled,
             jailThreshold = threshold,
             jailDurationMinutes = durationMinutes,
             monitoringActive = monitoringActive ?: _settings.monitoringActive,
-            monitoringIntervalMinutes = monitoringIntervalMinutes ?: _settings.monitoringIntervalMinutes
+            monitoringIntervalMinutes = monitoringIntervalMinutes
+                ?: _settings.monitoringIntervalMinutes
         )
         saveSettings()
     }
 
     fun updateProxyStatsSettings(active: Boolean, intervalMs: Long) {
         _settings = _settings.copy(
-            proxyStatsActive = active,
-            proxyStatsIntervalMs = intervalMs
+            proxyStatsActive = active, proxyStatsIntervalMs = intervalMs
         )
         saveSettings()
     }
@@ -104,7 +102,13 @@ object AppConfig {
                 }
             }
             settingsFile.writeText(json.encodeToString(_settings))
-            logger.info("Settings saved to ${settingsFile.absolutePath}. Content: ${json.encodeToString(_settings)}")
+            logger.info(
+                "Settings saved to ${settingsFile.absolutePath}. Content: ${
+                    json.encodeToString(
+                        _settings
+                    )
+                }"
+            )
         } catch (e: Exception) {
             logger.error("Failed to save settings to ${settingsFile.absolutePath}", e)
         }
@@ -135,29 +139,8 @@ object AppConfig {
         if (isDocker) {
             File("/app/data")
         } else {
-            val env = System.getenv("DATA_DIR").ifNullOrBlank(PROJECT_DIR.plus("/data"))
-            logger.info("Using custom DATA_DIR from env: $env")
-            File(env)
-        }
-    }
-
-    val uiRoot: File by lazy {
-        if (isDocker) {
-            File("/app/ui")
-        } else {
-            val env = System.getenv("UI_DIR").ifNullOrBlank(PROJECT_DIR.plus("/ui"))
-            logger.info("Using custom UI_DIR from env: $env")
-            File(env)
-        }
-    }
-
-
-    val projectRoot: File by lazy {
-        if (isDocker) {
-            File("/app")
-        } else {
-            val env = System.getenv("PROJECT_ROOT").ifNullOrBlank(PROJECT_DIR)
-            logger.info("Using custom PROJECT_ROOT from env: $env")
+            val env = System.getenv("DATA_DIR").ifNullOrBlank(DEFAULT_DATA_DIR)
+            logger.info("Using DATA_DIR: $env")
             File(env)
         }
     }
@@ -165,6 +148,16 @@ object AppConfig {
     //backup dirs
     val backupDir: File get() = File(dataRoot, "backups")
     val composeProjDir: File get() = File(dataRoot, "compose-ymls")
+
+    val projectRoot: File by lazy {
+        logger.info("Using custom PROJECT_ROOT from env: $")
+        return@lazy if (composeProjDir.exists()) {
+            composeProjDir
+        } else {
+            composeProjDir.mkdirs()
+            composeProjDir
+        }
+    }
 
     // Proxy Service Configs
     val proxyDir: File get() = File(dataRoot, "nginx")
@@ -188,19 +181,21 @@ object AppConfig {
 
     // When running in docker, we mount these binaries. When running locally, assume they are in PATH or sbin.
     // NOTE: If user runs jar on valid linux, iptables should be in path, but systemd path might be limited.
-    val iptablesCmd: String get() {
-        if (isDocker) return "/main/sbin/iptables"
-        if (File("/usr/sbin/iptables").exists()) return "/usr/sbin/iptables"
-        if (File("/sbin/iptables").exists()) return "/sbin/iptables"
-        return "iptables"
-    }
+    val iptablesCmd: String
+        get() {
+            if (isDocker) return "/main/sbin/iptables"
+            if (File("/usr/sbin/iptables").exists()) return "/usr/sbin/iptables"
+            if (File("/sbin/iptables").exists()) return "/sbin/iptables"
+            return "iptables"
+        }
 
-    val ipsetCmd: String get() {
-        if (isDocker) return "/main/sbin/ipset"
-        if (File("/usr/sbin/ipset").exists()) return "/usr/sbin/ipset"
-        if (File("/sbin/ipset").exists()) return "/sbin/ipset"
-        return "ipset"
-    }
+    val ipsetCmd: String
+        get() {
+            if (isDocker) return "/main/sbin/ipset"
+            if (File("/usr/sbin/ipset").exists()) return "/usr/sbin/ipset"
+            if (File("/sbin/ipset").exists()) return "/sbin/ipset"
+            return "ipset"
+        }
 
     // James
     val jamesDir: File get() = File(dataRoot, "james")

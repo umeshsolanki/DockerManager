@@ -79,11 +79,11 @@ class EmailServiceImpl : IEmailService {
         }
     }
 
-    private fun executeCommand(command: String, workingDir: File? = null): String {
+    private fun executeCommand(command: String): String {
         return try {
             val parts = command.split("\\s+".toRegex())
             val proc = ProcessBuilder(parts)
-                .directory(workingDir ?: AppConfig.projectRoot)
+                .directory(jamesDir)
                 .redirectOutput(ProcessBuilder.Redirect.PIPE)
                 .redirectError(ProcessBuilder.Redirect.PIPE)
                 .start()
@@ -175,21 +175,21 @@ class EmailServiceImpl : IEmailService {
     override fun startJames(): Boolean {
         ensureJamesConfig()
         val cmd = "${AppConfig.dockerComposeCommand} -f ${composeFile.absolutePath} up -d"
-        val output = executeCommand(cmd, jamesDir)
+        val output = executeCommand(cmd)
         return output.isNotBlank() 
     }
 
     override fun stopJames(): Boolean {
         if (!composeFile.exists()) return true
         val cmd = "${AppConfig.dockerComposeCommand} -f ${composeFile.absolutePath} stop" 
-        executeCommand(cmd, jamesDir)
+        executeCommand(cmd)
         return true
     }
 
     override fun restartJames(): Boolean {
         ensureJamesConfig()
         val cmd = "${AppConfig.dockerComposeCommand} -f ${composeFile.absolutePath} restart"
-        executeCommand(cmd, jamesDir)
+        executeCommand(cmd)
         return true
     }
 
