@@ -2,6 +2,7 @@ package com.umeshsolanki.dockermanager
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
 import org.slf4j.LoggerFactory
 import java.io.File
 
@@ -33,6 +34,24 @@ object AppConfig {
         ignoreUnknownKeys = true
         encodeDefaults = true
         isLenient = true
+    }
+
+    val isDocker: Boolean by lazy {
+        val inDocker =
+            File("/.dockerenv").exists() || (File("/proc/1/cgroup").exists() && File("/proc/1/cgroup").readText()
+                .contains("docker"))
+        logger.info("Environment detection: isDocker=$inDocker")
+        inDocker
+    }
+
+    val dataRoot: File by lazy {
+        if (isDocker) {
+            File("/app/data")
+        } else {
+            val env = System.getenv("DATA_DIR").ifNullOrBlank(DEFAULT_DATA_DIR)
+            logger.info("Using DATA_DIR: $env")
+            File(env)
+        }
     }
 
     private val settingsFile: File by lazy {
@@ -114,13 +133,6 @@ object AppConfig {
         }
     }
 
-    val isDocker: Boolean by lazy {
-        val inDocker =
-            File("/.dockerenv").exists() || (File("/proc/1/cgroup").exists() && File("/proc/1/cgroup").readText()
-                .contains("docker"))
-        logger.info("Environment detection: isDocker=$inDocker")
-        inDocker
-    }
 
     val dockerCommand: String
         get() = if (isDocker) "/usr/bin/docker" else {
@@ -135,22 +147,13 @@ object AppConfig {
     val dockerSocket: String
         get() = _settings.dockerSocket
 
-    val dataRoot: File by lazy {
-        if (isDocker) {
-            File("/app/data")
-        } else {
-            val env = System.getenv("DATA_DIR").ifNullOrBlank(DEFAULT_DATA_DIR)
-            logger.info("Using DATA_DIR: $env")
-            File(env)
-        }
-    }
 
     //backup dirs
     val backupDir: File get() = File(dataRoot, "backups")
     val composeProjDir: File get() = File(dataRoot, "compose-ymls")
 
     val projectRoot: File by lazy {
-        logger.info("Using custom PROJECT_ROOT from env: $")
+        logger.info("Using project root: ${composeProjDir.absolutePath}")
         return@lazy if (composeProjDir.exists()) {
             composeProjDir
         } else {
