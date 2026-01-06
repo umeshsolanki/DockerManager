@@ -66,29 +66,29 @@ export default function ContainersScreen() {
                         placeholder="Search containers..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-surface border border-outline/20 rounded-xl py-3 pl-10 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors"
+                        className="w-full bg-surface border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors"
                     />
                 </div>
                 <button
                     onClick={() => setIsWizardOpen(true)}
-                    className="flex items-center gap-2 px-6 py-3 bg-primary text-on-primary rounded-xl font-bold hover:opacity-90 transition-opacity whitespace-nowrap"
+                    className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded-xl font-bold hover:opacity-90 transition-opacity whitespace-nowrap text-sm"
                 >
-                    <Plus size={20} />
-                    Create Container
+                    <Plus size={18} />
+                    New Container
                 </button>
                 <button
                     onClick={fetchContainers}
-                    className="p-3 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors"
+                    className="p-2.5 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors"
                     title="Refresh"
                 >
-                    <RefreshCw size={20} />
+                    <RefreshCw size={18} />
                 </button>
                 <button
                     onClick={() => handleAction(() => DockerClient.pruneContainers())}
-                    className="p-3 bg-surface border border-outline/20 rounded-xl hover:bg-red-500/10 text-red-400 transition-colors"
+                    className="p-2.5 bg-surface border border-outline/20 rounded-xl hover:bg-red-500/10 text-red-400 transition-colors"
                     title="Prune"
                 >
-                    <Trash2 size={20} />
+                    <Trash2 size={18} />
                 </button>
             </div>
 
@@ -97,16 +97,77 @@ export default function ContainersScreen() {
                     No containers found
                 </div>
             ) : (
-                <div className="flex flex-col gap-3 overflow-y-auto pb-6">
-                    {filteredContainers.map(container => (
-                        <ContainerCard
-                            key={container.id}
-                            container={container}
-                            onAction={handleAction}
-                            onInspect={() => handleInspect(container.id)}
-                            onShell={() => handleShell(container.id)}
-                        />
-                    ))}
+                <div className="bg-surface/30 border border-outline/10 rounded-xl overflow-hidden divide-y divide-outline/5">
+                    {filteredContainers.map(container => {
+                        const isRunning = container.state.toLowerCase().includes('running');
+                        return (
+                            <div key={container.id} className="p-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors group">
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className={`w-2 h-2 rounded-full shrink-0 ${isRunning ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.3)]' : 'bg-gray-500/50'}`} />
+                                    <div className="flex flex-col min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-bold truncate text-on-surface" title={container.names}>
+                                                {container.names}
+                                            </span>
+                                            <span className="text-[10px] text-on-surface-variant font-mono truncate opacity-60">
+                                                {container.image}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] text-on-surface-variant font-mono">
+                                            <span className={isRunning ? 'text-green-500/80' : 'text-on-surface-variant/70'}>
+                                                {container.status}
+                                            </span>
+                                            <span className="opacity-30">•</span>
+                                            <span className="truncate">{container.id.substring(0, 12)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                        onClick={() => handleInspect(container.id)}
+                                        className="p-1.5 hover:bg-blue-500/10 text-blue-400 rounded-lg transition-colors"
+                                        title="Inspect"
+                                    >
+                                        <Info size={14} />
+                                    </button>
+                                    {isRunning ? (
+                                        <button
+                                            onClick={() => handleAction(() => DockerClient.stopContainer(container.id))}
+                                            className="p-1.5 hover:bg-red-500/10 text-red-400 rounded-lg transition-colors"
+                                            title="Stop"
+                                        >
+                                            <Square size={14} fill="currentColor" />
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => handleAction(() => DockerClient.startContainer(container.id))}
+                                            className="p-1.5 hover:bg-green-500/10 text-green-500 rounded-lg transition-colors"
+                                            title="Start"
+                                        >
+                                            <Play size={14} fill="currentColor" />
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => handleShell(container.id)}
+                                        disabled={!isRunning}
+                                        className={`p-1.5 rounded-lg transition-colors ${!isRunning ? 'opacity-20 cursor-not-allowed' : 'hover:bg-primary/10 text-primary'}`}
+                                        title="Terminal Shell"
+                                    >
+                                        <Terminal size={14} />
+                                    </button>
+                                    <button
+                                        onClick={() => handleAction(() => DockerClient.removeContainer(container.id))}
+                                        disabled={isRunning}
+                                        className={`p-1.5 rounded-lg transition-colors ${isRunning ? 'opacity-20 cursor-not-allowed' : 'hover:bg-red-500/10 text-red-500'}`}
+                                        title="Remove"
+                                    >
+                                        <Trash size={14} />
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             )}
 
@@ -333,74 +394,6 @@ function DetailItem({ label, value }: { label: string; value: string }) {
 }
 
 
-function ContainerCard({ container, onAction, onInspect, onShell }: {
-    container: DockerContainer;
-    onAction: (action: () => Promise<void>) => Promise<void>;
-    onInspect: () => void;
-    onShell: () => void;
-}) {
-    const isRunning = container.state.toLowerCase().includes('running');
-
-    return (
-        <div className="bg-surface/50 border border-outline/10 rounded-xl p-4 flex items-center justify-between hover:bg-surface transition-colors">
-            <div className="flex items-center gap-4 flex-1">
-                <div className={`w-3 h-3 rounded-full ${isRunning ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-gray-500'}`} />
-                <div className="flex flex-col">
-                    <span className="text-lg font-medium text-on-surface">{container.names}</span>
-                    <span className="text-sm text-on-surface-variant">{container.image}</span>
-                    <span className={`text-[10px] font-bold uppercase mt-1 ${isRunning ? 'text-green-500/80' : 'text-on-surface-variant/60'}`}>
-                        {container.status}
-                    </span>
-                </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-                <button
-                    onClick={onInspect}
-                    className="p-2 hover:bg-white/10 text-on-surface-variant hover:text-primary rounded-lg transition-colors"
-                    title="Inspect"
-                >
-                    <Info size={20} />
-                </button>
-                {isRunning ? (
-                    <button
-                        onClick={() => onAction(() => DockerClient.stopContainer(container.id))}
-                        className="p-2 hover:bg-red-500/10 text-red-400 rounded-lg transition-colors"
-                        title="Stop"
-                    >
-                        <Square size={20} fill="currentColor" />
-                    </button>
-                ) : (
-                    <button
-                        onClick={() => onAction(() => DockerClient.startContainer(container.id))}
-                        className="p-2 hover:bg-green-500/10 text-green-500 rounded-lg transition-colors"
-                        title="Start"
-                    >
-                        <Play size={20} fill="currentColor" />
-                    </button>
-                )}
-                <button
-                    onClick={onShell}
-                    disabled={!isRunning}
-                    className={`p-2 rounded-lg transition-colors ${!isRunning ? 'opacity-20 cursor-not-allowed' : 'hover:bg-primary/10 text-primary'}`}
-                    title="Terminal Shell"
-                >
-                    <Terminal size={20} />
-                </button>
-                <button
-                    onClick={() => onAction(() => DockerClient.removeContainer(container.id))}
-                    disabled={isRunning}
-                    className={`p-2 rounded-lg transition-colors ${isRunning ? 'opacity-20 cursor-not-allowed' : 'hover:bg-red-500/10 text-red-500'}`}
-                    title="Remove"
-                >
-                    <Trash size={20} />
-                </button>
-            </div>
-        </div>
-    );
-}
-
-
 function CreateContainerWizard({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
     const [step, setStep] = useState(1);
     const [isLoading, setIsLoading] = useState(false);
@@ -445,7 +438,7 @@ function CreateContainerWizard({ onClose, onCreated }: { onClose: () => void; on
         }
     };
 
-    const nextStep = () => setStep(s => Math.min(s + 5, s + 1));
+    const nextStep = () => setStep(s => Math.min(5, s + 1));
     const prevStep = () => setStep(s => Math.max(1, s - 1));
 
     const renderStep = () => {
@@ -728,4 +721,3 @@ function DynamicMap({ items, onUpdate }: { items: Record<string, string>; onUpda
         </div>
     );
 }
-

@@ -1,16 +1,15 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Globe, Plus, Search, RefreshCw, Trash2, Power, BarChart3, Activity, Clock, Server, ExternalLink, ShieldCheck, Shield, Lock, Network, FileKey, Pencil, Layers, Database, User, Link2, Hash, Flame } from 'lucide-react';
+import { Globe, Plus, Search, RefreshCw, Trash2, Power, Server, ExternalLink, FileKey, Pencil, Layers, Database, Lock, Network, Activity, ShieldCheck } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { ProxyHost, ProxyStats, SSLCertificate, ProxyJailRule, ProxyJailRuleType, SystemConfig } from '@/lib/types';
+import { ProxyHost, SSLCertificate } from '@/lib/types';
 import { toast } from 'sonner';
 import Editor from '@monaco-editor/react';
 
 
 export default function ProxyScreen() {
     const [hosts, setHosts] = useState<ProxyHost[]>([]);
-    const [stats, setStats] = useState<ProxyStats | null>(null);
     const [containerStatus, setContainerStatus] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isContainerActionLoading, setIsContainerActionLoading] = useState(false);
@@ -18,51 +17,26 @@ export default function ProxyScreen() {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [editingHost, setEditingHost] = useState<ProxyHost | null>(null);
 
-    const [activeTab, setActiveTab] = useState<'domains' | 'container' | 'certs' | 'analytics'>('domains');
+    const [activeTab, setActiveTab] = useState<'domains' | 'container' | 'certs'>('domains');
     const [certs, setCerts] = useState<SSLCertificate[]>([]);
     const [isComposeModalOpen, setIsComposeModalOpen] = useState(false);
-    const [securitySettings, setSecuritySettings] = useState<SystemConfig | null>(null);
 
     const fetchData = async () => {
         setIsLoading(true);
-        const [hostsData, statsData, containerStatusData, certsData, secSettingsData] = await Promise.all([
+        const [hostsData, containerStatusData, certsData] = await Promise.all([
             DockerClient.listProxyHosts(),
-            DockerClient.getProxyStats(),
             DockerClient.getProxyContainerStatus(),
-            DockerClient.listProxyCertificates(),
-            DockerClient.getProxySecuritySettings()
+            DockerClient.listProxyCertificates()
         ]);
         setHosts(hostsData);
-        setStats(statsData);
         setContainerStatus(containerStatusData);
         setCerts(certsData);
-        setSecuritySettings(secSettingsData as SystemConfig);
         setIsLoading(false);
     };
 
     const fetchContainerStatus = async () => {
         const status = await DockerClient.getProxyContainerStatus();
         setContainerStatus(status);
-    };
-
-    const handleForceRefresh = async () => {
-        setIsLoading(true);
-        const stats = await DockerClient.refreshProxyStats();
-        setStats(stats);
-        setIsLoading(false);
-        toast.success('Stats refreshed manually');
-    };
-
-    const updateSecurityConfig = async (updated: Partial<SystemConfig>) => {
-        if (!securitySettings) return;
-        const newSettings = { ...securitySettings, ...updated };
-        const result = await DockerClient.updateProxySecuritySettings(newSettings);
-        if (result.success) {
-            setSecuritySettings(newSettings);
-            toast.success(result.message);
-        } else {
-            toast.error(result.message);
-        }
     };
 
     useEffect(() => {
@@ -110,8 +84,7 @@ export default function ProxyScreen() {
     const tabs = [
         { id: 'domains', label: 'Domain Hosts', icon: <Globe size={18} /> },
         { id: 'container', label: 'Infrastructure', icon: <Server size={18} /> },
-        { id: 'certs', label: 'Certificates', icon: <FileKey size={18} /> },
-        { id: 'analytics', label: 'Analytics', icon: <BarChart3 size={18} /> }
+        { id: 'certs', label: 'Certificates', icon: <FileKey size={18} /> }
     ] as const;
 
     return (
@@ -463,454 +436,6 @@ export default function ProxyScreen() {
                     </div>
                 )}
 
-                {activeTab === 'analytics' && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        {/* Summary Stats */}
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                            <div className="bg-surface border border-outline/10 rounded-2xl p-4 shadow-sm">
-                                <div className="flex items-center gap-2 text-on-surface-variant mb-2">
-                                    <Activity size={16} className="text-primary" />
-                                    <span className="text-[9px] font-bold uppercase tracking-wider">Global Throughput</span>
-                                </div>
-                                <div className="text-2xl font-black">{stats?.totalHits || 0}</div>
-                                <div className="text-[10px] text-green-500 mt-1 font-bold flex items-center gap-1">
-                                    <Activity size={10} />
-                                    HTTP Requests
-                                </div>
-                            </div>
-                            <div className="bg-surface border border-outline/10 rounded-2xl p-4 shadow-sm">
-                                <div className="flex items-center gap-2 text-on-surface-variant mb-2">
-                                    <Server size={16} className="text-secondary" />
-                                    <span className="text-[9px] font-bold uppercase tracking-wider">Active Upstreams</span>
-                                </div>
-                                <div className="text-2xl font-black">{hosts.filter(h => h.enabled).length}</div>
-                                <div className="text-[10px] text-on-surface-variant mt-1 font-bold">Domains</div>
-                            </div>
-                            <div className="md:col-span-2 bg-gradient-to-r from-surface to-surface/40 border border-outline/10 rounded-2xl p-4 shadow-sm overflow-hidden flex flex-col">
-                                <div className="flex items-center gap-2 text-on-surface-variant mb-3">
-                                    <BarChart3 size={16} className="text-primary" />
-                                    <span className="text-[9px] font-bold uppercase tracking-wider">Traffic (24h)</span>
-                                </div>
-                                <div className="flex items-end gap-1 h-full min-h-[3rem]">
-                                    {stats && Object.entries(stats.hitsOverTime).map(([hour, count]) => {
-                                        const max = Math.max(...Object.values(stats.hitsOverTime), 1);
-                                        return (
-                                            <div
-                                                key={hour}
-                                                className="flex-1 bg-primary/40 hover:bg-primary transition-all rounded-t-md relative group cursor-help"
-                                                style={{ height: `${Math.max(5, (count / max) * 100)}%` }}
-                                            >
-                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-surface backdrop-blur-xl border border-outline/10 text-[8px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-all whitespace-nowrap z-20 shadow-xl font-bold">
-                                                    {hour}: {count}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                            {/* Hot Paths */}
-                            <div className="bg-surface border border-outline/10 rounded-2xl p-4 shadow-sm flex flex-col">
-                                <div className="flex items-center justify-between mb-4">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-                                            <Activity size={18} className="text-primary" />
-                                        </div>
-                                        <div>
-                                            <h3 className="text-sm font-bold">Hot Paths</h3>
-                                            <p className="text-[9px] text-on-surface-variant uppercase font-bold">Top Resources</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="space-y-3 flex-1 overflow-y-auto max-h-[300px] pr-2 scrollbar-invisible">
-                                    {stats?.topPaths.slice(0, 10).map(({ path, count }) => (
-                                        <div key={path} className="group">
-                                            <div className="flex justify-between items-center mb-1 px-1">
-                                                <span className="text-[11px] font-mono font-bold truncate pr-4 group-hover:text-primary transition-colors">{path}</span>
-                                                <span className="text-xs font-bold text-on-surface-variant">{count}</span>
-                                            </div>
-                                            <div className="h-1.5 bg-surface-variant/20 rounded-full overflow-hidden border border-outline/5">
-                                                <div
-                                                    className="h-full bg-gradient-to-r from-primary to-primary/40 rounded-full transition-all duration-1000"
-                                                    style={{ width: `${(count / (stats.totalHits || 1)) * 100}%` }}
-                                                />
-                                            </div>
-                                        </div>
-                                    ))}
-                                    {(!stats?.topPaths || stats.topPaths.length === 0) && (
-                                        <div className="text-center py-6 text-[10px] text-on-surface-variant italic">No path data available</div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Hits by Domain */}
-                            <div className="bg-surface border border-outline/10 rounded-2xl p-4 shadow-sm flex flex-col">
-                                <div className="flex items-center justify-between mb-4">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-9 h-9 rounded-xl bg-secondary/10 flex items-center justify-center">
-                                            <Globe size={18} className="text-secondary" />
-                                        </div>
-                                        <div>
-                                            <h3 className="text-sm font-bold">Hostwise Access</h3>
-                                            <p className="text-[9px] text-on-surface-variant uppercase font-bold">Traffic by Domain</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="space-y-3 flex-1 overflow-y-auto max-h-[300px] pr-2 scrollbar-invisible">
-                                    {stats?.hitsByDomain && Object.entries(stats.hitsByDomain).sort((a, b) => b[1] - a[1]).map(([domain, count]) => (
-                                        <div key={domain} className="group">
-                                            <div className="flex justify-between items-center mb-1 px-1">
-                                                <span className="text-[11px] font-bold truncate pr-4 group-hover:text-secondary transition-colors">{domain}</span>
-                                                <span className="text-xs font-bold text-on-surface-variant">{count}</span>
-                                            </div>
-                                            <div className="h-1.5 bg-surface-variant/20 rounded-full overflow-hidden border border-outline/5">
-                                                <div
-                                                    className="h-full bg-gradient-to-r from-secondary to-secondary/40 rounded-full transition-all duration-1000"
-                                                    style={{ width: `${(count / (stats.totalHits || 1)) * 100}%` }}
-                                                />
-                                            </div>
-                                        </div>
-                                    ))}
-                                    {(!stats?.hitsByDomain || Object.keys(stats.hitsByDomain).length === 0) && (
-                                        <div className="text-center py-6 text-[10px] text-on-surface-variant italic">No domain data available</div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                            {/* Top IPs */}
-                            <div className="bg-surface border border-outline/10 rounded-2xl p-4 shadow-sm flex flex-col">
-                                <div className="flex items-center justify-between mb-4">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-8 h-8 rounded-xl bg-indigo-500/10 flex items-center justify-center">
-                                            <Network size={16} className="text-indigo-500" />
-                                        </div>
-                                        <h3 className="text-xs font-bold">Traffic by Source</h3>
-                                    </div>
-                                    <p className="text-[8px] text-on-surface-variant font-black uppercase">Hits</p>
-                                </div>
-                                <div className="space-y-2 max-h-[250px] overflow-y-auto scrollbar-invisible pr-1">
-                                    {stats?.topIps?.map((entry, i) => {
-                                        const errorEntry = stats.topIpsWithErrors?.find(e => e.label === entry.label);
-                                        const errorCount = errorEntry?.count || 0;
-                                        return (
-                                            <div key={i} className={`flex items-center justify-between text-[10px] p-2 rounded-lg border transition-all ${errorCount > 0 ? 'bg-red-500/5 border-red-500/10 hover:border-red-500/30' : 'bg-surface-variant/5 border-outline/5 hover:border-indigo-500/20'}`}>
-                                                <div className="flex items-center gap-2 overflow-hidden flex-1">
-                                                    {errorCount > (securitySettings?.proxyJailThresholdNon200 || 20) / 2 ? (
-                                                        <Flame size={12} className="text-red-500 shrink-0 animate-pulse" />
-                                                    ) : errorCount > 0 ? (
-                                                        <Shield size={12} className="text-orange-500 shrink-0" />
-                                                    ) : null}
-                                                    <span className="font-mono text-on-surface-variant truncate" title={entry.label}>{entry.label}</span>
-                                                </div>
-                                                <div className="flex items-center gap-2 shrink-0">
-                                                    {errorCount > 0 && <span className="text-[8px] font-bold text-red-500">[{errorCount}ERR]</span>}
-                                                    <span className="font-bold text-on-surface-variant">{entry.count}</span>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                    {(!stats?.topIps || stats.topIps.length === 0) && (
-                                        <div className="text-center py-4 text-[9px] text-on-surface-variant italic">No IP data</div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Top User Agents */}
-                            <div className="bg-surface border border-outline/10 rounded-2xl p-4 shadow-sm">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <div className="w-8 h-8 rounded-xl bg-pink-500/10 flex items-center justify-center">
-                                        <User size={16} className="text-pink-500" />
-                                    </div>
-                                    <h3 className="text-xs font-bold">Top User Agents</h3>
-                                </div>
-                                <div className="space-y-2 max-h-[200px] overflow-y-auto scrollbar-invisible pr-1">
-                                    {stats?.topUserAgents?.map((entry, i) => (
-                                        <div key={i} className="flex items-center justify-between text-[10px] bg-surface-variant/5 p-2 rounded-lg border border-outline/5 hover:border-pink-500/20 transition-all">
-                                            <span className="text-on-surface-variant truncate mr-2 flex-1" title={entry.label}>{entry.label.slice(0, 30)}...</span>
-                                            <span className="font-bold text-pink-500 shrink-0">{entry.count}</span>
-                                        </div>
-                                    ))}
-                                    {(!stats?.topUserAgents || stats.topUserAgents.length === 0) && (
-                                        <div className="text-center py-4 text-[9px] text-on-surface-variant italic">No UA data</div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Top Referers */}
-                            <div className="bg-surface border border-outline/10 rounded-2xl p-4 shadow-sm">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <div className="w-8 h-8 rounded-xl bg-teal-500/10 flex items-center justify-center">
-                                        <Link2 size={16} className="text-teal-500" />
-                                    </div>
-                                    <h3 className="text-xs font-bold">Top Referrers</h3>
-                                </div>
-                                <div className="space-y-2 max-h-[200px] overflow-y-auto scrollbar-invisible pr-1">
-                                    {stats?.topReferers?.map((entry, i) => (
-                                        <div key={i} className="flex items-center justify-between text-[10px] bg-surface-variant/5 p-2 rounded-lg border border-outline/5 hover:border-teal-500/20 transition-all">
-                                            <span className="text-on-surface-variant truncate mr-2 flex-1" title={entry.label}>{entry.label}</span>
-                                            <span className="font-bold text-teal-500 shrink-0">{entry.count}</span>
-                                        </div>
-                                    ))}
-                                    {(!stats?.topReferers || stats.topReferers.length === 0) && (
-                                        <div className="text-center py-4 text-[9px] text-on-surface-variant italic">No referer data</div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Top Methods */}
-                            <div className="bg-surface border border-outline/10 rounded-2xl p-4 shadow-sm">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center">
-                                        <Hash size={16} className="text-amber-500" />
-                                    </div>
-                                    <h3 className="text-xs font-bold">Top Methods</h3>
-                                </div>
-                                <div className="space-y-2 max-h-[200px] overflow-y-auto scrollbar-invisible pr-1">
-                                    {stats?.topMethods?.map((entry, i) => (
-                                        <div key={i} className="flex items-center justify-between text-[10px] bg-surface-variant/5 p-2 rounded-lg border border-outline/5 hover:border-amber-500/20 transition-all">
-                                            <span className="font-bold text-on-surface-variant">{entry.label}</span>
-                                            <span className="font-bold text-amber-500">{entry.count}</span>
-                                        </div>
-                                    ))}
-                                    {(!stats?.topMethods || stats.topMethods.length === 0) && (
-                                        <div className="text-center py-4 text-[9px] text-on-surface-variant italic">No method data</div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                            {/* Analytics Errors & Troubleshooting */}
-                            <div className="bg-surface border border-outline/10 rounded-2xl p-4 shadow-sm flex flex-col">
-                                <div className="flex items-center justify-between mb-4">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-9 h-9 rounded-xl bg-red-500/10 flex items-center justify-center">
-                                            <Shield size={18} className="text-red-500" />
-                                        </div>
-                                        <div>
-                                            <h3 className="text-sm font-bold">Top Errors</h3>
-                                            <p className="text-[9px] text-on-surface-variant uppercase font-bold">Status 4xx & 5xx</p>
-                                        </div>
-                                    </div>
-                                    <div className="bg-red-500/10 text-red-500 px-3 py-1 rounded-full text-[10px] font-bold">
-                                        {Object.entries(stats?.hitsByStatus || {}).filter(([s]) => parseInt(s) >= 400).reduce((acc, [_, c]) => acc + c, 0)} Total Errors
-                                    </div>
-                                </div>
-                                <div className="flex-1 space-y-2 overflow-y-auto max-h-[300px] pr-2 scrollbar-invisible">
-                                    {Object.entries(stats?.hitsByStatus || {}).filter(([s]) => parseInt(s) >= 400).sort((a, b) => Number(b[1]) - Number(a[1])).map(([status, count]) => (
-                                        <div key={status} className="flex items-center justify-between bg-red-500/5 p-2 rounded-xl border border-red-500/10">
-                                            <div className="flex items-center gap-3">
-                                                <span className="w-10 text-base font-black text-red-500">{status}</span>
-                                                <span className="text-[10px] font-bold text-on-surface-variant uppercase">
-                                                    {status === '404' ? 'Not Found' : status === '403' ? 'Forbidden' : status === '500' ? 'Server Error' : status === '502' ? 'Bad Gateway' : 'Client Error'}
-                                                </span>
-                                            </div>
-                                            <span className="text-sm font-bold text-red-500">{count} hits</span>
-                                        </div>
-                                    ))}
-                                    {Object.entries(stats?.hitsByStatus || {}).filter(([s]) => parseInt(s) >= 400).length === 0 && (
-                                        <div className="text-center py-10 text-[10px] text-on-surface-variant italic">No errors detected. Perfect health!</div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Live Firehose */}
-                            <div className="bg-surface border border-outline/10 rounded-2xl p-4 shadow-sm flex flex-col overflow-hidden max-h-[25rem]">
-                                <div className="flex items-center justify-between mb-4">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-9 h-9 rounded-xl bg-orange-500/10 flex items-center justify-center">
-                                            <Clock size={18} className="text-orange-500" />
-                                        </div>
-                                        <div>
-                                            <h3 className="text-sm font-bold">Real-time Traffic</h3>
-                                            <p className="text-[9px] text-on-surface-variant uppercase font-bold">Live Deck</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-1 px-2 py-0.5 bg-green-500/10 rounded-full">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                                        <span className="text-[8px] font-bold text-green-500 uppercase">Live</span>
-                                    </div>
-                                </div>
-                                <div className="flex-1 overflow-y-auto pr-1 space-y-1.5 scrollbar-invisible">
-                                    {stats?.recentHits.slice().map((hit, i) => (
-                                        <div key={i} className="flex gap-3 items-center bg-surface-variant/5 p-2 rounded-xl border border-outline/5 hover:bg-surface-variant/10 transition-all font-mono">
-                                            <div className={`w-1 h-5 rounded-full shrink-0 ${hit.status < 400 ? 'bg-green-500' : 'bg-red-500'}`} />
-                                            <div className="flex flex-col gap-0 overflow-hidden flex-1">
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`px-1 rounded text-[8px] font-bold text-white ${hit.status < 400 ? 'bg-green-500' : 'bg-red-500'}`}>{hit.status}</span>
-                                                    <span className="text-[9px] font-bold text-primary uppercase">{hit.method}</span>
-                                                    <span className="text-[9px] text-on-surface-variant font-bold truncate" title={hit.path}>{hit.path}</span>
-                                                </div>
-                                                <div className="flex items-center justify-between text-[8px] text-on-surface-variant/60">
-                                                    <span>{hit.ip}</span>
-                                                    <div className="flex items-center gap-2">
-                                                        {hit.referer && <span className="truncate max-w-[100px] italic">via {hit.referer.split('/')[2]}</span>}
-                                                        <span className="italic">{new Date(hit.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Proxy Security & Automated Jailing */}
-                        <div className="bg-surface border border-outline/10 rounded-2xl p-6 shadow-sm">
-                            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center">
-                                        <ShieldCheck size={24} className="text-primary" />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-lg font-black">Proxy Security Firewall</h3>
-                                        <p className="text-xs text-on-surface-variant font-bold uppercase tracking-wider">Automated Jailing & Rule Engine</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-4">
-                                    <div className="flex items-center gap-2 px-4 py-2 bg-surface-variant/10 rounded-2xl border border-outline/5">
-                                        <span className="text-[10px] font-bold text-on-surface-variant uppercase">Auto-Jail Active</span>
-                                        <button
-                                            onClick={() => updateSecurityConfig({ proxyJailEnabled: !securitySettings?.proxyJailEnabled })}
-                                            className={`p-1 rounded-lg transition-colors ${securitySettings?.proxyJailEnabled ? 'bg-green-500 text-white' : 'bg-red-500/10 text-red-500'}`}
-                                        >
-                                            <Power size={14} />
-                                        </button>
-                                    </div>
-                                    <div className="flex items-center gap-3 px-4 py-2 bg-surface-variant/10 rounded-2xl border border-outline/5">
-                                        <span className="text-[10px] font-bold text-on-surface-variant uppercase whitespace-nowrap">Error Threshold: {securitySettings?.proxyJailThresholdNon200}</span>
-                                        <input
-                                            type="range"
-                                            min="5"
-                                            max="100"
-                                            value={securitySettings?.proxyJailThresholdNon200 || 20}
-                                            onChange={(e) => updateSecurityConfig({ proxyJailThresholdNon200: parseInt(e.target.value) })}
-                                            className="w-24 accent-primary"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                <div className="lg:col-span-2">
-                                    <div className="flex items-center justify-between mb-3 px-1">
-                                        <h4 className="text-[10px] font-black uppercase text-on-surface-variant">Active Rules</h4>
-                                        <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{securitySettings?.proxyJailRules?.length || 0} Rules</span>
-                                    </div>
-                                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 scrollbar-invisible">
-                                        {securitySettings?.proxyJailRules?.map((rule) => (
-                                            <div key={rule.id} className="group bg-surface-variant/5 border border-outline/10 p-3 rounded-2xl hover:border-primary/30 transition-all flex items-center justify-between">
-                                                <div className="flex items-center gap-4 min-w-0">
-                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${rule.type === 'USER_AGENT' ? 'bg-pink-500/10 text-pink-500' :
-                                                        rule.type === 'METHOD' ? 'bg-orange-500/10 text-orange-500' :
-                                                            rule.type === 'PATH' ? 'bg-indigo-500/10 text-indigo-500' :
-                                                                'bg-teal-500/10 text-teal-500'
-                                                        }`}>
-                                                        {rule.type === 'USER_AGENT' ? <User size={18} /> :
-                                                            rule.type === 'METHOD' ? <Hash size={18} /> :
-                                                                rule.type === 'PATH' ? <Globe size={18} /> :
-                                                                    <Shield size={18} />}
-                                                    </div>
-                                                    <div className="min-w-0">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant/70">{rule.type}</span>
-                                                            {rule.description && <span className="text-[9px] font-bold text-primary truncate max-w-[150px]">{rule.description}</span>}
-                                                        </div>
-                                                        <div className="text-sm font-mono font-bold truncate text-on-surface break-all">{rule.pattern}</div>
-                                                    </div>
-                                                </div>
-                                                <button
-                                                    onClick={() => {
-                                                        const newRules = securitySettings.proxyJailRules.filter(r => r.id !== rule.id);
-                                                        updateSecurityConfig({ proxyJailRules: newRules });
-                                                    }}
-                                                    className="p-2 text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </div>
-                                        ))}
-                                        {(!securitySettings?.proxyJailRules || securitySettings.proxyJailRules.length === 0) && (
-                                            <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-outline/10 rounded-3xl bg-surface-variant/5">
-                                                <Shield className="text-on-surface-variant/20 mb-3" size={40} />
-                                                <p className="text-xs font-bold text-on-surface-variant">No security rules defined.</p>
-                                                <p className="text-[10px] text-on-surface-variant italic">Add a rule to automate jailing for malicious traffic.</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="bg-surface-variant/5 border border-outline/10 rounded-3xl p-6">
-                                    <h4 className="text-xs font-black uppercase mb-4 flex items-center gap-2">
-                                        <Plus size={16} className="text-primary" />
-                                        Add Security Rule
-                                    </h4>
-                                    <form className="space-y-4" onSubmit={(e) => {
-                                        e.preventDefault();
-                                        const form = e.target as HTMLFormElement;
-                                        const type = (form.elements.namedItem('type') as HTMLSelectElement).value;
-                                        const pattern = (form.elements.namedItem('pattern') as HTMLInputElement).value;
-                                        const description = (form.elements.namedItem('description') as HTMLInputElement).value;
-
-                                        if (!pattern) return toast.error('Pattern is required');
-
-                                        const newRule: ProxyJailRule = {
-                                            id: Math.random().toString(36).substr(2, 9),
-                                            type: type as ProxyJailRuleType,
-                                            pattern,
-                                            description
-                                        };
-
-                                        updateSecurityConfig({ proxyJailRules: [...(securitySettings?.proxyJailRules || []), newRule] });
-                                        form.reset();
-                                    }}>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-black uppercase text-on-surface-variant px-1">Rule Type</label>
-                                            <select
-                                                name="type"
-                                                className="w-full bg-surface border border-outline/20 rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:border-primary transition-all"
-                                            >
-                                                <option value="USER_AGENT">User Agent (Regex)</option>
-                                                <option value="PATH">Path / URL (Regex)</option>
-                                                <option value="METHOD">HTTP Method (GET, POST...)</option>
-                                                <option value="STATUS_CODE">HTTP Status Code</option>
-                                            </select>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-black uppercase text-on-surface-variant px-1">Pattern</label>
-                                            <input
-                                                name="pattern"
-                                                placeholder="e.g. ^sqlmap/.* or /admin/.*"
-                                                className="w-full bg-surface border border-outline/20 rounded-xl px-4 py-2.5 text-sm font-mono font-bold focus:outline-none focus:border-primary transition-all"
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-black uppercase text-on-surface-variant px-1">Description (Optional)</label>
-                                            <input
-                                                name="description"
-                                                placeholder="e.g. Block SQL injection bots"
-                                                className="w-full bg-surface border border-outline/20 rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:border-primary transition-all"
-                                            />
-                                        </div>
-                                        <button
-                                            type="submit"
-                                            className="w-full bg-primary text-white py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all"
-                                        >
-                                            Shield Up & Deploy
-                                        </button>
-                                        <p className="text-[9px] text-on-surface-variant italic text-center px-4 leading-relaxed">
-                                            Rules are applied in real-time. IPs matching these rules will be jailed for 30 minutes by default.
-                                        </p>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
 
             {isAddModalOpen && (

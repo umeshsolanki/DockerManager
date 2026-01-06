@@ -109,10 +109,6 @@ export default function ComposeScreen() {
         reader.onload = (event) => {
             const content = event.target?.result as string;
             setEditorContent(content);
-            if (!projectName && file.name.includes('docker-compose')) {
-                // Try to infer project name if not set
-                // But usually user should set name first or we are editing
-            }
         };
         reader.readAsText(file);
     };
@@ -154,17 +150,17 @@ export default function ComposeScreen() {
                 <div className="flex items-center gap-3">
                     <button
                         onClick={handleBackupAll}
-                        className="flex items-center gap-2 bg-surface border border-outline/20 text-on-surface px-4 py-2 rounded-xl hover:bg-white/5 transition-colors font-medium shadow-sm"
+                        className="flex items-center gap-2 bg-surface border border-outline/20 text-on-surface px-4 py-2 rounded-xl hover:bg-white/5 transition-colors text-sm font-bold shadow-sm"
                     >
                         <Archive size={18} />
                         Backup All
                     </button>
                     <button
                         onClick={handleCreate}
-                        className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl hover:bg-primary/90 transition-colors font-medium shadow-lg shadow-primary/20"
+                        className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl hover:bg-primary/90 transition-colors text-sm font-bold shadow-lg shadow-primary/20"
                     >
                         <Plus size={20} />
-                        Create New
+                        New Project
                     </button>
                 </div>
             </div>
@@ -177,15 +173,15 @@ export default function ComposeScreen() {
                         placeholder="Search compose projects..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-surface border border-outline/20 rounded-xl py-3 pl-10 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors"
+                        className="w-full bg-surface border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors"
                     />
                 </div>
                 <button
                     onClick={fetchComposeFiles}
-                    className="p-3 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors"
+                    className="p-2.5 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors"
                     title="Refresh"
                 >
-                    <RefreshCw size={20} />
+                    <RefreshCw size={18} />
                 </button>
             </div>
 
@@ -194,15 +190,55 @@ export default function ComposeScreen() {
                     No compose files found
                 </div>
             ) : (
-                <div className="flex flex-col gap-3 overflow-y-auto pb-6">
+                <div className="bg-surface/30 border border-outline/10 rounded-xl overflow-hidden divide-y divide-outline/5">
                     {filteredFiles.map(file => (
-                        <ComposeFileCard
-                            key={file.path}
-                            file={file}
-                            onAction={handleAction}
-                            onEdit={() => handleEdit(file)}
-                            onBackup={() => handleBackup(file)}
-                        />
+                        <div key={file.path} className="p-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors group">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                                    <Folder size={16} className="text-primary" />
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                    <span className="text-sm font-bold truncate text-on-surface" title={file.name}>
+                                        {file.name}
+                                    </span>
+                                    <div className="flex items-center gap-1.5 text-[10px] text-on-surface-variant font-mono truncate">
+                                        <span className="truncate">{file.path}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-opacity">
+                                <button
+                                    onClick={() => handleBackup(file)}
+                                    className="p-1.5 hover:bg-white/10 text-on-surface-variant hover:text-primary rounded-lg transition-colors"
+                                    title="Backup"
+                                >
+                                    <Archive size={14} />
+                                </button>
+                                <button
+                                    onClick={() => handleEdit(file)}
+                                    className="p-1.5 hover:bg-primary/10 text-primary rounded-lg transition-colors"
+                                    title="Edit"
+                                >
+                                    <Edit2 size={14} />
+                                </button>
+                                <div className="w-px h-6 bg-outline/10 mx-1" />
+                                <button
+                                    onClick={() => handleAction(() => DockerClient.composeUp(file.path))}
+                                    className="p-1.5 hover:bg-green-500/10 text-green-500 rounded-lg transition-colors"
+                                    title="Up"
+                                >
+                                    <Play size={16} fill="currentColor" />
+                                </button>
+                                <button
+                                    onClick={() => handleAction(() => DockerClient.composeDown(file.path))}
+                                    className="p-1.5 hover:bg-red-500/10 text-red-500 rounded-lg transition-colors"
+                                    title="Down"
+                                >
+                                    <Square size={14} fill="currentColor" />
+                                </button>
+                            </div>
+                        </div>
                     ))}
                 </div>
             )}
@@ -210,13 +246,13 @@ export default function ComposeScreen() {
             {/* Editor Modal */}
             {isEditorOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                    <div className="bg-surface border border-outline/20 rounded-3xl w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl overflow-hidden">
+                    <div className="bg-surface border border-outline/20 rounded-3xl w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in duration-200">
                         <div className="p-6 border-b border-outline/10 flex items-center justify-between bg-surface/50">
                             <div className="flex items-center gap-3">
                                 <div className="p-2 bg-primary/10 rounded-lg text-primary">
                                     <FileCode size={24} />
                                 </div>
-                                <h2 className="text-xl font-semibold">
+                                <h2 className="text-xl font-bold">
                                     {editingFile ? `Edit ${editingFile.name}` : 'Create New Compose Project'}
                                 </h2>
                             </div>
@@ -229,14 +265,14 @@ export default function ComposeScreen() {
                             <div className="p-4 bg-surface/30 border-b border-outline/10 flex items-center gap-4">
                                 <div className="flex-1 flex gap-3 items-end">
                                     <div className="flex-1">
-                                        <label className="text-xs text-on-surface-variant uppercase font-bold mb-1 block">Project Name</label>
+                                        <label className="text-[10px] text-on-surface-variant uppercase font-bold mb-1 block">Project Name</label>
                                         <input
                                             type="text"
                                             value={projectName}
                                             onChange={(e) => setProjectName(e.target.value)}
                                             placeholder="e.g. my-app"
                                             disabled={!!editingFile}
-                                            className="w-full bg-black/20 border border-outline/20 rounded-lg px-3 py-2 text-on-surface focus:outline-none focus:border-primary transition-colors disabled:opacity-50"
+                                            className="w-full bg-black/20 border border-outline/20 rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors disabled:opacity-50"
                                         />
                                     </div>
                                     <div className="relative">
@@ -249,9 +285,9 @@ export default function ComposeScreen() {
                                         />
                                         <label
                                             htmlFor="restore-file"
-                                            className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-outline/20 rounded-lg text-sm font-medium hover:bg-white/10 cursor-pointer transition-colors whitespace-nowrap"
+                                            className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-outline/20 rounded-lg text-xs font-bold hover:bg-white/10 cursor-pointer transition-colors whitespace-nowrap"
                                         >
-                                            <Upload size={16} />
+                                            <Upload size={14} />
                                             Restore YAML
                                         </label>
                                     </div>
@@ -259,16 +295,16 @@ export default function ComposeScreen() {
                                 <div className="flex items-center bg-black/20 rounded-xl p-1 border border-outline/10">
                                     <button
                                         onClick={() => setActiveTab('editor')}
-                                        className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-all ${activeTab === 'editor' ? 'bg-primary text-on-primary shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}
+                                        className={`px-4 py-1.5 rounded-lg flex items-center gap-2 text-xs font-bold transition-all ${activeTab === 'editor' ? 'bg-primary text-on-primary shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}
                                     >
-                                        <FileCode size={18} />
+                                        <FileCode size={16} />
                                         YAML
                                     </button>
                                     <button
                                         onClick={() => setActiveTab('wizard')}
-                                        className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-all ${activeTab === 'wizard' ? 'bg-primary text-on-primary shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}
+                                        className={`px-4 py-1.5 rounded-lg flex items-center gap-2 text-xs font-bold transition-all ${activeTab === 'wizard' ? 'bg-primary text-on-primary shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}
                                     >
-                                        <Wand2 size={18} />
+                                        <Wand2 size={16} />
                                         Wizard
                                     </button>
                                 </div>
@@ -307,13 +343,13 @@ export default function ComposeScreen() {
                         <div className="p-6 border-t border-outline/10 bg-surface/50 flex justify-end gap-3">
                             <button
                                 onClick={() => setIsEditorOpen(false)}
-                                className="px-6 py-2.5 rounded-xl hover:bg-white/5 transition-colors font-medium border border-outline/20"
+                                className="px-6 py-2.5 rounded-xl hover:bg-white/5 transition-colors text-sm font-bold border border-outline/20"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleSave}
-                                className="px-6 py-2.5 bg-primary text-on-primary rounded-xl hover:bg-primary/90 transition-all font-medium flex items-center gap-2 shadow-lg shadow-primary/20"
+                                className="px-6 py-2.5 bg-primary text-on-primary rounded-xl hover:bg-primary/90 transition-all text-sm font-bold flex items-center gap-2 shadow-lg shadow-primary/20"
                             >
                                 <Save size={20} />
                                 {editingFile ? 'Update' : 'Create'} Project
@@ -322,59 +358,6 @@ export default function ComposeScreen() {
                     </div>
                 </div>
             )}
-        </div>
-    );
-}
-
-function ComposeFileCard({ file, onAction, onEdit, onBackup }: {
-    file: ComposeFile;
-    onAction: (action: () => Promise<any>) => Promise<void>;
-    onEdit: () => void;
-    onBackup: () => void;
-}) {
-    return (
-        <div className="bg-surface/50 border border-outline/10 rounded-xl p-4 flex items-center justify-between hover:bg-surface transition-colors group">
-            <div className="flex items-center gap-4 flex-1 overflow-hidden">
-                <div className="flex flex-col overflow-hidden">
-                    <span className="text-lg font-medium text-on-surface truncate">{file.name}</span>
-                    <div className="flex items-center gap-1.5 text-on-surface-variant">
-                        <Folder size={14} />
-                        <span className="text-xs truncate">{file.path}</span>
-                    </div>
-                </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-                <button
-                    onClick={onBackup}
-                    className="p-2 hover:bg-primary/10 text-on-surface-variant hover:text-primary rounded-lg transition-colors"
-                    title="Backup"
-                >
-                    <Archive size={20} />
-                </button>
-                <button
-                    onClick={onEdit}
-                    className="p-2 hover:bg-primary/10 text-primary rounded-lg transition-colors"
-                    title="Edit"
-                >
-                    <Edit2 size={20} />
-                </button>
-                <div className="w-px h-6 bg-outline/10 mx-1" />
-                <button
-                    onClick={() => onAction(() => DockerClient.composeUp(file.path))}
-                    className="p-2 hover:bg-green-500/10 text-green-500 rounded-lg transition-colors"
-                    title="Up"
-                >
-                    <Play size={22} fill="currentColor" />
-                </button>
-                <button
-                    onClick={() => onAction(() => DockerClient.composeDown(file.path))}
-                    className="p-2 hover:bg-red-500/10 text-red-500 rounded-lg transition-colors"
-                    title="Down"
-                >
-                    <Square size={20} fill="currentColor" />
-                </button>
-            </div>
         </div>
     );
 }
@@ -398,30 +381,30 @@ function ComposeWizard({ onGenerate }: { onGenerate: (yml: string) => void }) {
         <div className="max-w-md mx-auto space-y-6 py-8">
             <div className="space-y-4">
                 <div>
-                    <label className="text-sm font-medium mb-1.5 block">Service Name</label>
+                    <label className="text-[10px] text-on-surface-variant uppercase font-bold mb-1.5 block">Service Name</label>
                     <input
                         type="text"
                         value={serviceName}
                         onChange={(e) => setServiceName(e.target.value)}
-                        className="w-full bg-black/20 border border-outline/20 rounded-xl px-4 py-3 text-on-surface focus:outline-none focus:border-primary transition-colors"
+                        className="w-full bg-black/20 border border-outline/20 rounded-xl px-4 py-3 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
                     />
                 </div>
                 <div>
-                    <label className="text-sm font-medium mb-1.5 block">Docker Image</label>
+                    <label className="text-[10px] text-on-surface-variant uppercase font-bold mb-1.5 block">Docker Image</label>
                     <input
                         type="text"
                         value={image}
                         onChange={(e) => setImage(e.target.value)}
-                        className="w-full bg-black/20 border border-outline/20 rounded-xl px-4 py-3 text-on-surface focus:outline-none focus:border-primary transition-colors"
+                        className="w-full bg-black/20 border border-outline/20 rounded-xl px-4 py-3 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
                     />
                 </div>
                 <div>
-                    <label className="text-sm font-medium mb-1.5 block">Port Mapping (Host:Container)</label>
+                    <label className="text-[10px] text-on-surface-variant uppercase font-bold mb-1.5 block">Port Mapping (Host:Container)</label>
                     <input
                         type="text"
                         value={port}
                         onChange={(e) => setPort(e.target.value)}
-                        className="w-full bg-black/20 border border-outline/20 rounded-xl px-4 py-3 text-on-surface focus:outline-none focus:border-primary transition-colors"
+                        className="w-full bg-black/20 border border-outline/20 rounded-xl px-4 py-3 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
                     />
                 </div>
             </div>

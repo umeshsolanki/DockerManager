@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Search, RefreshCw, Trash, HardDrive, Info, Download, CheckCircle2, XCircle } from 'lucide-react';
+import { Search, RefreshCw, Trash, HardDrive, Download, Info, XCircle, CheckCircle2 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { DockerVolume, VolumeDetails, BackupResult } from '@/lib/types';
 
@@ -50,44 +50,11 @@ export default function VolumesScreen() {
         );
     }, [volumes, searchQuery]);
 
-    const driverStats = useMemo(() => {
-        const stats: Record<string, number> = {};
-        volumes.forEach(v => {
-            stats[v.driver] = (stats[v.driver] || 0) + 1;
-        });
-        return Object.entries(stats);
-    }, [volumes]);
-
     return (
-        <div className="flex flex-col h-full relative">
+        <div className="flex flex-col h-full">
             <div className="flex items-center gap-4 mb-5">
                 <h1 className="text-3xl font-bold">Volumes</h1>
                 {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
-            </div>
-
-            {/* Visualisation Summary */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                <div className="bg-surface/50 border border-outline/10 rounded-xl p-4 text-center">
-                    <div className="text-xs text-on-surface-variant mb-1">Total Volumes</div>
-                    <div className="text-2xl font-bold">{volumes.length}</div>
-                </div>
-                <div className="bg-surface/50 border border-outline/10 rounded-xl p-4 col-span-1 md:col-span-2">
-                    <div className="text-xs text-on-surface-variant mb-2">Drivers Distribution</div>
-                    <div className="flex h-2 rounded-full overflow-hidden bg-white/5">
-                        {driverStats.map(([driver, count], index) => {
-                            const colors = ['bg-primary', 'bg-secondary', 'bg-tertiary', 'bg-green-500', 'bg-yellow-500'];
-                            const width = (count / volumes.length) * 100;
-                            return (
-                                <div
-                                    key={driver}
-                                    className={`${colors[index % colors.length]} h-full`}
-                                    style={{ width: `${width}%` }}
-                                    title={`${driver}: ${count}`}
-                                />
-                            );
-                        })}
-                    </div>
-                </div>
             </div>
 
             <div className="flex items-center gap-4 mb-5">
@@ -103,15 +70,15 @@ export default function VolumesScreen() {
                 </div>
                 <button
                     onClick={fetchVolumes}
-                    className="p-2 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors"
+                    className="p-2.5 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors"
                     title="Refresh"
                 >
                     <RefreshCw size={18} />
                 </button>
                 <button
                     onClick={() => handleAction(() => DockerClient.pruneVolumes())}
-                    className="p-2 bg-surface border border-outline/20 rounded-xl hover:bg-red-500/10 text-red-400 transition-colors"
-                    title="Prune Unused"
+                    className="p-2.5 bg-surface border border-outline/20 rounded-xl hover:bg-red-500/10 text-red-400 transition-colors"
+                    title="Prune Unused Volumes"
                 >
                     <Trash size={18} />
                 </button>
@@ -122,15 +89,49 @@ export default function VolumesScreen() {
                     No volumes found
                 </div>
             ) : (
-                <div className="flex flex-col gap-2 overflow-y-auto pb-4">
+                <div className="bg-surface/30 border border-outline/10 rounded-xl overflow-hidden divide-y divide-outline/5">
                     {filteredVolumes.map(volume => (
-                        <VolumeCard
-                            key={volume.name}
-                            volume={volume}
-                            onAction={handleAction}
-                            onInspect={() => handleInspect(volume.name)}
-                            onBackup={() => handleBackup(volume.name)}
-                        />
+                        <div key={volume.name} className="p-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors group">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0">
+                                    <HardDrive size={16} className="text-secondary" />
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                    <span className="text-sm font-bold truncate text-on-surface" title={volume.name}>
+                                        {volume.name}
+                                    </span>
+                                    <div className="flex items-center gap-2 text-[10px] text-on-surface-variant font-mono">
+                                        <span className="font-bold uppercase text-[9px] bg-white/5 px-1 rounded">{volume.driver}</span>
+                                        <span className="opacity-30">•</span>
+                                        <span className="truncate">{volume.mountpoint}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-opacity">
+                                <button
+                                    onClick={() => handleInspect(volume.name)}
+                                    className="p-1.5 hover:bg-blue-500/10 text-blue-400 rounded-lg transition-colors"
+                                    title="Inspect"
+                                >
+                                    <Info size={14} />
+                                </button>
+                                <button
+                                    onClick={() => handleBackup(volume.name)}
+                                    className="p-1.5 hover:bg-white/10 text-on-surface-variant hover:text-secondary rounded-lg transition-colors"
+                                    title="Backup"
+                                >
+                                    <Download size={14} />
+                                </button>
+                                <button
+                                    onClick={() => handleAction(() => DockerClient.removeVolume(volume.name))}
+                                    className="p-1.5 hover:bg-red-500/10 text-red-400 rounded-lg transition-colors"
+                                    title="Remove"
+                                >
+                                    <Trash size={14} />
+                                </button>
+                            </div>
+                        </div>
                     ))}
                 </div>
             )}
@@ -148,55 +149,6 @@ export default function VolumesScreen() {
                     onClose={() => setBackupResult(null)}
                 />
             )}
-        </div>
-    );
-}
-
-function VolumeCard({ volume, onAction, onInspect, onBackup }: {
-    volume: DockerVolume;
-    onAction: (action: () => Promise<void>) => Promise<void>;
-    onInspect: () => void;
-    onBackup: () => void;
-}) {
-    return (
-        <div className="bg-surface/50 border border-outline/10 rounded-xl p-3 flex items-center justify-between hover:bg-surface transition-colors">
-            <div className="flex items-center gap-3 flex-1">
-                <div className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center text-secondary">
-                    <HardDrive size={18} />
-                </div>
-                <div className="flex flex-col truncate">
-                    <span className="text-base font-medium text-on-surface truncate">{volume.name}</span>
-                    <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs text-on-surface-variant">{volume.driver}</span>
-                        <span className="w-1 h-1 rounded-full bg-white/10" />
-                        <span className="text-xs text-on-surface-variant truncate font-mono">{volume.mountpoint}</span>
-                    </div>
-                </div>
-            </div>
-
-            <div className="flex items-center gap-1 ml-3">
-                <button
-                    onClick={onInspect}
-                    className="p-2 hover:bg-white/10 text-on-surface-variant hover:text-primary rounded-lg transition-colors"
-                    title="Inspect"
-                >
-                    <Info size={18} />
-                </button>
-                <button
-                    onClick={onBackup}
-                    className="p-2 hover:bg-white/10 text-on-surface-variant hover:text-secondary rounded-lg transition-colors"
-                    title="Backup"
-                >
-                    <Download size={18} />
-                </button>
-                <button
-                    onClick={() => onAction(() => DockerClient.removeVolume(volume.name))}
-                    className="p-2 hover:bg-red-500/10 text-red-500 rounded-lg transition-colors"
-                    title="Remove"
-                >
-                    <Trash size={18} />
-                </button>
-            </div>
         </div>
     );
 }

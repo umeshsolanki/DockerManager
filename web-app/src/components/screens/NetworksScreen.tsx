@@ -50,15 +50,15 @@ export default function NetworksScreen() {
                         placeholder="Search networks..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-surface border border-outline/20 rounded-xl py-3 pl-10 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors"
+                        className="w-full bg-surface border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors"
                     />
                 </div>
                 <button
                     onClick={fetchNetworks}
-                    className="p-3 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors"
+                    className="p-2.5 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors"
                     title="Refresh"
                 >
-                    <RefreshCw size={20} />
+                    <RefreshCw size={18} />
                 </button>
             </div>
 
@@ -67,14 +67,48 @@ export default function NetworksScreen() {
                     No networks found
                 </div>
             ) : (
-                <div className="flex flex-col gap-3 overflow-y-auto pb-6">
+                <div className="bg-surface/30 border border-outline/10 rounded-xl overflow-hidden divide-y divide-outline/5">
                     {filteredNetworks.map(network => (
-                        <NetworkCard
-                            key={network.id}
-                            network={network}
-                            onAction={handleAction}
-                            onInspect={() => setInspectNetworkId(network.id)}
-                        />
+                        <div key={network.id} className="p-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors group">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                                    <Share2 size={16} className="text-primary" />
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                    <span className="text-sm font-bold truncate text-on-surface" title={network.name}>
+                                        {network.name}
+                                    </span>
+                                    <div className="flex items-center gap-2 text-[10px] text-on-surface-variant font-mono">
+                                        <span className="font-bold uppercase text-[9px] bg-white/5 px-1 rounded">{network.driver}</span>
+                                        <span className="opacity-30">•</span>
+                                        <span className="truncate">{network.scope}</span>
+                                        {network.internal && (
+                                            <>
+                                                <span className="opacity-30">•</span>
+                                                <span className="text-[8px] bg-yellow-500/10 text-yellow-500 px-1 rounded uppercase font-bold">Internal</span>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-opacity">
+                                <button
+                                    onClick={() => setInspectNetworkId(network.id)}
+                                    className="p-1.5 hover:bg-blue-500/10 text-blue-400 rounded-lg transition-colors"
+                                    title="Inspect"
+                                >
+                                    <Eye size={14} />
+                                </button>
+                                <button
+                                    onClick={() => handleAction(() => DockerClient.removeNetwork(network.id))}
+                                    className="p-1.5 hover:bg-red-500/10 text-red-400 rounded-lg transition-colors"
+                                    title="Remove"
+                                >
+                                    <Trash size={14} />
+                                </button>
+                            </div>
+                        </div>
                     ))}
                 </div>
             )}
@@ -85,55 +119,6 @@ export default function NetworksScreen() {
                     onClose={() => setInspectNetworkId(null)}
                 />
             )}
-        </div>
-    );
-}
-
-function NetworkCard({ network, onAction, onInspect }: {
-    network: DockerNetwork;
-    onAction: (action: () => Promise<void>) => Promise<void>;
-    onInspect: () => void;
-}) {
-    return (
-        <div className="bg-surface/50 border border-outline/10 rounded-xl p-4 flex items-center justify-between hover:bg-surface transition-colors">
-            <div className="flex items-center gap-4 flex-1">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                    <Share2 size={24} />
-                </div>
-                <div className="flex flex-col">
-                    <span className="text-lg font-medium text-on-surface">{network.name}</span>
-                    <div className="flex items-center gap-2 mt-1">
-                        <span className="text-sm text-on-surface-variant">{network.driver}</span>
-                        <span className="w-1 h-1 rounded-full bg-white/10" />
-                        <span className="text-sm text-on-surface-variant">{network.scope}</span>
-                        {network.internal && (
-                            <>
-                                <span className="w-1 h-1 rounded-full bg-white/10" />
-                                <span className="text-[10px] bg-yellow-500/10 text-yellow-500 px-2 py-0.5 rounded-full uppercase font-bold">
-                                    Internal
-                                </span>
-                            </>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-                <button
-                    onClick={onInspect}
-                    className="p-2 hover:bg-blue-500/10 text-blue-500 rounded-lg transition-colors"
-                    title="Inspect"
-                >
-                    <Eye size={20} />
-                </button>
-                <button
-                    onClick={() => onAction(() => DockerClient.removeNetwork(network.id))}
-                    className="p-2 hover:bg-red-500/10 text-red-500 rounded-lg transition-colors"
-                    title="Remove"
-                >
-                    <Trash size={20} />
-                </button>
-            </div>
         </div>
     );
 }

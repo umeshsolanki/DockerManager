@@ -17,6 +17,8 @@ import ProxyScreen from '@/components/screens/ProxyScreen';
 import DashboardScreen from '@/components/screens/DashboardScreen';
 import ResourcesScreen from '@/components/screens/ResourcesScreen';
 import EmailsScreen from '@/components/screens/EmailsScreen';
+import AnalyticsScreen from '@/components/screens/AnalyticsScreen';
+import SecurityScreen from '@/components/screens/SecurityScreen';
 import LoginScreen from '@/components/screens/LoginScreen';
 import { DockerClient } from '@/lib/api';
 
@@ -30,7 +32,7 @@ function HomeContent() {
   // Initialize from URL and check auth on mount
   useEffect(() => {
     const screenParam = searchParams.get('screen') as Screen;
-    const validScreens: Screen[] = ['Dashboard', 'Containers', 'Images', 'Compose', 'Networks', 'Resources', 'Volumes', 'Secrets', 'Logs', 'Firewall', 'Proxy', 'Emails', 'Settings'];
+    const validScreens: Screen[] = ['Dashboard', 'Containers', 'Images', 'Compose', 'Networks', 'Resources', 'Volumes', 'Secrets', 'Logs', 'Firewall', 'Proxy', 'Emails', 'Settings', 'Security', 'Analytics'];
 
     if (screenParam && validScreens.includes(screenParam)) {
       setSelectedScreen(screenParam);
@@ -106,6 +108,8 @@ function HomeContent() {
       case 'Proxy': return <ProxyScreen />;
       case 'Emails': return <EmailsScreen />;
       case 'Settings': return <SettingsScreen onLogout={handleLogout} />;
+      case 'Security': return <SecurityScreen />;
+      case 'Analytics': return <AnalyticsScreen />;
       default: return <DashboardScreen />;
     }
   };

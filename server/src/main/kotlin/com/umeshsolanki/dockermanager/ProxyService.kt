@@ -80,7 +80,7 @@ class ProxyServiceImpl(
     private val recentHitsList = java.util.concurrent.ConcurrentLinkedDeque<ProxyHit>()
     private val MAX_RECENT_HITS = 100
 
-    private val refreshIntervalMs = 10000L // Configurable interval: 10 seconds
+    private val refreshIntervalMs = 60000L // Configurable interval: 10 seconds
     private val scope =
         CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -111,7 +111,7 @@ class ProxyServiceImpl(
                     delay(settings.proxyStatsIntervalMs)
                 } catch (e: Exception) {
                     logger.error("Error updating stats", e)
-                    delay(10000) // Fallback delay on error
+                    delay(60000) // Fallback delay on error
                 }
             }
         }
