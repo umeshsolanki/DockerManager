@@ -167,7 +167,7 @@ class ProxyServiceImpl(
 
                             // Security Jailing check
                             val secSettings = AppConfig.proxySecuritySettings
-                            if (secSettings.proxyJailEnabled) {
+                            if (secSettings.proxyJailEnabled && !AppConfig.isLocalIP(ip)) {
                                 var shouldJail = false
                                 var reason = ""
 

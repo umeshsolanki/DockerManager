@@ -1,10 +1,13 @@
-'use client';
-
 import React, { useEffect, useState, useMemo } from 'react';
 import { Search, RefreshCw, Trash2, Play, Square, Trash, Info, X, XCircle, Plus, Globe, Shield, Terminal, Settings2, Box } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { DockerContainer, ContainerDetails, CreateContainerRequest, DockerNetwork, DockerVolume, DockerImage } from '@/lib/types';
 import dynamic from 'next/dynamic';
+import { Button, ActionIconButton } from '../ui/Buttons';
+import { SearchInput } from '../ui/SearchInput';
+import { Modal } from '../ui/Modal';
+import { TabButton, TabsList } from '../ui/Tabs';
+import { useActionTrigger } from '@/hooks/useActionTrigger';
 
 const WebShell = dynamic(() => import('../Terminal'), { ssr: false });
 
@@ -15,9 +18,10 @@ export default function ContainersScreen() {
     const [inspectingContainer, setInspectingContainer] = useState<ContainerDetails | null>(null);
     const [shellContainerId, setShellContainerId] = useState<string | null>(null);
     const [isWizardOpen, setIsWizardOpen] = useState(false);
+    const { trigger, isLoading: isActionLoading } = useActionTrigger();
 
-    const fetchContainers = async () => {
-        setIsLoading(true);
+    const fetchContainers = async (showLoading = true) => {
+        if (showLoading) setIsLoading(true);
         const data = await DockerClient.listContainers();
         setContainers(data);
         setIsLoading(false);
@@ -28,9 +32,7 @@ export default function ContainersScreen() {
     }, []);
 
     const handleAction = async (action: () => Promise<any>) => {
-        setIsLoading(true);
-        await action();
-        await fetchContainers();
+        await trigger(action, { onSuccess: () => fetchContainers(false) });
     };
 
     const handleInspect = async (id: string) => {
@@ -59,51 +61,39 @@ export default function ContainersScreen() {
             </div>
 
             <div className="flex items-center gap-4 mb-5">
-                <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={20} />
-                    <input
-                        type="text"
-                        placeholder="Search containers..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-surface border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors"
-                    />
-                </div>
-                <button
-                    onClick={() => setIsWizardOpen(true)}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded-xl font-bold hover:opacity-90 transition-opacity whitespace-nowrap text-sm"
-                >
-                    <Plus size={18} />
+                <SearchInput
+                    value={searchQuery}
+                    onChange={setSearchQuery}
+                    placeholder="Search containers..."
+                />
+                <Button onClick={() => setIsWizardOpen(true)} icon={<Plus size={18} />}>
                     New Container
-                </button>
-                <button
-                    onClick={fetchContainers}
-                    className="p-2.5 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors"
+                </Button>
+                <ActionIconButton
+                    onClick={() => fetchContainers()}
+                    icon={<RefreshCw />}
                     title="Refresh"
-                >
-                    <RefreshCw size={18} />
-                </button>
-                <button
+                />
+                <ActionIconButton
                     onClick={() => handleAction(() => DockerClient.pruneContainers())}
-                    className="p-2.5 bg-surface border border-outline/20 rounded-xl hover:bg-red-500/10 text-red-400 transition-colors"
+                    icon={<Trash2 />}
+                    color="red"
                     title="Prune"
-                >
-                    <Trash2 size={18} />
-                </button>
+                />
             </div>
 
             {filteredContainers.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center text-on-surface-variant">
+                <div className="flex-1 flex items-center justify-center text-on-surface-variant italic opacity-50">
                     No containers found
                 </div>
             ) : (
-                <div className="bg-surface/30 border border-outline/10 rounded-xl overflow-hidden divide-y divide-outline/5">
+                <div className="bg-surface/30 border border-outline/10 rounded-xl overflow-hidden divide-y divide-outline/5 transition-all">
                     {filteredContainers.map(container => {
                         const isRunning = container.state.toLowerCase().includes('running');
                         return (
-                            <div key={container.id} className="p-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors group">
+                            <div key={container.id} className="p-3 flex items-center justify-between hover:bg-white/[0.02] transition-all group">
                                 <div className="flex items-center gap-3 min-w-0">
-                                    <div className={`w-2 h-2 rounded-full shrink-0 ${isRunning ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.3)]' : 'bg-gray-500/50'}`} />
+                                    <div className={`w-2 h-2 rounded-full shrink-0 ${isRunning ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.3)]' : 'bg-gray-500/50 grayscale'}`} />
                                     <div className="flex flex-col min-w-0">
                                         <div className="flex items-center gap-2">
                                             <span className="text-sm font-bold truncate text-on-surface" title={container.names}>
@@ -114,56 +104,51 @@ export default function ContainersScreen() {
                                             </span>
                                         </div>
                                         <div className="flex items-center gap-2 text-[10px] text-on-surface-variant font-mono">
-                                            <span className={isRunning ? 'text-green-500/80' : 'text-on-surface-variant/70'}>
+                                            <span className={isRunning ? 'text-green-500/80 font-bold' : 'text-on-surface-variant/70'}>
                                                 {container.status}
                                             </span>
                                             <span className="opacity-30">•</span>
-                                            <span className="truncate">{container.id.substring(0, 12)}</span>
+                                            <span className="truncate opacity-50">{container.id.substring(0, 12)}</span>
                                         </div>
                                     </div>
                                 </div>
 
                                 <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-opacity">
-                                    <button
+                                    <ActionIconButton
                                         onClick={() => handleInspect(container.id)}
-                                        className="p-1.5 hover:bg-blue-500/10 text-blue-400 rounded-lg transition-colors"
+                                        icon={<Info />}
+                                        color="blue"
                                         title="Inspect"
-                                    >
-                                        <Info size={14} />
-                                    </button>
+                                    />
                                     {isRunning ? (
-                                        <button
+                                        <ActionIconButton
                                             onClick={() => handleAction(() => DockerClient.stopContainer(container.id))}
-                                            className="p-1.5 hover:bg-red-500/10 text-red-400 rounded-lg transition-colors"
+                                            icon={<Square fill="currentColor" />}
+                                            color="red"
                                             title="Stop"
-                                        >
-                                            <Square size={14} fill="currentColor" />
-                                        </button>
+                                        />
                                     ) : (
-                                        <button
+                                        <ActionIconButton
                                             onClick={() => handleAction(() => DockerClient.startContainer(container.id))}
-                                            className="p-1.5 hover:bg-green-500/10 text-green-500 rounded-lg transition-colors"
+                                            icon={<Play fill="currentColor" />}
+                                            color="green"
                                             title="Start"
-                                        >
-                                            <Play size={14} fill="currentColor" />
-                                        </button>
+                                        />
                                     )}
-                                    <button
+                                    <ActionIconButton
                                         onClick={() => handleShell(container.id)}
+                                        icon={<Terminal />}
+                                        color="primary"
                                         disabled={!isRunning}
-                                        className={`p-1.5 rounded-lg transition-colors ${!isRunning ? 'opacity-20 cursor-not-allowed' : 'hover:bg-primary/10 text-primary'}`}
                                         title="Terminal Shell"
-                                    >
-                                        <Terminal size={14} />
-                                    </button>
-                                    <button
+                                    />
+                                    <ActionIconButton
                                         onClick={() => handleAction(() => DockerClient.removeContainer(container.id))}
+                                        icon={<Trash />}
+                                        color="red"
                                         disabled={isRunning}
-                                        className={`p-1.5 rounded-lg transition-colors ${isRunning ? 'opacity-20 cursor-not-allowed' : 'hover:bg-red-500/10 text-red-500'}`}
                                         title="Remove"
-                                    >
-                                        <Trash size={14} />
-                                    </button>
+                                    />
                                 </div>
                             </div>
                         );
@@ -201,22 +186,18 @@ export default function ContainersScreen() {
 
 function ShellModal({ containerId, onClose }: { containerId: string; onClose: () => void }) {
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-            <div className="bg-surface border border-outline/20 rounded-3xl w-full max-w-5xl h-[80vh] overflow-hidden flex flex-col shadow-2xl">
-                <div className="p-6 border-b border-outline/10 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <Terminal size={24} className="text-primary" />
-                        <h2 className="text-2xl font-bold">Container Shell: {containerId.substring(0, 12)}</h2>
-                    </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-                        <XCircle size={24} />
-                    </button>
-                </div>
-                <div className="flex-1 p-4 bg-black">
-                    <WebShell url={`${DockerClient.getServerUrl()}/shell/container/${containerId}`} onClose={onClose} />
-                </div>
+        <Modal
+            onClose={onClose}
+            title={`Container Shell: ${containerId.substring(0, 12)}`}
+            description="Interactive Terminal Access"
+            icon={<Terminal size={24} />}
+            maxWidth="max-w-5xl"
+            className="h-[80vh] flex flex-col"
+        >
+            <div className="flex-1 bg-black rounded-2xl overflow-hidden mt-4 border border-outline/10">
+                <WebShell url={`${DockerClient.getServerUrl()}/shell/container/${containerId}`} onClose={onClose} />
             </div>
-        </div>
+        </Modal>
     );
 }
 
@@ -240,147 +221,125 @@ function InspectModal({ details, onClose }: { details: ContainerDetails; onClose
     }, [activeTab]);
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-surface border border-outline/20 rounded-3xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-                <div className="p-6 border-b border-outline/10 flex items-center justify-between">
-                    <div>
-                        <h2 className="text-2xl font-bold">{details.name}</h2>
-                        <span className="text-xs text-on-surface-variant font-mono">{details.id}</span>
-                    </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-                        <XCircle size={24} />
-                    </button>
-                </div>
+        <Modal
+            onClose={onClose}
+            title={details.name}
+            description={`Container ID: ${details.id.substring(0, 12)}`}
+            icon={<Box size={24} />}
+            maxWidth="max-w-3xl"
+            className="max-h-[90vh] flex flex-col"
+        >
+            <TabsList className="mb-6">
+                <TabButton id="details" label="Details" active={activeTab === 'details'} onClick={() => setActiveTab('details')} />
+                <TabButton id="logs" label="Logs" active={activeTab === 'logs'} onClick={() => setActiveTab('logs')} />
+            </TabsList>
 
-                {/* Tab Navigation */}
-                <div className="flex border-b border-outline/10">
-                    <button
-                        onClick={() => setActiveTab('details')}
-                        className={`flex-1 px-6 py-3 font-medium transition-colors ${activeTab === 'details'
-                            ? 'text-primary border-b-2 border-primary'
-                            : 'text-on-surface-variant hover:text-on-surface'
-                            }`}
-                    >
-                        Details
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('logs')}
-                        className={`flex-1 px-6 py-3 font-medium transition-colors ${activeTab === 'logs'
-                            ? 'text-primary border-b-2 border-primary'
-                            : 'text-on-surface-variant hover:text-on-surface'
-                            }`}
-                    >
-                        Logs
-                    </button>
-                </div>
+            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                {activeTab === 'details' ? (
+                    <div className="space-y-8">
+                        <div className="grid grid-cols-2 gap-4">
+                            <DetailItem label="Status" value={details.status} />
+                            <DetailItem label="Image" value={details.image} />
+                            <DetailItem label="Platform" value={details.platform} />
+                            <DetailItem label="Created" value={details.createdAt} />
+                        </div>
 
-                <div className="flex-1 overflow-y-auto p-6">
-                    {activeTab === 'details' ? (
-                        <div className="space-y-8">
-                            <div className="grid grid-cols-2 gap-4">
-                                <DetailItem label="Status" value={details.status} />
-                                <DetailItem label="Image" value={details.image} />
-                                <DetailItem label="Platform" value={details.platform} />
-                                <DetailItem label="Created" value={details.createdAt} />
+                        <div>
+                            <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
+                                Environment Variables
+                            </h3>
+                            <div className="bg-black/20 rounded-xl p-4 font-mono text-sm space-y-1 overflow-x-auto">
+                                {details.env.map((e: string, i: number) => (
+                                    <div key={i} className="text-green-400/80">{e}</div>
+                                ))}
                             </div>
+                        </div>
 
-                            <div>
-                                <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
-                                    Environment Variables
-                                </h3>
-                                <div className="bg-black/20 rounded-xl p-4 font-mono text-sm space-y-1 overflow-x-auto">
-                                    {details.env.map((e: string, i: number) => (
-                                        <div key={i} className="text-green-400/80">{e}</div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div>
-                                <h3 className="text-lg font-bold mb-3">Ports</h3>
-                                <div className="space-y-2">
-                                    {details.ports && details.ports.length > 0 ? (
-                                        details.ports.map((p: any, i: number) => (
-                                            <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-4">
-                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                    <div>
-                                                        <div className="text-[10px] text-on-surface-variant">Container Port</div>
-                                                        <div className="text-sm font-mono">{p.containerPort}</div>
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-[10px] text-on-surface-variant">Host Port</div>
-                                                        <div className="text-sm font-mono">{p.hostPort}</div>
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-[10px] text-on-surface-variant">Protocol</div>
-                                                        <div className="text-sm font-mono uppercase">{p.protocol}</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <div className="text-sm text-on-surface-variant italic">No port mappings</div>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div>
-                                <h3 className="text-lg font-bold mb-3">Mounts</h3>
-                                <div className="space-y-2">
-                                    {details.mounts.map((m: any, i: number) => (
+                        <div>
+                            <h3 className="text-lg font-bold mb-3">Ports</h3>
+                            <div className="space-y-2">
+                                {details.ports && details.ports.length > 0 ? (
+                                    details.ports.map((p: any, i: number) => (
                                         <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-4">
-                                            <div className="text-xs text-on-surface-variant uppercase font-bold mb-1">{m.type}</div>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                 <div>
-                                                    <div className="text-[10px] text-on-surface-variant">Source</div>
-                                                    <div className="text-sm font-mono break-all">{m.source}</div>
+                                                    <div className="text-[10px] text-on-surface-variant">Container Port</div>
+                                                    <div className="text-sm font-mono">{p.containerPort}</div>
                                                 </div>
                                                 <div>
-                                                    <div className="text-[10px] text-on-surface-variant">Destination</div>
-                                                    <div className="text-sm font-mono break-all">{m.destination}</div>
+                                                    <div className="text-[10px] text-on-surface-variant">Host Port</div>
+                                                    <div className="text-sm font-mono">{p.hostPort}</div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-[10px] text-on-surface-variant">Protocol</div>
+                                                    <div className="text-sm font-mono uppercase">{p.protocol}</div>
                                                 </div>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
+                                    ))
+                                ) : (
+                                    <div className="text-sm text-on-surface-variant italic">No port mappings</div>
+                                )}
                             </div>
                         </div>
-                    ) : (
-                        <div className="h-full">
-                            <div className="flex items-center justify-between mb-3">
-                                <h3 className="text-lg font-bold">Container Logs (Last {logTail} lines)</h3>
-                                <div className="flex items-center gap-3">
-                                    <div className="flex items-center bg-black/20 rounded-lg px-3 h-8 border border-outline/10 group focus-within:border-primary/50 transition-all">
-                                        <span className="text-[10px] text-on-surface-variant uppercase font-bold mr-2 opacity-50">Lines</span>
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            max="10000"
-                                            step="50"
-                                            value={logTail}
-                                            onChange={(e) => setLogTail(parseInt(e.target.value) || 0)}
-                                            className="w-14 bg-transparent py-1 text-xs outline-none font-mono text-primary font-bold"
-                                        />
+
+                        <div>
+                            <h3 className="text-lg font-bold mb-3">Mounts</h3>
+                            <div className="space-y-2">
+                                {details.mounts.map((m: any, i: number) => (
+                                    <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-4">
+                                        <div className="text-xs text-on-surface-variant uppercase font-bold mb-1">{m.type}</div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <div className="text-[10px] text-on-surface-variant">Source</div>
+                                                <div className="text-sm font-mono break-all">{m.source}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-[10px] text-on-surface-variant">Destination</div>
+                                                <div className="text-sm font-mono break-all">{m.destination}</div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <button
-                                        onClick={() => fetchLogs()}
-                                        disabled={isLoadingLogs}
-                                        className="h-8 px-4 bg-primary text-on-primary rounded-lg hover:opacity-90 transition-all text-xs font-bold disabled:opacity-50 flex items-center gap-2"
-                                    >
-                                        {isLoadingLogs ? <RefreshCw className="animate-spin" size={14} /> : <RefreshCw size={14} />}
-                                        {isLoadingLogs ? 'Loading...' : 'Refresh'}
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="bg-black/60 rounded-2xl p-4 font-mono text-[11px] overflow-auto max-h-[60vh] border border-outline/5 shadow-inner">
-                                <pre className="whitespace-pre-wrap text-green-400/90 selection:bg-primary/30 leading-relaxed">
-                                    {logs || 'No logs available. Refresh to fetch.'}
-                                </pre>
+                                ))}
                             </div>
                         </div>
-                    )}
-                </div>
+                    </div>
+                ) : (
+                    <div className="h-full">
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-lg font-bold">Container Logs (Last {logTail} lines)</h3>
+                            <div className="flex items-center gap-3">
+                                <div className="flex items-center bg-black/20 rounded-lg px-3 h-8 border border-outline/10 group focus-within:border-primary/50 transition-all">
+                                    <span className="text-[10px] text-on-surface-variant uppercase font-bold mr-2 opacity-50">Lines</span>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="10000"
+                                        step="50"
+                                        value={logTail}
+                                        onChange={(e) => setLogTail(parseInt(e.target.value) || 0)}
+                                        className="w-14 bg-transparent py-1 text-xs outline-none font-mono text-primary font-bold"
+                                    />
+                                </div>
+                                <button
+                                    onClick={() => fetchLogs()}
+                                    disabled={isLoadingLogs}
+                                    className="h-8 px-4 bg-primary text-on-primary rounded-lg hover:opacity-90 transition-all text-xs font-bold disabled:opacity-50 flex items-center gap-2"
+                                >
+                                    {isLoadingLogs ? <RefreshCw className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+                                    {isLoadingLogs ? 'Loading...' : 'Refresh'}
+                                </button>
+                            </div>
+                        </div>
+                        <div className="bg-black/60 rounded-2xl p-4 font-mono text-[11px] overflow-auto max-h-[60vh] border border-outline/5 shadow-inner">
+                            <pre className="whitespace-pre-wrap text-green-400/90 selection:bg-primary/30 leading-relaxed">
+                                {logs || 'No logs available. Refresh to fetch.'}
+                            </pre>
+                        </div>
+                    </div>
+                )}
             </div>
-        </div>
+        </Modal>
     );
 }
 
@@ -588,53 +547,48 @@ function CreateContainerWizard({ onClose, onCreated }: { onClose: () => void; on
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
-            <div className="bg-surface border border-outline/20 rounded-[2.5rem] w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl scale-in-center">
-                <div className="p-8 pb-4 flex items-center justify-between">
-                    <div>
-                        <div className="text-sm font-bold text-primary uppercase tracking-widest mb-1">Step {step} of 5</div>
-                        <h2 className="text-3xl font-bold">New Container</h2>
-                    </div>
-                    <button onClick={onClose} className="p-3 hover:bg-white/10 rounded-full transition-colors">
-                        <X size={32} />
-                    </button>
-                </div>
+        <Modal
+            onClose={onClose}
+            title="New Container"
+            description={`Step ${step} of 5`}
+            icon={<Box size={24} />}
+            maxWidth="max-w-2xl"
+            className="max-h-[85vh] flex flex-col"
+        >
+            <div className="flex-1 overflow-y-auto min-h-[400px] mt-4">
+                {renderStep()}
+            </div>
 
-                <div className="flex-1 overflow-y-auto p-8 pt-4 min-h-[400px]">
-                    {renderStep()}
-                </div>
-
-                <div className="p-8 bg-black/20 flex items-center justify-between border-t border-outline/10">
-                    <button
-                        onClick={prevStep}
-                        disabled={step === 1}
-                        className={`px-8 py-3 rounded-xl font-bold transition-all ${step === 1 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10'}`}
-                    >
-                        Back
-                    </button>
-                    <div className="flex gap-4">
-                        {step < 5 ? (
-                            <button
-                                onClick={nextStep}
-                                disabled={step === 1 && !formData.image}
-                                className={`px-10 py-3 bg-primary text-on-primary rounded-xl font-bold hover:opacity-90 transition-all ${step === 1 && !formData.image ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            >
-                                Next
-                            </button>
-                        ) : (
-                            <button
-                                onClick={handleCreate}
-                                disabled={isLoading}
-                                className="px-10 py-3 bg-green-500 text-white rounded-xl font-bold hover:opacity-90 transition-all flex items-center gap-2"
-                            >
-                                {isLoading ? <RefreshCw className="animate-spin" size={20} /> : <Plus size={20} />}
-                                Create & Launch
-                            </button>
-                        )}
-                    </div>
+            <div className="flex items-center justify-between mt-8 pt-6 border-t border-outline/10">
+                <Button
+                    variant="surface"
+                    onClick={prevStep}
+                    disabled={step === 1}
+                >
+                    Back
+                </Button>
+                <div className="flex gap-4">
+                    {step < 5 ? (
+                        <Button
+                            onClick={nextStep}
+                            disabled={step === 1 && !formData.image}
+                        >
+                            Next
+                        </Button>
+                    ) : (
+                        <Button
+                            variant="primary"
+                            onClick={handleCreate}
+                            loading={isLoading}
+                            icon={<Plus size={20} />}
+                            className="bg-green-500 shadow-green-500/20"
+                        >
+                            Create & Launch
+                        </Button>
+                    )}
                 </div>
             </div>
-        </div>
+        </Modal>
     );
 }
 

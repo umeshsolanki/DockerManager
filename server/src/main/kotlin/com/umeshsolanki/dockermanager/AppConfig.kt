@@ -258,5 +258,22 @@ object AppConfig {
 
     val fcmServiceAccountFile: File get() = File(dataRoot, _settings.fcmServiceAccountPath)
     val fcmTokensFile: File get() = File(dataRoot, "fcm-tokens.json")
+
+    fun isLocalIP(ip: String): Boolean {
+        if (ip.isBlank()) return true
+        val cleanIp = ip.trim().lowercase()
+        if (cleanIp == "localhost" || cleanIp == "127.0.0.1" || cleanIp == "0.0.0.0" || cleanIp == "::1") return true
+        if (cleanIp.startsWith("127.0.")) return true
+        if (cleanIp.startsWith("192.168.")) return true
+        if (cleanIp.startsWith("10.")) return true
+        if (cleanIp.startsWith("172.")) {
+            val parts = cleanIp.split(".")
+            if (parts.size >= 2) {
+                val second = parts[1].toIntOrNull()
+                if (second != null && second in 16..31) return true
+            }
+        }
+        return false
+    }
 }
 

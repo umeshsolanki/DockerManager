@@ -229,7 +229,7 @@ class BtmpServiceImpl(
     private val countryCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     private fun getCountryCode(ip: String): String {
-        if (ip == "0.0.0.0" || ip.startsWith("127.") || ip.startsWith("192.168.") || ip.startsWith("10.")) return "LOC"
+        if (AppConfig.isLocalIP(ip)) return "LOC"
         
         return "??"
     //countryCache.computeIfAbsent(ip) { _ ->
@@ -259,7 +259,7 @@ class BtmpServiceImpl(
              scope.launch(Dispatchers.IO) { getCountryCode(ip) }
         }
         
-        if (autoJailEnabled && jailedIps.none { it.ip == ip }) {
+        if (autoJailEnabled && !AppConfig.isLocalIP(ip) && jailedIps.none { it.ip == ip }) {
             failedAttemptsInWindow[ip] = (failedAttemptsInWindow[ip] ?: 0) + 1
             if (failedAttemptsInWindow[ip]!! >= jailThreshold) {
                 val expiresAt = System.currentTimeMillis() + (jailDurationMinutes * 60_000)

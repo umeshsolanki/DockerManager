@@ -13,6 +13,7 @@ import {
     BarChart, Bar, Cell, PieChart, Pie
 } from 'recharts';
 import { toast } from 'sonner';
+import { StatCard } from '../ui/StatCard';
 
 export default function AnalyticsScreen() {
     const [stats, setStats] = useState<ProxyStats | null>(null);
@@ -92,28 +93,28 @@ export default function AnalyticsScreen() {
 
             {/* High Level Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <AnalyticCard
+                <StatCard
                     label="Total Requests"
                     value={stats?.totalHits.toLocaleString() || '0'}
                     icon={<MousePointerClick size={20} />}
                     sub="Lifetime Traffic"
                     color="primary"
                 />
-                <AnalyticCard
+                <StatCard
                     label="Active Domains"
                     value={Object.keys(stats?.hitsByDomain || {}).length.toString()}
                     icon={<Globe size={20} />}
                     sub="Configured Hosts"
-                    color="blue"
+                    color="indigo"
                 />
-                <AnalyticCard
+                <StatCard
                     label="Unique Reach"
                     value={stats?.topIps.length.toString() || '0'}
                     icon={<Network size={20} />}
                     sub="Unique Source IPs"
                     color="indigo"
                 />
-                <AnalyticCard
+                <StatCard
                     label="Error Rate"
                     value={stats ? `${((Object.entries(stats.hitsByStatus).filter(([s]) => !s.startsWith('2')).reduce((acc, [_, v]) => acc + v, 0) / stats.totalHits) * 100).toFixed(1)}%` : '0%'}
                     icon={<Zap size={20} />}
@@ -308,27 +309,7 @@ export default function AnalyticsScreen() {
     );
 }
 
-function AnalyticCard({ label, value, icon, sub, color }: { label: string, value: string, icon: React.ReactNode, sub: string, color: string }) {
-    const colorClasses: Record<string, string> = {
-        primary: 'bg-primary/10 text-primary border-primary/10',
-        blue: 'bg-blue-500/10 text-blue-500 border-blue-500/10',
-        indigo: 'bg-indigo-500/10 text-indigo-500 border-indigo-500/10',
-        red: 'bg-red-500/10 text-red-500 border-red-500/10',
-    };
 
-    return (
-        <div className="bg-surface/30 border border-outline/10 rounded-[28px] p-5 flex flex-col gap-3 hover:translate-y-[-2px] transition-all duration-300">
-            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border shadow-inner ${colorClasses[color]}`}>
-                {icon}
-            </div>
-            <div className="flex flex-col">
-                <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">{label}</span>
-                <span className="text-2xl font-black mt-0.5">{value}</span>
-                <span className="text-[10px] font-medium text-on-surface-variant/40 mt-1">{sub}</span>
-            </div>
-        </div>
-    );
-}
 
 function StatsListCard({ title, icon, items, color, total }: { title: string, icon: React.ReactNode, items: any[], color: string, total: number }) {
     const colorClasses: Record<string, string> = {

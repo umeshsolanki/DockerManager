@@ -74,9 +74,7 @@ object AuthService {
         // Record failure if not from a local IP
         if (result is AuthResult.InvalidCredentials || result is AuthResult.Invalid2FA) {
             remoteHost?.let { ip ->
-                val isLocallyAccessed = ip == "localhost" || ip == "127.0.0.1" || ip == "0:0:0:0:0:0:0:1" || 
-                                       ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172.16.")
-                if (!isLocallyAccessed) {
+                if (!AppConfig.isLocalIP(ip)) {
                     DockerService.recordFailedLoginAttempt(username ?: "unknown", ip)
                 }
             }
@@ -93,9 +91,7 @@ object AuthService {
         if (username != null && username != currentAccess.username) return AuthResult.InvalidCredentials
         if (password != currentAccess.password) return AuthResult.InvalidCredentials
         
-        val isLocallyAccessed = remoteHost?.let {
-             it == "localhost" || it == "127.0.0.1" ||  it == "0:0:0:0:0:0:0:1" || it.startsWith("192.168.") || it.startsWith("10.") ||  it.startsWith("172.16.")
-        } ?: false
+        val isLocallyAccessed = remoteHost?.let { AppConfig.isLocalIP(it) } ?: false
 
         if (currentAccess.twoFactorEnabled && !isLocallyAccessed) {
              if (code.isNullOrBlank()) return AuthResult.Requires2FA

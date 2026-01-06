@@ -9,6 +9,12 @@ import {
 import { DockerClient } from '@/lib/api';
 import { FirewallRule, BtmpStats, SystemConfig, ProxyJailRule, ProxyJailRuleType } from '@/lib/types';
 import { toast } from 'sonner';
+import { StatCard } from '../ui/StatCard';
+import { TabButton, TabsList } from '../ui/Tabs';
+import { Modal } from '../ui/Modal';
+import { SearchInput } from '../ui/SearchInput';
+import { Button, ActionIconButton } from '../ui/Buttons';
+import { useActionTrigger } from '@/hooks/useActionTrigger';
 
 export default function SecurityScreen() {
     const [firewallRules, setFirewallRules] = useState<FirewallRule[]>([]);
@@ -16,6 +22,7 @@ export default function SecurityScreen() {
     const [proxyConfig, setProxyConfig] = useState<SystemConfig | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'overview' | 'firewall' | 'jails' | 'rules'>('overview');
+    const { trigger } = useActionTrigger();
 
     // Firewall Modal
     const [isFirewallModalOpen, setIsFirewallModalOpen] = useState(false);
@@ -45,13 +52,11 @@ export default function SecurityScreen() {
     }, []);
 
     const handleUnblockIP = async (id: string) => {
-        const success = await DockerClient.unblockIP(id);
-        if (success) {
-            toast.success('Firewall rule removed');
-            fetchData();
-        } else {
-            toast.error('Failed to remove firewall rule');
-        }
+        await trigger(() => DockerClient.unblockIP(id), {
+            onSuccess: () => fetchData(),
+            successMessage: 'Firewall rule removed',
+            errorMessage: 'Failed to remove firewall rule'
+        });
     };
 
     const updateProxySecurity = async (updated: Partial<SystemConfig>) => {
@@ -61,13 +66,17 @@ export default function SecurityScreen() {
         // Optimistic update
         setProxyConfig(newSettings);
 
-        const result = await DockerClient.updateProxySecuritySettings(newSettings);
-        if (!result.success) {
-            toast.error(result.message);
-            fetchData(); // Revert on failure
-        } else {
-            toast.success(result.message);
-        }
+        await trigger(() => DockerClient.updateProxySecuritySettings(newSettings), {
+            onSuccess: (result) => {
+                if (!result.success) {
+                    toast.error(result.message);
+                    fetchData();
+                } else {
+                    toast.success(result.message);
+                }
+            },
+            // We handle progress manually here because it's an optimistic update with success check inside result
+        });
     };
 
     const updateAutoJailSettings = async (updated: { enabled?: boolean, threshold?: number, duration?: number }) => {
@@ -79,13 +88,13 @@ export default function SecurityScreen() {
         // Optimistic update
         setBtmpStats({ ...btmpStats, autoJailEnabled: e, jailThreshold: t, jailDurationMinutes: d });
 
-        const success = await DockerClient.updateAutoJailSettings(e, t, d);
-        if (success) {
-            toast.success('Incarceration settings updated');
-        } else {
-            toast.error('Failed to update settings');
-            fetchData();
-        }
+        await trigger(() => DockerClient.updateAutoJailSettings(e, t, d), {
+            successMessage: 'Incarceration settings updated',
+            errorMessage: 'Failed to update settings',
+            onSuccess: (success) => {
+                if (!success) fetchData();
+            }
+        });
     };
 
     if (isLoading && !btmpStats) {
@@ -107,40 +116,41 @@ export default function SecurityScreen() {
                     <p className="text-on-surface-variant/60 text-sm mt-1">Active threat mitigation and intrusion prevention systems</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <div className="flex bg-surface border border-outline/10 p-1 rounded-xl">
-                        <TabButton id="overview" label="Overview" icon={<Shield size={16} />} active={activeTab === 'overview'} onClick={setActiveTab} />
-                        <TabButton id="firewall" label="Firewall" icon={<ListFilter size={16} />} active={activeTab === 'firewall'} onClick={setActiveTab} />
-                        <TabButton id="jails" label="Active Jails" icon={<ShieldAlert size={16} />} active={activeTab === 'jails'} onClick={setActiveTab} />
-                        <TabButton id="rules" label="Rules" icon={<Settings size={16} />} active={activeTab === 'rules'} onClick={setActiveTab} />
-                    </div>
+                    <TabsList>
+                        <TabButton id="overview" label="Overview" icon={<Shield size={16} />} active={activeTab === 'overview'} onClick={(id) => setActiveTab(id as any)} title="Security Overview" />
+                        <TabButton id="firewall" label="Firewall" icon={<ListFilter size={16} />} active={activeTab === 'firewall'} onClick={(id) => setActiveTab(id as any)} title="Firewall Rules" />
+                        <TabButton id="jails" label="Active Jails" icon={<ShieldAlert size={16} />} active={activeTab === 'jails'} onClick={(id) => setActiveTab(id as any)} title="Active Jails" />
+                        <TabButton id="rules" label="Rules" icon={<Settings size={16} />} active={activeTab === 'rules'} onClick={(id) => setActiveTab(id as any)} title="Edge Rules" />
+                    </TabsList>
+                    <ActionIconButton onClick={() => fetchData(true)} icon={<RefreshCw />} title="Refresh Security Data" />
                 </div>
             </header>
 
             {activeTab === 'overview' && (
                 <div className="space-y-6 animate-in fade-in duration-500">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <SecurityStatCard
+                        <StatCard
                             label="Failed Auth"
                             value={btmpStats?.totalFailedAttempts.toLocaleString() || '0'}
                             sub="Global SSH Failures"
                             color="orange"
                             icon={<Terminal size={20} />}
                         />
-                        <SecurityStatCard
+                        <StatCard
                             label="Active Blocks"
                             value={firewallRules.length.toString()}
                             sub="Firewall IP Restrictions"
                             color="indigo"
                             icon={<ShieldCheck size={20} />}
                         />
-                        <SecurityStatCard
+                        <StatCard
                             label="Jailed IPs"
                             value={(btmpStats?.jailedIps.length || 0).toString()}
                             sub="Auto-mitigated threats"
                             color="red"
                             icon={<UserMinus size={20} />}
                         />
-                        <SecurityStatCard
+                        <StatCard
                             label="Proxy Rules"
                             value={(proxyConfig?.proxyJailRules.length || 0).toString()}
                             sub="Reverse Proxy Jails"
@@ -451,9 +461,9 @@ export default function SecurityScreen() {
                                         <div key={rule.id} className="group bg-white/5 border border-white/5 p-4 rounded-2xl hover:border-primary/30 transition-all flex items-center justify-between">
                                             <div className="flex items-center gap-4 min-w-0">
                                                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${rule.type === 'USER_AGENT' ? 'bg-pink-500/10 text-pink-500' :
-                                                        rule.type === 'METHOD' ? 'bg-orange-500/10 text-orange-500' :
-                                                            rule.type === 'PATH' ? 'bg-indigo-500/10 text-indigo-500' :
-                                                                'bg-teal-500/10 text-teal-500'
+                                                    rule.type === 'METHOD' ? 'bg-orange-500/10 text-orange-500' :
+                                                        rule.type === 'PATH' ? 'bg-indigo-500/10 text-indigo-500' :
+                                                            'bg-teal-500/10 text-teal-500'
                                                     }`}>
                                                     {rule.type === 'USER_AGENT' ? <History size={18} /> :
                                                         rule.type === 'METHOD' ? <Terminal size={18} /> :
@@ -566,39 +576,7 @@ export default function SecurityScreen() {
     );
 }
 
-function SecurityStatCard({ label, value, sub, color, icon }: { label: string, value: string, sub: string, color: 'primary' | 'orange' | 'indigo' | 'red', icon: React.ReactNode }) {
-    const colors = {
-        primary: 'bg-primary/10 text-primary border-primary/10',
-        orange: 'bg-orange-500/10 text-orange-500 border-orange-500/10',
-        indigo: 'bg-indigo-500/10 text-indigo-500 border-indigo-500/10',
-        red: 'bg-red-500/10 text-red-500 border-red-500/10',
-    };
 
-    return (
-        <div className="bg-surface/30 border border-outline/10 p-5 rounded-[28px] flex flex-col gap-3">
-            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border shadow-inner ${colors[color]}`}>
-                {icon}
-            </div>
-            <div className="flex flex-col">
-                <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">{label}</span>
-                <span className="text-2xl font-black mt-0.5">{value}</span>
-                <span className="text-[10px] font-medium text-on-surface-variant/40 mt-1">{sub}</span>
-            </div>
-        </div>
-    );
-}
-
-function TabButton({ id, label, icon, active, onClick }: { id: any, label: string, icon: React.ReactNode, active: boolean, onClick: (id: any) => void }) {
-    return (
-        <button
-            onClick={() => onClick(id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black tracking-tight transition-all ${active ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-on-surface-variant hover:bg-white/5'}`}
-        >
-            {icon}
-            {label}
-        </button>
-    );
-}
 
 function BlockIPModal({ onClose, onBlocked }: { onClose: () => void, onBlocked: () => void }) {
     const [ip, setIp] = useState('');

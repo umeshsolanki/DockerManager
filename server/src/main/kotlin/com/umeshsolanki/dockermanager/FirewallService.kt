@@ -52,6 +52,11 @@ class FirewallServiceImpl : IFirewallService {
 
     override fun blockIP(request: BlockIPRequest): Boolean {
         return try {
+            if (AppConfig.isLocalIP(request.ip)) {
+                logger.warn("Ignoring block request for local/private IP: ${request.ip}")
+                return true // Return true as we've "handled" it by ignoring
+            }
+
             val rules = loadRules()
             val id = UUID.randomUUID().toString()
             val newRule = FirewallRule(
@@ -195,10 +200,26 @@ class FirewallServiceImpl : IFirewallService {
     }
 
     private fun syncRules() {
-        val rules = loadRules()
+        val allRules = loadRules()
+        val (localRules, validRules) = allRules.partition { AppConfig.isLocalIP(it.ip) }
+        
+        if (localRules.isNotEmpty()) {
+            logger.info("Cleaning up ${localRules.size} local IPs from firewall rules")
+            localRules.forEach { rule ->
+                if (rule.port != null) {
+                    val proto = if (rule.protocol == "ALL") "tcp" else rule.protocol.lowercase()
+                    executeCommand("$iptablesCmd -w -D DOCKER-USER -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-${rule.id}\"")
+                    executeCommand("$iptablesCmd -w -D INPUT -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-${rule.id}\"")
+                } else {
+                    executeCommand("$ipSetCmd del dm-blocklist-ip ${rule.ip}")
+                }
+            }
+            saveRules(validRules)
+        }
+
         ensureBaseRules()
 
-        rules.forEach { rule ->
+        validRules.forEach { rule ->
             if (rule.port != null) {
                 val proto = if (rule.protocol == "ALL") "tcp" else rule.protocol.lowercase()
                 // Just try to insert. If checks are hard, we might duplicate, but -C is better.
