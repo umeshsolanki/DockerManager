@@ -10,6 +10,19 @@ fun String?.ifNullOrBlank(value: String): String {
 }
 
 @Serializable
+enum class ProxyJailRuleType {
+    USER_AGENT, METHOD, PATH, STATUS_CODE
+}
+
+@Serializable
+data class ProxyJailRule(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val type: ProxyJailRuleType,
+    val pattern: String,
+    val description: String? = null
+)
+
+@Serializable
 data class AppSettings(
     val dockerSocket: String = "/var/run/docker.sock",
     val jamesWebAdminUrl: String = "http://localhost:8001",
@@ -22,6 +35,11 @@ data class AppSettings(
     val fcmServiceAccountPath: String = "fcm-service-account.json",
     val proxyStatsActive: Boolean = true,
     val proxyStatsIntervalMs: Long = 10000L,
+    
+    // Proxy Specific Security
+    val proxyJailEnabled: Boolean = true,
+    val proxyJailThresholdNon200: Int = 20,
+    val proxyJailRules: List<ProxyJailRule> = emptyList()
 )
 
 object AppConfig {
@@ -108,8 +126,22 @@ object AppConfig {
         saveSettings()
     }
 
+    fun updateProxySecuritySettings(
+        enabled: Boolean,
+        thresholdNon200: Int,
+        rules: List<ProxyJailRule>
+    ) {
+        _settings = _settings.copy(
+            proxyJailEnabled = enabled,
+            proxyJailThresholdNon200 = thresholdNon200,
+            proxyJailRules = rules
+        )
+        saveSettings()
+    }
+
     val jailSettings: AppSettings get() = _settings
     val proxyStatsSettings: AppSettings get() = _settings
+    val proxySecuritySettings: AppSettings get() = _settings
 
     private fun saveSettings() {
         try {

@@ -110,13 +110,13 @@ class EmailServiceImpl : IEmailService {
         val webAdminProp = File(confDir, "webadmin.properties")
         if (!webAdminProp.exists()) {
             webAdminProp.writeText("""
-                enabled=true
-                port=8000
-                host=0.0.0.0
-                secure=false
-                url_prefix=
-                cors.enable=true
-                cors.origin=*
+enabled=true
+port=8000
+host=0.0.0.0
+secure=false
+url_prefix=
+cors.enable=true
+cors.origin=*
             """.trimIndent())
         }
 

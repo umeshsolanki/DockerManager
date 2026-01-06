@@ -80,6 +80,24 @@ fun Route.proxyRoutes() {
             call.respond(HttpStatusCode.OK, ProxyActionResult(true, "Proxy stats settings updated"))
         }
 
+        get("/stats/refresh") {
+            call.respond(DockerService.getProxyStats())
+        }
+
+        get("/security/settings") {
+            call.respond(DockerService.getProxySecuritySettings())
+        }
+
+        post("/security/settings") {
+            val request = call.receive<com.umeshsolanki.dockermanager.AppSettings>()
+            DockerService.updateProxySecuritySettings(
+                request.proxyJailEnabled,
+                request.proxyJailThresholdNon200,
+                request.proxyJailRules
+            )
+            call.respond(HttpStatusCode.OK, ProxyActionResult(true, "Proxy security settings updated"))
+        }
+
         get("/certificates") {
             call.respond(DockerService.listProxyCertificates())
         }

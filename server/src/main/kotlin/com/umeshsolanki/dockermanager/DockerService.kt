@@ -11,7 +11,7 @@ object DockerService {
     private var volumeService: IVolumeService = VolumeServiceImpl(dockerClient)
     private val logService: ILogService = LogServiceImpl()
     private val firewallService: IFirewallService = FirewallServiceImpl()
-    private val proxyService: IProxyService = ProxyServiceImpl()
+    private val proxyService: IProxyService = ProxyServiceImpl(firewallService)
     private val btmpService: IBtmpService = BtmpServiceImpl(firewallService)
     private val emailService: IEmailService = EmailServiceImpl()
 
@@ -99,6 +99,9 @@ object DockerService {
     fun getProxyComposeConfig() = proxyService.getComposeConfig()
     fun updateProxyComposeConfig(content: String) = proxyService.updateComposeConfig(content)
     fun updateProxyStatsSettings(active: Boolean, intervalMs: Long) = proxyService.updateStatsSettings(active, intervalMs)
+    fun updateProxySecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>) = 
+        proxyService.updateSecuritySettings(enabled, thresholdNon200, rules)
+    fun getProxySecuritySettings() = AppConfig.proxySecuritySettings
 
     // Email Management
     suspend fun listEmailDomains() = emailService.listDomains()

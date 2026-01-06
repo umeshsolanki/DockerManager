@@ -247,11 +247,18 @@ class ProxyHit(
     val responseTime: Int,
     val userAgent: String,
     val domain: String? = null,
+    val referer: String? = null,
 )
 
 @Serializable
 data class PathHit(
     val path: String,
+    val count: Long
+)
+
+@Serializable
+data class GenericHitEntry(
+    val label: String,
     val count: Long
 )
 
@@ -262,6 +269,7 @@ data class StatusHit(
 )
 
 @Serializable
+@Serializable
 class ProxyStats(
     val totalHits: Long,
     val hitsByStatus: Map<Int, Long>,
@@ -269,6 +277,11 @@ class ProxyStats(
     val topPaths: List<PathHit>,
     val recentHits: List<ProxyHit>,
     val hitsByDomain: Map<String, Long> = emptyMap(),
+    val topIps: List<GenericHitEntry> = emptyList(),
+    val topIpsWithErrors: List<GenericHitEntry> = emptyList(),
+    val topUserAgents: List<GenericHitEntry> = emptyList(),
+    val topReferers: List<GenericHitEntry> = emptyList(),
+    val topMethods: List<GenericHitEntry> = emptyList(),
 )
 
 @Serializable

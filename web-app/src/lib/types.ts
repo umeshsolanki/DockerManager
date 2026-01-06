@@ -214,11 +214,32 @@ export interface ProxyHit {
   status: number;
   responseTime: number;
   userAgent: string;
+  domain?: string;
+  referer?: string;
 }
 
 export interface PathHit {
   path: string;
   count: number;
+}
+
+export interface GenericHitEntry {
+  label: string;
+  count: number;
+}
+
+export enum ProxyJailRuleType {
+  USER_AGENT = 'USER_AGENT',
+  METHOD = 'METHOD',
+  PATH = 'PATH',
+  STATUS_CODE = 'STATUS_CODE'
+}
+
+export interface ProxyJailRule {
+  id: string;
+  type: ProxyJailRuleType;
+  pattern: string;
+  description?: string;
 }
 
 export interface ProxyStats {
@@ -228,6 +249,11 @@ export interface ProxyStats {
   topPaths: PathHit[];
   recentHits: ProxyHit[];
   hitsByDomain: Record<string, number>;
+  topIps: GenericHitEntry[];
+  topIpsWithErrors: GenericHitEntry[];
+  topUserAgents: GenericHitEntry[];
+  topReferers: GenericHitEntry[];
+  topMethods: GenericHitEntry[];
 }
 
 export interface BtmpEntry {
@@ -301,8 +327,11 @@ export interface SystemConfig {
   appVersion: string;
   twoFactorEnabled: boolean;
   username: string;
-  proxyStatsActive?: boolean;
-  proxyStatsIntervalMs?: number;
+  proxyStatsActive: boolean;
+  proxyStatsIntervalMs: number;
+  proxyJailEnabled: boolean;
+  proxyJailThresholdNon200: number;
+  proxyJailRules: ProxyJailRule[];
 }
 
 export interface UpdateSystemConfigRequest {

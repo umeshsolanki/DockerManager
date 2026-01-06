@@ -31,9 +31,12 @@ interface IProxyService {
     fun getComposeConfig(): String
     fun updateComposeConfig(content: String): Pair<Boolean, String>
     fun updateStatsSettings(active: Boolean, intervalMs: Long)
+    fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>)
 }
 
-class ProxyServiceImpl : IProxyService {
+class ProxyServiceImpl(
+    private val firewallService: IFirewallService
+) : IProxyService {
     private val logger = org.slf4j.LoggerFactory.getLogger(ProxyServiceImpl::class.java)
     private val configDir = AppConfig.proxyConfigDir
     private val logFile = AppConfig.proxyLogFile
@@ -55,15 +58,39 @@ class ProxyServiceImpl : IProxyService {
     private val customCertsPath = AppConfig.customCertDir.absolutePath
 
     private var cachedStats: ProxyStats = ProxyStats(
-            totalHits = 0,
-            hitsByStatus = emptyMap(),
-            hitsOverTime = emptyMap(),
-            topPaths = emptyList(),
-            recentHits = emptyList()
-        )
+        totalHits = 0,
+        hitsByStatus = emptyMap(),
+        hitsOverTime = emptyMap(),
+        topPaths = emptyList(),
+        recentHits = emptyList()
+    )
+
+    // Incremental state
+    private var lastProcessedOffset = 0L
+    private val totalHitsCounter = java.util.concurrent.atomic.AtomicLong(0)
+    private val hitsByStatusMap = java.util.concurrent.ConcurrentHashMap<Int, Long>()
+    private val hitsByDomainMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val hitsByPathMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val hitsByIpMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val hitsByIpErrorMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val hitsByMethodMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val hitsByRefererMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val hitsByUserAgentMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val hitsByTimeMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val recentHitsList = java.util.concurrent.ConcurrentLinkedDeque<ProxyHit>()
+    private val MAX_RECENT_HITS = 100
+
     private val refreshIntervalMs = 10000L // Configurable interval: 10 seconds
     private val scope =
         CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    override fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>) {
+        AppConfig.updateProxySecuritySettings(enabled, thresholdNon200, rules)
+    }
+
+    override fun updateStatsSettings(active: Boolean, intervalMs: Long) {
+        AppConfig.updateProxyStatsSettings(active, intervalMs)
+    }
 
     init {
         if (!configDir.exists()) configDir.mkdirs()
@@ -97,103 +124,139 @@ class ProxyServiceImpl : IProxyService {
     private fun updateStatsNatively() {
         if (!logFile.exists()) return
 
-        val totalHits = executeCommand("wc -l < ${logFile.absolutePath}").trim().toLongOrNull() ?: 0
+        val currentLength = logFile.length()
+        
+        // Handle log rotation or truncated file
+        if (currentLength < lastProcessedOffset) {
+            logger.info("Log file rotated or truncated, resetting offset")
+            lastProcessedOffset = 0
+            // Optionally clear stats here if you want fresh analytics on rotation
+            // For now we keep cumulative stats
+        }
 
-        // Hits by Status
-        val statusCounts =
-            executeCommand("awk '{print \$9}' ${logFile.absolutePath} | sort | uniq -c").lineSequence()
-                .filter { it.isNotBlank() }
-                .mapNotNull {
-                    val parts = it.trim().split("\\s+".toRegex())
-                    if (parts.size >= 2) {
-                        val count = parts[0].toLongOrNull() ?: 0L
-                        val status = parts[1].toIntOrNull()
-                        if (status != null) status to count else null
-                    } else null
-                }.toMap()
+        if (currentLength == lastProcessedOffset) return
 
-        // Hits by Domain
-        val domainCounts =
-            executeCommand("awk -F'\"' '{print \$(NF-1)}' ${logFile.absolutePath} | sort | uniq -c").lineSequence()
-                .filter { it.isNotBlank() }
-                .mapNotNull {
-                    val parts = it.trim().split("\\s+".toRegex())
-                    if (parts.size >= 2) {
-                        val count = parts[0].toLongOrNull() ?: 0L
-                        val domain = parts[1]
-                        domain to count
-                    } else null
-                }.toMap()
-
-        // Hits over time (Last 24 hours approximation from last 5000 lines)
-        val timeCounts =
-            executeCommand("tail -n 5000 ${logFile.absolutePath} | awk -F'[' '{print \$2}' | awk -F':' '{print \$2\":00\"}' | sort | uniq -c").lineSequence()
-                .filter { it.isNotBlank() }
-                .mapNotNull {
-                    val parts = it.trim().split("\\s+".toRegex())
-                    if (parts.size >= 2) {
-                        val time = parts[1]
-                        val count = parts[0].toLongOrNull() ?: 0L
-                        time to count
-                    } else null
-                }.toMap()
-
-        // Top Paths (Top 15)
-        val topPaths =
-            executeCommand("awk '{print \$7}' ${logFile.absolutePath} | sort | uniq -c | sort -rn | head -n 15").lineSequence()
-                .filter { it.isNotBlank() }
-                .mapNotNull {
-                    val parts = it.trim().split("\\s+".toRegex())
-                    if (parts.size >= 2) {
-                        val count = parts[0].toLongOrNull() ?: 0L
-                        val path = parts[1]
-                        PathHit(path, count)
-                    } else null
-                }.toList()
-
-        // Recent Hits (Last 40)
-        val recentHits = mutableListOf<ProxyHit>()
-        // More flexible regex to catch malformed requests (often 404s/400s)
-        val lineRegex =
-            """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)" "([^"]*)"$""".toRegex()
+        val lineRegex = """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)".*$""".toRegex()
         val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
 
-        executeCommand("tail -n 40 ${logFile.absolutePath}").lineSequence()
-            .filter { it.isNotBlank() }.forEach { line ->
-                lineRegex.find(line.trim())?.let { match ->
-                    val (ip, dateStr, fullRequest, status, _, _, ua, _, domain) = match.destructured
-                    
-                    // Parse method and path from fullRequest (e.g., "GET /api HTTP/1.1")
-                    val reqParts = fullRequest.split(" ")
-                    val method = reqParts.getOrNull(0) ?: "-"
-                    val path = reqParts.getOrNull(1) ?: fullRequest
+        try {
+            java.io.RandomAccessFile(logFile, "r").use { raf ->
+                raf.seek(lastProcessedOffset)
+                var line: String? = raf.readLine()
+                while (line != null) {
+                    val trimmedLine = line.trim()
+                    if (trimmedLine.isNotEmpty()) {
+                        lineRegex.find(trimmedLine)?.let { match ->
+                            val (ip, dateStr, fullRequest, statusStr, _, referer, ua, _) = match.destructured
+                            val status = statusStr.toIntOrNull() ?: 0
+                            
+                            val reqParts = fullRequest.split(" ")
+                            val method = reqParts.getOrNull(0) ?: "-"
+                            val path = reqParts.getOrNull(1) ?: fullRequest
+                            val domain = if (referer != "-") try { java.net.URI(referer).host } catch(e: Exception) { null } else null
 
-                    recentHits.add(
-                        ProxyHit(
-                            timestamp = try {
-                                dateFormat.parse(dateStr).time
+                            // Update stats
+                            totalHitsCounter.incrementAndGet()
+                            hitsByStatusMap.merge(status, 1L, Long::plus)
+                            hitsByIpMap.merge(ip, 1L, Long::plus)
+                            hitsByMethodMap.merge(method, 1L, Long::plus)
+                            hitsByPathMap.merge(path, 1L, Long::plus)
+                            if (ua != "-") hitsByUserAgentMap.merge(ua, 1L, Long::plus)
+                            if (referer != "-") hitsByRefererMap.merge(referer, 1L, Long::plus)
+                            if (domain != null) hitsByDomainMap.merge(domain, 1L, Long::plus)
+
+                            if (status >= 400 || status == 0) {
+                                hitsByIpErrorMap.merge(ip, 1L, Long::plus)
+                            }
+
+                            // Security Jailing check
+                            val secSettings = AppConfig.proxySecuritySettings
+                            if (secSettings.proxyJailEnabled) {
+                                var shouldJail = false
+                                var reason = ""
+
+                                // Rule check
+                                for (rule in secSettings.proxyJailRules) {
+                                    val match = when (rule.type) {
+                                        ProxyJailRuleType.USER_AGENT -> rule.pattern.toRegex().containsMatchIn(ua)
+                                        ProxyJailRuleType.METHOD -> rule.pattern.equals(method, ignoreCase = true)
+                                        ProxyJailRuleType.PATH -> rule.pattern.toRegex().containsMatchIn(path)
+                                        ProxyJailRuleType.STATUS_CODE -> rule.pattern == status.toString()
+                                    }
+                                    if (match) {
+                                        shouldJail = true
+                                        reason = "Matched rule: ${rule.description ?: rule.pattern}"
+                                        break
+                                    }
+                                }
+
+                                // Threshold check
+                                if (!shouldJail) {
+                                    val errCount = hitsByIpErrorMap[ip] ?: 0L
+                                    if (errCount >= secSettings.proxyJailThresholdNon200) {
+                                        shouldJail = true
+                                        reason = "Too many non-200 responses ($errCount)"
+                                    }
+                                }
+
+                                if (shouldJail) {
+                                    logger.warn("Jailing IP $ip for proxy violation: $reason")
+                                    firewallService.blockIP(BlockIPRequest(
+                                        ip = ip,
+                                        reason = "Proxy: $reason",
+                                        durationMinutes = secSettings.jailDurationMinutes
+                                    ))
+                                }
+                            }
+
+                            // Time-based aggregation (HH:00)
+                            try {
+                                val timestamp = dateFormat.parse(dateStr)
+                                val hourKey = SimpleDateFormat("HH:00", Locale.US).format(timestamp)
+                                hitsByTimeMap.merge(hourKey, 1L, Long::plus)
+
+                                // Update recent hits
+                                val hit = ProxyHit(
+                                    timestamp = timestamp.time,
+                                    ip = ip,
+                                    method = method,
+                                    path = path,
+                                    status = status,
+                                    responseTime = 0,
+                                    userAgent = ua,
+                                    referer = if (referer == "-") null else referer,
+                                    domain = domain
+                                )
+                                recentHitsList.addFirst(hit)
+                                while (recentHitsList.size > MAX_RECENT_HITS) {
+                                    recentHitsList.removeLast()
+                                }
                             } catch (e: Exception) {
-                                System.currentTimeMillis()
-                            },
-                            ip = ip,
-                            method = method,
-                            path = path,
-                            status = status.toInt(),
-                            responseTime = 0,
-                            userAgent = ua,
-                            domain = domain
-                        )
-                    )
+                                // Ignore date parse errors
+                            }
+                        }
+                    }
+                    line = raf.readLine()
                 }
+                lastProcessedOffset = raf.filePointer
             }
+        } catch (e: Exception) {
+            logger.error("Error processing log file incrementally", e)
+        }
 
+        // Update cached stats for UI
         cachedStats = ProxyStats(
-            totalHits = totalHits,
-            hitsByStatus = statusCounts,
-            hitsByDomain = domainCounts,
-            hitsOverTime = timeCounts.toSortedMap(),
-            topPaths = topPaths,
-            recentHits = recentHits
+            totalHits = totalHitsCounter.get(),
+            hitsByStatus = hitsByStatusMap.toMap(),
+            hitsByDomain = hitsByDomainMap.toMap(),
+            hitsOverTime = hitsByTimeMap.toSortedMap(),
+            topPaths = hitsByPathMap.entries.sortedByDescending { it.value }.take(15).map { PathHit(it.key, it.value) },
+            recentHits = recentHitsList.toList(),
+            topIps = hitsByIpMap.entries.sortedByDescending { it.value }.take(15).map { GenericHitEntry(it.key, it.value) },
+            topIpsWithErrors = hitsByIpErrorMap.entries.sortedByDescending { it.value }.take(15).map { GenericHitEntry(it.key, it.value) },
+            topMethods = hitsByMethodMap.entries.sortedByDescending { it.value }.take(10).map { GenericHitEntry(it.key, it.value) },
+            topReferers = hitsByRefererMap.entries.sortedByDescending { it.value }.take(15).map { GenericHitEntry(it.key, it.value) },
+            topUserAgents = hitsByUserAgentMap.entries.sortedByDescending { it.value }.take(20).map { GenericHitEntry(it.key, it.value) }
         )
     }
 

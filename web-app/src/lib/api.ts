@@ -631,6 +631,40 @@ export const DockerClient = {
         }
     },
 
+    async refreshProxyStats(): Promise<ProxyStats | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/stats/refresh`, { headers: this.getHeaders() });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    },
+
+    async getProxySecuritySettings(): Promise<SystemConfig | null> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/security/settings`, { headers: this.getHeaders() });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    },
+
+    async updateProxySecuritySettings(settings: Partial<SystemConfig>): Promise<{ success: boolean; message: string }> {
+        try {
+            const response = await fetch(`${this.getServerUrl()}/proxy/security/settings`, {
+                method: 'POST',
+                headers: this.getHeaders(),
+                body: JSON.stringify(settings)
+            });
+            return await response.json();
+        } catch (e) {
+            console.error(e);
+            return { success: false, message: 'Network error' };
+        }
+    },
+
     async listProxyCertificates(): Promise<SSLCertificate[]> {
         try {
             const response = await fetch(`${this.getServerUrl()}/proxy/certificates`, { headers: this.getHeaders() });
