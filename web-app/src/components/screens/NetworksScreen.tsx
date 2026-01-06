@@ -22,7 +22,7 @@ export default function NetworksScreen() {
         fetchNetworks();
     }, []);
 
-    const handleAction = async (action: () => Promise<void>) => {
+    const handleAction = async (action: () => Promise<any>) => {
         setIsLoading(true);
         await action();
         await fetchNetworks();

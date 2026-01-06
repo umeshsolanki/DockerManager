@@ -23,7 +23,7 @@ export default function VolumesScreen() {
         fetchVolumes();
     }, []);
 
-    const handleAction = async (action: () => Promise<void>) => {
+    const handleAction = async (action: () => Promise<any>) => {
         setIsLoading(true);
         await action();
         await fetchVolumes();

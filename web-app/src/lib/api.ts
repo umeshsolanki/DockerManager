@@ -7,7 +7,7 @@ import {
     CreateEmailUserRequest, UpdateEmailUserPasswordRequest, SystemConfig,
     UpdateSystemConfigRequest, EmailMailbox, NetworkDetails, EmailTestRequest,
     EmailTestResult, AuthRequest, AuthResponse, UpdatePasswordRequest,
-    UpdateUsernameRequest, TwoFactorSetupResponse, Enable2FARequest, EmailGroup, EmailUserDetail
+    UpdateUsernameRequest, TwoFactorSetupResponse, Enable2FARequest, EmailGroup, EmailUserDetail, JamesContainerStatus
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -186,6 +186,7 @@ export const DockerClient = {
     createEmailMailbox: (u: string, m: string) => safeReq(`/emails/users/${u}/mailboxes/${m}`, { method: 'PUT' }),
     deleteEmailMailbox: (u: string, m: string) => safeReq(`/emails/users/${u}/mailboxes/${m}`, { method: 'DELETE' }),
     listEmailGroups: () => req<EmailGroup[]>('/emails/groups', {}, []),
+    createEmailGroup: (g: string, m: string) => safeReq(`/emails/groups/${g}/${m}`, { method: 'PUT' }),
     getEmailGroupMembers: (g: string) => req<string[]>(`/emails/groups/${g}`, {}, []),
     addEmailGroupMember: (g: string, m: string) => safeReq(`/emails/groups/${g}/${m}`, { method: 'PUT' }),
     removeEmailGroupMember: (g: string, m: string) => safeReq(`/emails/groups/${g}/${m}`, { method: 'DELETE' }),
@@ -193,7 +194,7 @@ export const DockerClient = {
     setEmailUserQuota: (u: string, t: string, v: number) => safeReq(`/emails/quota/${u}/${t}`, { method: 'PUT', body: v.toString() }),
     deleteEmailUserQuota: (u: string) => safeReq(`/emails/quota/${u}`, { method: 'DELETE' }),
 
-    getJamesStatus: () => safeReq('/emails/james/status'),
+    getJamesStatus: () => safeReq<JamesContainerStatus>('/emails/james/status'),
     ensureJamesConfig: () => safeReq('/emails/james/config', { method: 'POST' }),
     getJamesComposeConfig: () => safeReq<{ content: string }>('/emails/james/compose').then(r => r.content || ''),
     updateJamesComposeConfig: (content: string) => safeReq('/emails/james/compose', { method: 'POST', body: JSON.stringify({ name: 'james', content }) }),
