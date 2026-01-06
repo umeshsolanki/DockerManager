@@ -269,7 +269,6 @@ data class StatusHit(
 )
 
 @Serializable
-@Serializable
 class ProxyStats(
     val totalHits: Long,
     val hitsByStatus: Map<Int, Long>,

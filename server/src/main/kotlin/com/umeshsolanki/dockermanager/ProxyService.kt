@@ -88,10 +88,6 @@ class ProxyServiceImpl(
         AppConfig.updateProxySecuritySettings(enabled, thresholdNon200, rules)
     }
 
-    override fun updateStatsSettings(active: Boolean, intervalMs: Long) {
-        AppConfig.updateProxyStatsSettings(active, intervalMs)
-    }
-
     init {
         if (!configDir.exists()) configDir.mkdirs()
         if (!hostsFile.parentFile.exists()) hostsFile.parentFile.mkdirs()
@@ -203,8 +199,7 @@ class ProxyServiceImpl(
                                     logger.warn("Jailing IP $ip for proxy violation: $reason")
                                     firewallService.blockIP(BlockIPRequest(
                                         ip = ip,
-                                        reason = "Proxy: $reason",
-                                        durationMinutes = secSettings.jailDurationMinutes
+                                        comment = "Proxy: $reason",
                                     ))
                                 }
                             }
