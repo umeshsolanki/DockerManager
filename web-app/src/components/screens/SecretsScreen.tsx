@@ -48,7 +48,7 @@ export default function SecretsScreen() {
     }, [secrets, searchQuery]);
 
     return (
-        <div className="flex flex-col h-full relative">
+        <div className="flex flex-col relative">
             <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-4">
                     <h1 className="text-3xl font-bold">Secrets</h1>
@@ -89,7 +89,7 @@ export default function SecretsScreen() {
                     <span>No secrets found</span>
                 </div>
             ) : (
-                <div className="flex flex-col gap-3 overflow-y-auto pb-6">
+                <div className="flex flex-col gap-3 pb-6">
                     {filteredSecrets.map(secret => (
                         <SecretCard
                             key={secret.id}

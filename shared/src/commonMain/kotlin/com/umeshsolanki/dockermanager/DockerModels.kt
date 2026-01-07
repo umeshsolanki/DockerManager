@@ -497,3 +497,13 @@ class EmailTestResult(
     val message: String,
     val logs: List<String> = emptyList()
 )
+
+@Serializable
+class FileItem(
+    val name: String,
+    val path: String,
+    val size: Long,
+    val isDirectory: Boolean,
+    val lastModified: Long,
+    val extension: String? = null
+)

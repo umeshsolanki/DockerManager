@@ -54,7 +54,7 @@ export default function ContainersScreen() {
     }, [containers, searchQuery]);
 
     return (
-        <div className="flex flex-col h-full relative">
+        <div className="flex flex-col relative">
             <div className="flex items-center gap-4 mb-5">
                 <h1 className="text-3xl font-bold">Containers</h1>
                 {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}

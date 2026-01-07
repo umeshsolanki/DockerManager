@@ -149,6 +149,15 @@ export interface ComposeResult {
   message: string;
 }
 
+export interface FileItem {
+  name: string;
+  path: string;
+  size: number;
+  isDirectory: boolean;
+  lastModified: number;
+  extension?: string;
+}
+
 export interface SystemLog {
   name: string;
   path: string;
@@ -364,7 +373,7 @@ export interface EmailUserDetail {
   quotaCount?: EmailQuota;
 }
 
-export type Screen = 'Dashboard' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Settings' | 'Security' | 'Analytics';
+export type Screen = 'Dashboard' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Files' | 'Settings' | 'Security' | 'Analytics';
 
 
 export interface AuthRequest {

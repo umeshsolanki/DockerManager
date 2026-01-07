@@ -55,7 +55,7 @@ export default function VolumesScreen() {
     }, [volumes, searchQuery]);
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col">
             <div className="flex items-center gap-4 mb-5">
                 <h1 className="text-3xl font-bold">Volumes</h1>
                 {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
@@ -85,7 +85,7 @@ export default function VolumesScreen() {
                     No volumes found
                 </div>
             ) : (
-                <div className="bg-surface/30 border border-outline/10 rounded-xl overflow-hidden divide-y divide-outline/5 transition-all">
+                <div className="bg-surface/30 border border-outline/10 rounded-xl divide-y divide-outline/5 transition-all">
                     {filteredVolumes.map(volume => (
                         <div key={volume.name} className="p-3 flex items-center justify-between hover:bg-white/[0.02] transition-all group">
                             <div className="flex items-center gap-3 min-w-0">

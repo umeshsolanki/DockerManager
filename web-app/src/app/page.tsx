@@ -20,6 +20,7 @@ import EmailsScreen from '@/components/screens/EmailsScreen';
 import AnalyticsScreen from '@/components/screens/AnalyticsScreen';
 import SecurityScreen from '@/components/screens/SecurityScreen';
 import LoginScreen from '@/components/screens/LoginScreen';
+import FileManagerScreen from '@/components/screens/FileManagerScreen';
 import { DockerClient } from '@/lib/api';
 
 function HomeContent() {
@@ -32,7 +33,7 @@ function HomeContent() {
   // Initialize from URL and check auth on mount
   useEffect(() => {
     const screenParam = searchParams.get('screen') as Screen;
-    const validScreens: Screen[] = ['Dashboard', 'Containers', 'Images', 'Compose', 'Networks', 'Resources', 'Volumes', 'Secrets', 'Logs', 'Firewall', 'Proxy', 'Emails', 'Settings', 'Security', 'Analytics'];
+    const validScreens: Screen[] = ['Dashboard', 'Containers', 'Images', 'Compose', 'Networks', 'Resources', 'Volumes', 'Secrets', 'Logs', 'Firewall', 'Proxy', 'Emails', 'Files', 'Settings', 'Security', 'Analytics'];
 
     if (screenParam && validScreens.includes(screenParam)) {
       setSelectedScreen(screenParam);
@@ -110,6 +111,7 @@ function HomeContent() {
       case 'Settings': return <SettingsScreen onLogout={handleLogout} />;
       case 'Security': return <SecurityScreen />;
       case 'Analytics': return <AnalyticsScreen />;
+      case 'Files': return <FileManagerScreen />;
       default: return <DashboardScreen />;
     }
   };

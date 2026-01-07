@@ -45,7 +45,7 @@ export default function ImagesScreen() {
     }, [images, searchQuery]);
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col">
             <div className="flex items-center gap-4 mb-5">
                 <h1 className="text-3xl font-bold">Images</h1>
                 {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
@@ -86,7 +86,7 @@ export default function ImagesScreen() {
                     No images found
                 </div>
             ) : (
-                <div className="bg-surface/30 border border-outline/10 rounded-xl overflow-hidden divide-y divide-outline/5">
+                <div className="bg-surface/30 border border-outline/10 rounded-xl divide-y divide-outline/5">
                     {filteredImages.map(image => (
                         <div key={image.id} className="p-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors group">
                             <div className="flex items-center gap-3 min-w-0">

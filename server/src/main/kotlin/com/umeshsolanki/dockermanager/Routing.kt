@@ -30,6 +30,8 @@ fun Application.configureRouting() {
             emailRoutes()
         }
 
+        fileRoutes()
+
         webSocket("/shell/server") {
             ShellService.handleServerShell(this)
         }

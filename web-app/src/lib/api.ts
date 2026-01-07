@@ -7,7 +7,8 @@ import {
     CreateEmailUserRequest, UpdateEmailUserPasswordRequest, SystemConfig,
     UpdateSystemConfigRequest, EmailMailbox, NetworkDetails, EmailTestRequest,
     EmailTestResult, AuthRequest, AuthResponse, UpdatePasswordRequest,
-    UpdateUsernameRequest, TwoFactorSetupResponse, Enable2FARequest, EmailGroup, EmailUserDetail, JamesContainerStatus
+    UpdateUsernameRequest, TwoFactorSetupResponse, Enable2FARequest, EmailGroup, EmailUserDetail, JamesContainerStatus,
+    FileItem
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -206,4 +207,23 @@ export const DockerClient = {
     updateJamesConfigContent: (f: string, c: string) => safeReq(`/emails/james/files/${f}`, { method: 'POST', body: JSON.stringify({ content: c }) }),
     getDefaultJamesConfigContent: (f: string) => req<{ content: string }>(`/emails/james/files/${f}/default`, {}, { content: '' }).then(r => r.content),
     testJamesEmail: (b: EmailTestRequest) => req<EmailTestResult>('/emails/james/test', { method: 'POST', body: JSON.stringify(b) }, { success: false, message: 'Network error', logs: [] }),
+
+    // --- File Manager ---
+    listFiles: (path = "") => req<FileItem[]>(`/files/list?path=${encodeURIComponent(path)}`, {}, []),
+    deleteFile: (path: string) => apiFetch(`/files/delete?path=${encodeURIComponent(path)}`, { method: 'DELETE' }).then(r => r.ok),
+    createDirectory: (path: string) => apiFetch(`/files/mkdir?path=${encodeURIComponent(path)}`, { method: 'POST' }).then(r => r.ok),
+    zipFile: (path: string, target: string) => apiFetch(`/files/zip?path=${encodeURIComponent(path)}&target=${encodeURIComponent(target)}`, { method: 'POST' }).then(r => r.ok),
+    unzipFile: (path: string, target: string) => apiFetch(`/files/unzip?path=${encodeURIComponent(path)}&target=${encodeURIComponent(target)}`, { method: 'POST' }).then(r => r.ok),
+    uploadFile: (path: string, file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiFetch(`/files/upload?path=${encodeURIComponent(path)}`, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                // Don't set Content-Type, fetch will set it with boundary
+            }
+        }).then(r => r.ok);
+    },
+    downloadFileUrl: (path: string) => `${DockerClient.getServerUrl()}/files/download?path=${encodeURIComponent(path)}&token=${DockerClient.getAuthToken()}`,
 };

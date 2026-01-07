@@ -1,5 +1,7 @@
 package com.umeshsolanki.dockermanager
 
+import java.io.InputStream
+
 object DockerService {
     private var dockerClient = DockerClientProvider.client
     
@@ -14,6 +16,7 @@ object DockerService {
     private val proxyService: IProxyService = ProxyServiceImpl(firewallService)
     private val btmpService: IBtmpService = BtmpServiceImpl(firewallService)
     private val emailService: IEmailService = EmailServiceImpl()
+    private val fileManagerService: IFileManagerService = FileManagerServiceImpl()
 
     fun refreshServices() {
         dockerClient = DockerClientProvider.client
@@ -155,6 +158,15 @@ object DockerService {
         proxyStatsActive = AppConfig.proxyStatsSettings.proxyStatsActive,
         proxyStatsIntervalMs = AppConfig.proxyStatsSettings.proxyStatsIntervalMs
     )
+
+    // File Manager
+    fun listFiles(subPath: String = "") = fileManagerService.listFiles(subPath)
+    fun deleteFile(path: String) = fileManagerService.deleteFile(path)
+    fun createDirectory(path: String) = fileManagerService.createDirectory(path)
+    fun zipFile(sourcePath: String, targetName: String) = fileManagerService.zip(sourcePath, targetName)
+    fun unzipFile(zipPath: String, targetPath: String) = fileManagerService.unzip(zipPath, targetPath)
+    fun getFile(path: String) = fileManagerService.getFile(path)
+    fun saveFile(path: String, inputStream: InputStream) = fileManagerService.saveFile(path, inputStream)
 
     fun updateSystemConfig(request: UpdateSystemConfigRequest) {
         AppConfig.updateSettings(

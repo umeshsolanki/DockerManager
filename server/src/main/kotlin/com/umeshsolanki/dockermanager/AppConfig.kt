@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import java.io.File
+import java.nio.file.Files
 
 fun String?.ifNullOrBlank(value: String): String {
     return if (this.isNullOrBlank()) value else this
@@ -218,6 +219,9 @@ object AppConfig {
 
     // Firewall Configs
     val firewallDataDir: File get() = File(dataRoot, "firewall")
+
+    // File Manager
+    val fileManagerDir: File get() = File.listRoots().first() ?: File("/")
 
     // When running in docker, we mount these binaries. When running locally, assume they are in PATH or sbin.
     // NOTE: If user runs jar on valid linux, iptables should be in path, but systemd path might be limited.

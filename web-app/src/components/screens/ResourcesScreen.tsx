@@ -73,7 +73,7 @@ export default function ResourcesScreen({ initialTab = 'Images' }: Props) {
                 })}
             </div>
 
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
                 {renderContent()}
             </div>
         </div>
