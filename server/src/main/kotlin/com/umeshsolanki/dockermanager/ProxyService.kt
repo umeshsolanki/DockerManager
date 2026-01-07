@@ -197,9 +197,12 @@ class ProxyServiceImpl(
 
                                 if (shouldJail) {
                                     logger.warn("Jailing IP $ip for proxy violation: $reason")
+                                    val duration = AppConfig.jailSettings.jailDurationMinutes
+                                    val expiresAt = System.currentTimeMillis() + (duration * 60_000)
                                     firewallService.blockIP(BlockIPRequest(
                                         ip = ip,
                                         comment = "Proxy: $reason",
+                                        expiresAt = expiresAt
                                     ))
                                 }
                             }

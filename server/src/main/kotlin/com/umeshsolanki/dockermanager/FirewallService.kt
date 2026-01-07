@@ -19,6 +19,8 @@ class FirewallServiceImpl : IFirewallService {
     private val ipSetCmd = AppConfig.ipsetCmd
     private val rulesFile = File(dataDir, "rules.json")
     private val json = AppConfig.json
+    private val lock = java.util.concurrent.locks.ReentrantLock()
+
 
     init {
         if (!dataDir.exists()) dataDir.mkdirs()
@@ -51,27 +53,34 @@ class FirewallServiceImpl : IFirewallService {
     override fun listRules(): List<FirewallRule> = loadRules()
 
     override fun blockIP(request: BlockIPRequest): Boolean {
+        lock.lock()
         return try {
             if (AppConfig.isLocalIP(request.ip)) {
                 logger.warn("Ignoring block request for local/private IP: ${request.ip}")
-                return true // Return true as we've "handled" it by ignoring
+                return true
             }
 
             val rules = loadRules()
+            
+            // Check for duplicate (same IP, port, protocol)
+            if (rules.any { it.ip == request.ip && it.port == request.port && it.protocol == request.protocol }) {
+                logger.info("IP ${request.ip} is already blocked with same parameters, skipping.")
+                return true
+            }
+
             val id = UUID.randomUUID().toString()
             val newRule = FirewallRule(
                 id = id,
                 ip = request.ip,
                 port = request.port,
                 protocol = request.protocol,
-                comment = request.comment
+                comment = request.comment,
+                expiresAt = request.expiresAt
             )
 
             // Execute system command
-            if (request.port != null) {
+            val success = if (request.port != null) {
                 val proto = if (request.protocol == "ALL") "tcp" else request.protocol.lowercase()
-                // Use iptables for specific port blocking - For both Container and Host
-                // Use -w to wait for lock
                 val cmdDocker =
                     "$iptablesCmd -w -I DOCKER-USER -s ${request.ip} -p $proto --dport ${request.port} -j DROP -m comment --comment \"dm-rule-$id\""
                 val cmdHost =
@@ -82,30 +91,36 @@ class FirewallServiceImpl : IFirewallService {
                 
                 if (resDocker.exitCode != 0) logger.warn("Failed to apply Docker rule: ${resDocker.error}")
                 if (resHost.exitCode != 0) logger.warn("Failed to apply Host rule: ${resHost.error}")
-
-                (resDocker.exitCode == 0 || resHost.exitCode == 0)
+                
+                resDocker.exitCode == 0 || resHost.exitCode == 0
             } else {
-                // Use ipset for general IP blocking (more efficient)
                 val resSet = executeCommand("$ipSetCmd add dm-blocklist-ip ${request.ip} -exist")
                 if (resSet.exitCode != 0) {
                      logger.error("Failed to add to ipset: ${resSet.error}")
-                     return false
+                     false
+                } else {
+                    ensureBaseRules()
+                    true
                 }
-
-                ensureBaseRules()
-                true
             }
 
-            rules.add(newRule)
-            saveRules(rules)
-            true
+            if (success) {
+                rules.add(newRule)
+                saveRules(rules)
+                true
+            } else {
+                false
+            }
         } catch (e: Exception) {
             logger.error("Exception in blockIP", e)
             false
+        } finally {
+            lock.unlock()
         }
     }
 
     override fun unblockIP(id: String): Boolean {
+        lock.lock()
         return try {
             val rules = loadRules()
             val rule = rules.find { it.id == id } ?: return false
@@ -124,24 +139,32 @@ class FirewallServiceImpl : IFirewallService {
         } catch (e: Exception) {
             logger.error("Exception in unblockIP", e)
             false
+        } finally {
+            lock.unlock()
         }
     }
 
     override fun unblockIPByAddress(ip: String): Boolean {
+        lock.lock()
         return try {
             val rules = loadRules()
-            val rule = rules.find { it.ip == ip && it.port == null } ?: return false
+            // Find all rules for this IP that are full IP blocks (no port)
+            val ipRules = rules.filter { it.ip == ip && it.port == null }
+            if (ipRules.isEmpty()) return false
 
-            executeCommand("$ipSetCmd del dm-blocklist-ip ${rule.ip}")
+            executeCommand("$ipSetCmd del dm-blocklist-ip $ip")
 
-            rules.remove(rule)
+            rules.removeAll(ipRules)
             saveRules(rules)
             true
         } catch (e: Exception) {
             logger.error("Exception in unblockIPByAddress", e)
             false
+        } finally {
+            lock.unlock()
         }
     }
+
 
     override fun getIptablesVisualisation(): Map<String, List<IptablesRule>> {
         val res = executeCommand("$iptablesCmd -w -L -n -v")

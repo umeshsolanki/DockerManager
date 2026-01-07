@@ -38,7 +38,7 @@ class BtmpServiceImpl(
     private var autoJailEnabled = AppConfig.jailSettings.jailEnabled
     private var jailThreshold = AppConfig.jailSettings.jailThreshold
     private var jailDurationMinutes = AppConfig.jailSettings.jailDurationMinutes
-    private val jailedIps = mutableListOf<JailedIP>()
+    private val jailedIps = java.util.concurrent.CopyOnWriteArrayList<JailedIP>()
     private val failedAttemptsInWindow = mutableMapOf<String, Int>()
 
     private var cachedBtmpStats: BtmpStats = BtmpStats(0, emptyList(), emptyList(), emptyList(), 0)
@@ -51,8 +51,40 @@ class BtmpServiceImpl(
     private var unjailJob: Job? = null
 
     init {
+        loadExistingJails()
         startWorker()
         startUnjailWorker()
+    }
+
+    private fun loadExistingJails() {
+        try {
+            val rules = firewallService.listRules()
+            val now = System.currentTimeMillis()
+            
+            val jailsFromFirewall = rules.filter { rule ->
+                val expiresAt = rule.expiresAt
+                val isJailComment = rule.comment?.startsWith("Failed login") == true || 
+                                   rule.comment?.startsWith("Proxy:") == true ||
+                                   expiresAt != null
+
+                isJailComment && (expiresAt == null || expiresAt > now)
+            }.map { rule ->
+                JailedIP(
+                    ip = rule.ip,
+                    country = getCountryCode(rule.ip),
+                    reason = rule.comment ?: "Auto-jailed",
+                    expiresAt = rule.expiresAt ?: (now + (jailDurationMinutes * 60_000)),
+                    createdAt = rule.createdAt
+                )
+            }
+            
+            jailedIps.clear()
+            jailedIps.addAll(jailsFromFirewall)
+            updateCachedStats()
+            logger.info("Loaded ${jailedIps.size} jailed IPs from firewall")
+        } catch (e: Exception) {
+            logger.error("Failed to load existing jails", e)
+        }
     }
 
     private fun startWorker() {
@@ -100,6 +132,7 @@ class BtmpServiceImpl(
     override fun getStats(): BtmpStats = cachedBtmpStats
 
     override suspend fun refreshStats(): BtmpStats {
+        loadExistingJails()
         updateStats()
         return cachedBtmpStats
     }
@@ -269,7 +302,7 @@ class BtmpServiceImpl(
                     reason = "Failed login >= $jailThreshold failed attempts", 
                     expiresAt = expiresAt
                 )
-                firewallService.blockIP(BlockIPRequest(ip, comment = jail.reason))
+                firewallService.blockIP(BlockIPRequest(ip, comment = jail.reason, expiresAt = expiresAt))
                 jailedIps.add(jail)
                 failedAttemptsInWindow.remove(ip)
                 
