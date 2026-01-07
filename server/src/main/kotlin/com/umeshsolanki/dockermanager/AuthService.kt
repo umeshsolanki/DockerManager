@@ -39,13 +39,20 @@ object AuthService {
 
     fun initialize() {
         if (!accessFile.exists()) {
-            val pwd = generateRandomString(16)
-            val username = "admin"
-            saveAccessInfo(AccessInfo(username = username, password = pwd))
-            logger.warn("\n" + "#".repeat(60) + "\nINITIAL ACCESS GENERATED:\nUSERNAME: $username\nPASSWORD: $pwd\nLOCATION: ${accessFile.absolutePath}\n" + "#".repeat(60))
+            val envUsername = System.getenv("MANAGER_USERNAME") ?: "admin"
+            val envPassword = System.getenv("MANAGER_PASSWORD") ?: generateRandomString(16)
+            
+            saveAccessInfo(AccessInfo(username = envUsername, password = envPassword))
+            if (System.getenv("MANAGER_PASSWORD") == null) {
+                logger.warn("\n" + "#".repeat(60) + "\nINITIAL ACCESS GENERATED:\nUSERNAME: $envUsername\nPASSWORD: $envPassword\nLOCATION: ${accessFile.absolutePath}\n" + "#".repeat(60))
+            } else {
+                logger.info("Access info initialized from environment variables")
+            }
         } else {
             try {
-                currentAccess = json.decodeFromString<AccessInfo>(accessFile.readText())
+                val content = accessFile.readText()
+                currentAccess = json.decodeFromString<AccessInfo>(content)
+                logger.info("Access info loaded for user: ${currentAccess.username}")
             } catch (e: Exception) {
                 logger.error("Failed to load access info, generating new default", e)
                 val pwd = generateRandomString(16)
@@ -120,8 +127,18 @@ object AuthService {
     }
 
     fun updateUsername(currentPassword: String, newUsername: String): Boolean {
-        if (currentPassword != currentAccess.password) return false
-        saveAccessInfo(currentAccess.copy(username = newUsername))
+        if (currentPassword != currentAccess.password) {
+            logger.warn("Username update failed for ${currentAccess.username}: Invalid current password")
+            return false
+        }
+        val trimmed = newUsername.trim()
+        if (trimmed.isEmpty()) {
+            logger.warn("Username update failed: New username cannot be empty")
+            return false
+        }
+        
+        logger.info("Username updated from ${currentAccess.username} to $trimmed")
+        saveAccessInfo(currentAccess.copy(username = trimmed))
         activeTokens.clear() // Revoke all sessions on username change for security
         return true
     }

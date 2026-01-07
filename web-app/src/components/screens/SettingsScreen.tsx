@@ -114,19 +114,24 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     };
 
     const handleUpdateUsername = async () => {
-        if (!newUsername) return;
+        const trimmed = newUsername.trim();
+        if (!trimmed) {
+            setMessage('Username cannot be empty');
+            return;
+        }
 
         setUpdatingUsername(true);
         try {
             const result = await DockerClient.updateUsername({
                 currentPassword,
-                newUsername
+                newUsername: trimmed
             });
             if (result.success) {
                 setMessage('Username updated successfully! Logging out...');
                 setTimeout(() => onLogout?.(), 2000);
             } else {
                 setMessage(result.message || 'Failed to update username');
+                setCurrentPassword(''); // Clear for retry
                 setTimeout(() => setMessage(''), 3000);
             }
         } catch (e) {

@@ -107,27 +107,16 @@ class BtmpServiceImpl(
         unjailJob = scope.launch {
             while (isActive) {
                 try {
-                    checkAndReleaseJails()
+                    // Sync jails from firewall rules periodically to reflect changes from all sources
+                    loadExistingJails()
                 } catch (e: Exception) {
-                    logger.error("Error in Unjail worker", e)
+                    logger.error("Error in jail sync worker", e)
                 }
                 delay(60000)
             }
         }
     }
 
-    private fun checkAndReleaseJails() {
-        val now = System.currentTimeMillis()
-        val toRelease = jailedIps.filter { it.expiresAt <= now }
-        
-        if (toRelease.isNotEmpty()) {
-            toRelease.forEach { jail ->
-                firewallService.unblockIPByAddress(jail.ip)
-                jailedIps.remove(jail)
-            }
-            updateCachedStats()
-        }
-    }
 
     override fun getStats(): BtmpStats = cachedBtmpStats
 
