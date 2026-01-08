@@ -7,6 +7,7 @@ import com.umeshsolanki.dockermanager.jail.IJailManagerService
 import com.umeshsolanki.dockermanager.utils.JsonPersistence
 import com.umeshsolanki.dockermanager.utils.ResourceLoader
 import com.umeshsolanki.dockermanager.utils.CommandExecutor
+import com.umeshsolanki.dockermanager.proxy.IpFilterUtils
 import kotlinx.coroutines.*
 import java.io.File
 import java.util.*
@@ -35,8 +36,13 @@ interface IProxyService {
     fun ensureProxyContainerExists(): Boolean
     fun getComposeConfig(): String
     fun updateComposeConfig(content: String): Pair<Boolean, String>
-    fun updateStatsSettings(active: Boolean, intervalMs: Long)
+    fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null)
     fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>)
+    
+    // Analytics History
+    fun getHistoricalStats(date: String): DailyProxyStats?
+    fun listAvailableDates(): List<String>
+    fun getStatsForDateRange(startDate: String, endDate: String): List<DailyProxyStats>
 }
 
 class ProxyServiceImpl(
@@ -93,6 +99,8 @@ class ProxyServiceImpl(
     private val scope =
         CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val commandExecutor = CommandExecutor(loggerName = ProxyServiceImpl::class.java.name)
+    private val analyticsPersistence = AnalyticsPersistenceService()
+    private var lastResetDate: String? = null
 
     override fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>) {
         AppConfig.updateProxySecuritySettings(enabled, thresholdNon200, rules)
@@ -106,6 +114,9 @@ class ProxyServiceImpl(
 
         // Start background worker for stats
         startStatsWorker()
+        
+        // Start daily reset worker
+        startDailyResetWorker()
     }
 
     private fun startStatsWorker() {
@@ -125,6 +136,68 @@ class ProxyServiceImpl(
         }
     }
 
+    private fun startDailyResetWorker() {
+        scope.launch {
+            while (isActive) {
+                try {
+                    val today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                    
+                    // Check if we need to reset (new day)
+                    if (lastResetDate != null && lastResetDate != today) {
+                        // Save yesterday's stats before resetting
+                        val yesterdayStats = cachedStats
+                        analyticsPersistence.saveDailyStats(yesterdayStats, lastResetDate)
+                        logger.info("Saved daily stats for $lastResetDate")
+                        
+                        // Reset counters
+                        resetDailyStats()
+                        logger.info("Reset daily stats for $today")
+                    }
+                    
+                    // Initialize lastResetDate if not set
+                    if (lastResetDate == null) {
+                        lastResetDate = today
+                    }
+                    
+                    // Check every hour
+                    delay(3600000) // 1 hour
+                } catch (e: Exception) {
+                    logger.error("Error in daily reset worker", e)
+                    delay(3600000) // Fallback delay
+                }
+            }
+        }
+    }
+
+    private fun resetDailyStats() {
+        totalHitsCounter.set(0)
+        hitsByStatusMap.clear()
+        hitsByDomainMap.clear()
+        hitsByPathMap.clear()
+        hitsByIpMap.clear()
+        hitsByIpErrorMap.clear()
+        hitsByMethodMap.clear()
+        hitsByRefererMap.clear()
+        hitsByUserAgentMap.clear()
+        hitsByTimeMap.clear()
+        recentHitsList.clear()
+        lastProcessedOffset = 0L
+        
+        cachedStats = ProxyStats(
+            totalHits = 0,
+            hitsByStatus = emptyMap(),
+            hitsOverTime = emptyMap(),
+            topPaths = emptyList(),
+            recentHits = emptyList(),
+            hitsByDomain = emptyMap(),
+            topIps = emptyList(),
+            topIpsWithErrors = emptyList(),
+            topUserAgents = emptyList(),
+            topReferers = emptyList(),
+            topMethods = emptyList()
+        )
+    }
+
     private fun updateStatsNatively() {
         if (!logFile.exists()) return
 
@@ -142,6 +215,10 @@ class ProxyServiceImpl(
 
         val lineRegex = """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)".*$""".toRegex()
         val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
+        
+        // Get settings once per update cycle
+        val settings = AppConfig.proxyStatsSettings
+        val shouldFilterLocalIps = settings.filterLocalIps
 
         try {
             java.io.RandomAccessFile(logFile, "r").use { raf ->
@@ -153,6 +230,12 @@ class ProxyServiceImpl(
                         lineRegex.find(trimmedLine)?.let { match ->
                             val (ip, dateStr, fullRequest, statusStr, _, referer, ua, _) = match.destructured
                             val status = statusStr.toIntOrNull() ?: 0
+                            
+                            // Filter local IPs if enabled
+                            if (shouldFilterLocalIps && IpFilterUtils.isLocalIp(ip)) {
+                                // Skip this entry - it's a local IP
+                                return@let
+                            }
                             
                             val reqParts = fullRequest.split(" ")
                             val method = reqParts.getOrNull(0) ?: "-"
@@ -224,8 +307,14 @@ class ProxyServiceImpl(
             totalHits = totalHitsCounter.get(),
             hitsByStatus = hitsByStatusMap.toMap(),
             hitsOverTime = hitsByTimeMap.toSortedMap(),
-            topPaths = hitsByPathMap.entries.sortedByDescending { it.value }.take(50).map { PathHit(it.key, it.value) },
-            recentHits = recentHitsList.toList()
+            topPaths = hitsByPathMap.entries.sortedByDescending { it.value }.map { PathHit(it.key, it.value) },
+            recentHits = recentHitsList.toList(),
+            hitsByDomain = hitsByDomainMap.toMap(),
+            topIps = hitsByIpMap.entries.sortedByDescending { it.value }.map { GenericHitEntry(it.key, it.value) },
+            topIpsWithErrors = hitsByIpErrorMap.entries.sortedByDescending { it.value }.map { GenericHitEntry(it.key, it.value) },
+            topUserAgents = hitsByUserAgentMap.entries.sortedByDescending { it.value }.map { GenericHitEntry(it.key, it.value) },
+            topReferers = hitsByRefererMap.entries.sortedByDescending { it.value }.map { GenericHitEntry(it.key, it.value) },
+            topMethods = hitsByMethodMap.entries.sortedByDescending { it.value }.map { GenericHitEntry(it.key, it.value) }
         )
     }
 
@@ -839,8 +928,255 @@ class ProxyServiceImpl(
         }
     }
 
-    override fun updateStatsSettings(active: Boolean, intervalMs: Long) {
-        AppConfig.updateProxyStatsSettings(active, intervalMs)
+    override fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean?) {
+        AppConfig.updateProxyStatsSettings(active, intervalMs, filterLocalIps)
+    }
+
+    override fun getHistoricalStats(date: String): DailyProxyStats? {
+        // First try to load existing stats
+        val existingStats = analyticsPersistence.loadDailyStats(date)
+        if (existingStats != null) {
+            return existingStats
+        }
+        
+        // If not found, process logs for that date and create stats
+        logger.info("Historical stats not found for $date, processing logs...")
+        val processedStats = processLogsForDate(date)
+        if (processedStats != null) {
+            // Save the processed stats for future use
+            analyticsPersistence.saveDailyStats(
+                ProxyStats(
+                    totalHits = processedStats.totalHits,
+                    hitsByStatus = processedStats.hitsByStatus,
+                    hitsOverTime = processedStats.hitsOverTime,
+                    topPaths = processedStats.topPaths,
+                    recentHits = emptyList(),
+                    hitsByDomain = processedStats.hitsByDomain,
+                    topIps = processedStats.topIps,
+                    topIpsWithErrors = processedStats.topIpsWithErrors,
+                    topUserAgents = processedStats.topUserAgents,
+                    topReferers = processedStats.topReferers,
+                    topMethods = processedStats.topMethods
+                ),
+                date
+            )
+            logger.info("Created historical stats for $date from logs")
+        }
+        
+        return processedStats
+    }
+    
+    /**
+     * Process log file for a specific date and generate stats
+     */
+    private fun processLogsForDate(targetDate: String): DailyProxyStats? {
+        if (!logFile.exists()) {
+            logger.warn("Log file does not exist, cannot process historical stats for $targetDate")
+            return null
+        }
+        
+        val lineRegex = """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)".*$""".toRegex()
+        val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
+        val targetLocalDate = try {
+            java.time.LocalDate.parse(targetDate, java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        } catch (e: Exception) {
+            logger.error("Invalid date format: $targetDate", e)
+            return null
+        }
+        
+        // Get settings
+        val settings = AppConfig.proxyStatsSettings
+        val shouldFilterLocalIps = settings.filterLocalIps
+        
+        // Temporary maps for this date's stats
+        val tempTotalHits = java.util.concurrent.atomic.AtomicLong(0)
+        val tempHitsByStatusMap = java.util.concurrent.ConcurrentHashMap<Int, Long>()
+        val tempHitsByDomainMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        val tempHitsByPathMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        val tempHitsByIpMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        val tempHitsByIpErrorMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        val tempHitsByMethodMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        val tempHitsByRefererMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        val tempHitsByUserAgentMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        val tempHitsByTimeMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        
+        return try {
+            // Read entire log file (or check rotated logs)
+            java.io.RandomAccessFile(logFile, "r").use { raf ->
+                raf.seek(0) // Start from beginning
+                var line: String? = raf.readLine()
+                var processedCount = 0L
+                var skippedCount = 0L
+                
+                while (line != null) {
+                    val trimmedLine = line.trim()
+                    if (trimmedLine.isNotEmpty()) {
+                        lineRegex.find(trimmedLine)?.let { match ->
+                            val (ip, dateStr, fullRequest, statusStr, _, referer, ua, _) = match.destructured
+                            val status = statusStr.toIntOrNull() ?: 0
+                            
+                            // Parse date from log entry
+                            try {
+                                val timestamp = dateFormat.parse(dateStr)
+                                val logDate = java.time.LocalDate.ofInstant(
+                                    timestamp.toInstant(),
+                                    java.time.ZoneId.systemDefault()
+                                )
+                                
+                                // Only process entries for the target date
+                                // Compare dates directly (ignoring time)
+                                if (!logDate.isEqual(targetLocalDate)) {
+                                    skippedCount++
+                                    return@let
+                                }
+                                
+                                logger.debug("Processing log entry for date $targetDate: $dateStr -> $logDate")
+                                
+                                // Filter local IPs if enabled
+                                if (shouldFilterLocalIps && IpFilterUtils.isLocalIp(ip)) {
+                                    return@let
+                                }
+                                
+                                val reqParts = fullRequest.split(" ")
+                                val method = reqParts.getOrNull(0) ?: "-"
+                                val path = reqParts.getOrNull(1) ?: fullRequest
+                                val domain = if (referer != "-") try { java.net.URI(referer).host } catch(e: Exception) { null } else null
+                                
+                                // Update stats
+                                tempTotalHits.incrementAndGet()
+                                tempHitsByStatusMap.merge(status, 1L, Long::plus)
+                                tempHitsByIpMap.merge(ip, 1L, Long::plus)
+                                tempHitsByMethodMap.merge(method, 1L, Long::plus)
+                                tempHitsByPathMap.merge(path, 1L, Long::plus)
+                                if (ua != "-") tempHitsByUserAgentMap.merge(ua, 1L, Long::plus)
+                                if (referer != "-") tempHitsByRefererMap.merge(referer, 1L, Long::plus)
+                                if (domain != null) tempHitsByDomainMap.merge(domain, 1L, Long::plus)
+                                
+                                if (status >= 400 || status == 0) {
+                                    tempHitsByIpErrorMap.merge(ip, 1L, Long::plus)
+                                }
+                                
+                                // Time-based aggregation (HH:00)
+                                val hourKey = SimpleDateFormat("HH:00", Locale.US).format(timestamp)
+                                tempHitsByTimeMap.merge(hourKey, 1L, Long::plus)
+                                
+                                processedCount++
+                            } catch (e: Exception) {
+                                // Ignore date parse errors
+                            }
+                        }
+                    }
+                    line = raf.readLine()
+                }
+                
+                logger.info("Processed $processedCount log entries for date $targetDate (skipped $skippedCount entries from other dates)")
+            }
+            
+            // Convert to DailyProxyStats
+            DailyProxyStats(
+                date = targetDate,
+                totalHits = tempTotalHits.get(),
+                hitsByStatus = tempHitsByStatusMap.toMap(),
+                hitsOverTime = tempHitsByTimeMap.toSortedMap(),
+                topPaths = tempHitsByPathMap.entries.sortedByDescending { it.value }.map { PathHit(it.key, it.value) },
+                hitsByDomain = tempHitsByDomainMap.toMap(),
+                topIps = tempHitsByIpMap.entries.sortedByDescending { it.value }.map { GenericHitEntry(it.key, it.value) },
+                topIpsWithErrors = tempHitsByIpErrorMap.entries.sortedByDescending { it.value }.map { GenericHitEntry(it.key, it.value) },
+                topUserAgents = tempHitsByUserAgentMap.entries.sortedByDescending { it.value }.map { GenericHitEntry(it.key, it.value) },
+                topReferers = tempHitsByRefererMap.entries.sortedByDescending { it.value }.map { GenericHitEntry(it.key, it.value) },
+                topMethods = tempHitsByMethodMap.entries.sortedByDescending { it.value }.map { GenericHitEntry(it.key, it.value) }
+            )
+        } catch (e: Exception) {
+            logger.error("Error processing logs for date $targetDate", e)
+            null
+        }
+    }
+
+    override fun listAvailableDates(): List<String> {
+        val savedDates = analyticsPersistence.listAvailableDates().toMutableSet()
+        
+        // Also scan log file for dates that can be processed
+        val datesFromLogs = extractDatesFromLogs()
+        savedDates.addAll(datesFromLogs)
+        
+        // Include today's date if stats are active
+        val today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        savedDates.add(today)
+        
+        return savedDates.sorted().reversed() // Most recent first
+    }
+    
+    /**
+     * Extract all unique dates from the log file
+     */
+    private fun extractDatesFromLogs(): Set<String> {
+        if (!logFile.exists()) return emptySet()
+        
+        val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
+        val dateFormatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
+        val dates = mutableSetOf<String>()
+        
+        return try {
+            java.io.RandomAccessFile(logFile, "r").use { raf ->
+                raf.seek(0)
+                var line: String? = raf.readLine()
+                var lineCount = 0
+                val maxLinesToScan = 100000 // Limit scanning to avoid performance issues
+                
+                while (line != null && lineCount < maxLinesToScan) {
+                    val trimmedLine = line.trim()
+                    if (trimmedLine.isNotEmpty()) {
+                        // Try to extract date from log line
+                        val dateMatch = """\[([^\]]+)\]""".toRegex().find(trimmedLine)
+                        dateMatch?.let { match ->
+                            val dateStr = match.groupValues[1]
+                            try {
+                                val timestamp = dateFormat.parse(dateStr)
+                                val logDate = java.time.LocalDate.ofInstant(
+                                    timestamp.toInstant(),
+                                    java.time.ZoneId.systemDefault()
+                                )
+                                dates.add(logDate.format(dateFormatter))
+                            } catch (e: Exception) {
+                                // Ignore parse errors
+                            }
+                        }
+                    }
+                    line = raf.readLine()
+                    lineCount++
+                }
+            }
+            dates
+        } catch (e: Exception) {
+            logger.error("Error extracting dates from logs", e)
+            emptySet()
+        }
+    }
+
+    override fun getStatsForDateRange(startDate: String, endDate: String): List<DailyProxyStats> {
+        val start = try {
+            java.time.LocalDate.parse(startDate, java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        } catch (e: Exception) {
+            logger.error("Invalid start date format: $startDate", e)
+            return emptyList()
+        }
+        
+        val end = try {
+            java.time.LocalDate.parse(endDate, java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        } catch (e: Exception) {
+            logger.error("Invalid end date format: $endDate", e)
+            return emptyList()
+        }
+        
+        val dates = generateSequence(start) { it.plusDays(1) }
+            .takeWhile { !it.isAfter(end) }
+            .map { it.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")) }
+            .toList()
+        
+        // Process each date, creating stats if they don't exist
+        return dates.mapNotNull { date ->
+            getHistoricalStats(date)
+        }
     }
 
     private fun checkImageExists(): Boolean {
@@ -878,7 +1214,13 @@ object ProxyService {
     fun ensureProxyContainerExists() = service.ensureProxyContainerExists()
     fun getComposeConfig() = service.getComposeConfig()
     fun updateComposeConfig(content: String) = service.updateComposeConfig(content)
-    fun updateStatsSettings(active: Boolean, intervalMs: Long) = service.updateStatsSettings(active, intervalMs)
+    fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null) = service.updateStatsSettings(active, intervalMs, filterLocalIps)
     fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>) = service.updateSecuritySettings(enabled, thresholdNon200, rules)
     fun getProxySecuritySettings() = AppConfig.proxySecuritySettings
+    
+    // Analytics History
+    fun getHistoricalStats(date: String) = service.getHistoricalStats(date)
+    fun listAvailableDates() = service.listAvailableDates()
+    fun getStatsForDateRange(startDate: String, endDate: String) = service.getStatsForDateRange(startDate, endDate)
 }
+

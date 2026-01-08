@@ -2,6 +2,7 @@ package com.umeshsolanki.dockermanager
 
 import com.umeshsolanki.dockermanager.proxy.ProxyJailRule
 import com.umeshsolanki.dockermanager.constants.*
+import com.umeshsolanki.dockermanager.proxy.IpFilterUtils
 import com.umeshsolanki.dockermanager.utils.JsonPersistence
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -15,7 +16,8 @@ fun String?.ifNullOrBlank(value: String): String {
 @Serializable
 data class UpdateProxyStatsRequest(
     val active: Boolean,
-    val intervalMs: Long
+    val intervalMs: Long,
+    val filterLocalIps: Boolean? = null
 )
 
 @Serializable
@@ -31,6 +33,7 @@ data class AppSettings(
     val fcmServiceAccountPath: String = FileConstants.FCM_SERVICE_ACCOUNT_JSON,
     val proxyStatsActive: Boolean = true,
     val proxyStatsIntervalMs: Long = 10000L,
+    val filterLocalIps: Boolean = true, // Filter out local/internal IPs from analytics
     
     // Proxy Specific Security
     val proxyJailEnabled: Boolean = true,
@@ -118,9 +121,11 @@ object AppConfig {
         saveSettings()
     }
 
-    fun updateProxyStatsSettings(active: Boolean, intervalMs: Long) {
+    fun updateProxyStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null) {
         _settings = _settings.copy(
-            proxyStatsActive = active, proxyStatsIntervalMs = intervalMs
+            proxyStatsActive = active,
+            proxyStatsIntervalMs = intervalMs,
+            filterLocalIps = filterLocalIps ?: _settings.filterLocalIps
         )
         saveSettings()
     }
@@ -254,20 +259,7 @@ object AppConfig {
     val fcmTokensFile: File get() = File(dataRoot, "fcm-tokens.json")
 
     fun isLocalIP(ip: String): Boolean {
-        if (ip.isBlank()) return true
-        val cleanIp = ip.trim().lowercase()
-        if (cleanIp == "localhost" || cleanIp == "127.0.0.1" || cleanIp == "0.0.0.0" || cleanIp == "::1") return true
-        if (cleanIp.startsWith("127.0.")) return true
-        if (cleanIp.startsWith("192.168.")) return true
-        if (cleanIp.startsWith("10.")) return true
-        if (cleanIp.startsWith("172.")) {
-            val parts = cleanIp.split(".")
-            if (parts.size >= 2) {
-                val second = parts[1].toIntOrNull()
-                if (second != null && second in 16..31) return true
-            }
-        }
-        return false
+        return IpFilterUtils.isLocalIp(ip)
     }
 }
 

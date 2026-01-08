@@ -265,6 +265,20 @@ export interface ProxyStats {
   topMethods: GenericHitEntry[];
 }
 
+export interface DailyProxyStats {
+  date: string;
+  totalHits: number;
+  hitsByStatus: Record<number, number>;
+  hitsOverTime: Record<string, number>;
+  topPaths: PathHit[];
+  hitsByDomain: Record<string, number>;
+  topIps: GenericHitEntry[];
+  topIpsWithErrors: GenericHitEntry[];
+  topUserAgents: GenericHitEntry[];
+  topReferers: GenericHitEntry[];
+  topMethods: GenericHitEntry[];
+}
+
 export interface BtmpEntry {
   user: string;
   ip: string;

@@ -25,7 +25,13 @@ data class ProxyStats(
     val hitsByStatus: Map<Int, Long> = emptyMap(),
     val hitsOverTime: Map<String, Long> = emptyMap(),
     val topPaths: List<PathHit> = emptyList(),
-    val recentHits: List<ProxyHit> = emptyList()
+    val recentHits: List<ProxyHit> = emptyList(),
+    val hitsByDomain: Map<String, Long> = emptyMap(),
+    val topIps: List<GenericHitEntry> = emptyList(),
+    val topIpsWithErrors: List<GenericHitEntry> = emptyList(),
+    val topUserAgents: List<GenericHitEntry> = emptyList(),
+    val topReferers: List<GenericHitEntry> = emptyList(),
+    val topMethods: List<GenericHitEntry> = emptyList()
 )
 
 @Serializable
@@ -89,7 +95,7 @@ data class ProxyJailRule(
 
 @Serializable
 data class GenericHitEntry(
-    val key: String,
-    val value: Long
+    val label: String,
+    val count: Long
 )
 

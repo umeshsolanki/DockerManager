@@ -55,12 +55,39 @@ fun Route.proxyRoutes() {
 
         post("/stats/settings") {
             val request = call.receive<UpdateProxyStatsRequest>()
-            ProxyService.updateStatsSettings(request.active, request.intervalMs)
+            ProxyService.updateStatsSettings(request.active, request.intervalMs, request.filterLocalIps)
             call.respond(HttpStatusCode.OK, ProxyActionResult(true, "Proxy stats settings updated"))
         }
 
         get("/stats/refresh") {
             call.respond(ProxyService.getStats())
+        }
+
+        // Historical Analytics
+        get("/stats/history/dates") {
+            call.respond(ProxyService.listAvailableDates())
+        }
+
+        get("/stats/history/{date}") {
+            val date = call.requireParameter("date") ?: return@get
+            val stats = ProxyService.getHistoricalStats(date)
+            if (stats != null) {
+                call.respond(stats)
+            } else {
+                call.respond(HttpStatusCode.NotFound, ProxyActionResult(false, "No stats found for date: $date"))
+            }
+        }
+
+        get("/stats/history/range") {
+            val startDate = call.request.queryParameters["start"] ?: return@get call.respond(
+                HttpStatusCode.BadRequest,
+                ProxyActionResult(false, "Missing 'start' parameter")
+            )
+            val endDate = call.request.queryParameters["end"] ?: return@get call.respond(
+                HttpStatusCode.BadRequest,
+                ProxyActionResult(false, "Missing 'end' parameter")
+            )
+            call.respond(ProxyService.getStatsForDateRange(startDate, endDate))
         }
 
         get("/security/settings") {
