@@ -192,6 +192,7 @@ class FirewallRule(
     val comment: String? = null,
     val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
     val expiresAt: Long? = null,
+    val country: String? = null,
 )
 
 @Serializable
@@ -201,6 +202,7 @@ class BlockIPRequest(
     val protocol: String = "ALL",
     val comment: String? = null,
     val expiresAt: Long? = null,
+    val country: String? = null,
 )
 
 @Serializable

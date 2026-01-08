@@ -13,8 +13,9 @@ object DockerService {
     private var volumeService: IVolumeService = VolumeServiceImpl(dockerClient)
     private val logService: ILogService = LogServiceImpl()
     private val firewallService: IFirewallService = FirewallServiceImpl()
-    private val proxyService: IProxyService = ProxyServiceImpl(firewallService)
-    private val btmpService: IBtmpService = BtmpServiceImpl(firewallService)
+    private val jailManagerService: IJailManagerService = JailManagerServiceImpl(firewallService)
+    private val proxyService: IProxyService = ProxyServiceImpl(jailManagerService)
+    private val btmpService: IBtmpService = BtmpServiceImpl(jailManagerService)
     private val emailService: IEmailService = EmailServiceImpl()
     private val fileManagerService: IFileManagerService = FileManagerServiceImpl()
 

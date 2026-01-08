@@ -22,7 +22,7 @@ interface IBtmpService {
 }
 
 class BtmpServiceImpl(
-    private val firewallService: IFirewallService
+    private val jailManagerService: IJailManagerService
 ) : IBtmpService {
     private val logger = org.slf4j.LoggerFactory.getLogger(BtmpServiceImpl::class.java)
     val simpleDateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
@@ -58,32 +58,13 @@ class BtmpServiceImpl(
 
     private fun loadExistingJails() {
         try {
-            val rules = firewallService.listRules()
-            val now = System.currentTimeMillis()
-            
-            val jailsFromFirewall = rules.filter { rule ->
-                val expiresAt = rule.expiresAt
-                val isJailComment = rule.comment?.startsWith("Failed login") == true || 
-                                   rule.comment?.startsWith("Proxy:") == true ||
-                                   expiresAt != null
-
-                isJailComment && (expiresAt == null || expiresAt > now)
-            }.map { rule ->
-                JailedIP(
-                    ip = rule.ip,
-                    country = getCountryCode(rule.ip),
-                    reason = rule.comment ?: "Auto-jailed",
-                    expiresAt = rule.expiresAt ?: (now + (jailDurationMinutes * 60_000)),
-                    createdAt = rule.createdAt
-                )
-            }
-            
+            val jails = jailManagerService.listJails()
             jailedIps.clear()
-            jailedIps.addAll(jailsFromFirewall)
+            jailedIps.addAll(jails)
             updateCachedStats()
-            logger.info("Loaded ${jailedIps.size} jailed IPs from firewall")
+            logger.debug("Synced ${jailedIps.size} jailed IPs from firewall")
         } catch (e: Exception) {
-            logger.error("Failed to load existing jails", e)
+            logger.error("Failed to sync jailed IPs", e)
         }
     }
 
@@ -248,26 +229,7 @@ class BtmpServiceImpl(
         return currentOffset
     }
 
-    private val countryCache = java.util.concurrent.ConcurrentHashMap<String, String>()
-
-    private fun getCountryCode(ip: String): String {
-        if (AppConfig.isLocalIP(ip)) return "LOC"
-        
-        return "??"
-    //countryCache.computeIfAbsent(ip) { _ ->
-//            try {
-                // Rate limit protection: simple sleep if cache miss (not ideal for main thread but worker is async)
-                // Better: just fetch
-//                val json = java.net.URL("http://ip-api.com/json/$ip?fields=countryCode").readText()
-//                // Simple regex extract
-//                val match = "\"countryCode\":\"([^\"]+)\"".toRegex().find(json)
-//                match?.groupValues?.get(1) ?: "??"
-
-//            } catch (e: Exception) {
-//                "??"
-//            }
-//        }
-    }
+    private fun getCountryCode(ip: String): String = jailManagerService.getCountryCode(ip)
 
     private fun handleFailedAttempt(user: String, ip: String, timestamp: Long) {
         if (ip.isBlank()) return
@@ -277,21 +239,19 @@ class BtmpServiceImpl(
         ipCounts[ip] = (ipCounts[ip] ?: 0) + 1
         
         // Background fetch country if not cached, to populate cache for UI
-        if (!countryCache.containsKey(ip)) {
-             scope.launch(Dispatchers.IO) { getCountryCode(ip) }
-        }
+        scope.launch(Dispatchers.IO) { jailManagerService.getCountryCode(ip) }
         
         if (autoJailEnabled && !AppConfig.isLocalIP(ip) && jailedIps.none { it.ip == ip }) {
             failedAttemptsInWindow[ip] = (failedAttemptsInWindow[ip] ?: 0) + 1
             if (failedAttemptsInWindow[ip]!! >= jailThreshold) {
-                val expiresAt = System.currentTimeMillis() + (jailDurationMinutes * 60_000)
+                val country = jailManagerService.getCountryCode(ip)
                 val jail = JailedIP(
                     ip = ip, 
-                    country = getCountryCode(ip),
+                    country = country,
                     reason = "Failed login >= $jailThreshold failed attempts", 
                     expiresAt = expiresAt
                 )
-                firewallService.blockIP(BlockIPRequest(ip, comment = jail.reason, expiresAt = expiresAt))
+                jailManagerService.jailIP(ip, jailDurationMinutes, jail.reason)
                 jailedIps.add(jail)
                 failedAttemptsInWindow.remove(ip)
                 

@@ -21,8 +21,6 @@ class FirewallServiceImpl : IFirewallService {
     private val rulesFile = File(dataDir, "rules.json")
     private val json = AppConfig.json
     private val lock = java.util.concurrent.locks.ReentrantLock()
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var unjailJob: Job? = null
 
 
     init {
@@ -38,50 +36,8 @@ class FirewallServiceImpl : IFirewallService {
         
         // Apply existing rules to iptables on startup
         syncRules()
-
-        // Start background unjailer
-        startUnjailWorker()
     }
 
-    private fun startUnjailWorker() {
-        unjailJob?.cancel()
-        unjailJob = scope.launch {
-            while (isActive) {
-                try {
-                    checkAndReleaseExpiredRules()
-                } catch (e: Exception) {
-                    logger.error("Error in Firewall unjail worker", e)
-                }
-                delay(60000) // Check every minute
-            }
-        }
-    }
-
-    private fun checkAndReleaseExpiredRules() {
-        lock.lock()
-        try {
-            val rules = loadRules()
-            val now = System.currentTimeMillis()
-            val expiredRules = rules.filter { it.expiresAt != null && it.expiresAt!! <= now }
-
-            if (expiredRules.isNotEmpty()) {
-                logger.info("Releasing ${expiredRules.size} expired firewall rules")
-                expiredRules.forEach { rule ->
-                    if (rule.port != null) {
-                        val proto = if (rule.protocol == "ALL") "tcp" else rule.protocol.lowercase()
-                        executeCommand("$iptablesCmd -w -D DOCKER-USER -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-${rule.id}\"")
-                        executeCommand("$iptablesCmd -w -D INPUT -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-${rule.id}\"")
-                    } else {
-                        executeCommand("$ipSetCmd del dm-blocklist-ip ${rule.ip}")
-                    }
-                }
-                rules.removeAll(expiredRules)
-                saveRules(rules)
-            }
-        } finally {
-            lock.unlock()
-        }
-    }
 
     private fun loadRules(): MutableList<FirewallRule> {
         return try {
@@ -121,7 +77,8 @@ class FirewallServiceImpl : IFirewallService {
                 port = request.port,
                 protocol = request.protocol,
                 comment = request.comment,
-                expiresAt = request.expiresAt
+                expiresAt = request.expiresAt,
+                country = request.country
             )
 
             // Execute system command
@@ -210,6 +167,7 @@ class FirewallServiceImpl : IFirewallService {
             lock.unlock()
         }
     }
+
 
 
     override fun getIptablesVisualisation(): Map<String, List<IptablesRule>> {

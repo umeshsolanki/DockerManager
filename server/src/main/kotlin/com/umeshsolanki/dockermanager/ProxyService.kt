@@ -35,7 +35,7 @@ interface IProxyService {
 }
 
 class ProxyServiceImpl(
-    private val firewallService: IFirewallService
+    private val jailManagerService: IJailManagerService
 ) : IProxyService {
     private val logger = org.slf4j.LoggerFactory.getLogger(ProxyServiceImpl::class.java)
     private val configDir = AppConfig.proxyConfigDir
@@ -198,12 +198,11 @@ class ProxyServiceImpl(
                                 if (shouldJail) {
                                     logger.warn("Jailing IP $ip for proxy violation: $reason")
                                     val duration = AppConfig.jailSettings.jailDurationMinutes
-                                    val expiresAt = System.currentTimeMillis() + (duration * 60_000)
-                                    firewallService.blockIP(BlockIPRequest(
+                                    jailManagerService.jailIP(
                                         ip = ip,
-                                        comment = "Proxy: $reason",
-                                        expiresAt = expiresAt
-                                    ))
+                                        reason = "Proxy: $reason",
+                                        durationMinutes = duration
+                                    )
                                 }
                             }
 
