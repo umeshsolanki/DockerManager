@@ -1,12 +1,11 @@
 package com.umeshsolanki.dockermanager.firewall
 
 import com.umeshsolanki.dockermanager.*
-import com.umeshsolanki.dockermanager.firewall.IptablesRule
+import com.umeshsolanki.dockermanager.ServiceContainer
 import com.umeshsolanki.dockermanager.utils.CommandExecutor
-import com.umeshsolanki.dockermanager.utils.JsonFileManager
+import com.umeshsolanki.dockermanager.utils.JsonPersistence
 import com.umeshsolanki.dockermanager.constants.FirewallConstants
 import com.umeshsolanki.dockermanager.constants.FileConstants
-import kotlinx.coroutines.*
 import java.io.File
 import java.util.UUID
 
@@ -24,7 +23,7 @@ class FirewallServiceImpl : IFirewallService {
     private val iptablesCmd = AppConfig.iptablesCmd
     private val ipSetCmd = AppConfig.ipsetCmd
     private val rulesFile = File(dataDir, FileConstants.RULES_JSON)
-    private val jsonFileManager = JsonFileManager.create<List<FirewallRule>>(
+    private val jsonPersistence = JsonPersistence.create<List<FirewallRule>>(
         file = rulesFile,
         defaultContent = emptyList(),
         loggerName = FirewallServiceImpl::class.java.name
@@ -47,11 +46,11 @@ class FirewallServiceImpl : IFirewallService {
 
 
     private fun loadRules(): MutableList<FirewallRule> {
-        return jsonFileManager.load().toMutableList()
+        return jsonPersistence.load().toMutableList()
     }
 
     private fun saveRules(rules: List<FirewallRule>) {
-        jsonFileManager.save(rules)
+        jsonPersistence.save(rules)
     }
 
     override fun listRules(): List<FirewallRule> = loadRules()
@@ -278,7 +277,7 @@ class FirewallServiceImpl : IFirewallService {
 
 // Service object for easy access
 object FirewallService {
-    private val service: IFirewallService = FirewallServiceImpl()
+    private val service: IFirewallService get() = ServiceContainer.firewallService
     
     fun listRules() = service.listRules()
     fun blockIP(request: BlockIPRequest) = service.blockIP(request)
@@ -286,4 +285,6 @@ object FirewallService {
     fun unblockIPByAddress(ip: String) = service.unblockIPByAddress(ip)
     fun getIptablesVisualisation() = service.getIptablesVisualisation()
 }
+
+
 

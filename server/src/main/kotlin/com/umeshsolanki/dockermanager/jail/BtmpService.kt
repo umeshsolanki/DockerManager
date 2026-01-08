@@ -2,6 +2,7 @@ package com.umeshsolanki.dockermanager.jail
 
 import com.sun.jna.Native
 import com.umeshsolanki.dockermanager.AppConfig
+import com.umeshsolanki.dockermanager.ServiceContainer
 import com.umeshsolanki.dockermanager.firewall.FirewallServiceImpl
 import com.umeshsolanki.dockermanager.firewall.IFirewallService
 import com.umeshsolanki.dockermanager.jna.Utmpx
@@ -310,9 +311,9 @@ class BtmpServiceImpl(
 
 // Service object for easy access
 object BtmpService {
-    private val firewallService: IFirewallService = FirewallServiceImpl()
-    private val jailManagerService: IJailManagerService = JailManagerServiceImpl(firewallService)
-    private val service: IBtmpService = BtmpServiceImpl(jailManagerService)
+    private val service: IBtmpService by lazy {
+        BtmpServiceImpl(ServiceContainer.jailManagerService)
+    }
 
     fun getStats() = service.getStats()
     suspend fun refreshStats() = service.refreshStats()

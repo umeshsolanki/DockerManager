@@ -17,5 +17,3 @@ services:
       - ${certbotPath}/www:/var/www/certbot
       - ${customCertsPath}:/etc/nginx/custom_certs:ro
     command: /usr/local/openresty/bin/openresty -g 'daemon off;'
-
-

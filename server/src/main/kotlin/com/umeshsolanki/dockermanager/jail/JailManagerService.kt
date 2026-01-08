@@ -1,6 +1,7 @@
 package com.umeshsolanki.dockermanager.jail
 
 import com.umeshsolanki.dockermanager.*
+import com.umeshsolanki.dockermanager.ServiceContainer
 import com.umeshsolanki.dockermanager.constants.TimeoutConstants
 import com.umeshsolanki.dockermanager.firewall.IFirewallService
 import com.umeshsolanki.dockermanager.firewall.BlockIPRequest
@@ -200,5 +201,20 @@ class JailManagerServiceImpl(
             jailIP(ip, duration, "Proxy: $reason")
         }
     }
+}
+
+// Service object for easy access
+object JailManagerService {
+    private val service: IJailManagerService get() = ServiceContainer.jailManagerService
+    
+    fun listJails() = service.listJails()
+    fun jailIP(ip: String, durationMinutes: Int, reason: String) = service.jailIP(ip, durationMinutes, reason)
+    fun unjailIP(ip: String) = service.unjailIP(ip)
+    fun getCountryCode(ip: String) = service.getCountryCode(ip)
+    fun isIPJailed(ip: String) = service.isIPJailed(ip)
+    fun recordFailedLoginAttempt(ip: String) = service.recordFailedLoginAttempt(ip)
+    fun clearFailedAttempts(ip: String) = service.clearFailedAttempts(ip)
+    fun checkProxySecurityViolation(ip: String, userAgent: String, method: String, path: String, status: Int, errorCount: Long) = 
+        service.checkProxySecurityViolation(ip, userAgent, method, path, status, errorCount)
 }
 

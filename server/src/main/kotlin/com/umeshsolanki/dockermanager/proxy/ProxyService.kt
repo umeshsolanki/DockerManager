@@ -1,10 +1,10 @@
 package com.umeshsolanki.dockermanager.proxy
 
 import com.umeshsolanki.dockermanager.*
-import com.umeshsolanki.dockermanager.proxy.*
+import com.umeshsolanki.dockermanager.ServiceContainer
 import com.umeshsolanki.dockermanager.firewall.IFirewallService
 import com.umeshsolanki.dockermanager.jail.IJailManagerService
-import com.umeshsolanki.dockermanager.utils.JsonFileManager
+import com.umeshsolanki.dockermanager.utils.JsonPersistence
 import com.umeshsolanki.dockermanager.utils.ResourceLoader
 import com.umeshsolanki.dockermanager.utils.CommandExecutor
 import kotlinx.coroutines.*
@@ -46,7 +46,7 @@ class ProxyServiceImpl(
     private val configDir = AppConfig.proxyConfigDir
     private val logFile = AppConfig.proxyLogFile
     private val hostsFile = AppConfig.proxyHostsFile
-    private val jsonFileManager = JsonFileManager.create<List<ProxyHost>>(
+    private val jsonPersistence = JsonPersistence.create<List<ProxyHost>>(
         file = hostsFile,
         defaultContent = emptyList(),
         loggerName = ProxyServiceImpl::class.java.name
@@ -232,11 +232,11 @@ class ProxyServiceImpl(
     override fun getStats(): ProxyStats = cachedStats
 
     private fun loadHosts(): MutableList<ProxyHost> {
-        return jsonFileManager.load().toMutableList()
+        return jsonPersistence.load().toMutableList()
     }
 
     private fun saveHosts(hosts: List<ProxyHost>) {
-        jsonFileManager.save(hosts)
+        jsonPersistence.save(hosts)
     }
 
     override fun listHosts(): List<ProxyHost> = loadHosts()
@@ -424,8 +424,13 @@ class ProxyServiceImpl(
 
     private fun generateNginxConfig(host: ProxyHost): Pair<Boolean, String> {
         // Load websocket config if enabled
-        val wsConfig = if (host.websocketEnabled) {
+        val wsConfigRaw = if (host.websocketEnabled) {
             ResourceLoader.loadResourceOrThrow("templates/proxy/websocket-config.conf")
+        } else ""
+        
+        // Indent websocket config for use in location blocks (8 spaces)
+        val wsConfig = if (wsConfigRaw.isNotEmpty()) {
+            wsConfigRaw.lines().joinToString("\n        ") { it.trim() }
         } else ""
 
         // Generate IP restrictions
@@ -480,8 +485,8 @@ class ProxyServiceImpl(
                 "websocketConfig" to wsConfig,
                 "ipRestrictions" to ipConfig
             ))
-            // Indent each line
-            proxyContent.lines().joinToString("\n") { "        $it" }
+            // Indent each line (8 spaces for location block)
+            proxyContent.lines().joinToString("\n") { if (it.isBlank()) it else "        $it" }
         } else ""
 
         val httpTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/server-http.conf")
@@ -852,9 +857,9 @@ class ProxyServiceImpl(
 
 // Service object for easy access
 object ProxyService {
-    private val firewallService: IFirewallService = com.umeshsolanki.dockermanager.firewall.FirewallServiceImpl()
-    private val jailManagerService: IJailManagerService = com.umeshsolanki.dockermanager.jail.JailManagerServiceImpl(firewallService)
-    private val service: IProxyService = ProxyServiceImpl(jailManagerService)
+    private val service: IProxyService by lazy {
+        ProxyServiceImpl(ServiceContainer.jailManagerService)
+    }
     
     fun listHosts() = service.listHosts()
     fun createHost(host: ProxyHost) = service.createHost(host)

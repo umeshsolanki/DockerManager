@@ -13,6 +13,9 @@ fun main() {
 }
 
 fun Application.module() {
+    // Initialize service container (dependency injection)
+    ServiceContainer.initialize()
+    
     JamesSetupService.initialize()
     AuthService.initialize()
     FcmService.initialize()

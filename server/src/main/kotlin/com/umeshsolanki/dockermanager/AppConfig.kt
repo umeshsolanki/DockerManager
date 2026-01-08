@@ -2,11 +2,11 @@ package com.umeshsolanki.dockermanager
 
 import com.umeshsolanki.dockermanager.proxy.ProxyJailRule
 import com.umeshsolanki.dockermanager.constants.*
+import com.umeshsolanki.dockermanager.utils.JsonPersistence
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import java.io.File
-import java.nio.file.Files
 
 fun String?.ifNullOrBlank(value: String): String {
     return if (this.isNullOrBlank()) value else this
@@ -71,19 +71,22 @@ object AppConfig {
         File(dataRoot, FileConstants.SETTINGS_JSON)
     }
 
+    private val jsonPersistence: JsonPersistence<AppSettings> by lazy {
+        JsonPersistence.create(
+            file = settingsFile,
+            defaultContent = AppSettings(),
+            loggerName = AppConfig::class.java.name
+        )
+    }
+
     private var _settings: AppSettings = loadSettings()
 
     private fun loadSettings(): AppSettings {
         return try {
             logger.info("Loading settings from ${settingsFile.absolutePath}")
-            if (settingsFile.exists()) {
-                val content = settingsFile.readText()
-                logger.debug("Settings content: $content")
-                json.decodeFromString<AppSettings>(content)
-            } else {
-                logger.info("Settings file not found, using defaults")
-                AppSettings()
-            }
+            val loaded = jsonPersistence.load()
+            logger.debug("Settings loaded successfully")
+            loaded
         } catch (e: Exception) {
             logger.error("Failed to load settings (corrupted?), using defaults", e)
             AppSettings()
@@ -141,20 +144,12 @@ object AppConfig {
 
     private fun saveSettings() {
         try {
-            if (!settingsFile.parentFile.exists()) {
-                val created = settingsFile.parentFile.mkdirs()
-                if (!created) {
-                    logger.error("Failed to create directory: ${settingsFile.parentFile.absolutePath}")
-                }
+            val saved = jsonPersistence.save(_settings)
+            if (saved) {
+                logger.info("Settings saved to ${settingsFile.absolutePath}")
+            } else {
+                logger.error("Failed to save settings to ${settingsFile.absolutePath}")
             }
-            settingsFile.writeText(json.encodeToString(_settings))
-            logger.info(
-                "Settings saved to ${settingsFile.absolutePath}. Content: ${
-                    json.encodeToString(
-                        _settings
-                    )
-                }"
-            )
         } catch (e: Exception) {
             logger.error("Failed to save settings to ${settingsFile.absolutePath}", e)
         }

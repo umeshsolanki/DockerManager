@@ -27,19 +27,29 @@ object JamesSetupService {
         )
     }
 
+    private fun indentXmlBlock(xml: String, indentSpaces: Int): String {
+        if (xml.isBlank()) return xml
+        val indent = " ".repeat(indentSpaces)
+        return xml.lines()
+            .filter { it.isNotBlank() } // Remove blank lines
+            .joinToString("\n") { line ->
+                "$indent${line.trimStart()}"
+            }
+    }
+
     private fun loadSmtpServerConfig(): String {
         val template = ResourceLoader.loadResourceOrThrow("templates/james/smtpserver.xml")
         return ResourceLoader.replacePlaceholders(template, mapOf(
-            "tlsConfig" to tlsConfig,
-            "tlsSslConfig" to tlsSslConfig
+            "tlsConfig" to indentXmlBlock(tlsConfig, 8),
+            "tlsSslConfig" to indentXmlBlock(tlsSslConfig, 8)
         ))
     }
 
     private fun loadImapServerConfig(): String {
         val template = ResourceLoader.loadResourceOrThrow("templates/james/imapserver.xml")
         return ResourceLoader.replacePlaceholders(template, mapOf(
-            "tlsConfig" to tlsConfig,
-            "tlsSslConfig" to tlsSslConfig
+            "tlsConfig" to indentXmlBlock(tlsConfig, 8),
+            "tlsSslConfig" to indentXmlBlock(tlsSslConfig, 8)
         ))
     }
 

@@ -12,13 +12,13 @@ import java.io.File
  * Handles loading, saving, and initialization of JSON files.
  */
 @OptIn(InternalSerializationApi::class)
-class JsonFileManager<T : Any>(
+class JsonPersistence<T : Any>(
     private val file: File,
     private val defaultContent: T,
     private val serializer: KSerializer<T>,
-    private val loggerName: String = JsonFileManager::class.java.name
+    private val loggerName: String = JsonPersistence::class.java.name
 ) {
-    companion object {
+    companion object Companion {
         /**
          * Factory function to create JsonFileManager with proper type inference.
          * This ensures the serializer is correctly inferred even when defaultContent is emptyList().
@@ -26,9 +26,9 @@ class JsonFileManager<T : Any>(
         inline fun <reified T : Any> create(
             file: File,
             defaultContent: T,
-            loggerName: String = JsonFileManager::class.java.name
-        ): JsonFileManager<T> {
-            return JsonFileManager(
+            loggerName: String = JsonPersistence::class.java.name
+        ): JsonPersistence<T> {
+            return JsonPersistence(
                 file = file,
                 defaultContent = defaultContent,
                 serializer = serializer<T>(),

@@ -4,6 +4,7 @@ import com.umeshsolanki.dockermanager.AppConfig
 import com.umeshsolanki.dockermanager.TwoFactorSetupResponse
 import com.umeshsolanki.dockermanager.fcm.FcmService
 import com.umeshsolanki.dockermanager.jail.BtmpService
+import com.umeshsolanki.dockermanager.utils.JsonPersistence
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.net.URLEncoder
@@ -23,8 +24,8 @@ sealed class AuthResult {
 object AuthService {
     private val logger = LoggerFactory.getLogger(AuthService::class.java)
     private val accessFile: File get() = File(AppConfig.dataRoot, "accessInfo.json")
-    private val json = AppConfig.json
-
+    
+    private lateinit var jsonPersistence: JsonPersistence<AccessInfo>
     private var currentAccess: AccessInfo = AccessInfo(password = "")
 
     // Token -> Expiry
@@ -32,11 +33,24 @@ object AuthService {
     private const val SESSION_DURATION_MS = 24 * 60 * 60 * 1000L // 24 hours
 
     fun initialize() {
+        // Check if file exists before creating JsonFileManager to handle env vars
         if (!accessFile.exists()) {
             val envUsername = System.getenv("MANAGER_USERNAME") ?: "admin"
             val envPassword = System.getenv("MANAGER_PASSWORD") ?: generateRandomString(16)
-
-            saveAccessInfo(AccessInfo(username = envUsername, password = envPassword))
+            
+            val initialAccess = AccessInfo(username = envUsername, password = envPassword)
+            
+            // Create JsonFileManager with initial content
+            jsonPersistence = JsonPersistence.create(
+                file = accessFile,
+                defaultContent = initialAccess,
+                loggerName = AuthService::class.java.name
+            )
+            
+            // Save the initial access info
+            jsonPersistence.save(initialAccess)
+            currentAccess = initialAccess
+            
             if (System.getenv("MANAGER_PASSWORD") == null) {
                 logger.warn(
                     "\n" + "#".repeat(60) + "\nINITIAL ACCESS GENERATED:\nUSERNAME: $envUsername\nPASSWORD: $envPassword\nLOCATION: ${accessFile.absolutePath}\n" + "#".repeat(
@@ -47,22 +61,29 @@ object AuthService {
                 logger.info("Access info initialized from environment variables")
             }
         } else {
+            // File exists, create JsonFileManager and load
+            jsonPersistence = JsonPersistence.create(
+                file = accessFile,
+                defaultContent = AccessInfo(password = ""),
+                loggerName = AuthService::class.java.name
+            )
+            
             try {
-                val content = accessFile.readText()
-                currentAccess = json.decodeFromString<AccessInfo>(content)
+                currentAccess = jsonPersistence.load()
                 logger.info("Access info loaded for user: ${currentAccess.username}")
             } catch (e: Exception) {
                 logger.error("Failed to load access info, generating new default", e)
                 val pwd = generateRandomString(16)
-                saveAccessInfo(AccessInfo(password = pwd))
+                val defaultAccess = AccessInfo(password = pwd)
+                jsonPersistence.save(defaultAccess)
+                currentAccess = defaultAccess
             }
         }
     }
 
     private fun saveAccessInfo(info: AccessInfo) {
         currentAccess = info
-        if (!accessFile.parentFile.exists()) accessFile.parentFile.mkdirs()
-        accessFile.writeText(json.encodeToString(info))
+        jsonPersistence.save(info)
     }
 
     fun authenticate(

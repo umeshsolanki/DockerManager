@@ -17,5 +17,3 @@ services:
     restart: unless-stopped
     environment:
       - TZ=Asia/Kolkata
-
-
