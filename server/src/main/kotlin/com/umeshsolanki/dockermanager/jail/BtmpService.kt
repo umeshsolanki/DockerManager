@@ -1,16 +1,22 @@
 package com.umeshsolanki.dockermanager.jail
 
-import com.umeshsolanki.dockermanager.*
 import com.sun.jna.Native
+import com.umeshsolanki.dockermanager.AppConfig
+import com.umeshsolanki.dockermanager.firewall.FirewallServiceImpl
+import com.umeshsolanki.dockermanager.firewall.IFirewallService
 import com.umeshsolanki.dockermanager.jna.Utmpx
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.file.Files
 import java.nio.file.LinkOption
-import java.nio.file.Paths
 import java.nio.file.attribute.BasicFileAttributes
-import java.util.concurrent.TimeUnit
 
 interface IBtmpService {
     fun getStats(): BtmpStats
@@ -23,16 +29,16 @@ interface IBtmpService {
 }
 
 class BtmpServiceImpl(
-    private val jailManagerService: IJailManagerService
+    private val jailManagerService: IJailManagerService,
 ) : IBtmpService {
     private val logger = org.slf4j.LoggerFactory.getLogger(BtmpServiceImpl::class.java)
     val simpleDateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
     private val btmpPath = AppConfig.btmpLogFile.toPath()
-    private var totalFailedAttempts = 0
+    private var totalFailedAttempts = 0L
     private val userCounts = mutableMapOf<String, Int>()
     private val ipCounts = mutableMapOf<String, Int>()
     private val recentFailuresList = mutableListOf<BtmpEntry>()
-    
+
     private var lastInode: Any? = null
     private var lastPosition = 0L
 
@@ -41,11 +47,23 @@ class BtmpServiceImpl(
     private var jailDurationMinutes = AppConfig.jailSettings.jailDurationMinutes
     private val jailedIps = java.util.concurrent.CopyOnWriteArrayList<JailedIP>()
 
-    private var cachedBtmpStats: BtmpStats = BtmpStats(0, emptyList(), emptyList(), emptyList(), 0)
-    
+    private var cachedBtmpStats: BtmpStats = BtmpStats(
+        totalFailedAttempts = 0L,
+        topUsers = emptyList(),
+        topIps = emptyList(),
+        recentFailures = emptyList(),
+        lastUpdated = 0L,
+        jailedIps = emptyList(),
+        autoJailEnabled = false,
+        jailThreshold = 0,
+        jailDurationMinutes = 0,
+        refreshIntervalMinutes = 0,
+        isMonitoringActive = false
+    )
+
     private var refreshIntervalMinutes = AppConfig.jailSettings.monitoringIntervalMinutes
     private var isMonitoringActive = AppConfig.jailSettings.monitoringActive
-    
+
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var workerJob: Job? = null
 
@@ -84,7 +102,6 @@ class BtmpServiceImpl(
     }
 
 
-
     override fun getStats(): BtmpStats = cachedBtmpStats
 
     override suspend fun refreshStats(): BtmpStats {
@@ -92,7 +109,7 @@ class BtmpServiceImpl(
         updateStats()
         return cachedBtmpStats
     }
-    
+
     // Periodically sync jails from JailManagerService to update cached stats
     private fun syncJailsPeriodically() {
         scope.launch {
@@ -111,18 +128,18 @@ class BtmpServiceImpl(
         this.autoJailEnabled = enabled
         this.jailThreshold = threshold
         this.jailDurationMinutes = durationMinutes
-        
+
         AppConfig.updateJailSettings(enabled, threshold, durationMinutes)
-        
+
         updateCachedStats()
     }
 
     override fun updateMonitoringSettings(active: Boolean, intervalMinutes: Int) {
         val needRestart = intervalMinutes != this.refreshIntervalMinutes
-        
+
         this.isMonitoringActive = active
         this.refreshIntervalMinutes = intervalMinutes.coerceAtLeast(1)
-        
+
         AppConfig.updateJailSettings(
             enabled = this.autoJailEnabled,
             threshold = this.jailThreshold,
@@ -130,9 +147,9 @@ class BtmpServiceImpl(
             monitoringActive = active,
             monitoringIntervalMinutes = this.refreshIntervalMinutes
         )
-        
+
         updateCachedStats()
-        
+
         if (needRestart) {
             startWorker()
         }
@@ -156,26 +173,33 @@ class BtmpServiceImpl(
         if (!file.exists()) return
 
         try {
-            val attrs = Files.readAttributes(btmpPath, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+            val attrs = Files.readAttributes(
+                btmpPath, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS
+            )
             val currentInode = attrs.fileKey()
             val currentSize = attrs.size()
 
             if (lastInode != null && currentInode != lastInode) {
-                 // File rotated. Try to finish processing the old file if possible.
-                 val rotated = File(btmpPath.parent.toFile(), "btmp.1")
-                 if (rotated.exists()) {
-                     try {
-                         val rotAttrs = Files.readAttributes(rotated.toPath(), BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
-                         if (rotAttrs.fileKey() == lastInode) {
-                             processBtmpFile(rotated, lastPosition)
-                         }
-                     } catch(ignore: Exception) {}
-                 }
-                 lastPosition = 0L
+                // File rotated. Try to finish processing the old file if possible.
+                val rotated = File(btmpPath.parent.toFile(), "btmp.1")
+                if (rotated.exists()) {
+                    try {
+                        val rotAttrs = Files.readAttributes(
+                            rotated.toPath(),
+                            BasicFileAttributes::class.java,
+                            LinkOption.NOFOLLOW_LINKS
+                        )
+                        if (rotAttrs.fileKey() == lastInode) {
+                            processBtmpFile(rotated, lastPosition)
+                        }
+                    } catch (ignore: Exception) {
+                    }
+                }
+                lastPosition = 0L
             }
-            
+
             lastInode = currentInode
-            
+
             if (currentSize > lastPosition) {
                 lastPosition = processBtmpFile(file, lastPosition)
                 updateCachedStats()
@@ -196,30 +220,30 @@ class BtmpServiceImpl(
         // Ensure structure memory is allocated
         // size() returns the size of the structure in bytes
         val structSize = utmpx.size()
-        
+
         RandomAccessFile(file, "r").use { raf ->
             val len = raf.length()
             if (currentOffset >= len) return len
-            
+
             raf.seek(currentOffset)
             val buffer = ByteArray(structSize)
-            
+
             while (currentOffset + structSize <= len && raf.read(buffer) == structSize) {
                 // Copy buffer to structure memory
                 utmpx.pointer.write(0, buffer, 0, structSize)
                 // Sync fields from memory
                 utmpx.read()
-                
+
                 val user = Native.toString(utmpx.ut_user)
                 val host = Native.toString(utmpx.ut_host)
                 // ut_tv is struct timeval { int32_t tv_sec; int32_t tv_usec; }
                 val timestamp = (utmpx.ut_tv.tv_sec.toLong() * 1000L)
                 val type = utmpx.ut_type.toInt()
-                
+
                 // Usually type 7 (USER_PROCESS) or 6 (LOGIN_PROCESS) appear in btmp for failed logins
                 // But generally anything in btmp is a failed login.
                 if (user.isNotBlank() && type != 0) {
-                     handleFailedAttempt(user, host, timestamp)
+                    handleFailedAttempt(user, host, timestamp)
                 }
 
                 currentOffset += structSize
@@ -236,17 +260,17 @@ class BtmpServiceImpl(
         totalFailedAttempts++
         userCounts[user] = (userCounts[user] ?: 0) + 1
         ipCounts[ip] = (ipCounts[ip] ?: 0) + 1
-        
+
         // Background fetch country if not cached, to populate cache for UI
         scope.launch(Dispatchers.IO) { jailManagerService.getCountryCode(ip) }
-        
+
         // Record failed attempt and check for auto-jail (handled by JailManagerService)
         if (autoJailEnabled) {
             jailManagerService.recordFailedLoginAttempt(ip)
             // Reload jails to update cache
             loadExistingJails()
         }
-        
+
         // Add to history
         val entry = BtmpEntry(
             user = user,
@@ -257,7 +281,7 @@ class BtmpServiceImpl(
             timestamp = timestamp,
             duration = ""
         )
-        
+
         recentFailuresList.add(0, entry)
         if (recentFailuresList.size > 1000) {
             recentFailuresList.removeAt(recentFailuresList.size - 1)
@@ -267,13 +291,14 @@ class BtmpServiceImpl(
     private fun updateCachedStats() {
         cachedBtmpStats = BtmpStats(
             totalFailedAttempts = totalFailedAttempts,
-            topUsers = userCounts.toList().sortedByDescending { it.second }.take(100).map { TopUserEntry(it.first, it.second) },
+            topUsers = userCounts.toList().sortedByDescending { it.second }.take(100)
+                .map { TopUserEntry(it.first, it.second.toLong()) },
             topIps = ipCounts.toList().sortedByDescending { it.second }.take(100).map {
-                TopIpEntry(it.first, it.second, getCountryCode(it.first))
+                TopIpEntry(it.first, it.second.toLong(), getCountryCode(it.first))
             },
             recentFailures = recentFailuresList.take(200).toList(),
             lastUpdated = System.currentTimeMillis(),
-            jailedIps = jailedIps.toList(),
+            jailedIps = jailedIps.map { it.ip },
             autoJailEnabled = autoJailEnabled,
             jailThreshold = jailThreshold,
             jailDurationMinutes = jailDurationMinutes,
@@ -283,3 +308,21 @@ class BtmpServiceImpl(
     }
 }
 
+// Service object for easy access
+object BtmpService {
+    private val firewallService: IFirewallService = FirewallServiceImpl()
+    private val jailManagerService: IJailManagerService = JailManagerServiceImpl(firewallService)
+    private val service: IBtmpService = BtmpServiceImpl(jailManagerService)
+
+    fun getStats() = service.getStats()
+    suspend fun refreshStats() = service.refreshStats()
+    fun updateAutoJailSettings(enabled: Boolean, threshold: Int, durationMinutes: Int) =
+        service.updateAutoJailSettings(enabled, threshold, durationMinutes)
+
+    fun updateMonitoringSettings(active: Boolean, intervalMinutes: Int) =
+        service.updateMonitoringSettings(active, intervalMinutes)
+
+    fun recordFailedAttempt(user: String, ip: String) = service.recordFailedAttempt(user, ip)
+    fun clearFailedAttempts(ip: String) = service.clearFailedAttempts(ip)
+    fun isIPJailed(ip: String) = service.isIPJailed(ip)
+}

@@ -1,6 +1,6 @@
 package com.umeshsolanki.dockermanager.docker
 
-import com.umeshsolanki.dockermanager.DockerService
+import com.umeshsolanki.dockermanager.*
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.request.receive
@@ -15,7 +15,7 @@ fun Route.containerRoutes() {
         }
 
         post {
-            val request = call.receive<com.umeshsolanki.dockermanager.CreateContainerRequest>()
+            val request = call.receive<CreateContainerRequest>()
             val id = DockerService.createContainer(request)
             if (id != null) {
                 call.respond(HttpStatusCode.Created, id)

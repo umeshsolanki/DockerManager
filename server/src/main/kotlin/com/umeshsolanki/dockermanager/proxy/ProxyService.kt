@@ -1,6 +1,8 @@
 package com.umeshsolanki.dockermanager.proxy
 
 import com.umeshsolanki.dockermanager.*
+import com.umeshsolanki.dockermanager.proxy.*
+import com.umeshsolanki.dockermanager.firewall.IFirewallService
 import com.umeshsolanki.dockermanager.jail.IJailManagerService
 import kotlinx.coroutines.*
 import kotlinx.serialization.decodeFromString
@@ -217,15 +219,9 @@ class ProxyServiceImpl(
         cachedStats = ProxyStats(
             totalHits = totalHitsCounter.get(),
             hitsByStatus = hitsByStatusMap.toMap(),
-            hitsByDomain = hitsByDomainMap.toMap(),
             hitsOverTime = hitsByTimeMap.toSortedMap(),
             topPaths = hitsByPathMap.entries.sortedByDescending { it.value }.take(15).map { PathHit(it.key, it.value) },
-            recentHits = recentHitsList.toList(),
-            topIps = hitsByIpMap.entries.sortedByDescending { it.value }.take(15).map { GenericHitEntry(it.key, it.value) },
-            topIpsWithErrors = hitsByIpErrorMap.entries.sortedByDescending { it.value }.take(15).map { GenericHitEntry(it.key, it.value) },
-            topMethods = hitsByMethodMap.entries.sortedByDescending { it.value }.take(10).map { GenericHitEntry(it.key, it.value) },
-            topReferers = hitsByRefererMap.entries.sortedByDescending { it.value }.take(15).map { GenericHitEntry(it.key, it.value) },
-            topUserAgents = hitsByUserAgentMap.entries.sortedByDescending { it.value }.take(20).map { GenericHitEntry(it.key, it.value) }
+            recentHits = recentHitsList.toList()
         )
     }
 
@@ -1042,4 +1038,32 @@ $sslConfig
             false
         }
     }
+}
+
+// Service object for easy access
+object ProxyService {
+    private val firewallService: IFirewallService = com.umeshsolanki.dockermanager.firewall.FirewallServiceImpl()
+    private val jailManagerService: IJailManagerService = com.umeshsolanki.dockermanager.jail.JailManagerServiceImpl(firewallService)
+    private val service: IProxyService = ProxyServiceImpl(jailManagerService)
+    
+    fun listHosts() = service.listHosts()
+    fun createHost(host: ProxyHost) = service.createHost(host)
+    fun deleteHost(id: String) = service.deleteHost(id)
+    fun getStats() = service.getStats()
+    fun toggleHost(id: String) = service.toggleHost(id)
+    fun updateHost(host: ProxyHost) = service.updateHost(host)
+    fun requestSSL(id: String) = service.requestSSL(id)
+    fun listCertificates() = service.listCertificates()
+    fun buildProxyImage() = service.buildProxyImage()
+    fun createProxyContainer() = service.createProxyContainer()
+    fun startProxyContainer() = service.startProxyContainer()
+    fun stopProxyContainer() = service.stopProxyContainer()
+    fun restartProxyContainer() = service.restartProxyContainer()
+    fun getProxyContainerStatus() = service.getProxyContainerStatus()
+    fun ensureProxyContainerExists() = service.ensureProxyContainerExists()
+    fun getComposeConfig() = service.getComposeConfig()
+    fun updateComposeConfig(content: String) = service.updateComposeConfig(content)
+    fun updateStatsSettings(active: Boolean, intervalMs: Long) = service.updateStatsSettings(active, intervalMs)
+    fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>) = service.updateSecuritySettings(enabled, thresholdNon200, rules)
+    fun getProxySecuritySettings() = AppConfig.proxySecuritySettings
 }

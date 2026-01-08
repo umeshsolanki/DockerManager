@@ -109,7 +109,7 @@ export default function AnalyticsScreen() {
                 />
                 <StatCard
                     label="Unique Reach"
-                    value={stats?.topIps.length.toString() || '0'}
+                    value={stats?.topIps?.length.toString() || '0'}
                     icon={<Network size={20} />}
                     sub="Unique Source IPs"
                     color="indigo"
@@ -225,7 +225,7 @@ export default function AnalyticsScreen() {
                 <StatsListCard
                     title="Source Networks"
                     icon={<Network size={18} />}
-                    items={stats?.topIps.slice(0, 8).map(p => ({ label: p.label, value: p.count, sub: 'IP Source' })) || []}
+                    items={stats?.topIps?.slice(0, 8).map(p => ({ label: p.label, value: p.count, sub: 'IP Source' })) || []}
                     color="indigo"
                     total={stats?.totalHits || 1}
                 />
@@ -234,7 +234,7 @@ export default function AnalyticsScreen() {
                 <StatsListCard
                     title="User Agents"
                     icon={<User size={18} />}
-                    items={stats?.topUserAgents.slice(0, 8).map(p => ({ label: p.label, value: p.count, sub: 'Client' })) || []}
+                    items={stats?.topUserAgents?.slice(0, 8).map(p => ({ label: p.label, value: p.count, sub: 'Client' })) || []}
                     color="pink"
                     total={stats?.totalHits || 1}
                 />
@@ -334,7 +334,7 @@ function StatsListCard({ title, icon, items, color, total }: { title: string, ic
                                 <span className="text-[11px] font-bold truncate pr-3 group-hover:text-on-surface transition-colors">{item.label}</span>
                                 <span className="text-[8px] font-black uppercase text-on-surface-variant/40 tracking-wider font-mono">{item.sub}</span>
                             </div>
-                            <span className="text-[10px] font-black text-on-surface-variant">{item.value.toLocaleString()}</span>
+                            <span className="text-[10px] font-black text-on-surface-variant">{item.value?.toLocaleString()}</span>
                         </div>
                         <div className="h-1 bg-white/5 rounded-full overflow-hidden border border-white/5">
                             <div

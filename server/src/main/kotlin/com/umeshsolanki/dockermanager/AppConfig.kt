@@ -1,5 +1,6 @@
 package com.umeshsolanki.dockermanager
 
+import com.umeshsolanki.dockermanager.proxy.ProxyJailRule
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
@@ -11,16 +12,9 @@ fun String?.ifNullOrBlank(value: String): String {
 }
 
 @Serializable
-enum class ProxyJailRuleType {
-    USER_AGENT, METHOD, PATH, STATUS_CODE
-}
-
-@Serializable
-data class ProxyJailRule(
-    val id: String = java.util.UUID.randomUUID().toString(),
-    val type: ProxyJailRuleType,
-    val pattern: String,
-    val description: String? = null
+data class UpdateProxyStatsRequest(
+    val active: Boolean,
+    val intervalMs: Long
 )
 
 @Serializable

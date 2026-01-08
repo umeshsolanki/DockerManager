@@ -1,6 +1,7 @@
 package com.umeshsolanki.dockermanager.email
 
 import com.umeshsolanki.dockermanager.*
+import com.umeshsolanki.dockermanager.email.*
 import com.umeshsolanki.dockermanager.james.JamesSetupService
 
 import io.ktor.client.*
@@ -320,7 +321,7 @@ services:
         return try {
             val response = client.put("$jamesUrl/users/$userAddress") {
                 contentType(io.ktor.http.ContentType.Application.Json)
-                setBody(mapOf("password" to request.password))
+                setBody(mapOf("password" to request.newPassword))
             }
             response.status.value in 200..299
         } catch (e: Exception) {
@@ -537,4 +538,40 @@ services:
     override fun getDefaultJamesConfigContent(filename: String): String? {
         return JamesSetupService.getDefaultContent(filename)
     }
+}
+
+// Service object for easy access
+object EmailService {
+    private val service: IEmailService = EmailServiceImpl()
+    
+    suspend fun listEmailDomains() = service.listDomains()
+    suspend fun createEmailDomain(domain: String) = service.createDomain(domain)
+    suspend fun deleteEmailDomain(domain: String) = service.deleteDomain(domain)
+    suspend fun listEmailUsers() = service.listUsers()
+    suspend fun createEmailUser(userAddress: String, request: CreateEmailUserRequest) = service.createUser(userAddress, request)
+    suspend fun deleteEmailUser(userAddress: String) = service.deleteUser(userAddress)
+    suspend fun updateEmailUserPassword(userAddress: String, request: UpdateEmailUserPasswordRequest) = service.updateUserPassword(userAddress, request)
+    suspend fun listEmailMailboxes(userAddress: String) = service.listMailboxes(userAddress)
+    suspend fun createEmailMailbox(userAddress: String, mailboxName: String) = service.createMailbox(userAddress, mailboxName)
+    suspend fun deleteEmailMailbox(userAddress: String, mailboxName: String) = service.deleteMailbox(userAddress, mailboxName)
+    suspend fun listEmailGroups() = service.listGroups()
+    suspend fun getEmailGroupMembers(groupAddress: String) = service.getGroupMembers(groupAddress)
+    suspend fun addEmailGroupMember(groupAddress: String, memberAddress: String) = service.addToGroup(groupAddress, memberAddress)
+    suspend fun removeEmailGroupMember(groupAddress: String, memberAddress: String) = service.removeFromGroup(groupAddress, memberAddress)
+    suspend fun getEmailUserQuota(userAddress: String) = service.getUserQuota(userAddress)
+    suspend fun setEmailUserQuota(userAddress: String, type: String, value: Long) = service.setUserQuota(userAddress, type, value)
+    suspend fun deleteEmailUserQuota(userAddress: String) = service.deleteUserQuota(userAddress)
+    fun getJamesStatus() = service.getStatus()
+    fun ensureJamesConfig() = service.ensureJamesConfig()
+    fun getJamesComposeConfig() = service.getComposeConfig()
+    fun updateJamesComposeConfig(content: String) = service.updateComposeConfig(content)
+    fun startJames() = service.startJames()
+    fun stopJames() = service.stopJames()
+    fun restartJames() = service.restartJames()
+    suspend fun testEmailConnection(request: EmailTestRequest) = service.testEmailConnection(request)
+    fun listJamesConfigFiles() = service.listJamesConfigFiles()
+    fun getJamesConfigContent(filename: String) = service.getJamesConfigContent(filename)
+    fun updateJamesConfigContent(filename: String, content: String) = service.updateJamesConfigContent(filename, content)
+    fun getDefaultJamesConfigContent(filename: String) = service.getDefaultJamesConfigContent(filename)
+    fun refresh() = service.refresh()
 }

@@ -1,6 +1,7 @@
 package com.umeshsolanki.dockermanager.system
-import com.umeshsolanki.dockermanager.*
 
+import com.umeshsolanki.dockermanager.*
+import com.umeshsolanki.dockermanager.auth.AuthService
 import java.util.concurrent.TimeUnit
 
 object SystemService {
@@ -73,5 +74,28 @@ object SystemService {
             
         val isCharging = batteryLine.contains("charging") && !batteryLine.contains("discharging")
         return BatteryStatus(percentage, isCharging, source)
+    }
+    
+    fun getSystemConfig() = SystemConfig(
+        dockerCommand = AppConfig.dockerCommand,
+        dockerComposeCommand = AppConfig.dockerComposeCommand,
+        dockerSocket = AppConfig.dockerSocket,
+        dataRoot = AppConfig.dataRoot.absolutePath,
+        jamesWebAdminUrl = AppConfig.jamesWebAdminUrl,
+        appVersion = AppConfig.appVersion,
+        twoFactorEnabled = AuthService.is2FAEnabled(),
+        username = AuthService.getUsername(),
+        proxyStatsActive = AppConfig.proxyStatsSettings.proxyStatsActive,
+        proxyStatsIntervalMs = AppConfig.proxyStatsSettings.proxyStatsIntervalMs
+    )
+    
+    fun updateSystemConfig(request: UpdateSystemConfigRequest) {
+        AppConfig.updateSettings(
+            dockerSocket = request.dockerSocket ?: AppConfig.dockerSocket,
+            jamesWebAdminUrl = request.jamesWebAdminUrl ?: AppConfig.jamesWebAdminUrl
+        )
+        // Refresh Docker client to use new settings
+        com.umeshsolanki.dockermanager.docker.DockerClientProvider.refreshClient()
+        com.umeshsolanki.dockermanager.docker.DockerService.refreshServices()
     }
 }

@@ -1,7 +1,6 @@
 package com.umeshsolanki.dockermanager.firewall
 
-import com.umeshsolanki.dockermanager.BlockIPRequest
-import com.umeshsolanki.dockermanager.DockerService
+import com.umeshsolanki.dockermanager.*
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.request.receive
@@ -11,16 +10,16 @@ import io.ktor.server.routing.*
 fun Route.firewallRoutes() {
     route("/firewall") {
         get("/rules") {
-            call.respond(DockerService.listFirewallRules())
+            call.respond(FirewallService.listRules())
         }
 
         get("/iptables") {
-            call.respond(DockerService.getIptablesVisualisation())
+            call.respond(FirewallService.getIptablesVisualisation())
         }
 
         post("/block") {
             val request = call.receive<BlockIPRequest>()
-            if (DockerService.blockIP(request)) {
+            if (FirewallService.blockIP(request)) {
                 call.respond(HttpStatusCode.Created, "IP Blocked")
             } else {
                 call.respond(HttpStatusCode.InternalServerError, "Failed to block IP")
@@ -29,7 +28,7 @@ fun Route.firewallRoutes() {
 
         delete("/rules/{id}") {
             val id = call.parameters["id"] ?: return@delete call.respond(HttpStatusCode.BadRequest)
-            if (DockerService.unblockIP(id)) {
+            if (FirewallService.unblockIP(id)) {
                 call.respond(HttpStatusCode.OK, "IP Unblocked")
             } else {
                 call.respond(HttpStatusCode.InternalServerError, "Failed to unblock IP")

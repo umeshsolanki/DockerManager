@@ -1,5 +1,6 @@
 package com.umeshsolanki.dockermanager.fcm
 import com.umeshsolanki.dockermanager.*
+import com.umeshsolanki.dockermanager.auth.RegisterFcmTokenRequest
 
 import com.google.auth.oauth2.GoogleCredentials
 import com.google.firebase.FirebaseApp
@@ -72,8 +73,8 @@ object FcmService {
         
         tokens.add(FcmTokenDetail(
             token = request.token,
-            platform = request.platform,
-            deviceName = request.deviceName,
+            platform = request.platform ?: "unknown",
+            deviceName = request.deviceName ?: request.deviceId ?: "Unknown",
             createdAt = System.currentTimeMillis()
         ))
         

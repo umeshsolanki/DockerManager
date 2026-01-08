@@ -1,5 +1,6 @@
 package com.umeshsolanki.dockermanager.file
 import com.umeshsolanki.dockermanager.*
+import com.umeshsolanki.dockermanager.file.FileItem
 
 import java.io.File
 import java.io.FileInputStream
@@ -156,4 +157,17 @@ class FileManagerServiceImpl : IFileManagerService {
             false
         }
     }
+}
+
+// Service object for easy access
+object FileService {
+    private val service: IFileManagerService = FileManagerServiceImpl()
+    
+    fun listFiles(subPath: String = "") = service.listFiles(subPath)
+    fun deleteFile(path: String) = service.deleteFile(path)
+    fun createDirectory(path: String) = service.createDirectory(path)
+    fun zipFile(sourcePath: String, targetName: String) = service.zip(sourcePath, targetName)
+    fun unzipFile(zipPath: String, targetPath: String) = service.unzip(zipPath, targetPath)
+    fun getFile(path: String) = service.getFile(path)
+    fun saveFile(path: String, inputStream: InputStream) = service.saveFile(path, inputStream)
 }

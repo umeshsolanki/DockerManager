@@ -1,6 +1,6 @@
 package com.umeshsolanki.dockermanager.file
 
-import com.umeshsolanki.dockermanager.DockerService
+import com.umeshsolanki.dockermanager.*
 import com.umeshsolanki.dockermanager.auth.AuthService
 import io.ktor.http.*
 import io.ktor.http.content.*
@@ -16,7 +16,7 @@ fun Route.fileRoutes() {
         intercept(ApplicationCallPipeline.Call) {
             val token = call.request.header(HttpHeaders.Authorization)?.removePrefix("Bearer ")
                 ?: call.request.queryParameters["token"]
-            
+
             if (token == null || !AuthService.validateToken(token)) {
                 call.respond(HttpStatusCode.Unauthorized, "Invalid or missing token")
                 finish()
@@ -25,12 +25,12 @@ fun Route.fileRoutes() {
 
         get("/list") {
             val path = call.request.queryParameters["path"] ?: ""
-            call.respond(DockerService.listFiles(path))
+            call.respond(FileService.listFiles(path))
         }
 
         get("/download") {
             val path = call.request.queryParameters["path"] ?: return@get call.respond(HttpStatusCode.BadRequest, "Missing path")
-            val file = DockerService.getFile(path)
+            val file = FileService.getFile(path)
             if (file != null && file.exists()) {
                 call.response.header(
                     HttpHeaders.ContentDisposition,
@@ -52,7 +52,7 @@ fun Route.fileRoutes() {
                     val fileName = part.originalFileName ?: "uploaded_file"
                     val fullPath = if (path.isEmpty()) fileName else "$path/$fileName"
                     part.streamProvider().use { input ->
-                        if (DockerService.saveFile(fullPath, input)) {
+                        if (FileService.saveFile(fullPath, input)) {
                             success = true
                         }
                     }
@@ -69,7 +69,7 @@ fun Route.fileRoutes() {
 
         delete("/delete") {
             val path = call.request.queryParameters["path"] ?: return@delete call.respond(HttpStatusCode.BadRequest, "Missing path")
-            if (DockerService.deleteFile(path)) {
+            if (FileService.deleteFile(path)) {
                 call.respond(HttpStatusCode.OK, "File deleted successfully")
             } else {
                 call.respond(HttpStatusCode.InternalServerError, "Failed to delete file")
@@ -78,7 +78,7 @@ fun Route.fileRoutes() {
 
         post("/mkdir") {
             val path = call.request.queryParameters["path"] ?: return@post call.respond(HttpStatusCode.BadRequest, "Missing path")
-            if (DockerService.createDirectory(path)) {
+            if (FileService.createDirectory(path)) {
                 call.respond(HttpStatusCode.OK, "Directory created successfully")
             } else {
                 call.respond(HttpStatusCode.InternalServerError, "Failed to create directory")
@@ -88,7 +88,7 @@ fun Route.fileRoutes() {
         post("/zip") {
             val path = call.request.queryParameters["path"] ?: return@post call.respond(HttpStatusCode.BadRequest, "Missing path")
             val target = call.request.queryParameters["target"] ?: "archive.zip"
-            val zipFile = DockerService.zipFile(path, target)
+            val zipFile = FileService.zipFile(path, target)
             if (zipFile != null) {
                 call.respond(HttpStatusCode.OK, "File zipped successfully: ${zipFile.name}")
             } else {
@@ -99,7 +99,7 @@ fun Route.fileRoutes() {
         post("/unzip") {
             val path = call.request.queryParameters["path"] ?: return@post call.respond(HttpStatusCode.BadRequest, "Missing path")
             val target = call.request.queryParameters["target"] ?: "."
-            if (DockerService.unzipFile(path, target)) {
+            if (FileService.unzipFile(path, target)) {
                 call.respond(HttpStatusCode.OK, "File unzipped successfully")
             } else {
                 call.respond(HttpStatusCode.InternalServerError, "Failed to unzip file")

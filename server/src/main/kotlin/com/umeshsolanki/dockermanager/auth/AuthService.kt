@@ -1,26 +1,17 @@
 package com.umeshsolanki.dockermanager.auth
 
-import com.umeshsolanki.dockermanager.*
+import com.umeshsolanki.dockermanager.AppConfig
+import com.umeshsolanki.dockermanager.TwoFactorSetupResponse
 import com.umeshsolanki.dockermanager.fcm.FcmService
-
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
+import com.umeshsolanki.dockermanager.jail.BtmpService
 import org.slf4j.LoggerFactory
 import java.io.File
+import java.net.URLEncoder
+import java.nio.ByteBuffer
 import java.security.SecureRandom
+import java.util.concurrent.ConcurrentHashMap
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
-import java.nio.ByteBuffer
-import java.util.concurrent.ConcurrentHashMap
-import java.net.URLEncoder
-
-@Serializable
-data class AccessInfo(
-    val username: String = "admin",
-    val password: String,
-    val twoFactorEnabled: Boolean = false,
-    val twoFactorSecret: String? = null
-)
 
 sealed class AuthResult {
     data class Success(val token: String) : AuthResult()
@@ -44,10 +35,14 @@ object AuthService {
         if (!accessFile.exists()) {
             val envUsername = System.getenv("MANAGER_USERNAME") ?: "admin"
             val envPassword = System.getenv("MANAGER_PASSWORD") ?: generateRandomString(16)
-            
+
             saveAccessInfo(AccessInfo(username = envUsername, password = envPassword))
             if (System.getenv("MANAGER_PASSWORD") == null) {
-                logger.warn("\n" + "#".repeat(60) + "\nINITIAL ACCESS GENERATED:\nUSERNAME: $envUsername\nPASSWORD: $envPassword\nLOCATION: ${accessFile.absolutePath}\n" + "#".repeat(60))
+                logger.warn(
+                    "\n" + "#".repeat(60) + "\nINITIAL ACCESS GENERATED:\nUSERNAME: $envUsername\nPASSWORD: $envPassword\nLOCATION: ${accessFile.absolutePath}\n" + "#".repeat(
+                        60
+                    )
+                )
             } else {
                 logger.info("Access info initialized from environment variables")
             }
@@ -70,49 +65,59 @@ object AuthService {
         accessFile.writeText(json.encodeToString(info))
     }
 
-    fun authenticate(password: String, username: String? = null, code: String? = null, remoteHost: String? = null): AuthResult {
+    fun authenticate(
+        password: String,
+        username: String? = null,
+        code: String? = null,
+        remoteHost: String? = null,
+    ): AuthResult {
         // Guard against jailed IPs
         remoteHost?.let { ip ->
-            if (DockerService.isIPJailed(ip)) {
+            if (BtmpService.isIPJailed(ip)) {
                 logger.warn("Blocking login attempt from jailed IP: $ip")
                 return AuthResult.InvalidCredentials
             }
         }
 
         val result = internalAuthenticate(password, username, code, remoteHost)
-        
+
         // Record failure if not from a local IP
         if (result is AuthResult.InvalidCredentials || result is AuthResult.Invalid2FA) {
             remoteHost?.let { ip ->
                 if (!AppConfig.isLocalIP(ip)) {
-                    DockerService.recordFailedLoginAttempt(username ?: "unknown", ip)
+                    BtmpService.recordFailedAttempt(username ?: "unknown", ip)
                 }
             }
         } else if (result is AuthResult.Success) {
             remoteHost?.let { ip ->
-                DockerService.clearFailedLoginAttempts(ip)
+                BtmpService.clearFailedAttempts(ip)
             }
         }
-        
+
         return result
     }
 
-    private fun internalAuthenticate(password: String, username: String? = null, code: String? = null, remoteHost: String? = null): AuthResult {
+    private fun internalAuthenticate(
+        password: String,
+        username: String? = null,
+        code: String? = null,
+        remoteHost: String? = null,
+    ): AuthResult {
         if (username != null && username != currentAccess.username) return AuthResult.InvalidCredentials
         if (password != currentAccess.password) return AuthResult.InvalidCredentials
-        
+
         val isLocallyAccessed = remoteHost?.let { AppConfig.isLocalIP(it) } ?: false
 
         if (currentAccess.twoFactorEnabled && !isLocallyAccessed) {
-             if (code.isNullOrBlank()) return AuthResult.Requires2FA
-             if (!verifyTotp(currentAccess.twoFactorSecret!!, code)) return AuthResult.Invalid2FA
+            if (code.isNullOrBlank()) return AuthResult.Requires2FA
+            if (!verifyTotp(currentAccess.twoFactorSecret!!, code)) return AuthResult.Invalid2FA
         }
-        
+
         val token = generateRandomString(32, true)
         activeTokens[token] = System.currentTimeMillis() + SESSION_DURATION_MS
         return AuthResult.Success(token)
     }
-    
+
     fun validateToken(token: String): Boolean {
         val expiry = activeTokens[token] ?: return false
         if (System.currentTimeMillis() > expiry) {
@@ -121,7 +126,7 @@ object AuthService {
         }
         return true
     }
-    
+
     fun updatePassword(current: String, newOne: String): Boolean {
         if (current != currentAccess.password) return false
         saveAccessInfo(currentAccess.copy(password = newOne))
@@ -139,7 +144,7 @@ object AuthService {
             logger.warn("Username update failed: New username cannot be empty")
             return false
         }
-        
+
         logger.info("Username updated from ${currentAccess.username} to $trimmed")
         saveAccessInfo(currentAccess.copy(username = trimmed))
         activeTokens.clear() // Revoke all sessions on username change for security
@@ -154,24 +159,26 @@ object AuthService {
     fun generate2FASecret(): TwoFactorSetupResponse {
         val secret = generateRandomSecret(20) // 160 bits is standard for TOTP
         val base32Secret = Base32.encode(secret)
-        
+
         val issuer = "UCpanel"
         val account = currentAccess.username
-        
+
         // Correctly URL encode labels
         val encodedIssuer = URLEncoder.encode(issuer, "UTF-8").replace("+", "%20")
         val encodedAccount = URLEncoder.encode(account, "UTF-8").replace("+", "%20")
-        val qrUri = "otpauth://totp/$encodedIssuer:$encodedAccount?secret=$base32Secret&issuer=$encodedIssuer"
-        
+        val qrUri =
+            "otpauth://totp/$encodedIssuer:$encodedAccount?secret=$base32Secret&issuer=$encodedIssuer"
+
         return TwoFactorSetupResponse(base32Secret, qrUri)
     }
 
     fun enable2FA(secret: String, code: String): Boolean {
         if (verifyTotp(secret, code)) {
-            saveAccessInfo(currentAccess.copy(
-                twoFactorEnabled = true,
-                twoFactorSecret = secret
-            ))
+            saveAccessInfo(
+                currentAccess.copy(
+                    twoFactorEnabled = true, twoFactorSecret = secret
+                )
+            )
             FcmService.sendNotification(
                 title = "Security Alert: 2FA Enabled",
                 body = "Two-factor authentication has been successfully enabled for your account.",
@@ -197,7 +204,7 @@ object AuthService {
         val decodedSecret = Base32.decode(secret) ?: return false
         val timeWindow = 30L
         val currentInterval = System.currentTimeMillis() / 1000 / timeWindow
-        
+
         // Check current, previous, and next interval (allow some drift)
         for (i in -1..1) {
             val hash = generateHOTP(decodedSecret, currentInterval + i)
@@ -215,18 +222,17 @@ object AuthService {
         val hash = mac.doFinal(data)
 
         val offset = hash[hash.size - 1].toInt() and 0xf
-        val binary = ((hash[offset].toInt() and 0x7f) shl 24) or
-                     ((hash[offset + 1].toInt() and 0xff) shl 16) or
-                     ((hash[offset + 2].toInt() and 0xff) shl 8) or
-                     (hash[offset + 3].toInt() and 0xff)
+        val binary =
+            ((hash[offset].toInt() and 0x7f) shl 24) or ((hash[offset + 1].toInt() and 0xff) shl 16) or ((hash[offset + 2].toInt() and 0xff) shl 8) or (hash[offset + 3].toInt() and 0xff)
 
         val otp = binary % 1000000
         return "%06d".format(otp)
     }
 
     private fun generateRandomString(length: Int, alphanumericOnly: Boolean = false): String {
-        val chars = if (alphanumericOnly) "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-        else "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$"
+        val chars =
+            if (alphanumericOnly) "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+            else "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$"
         val random = SecureRandom()
         return (1..length).map { chars[random.nextInt(chars.length)] }.joinToString("")
     }
@@ -236,11 +242,11 @@ object AuthService {
         SecureRandom().nextBytes(bytes)
         return bytes
     }
-    
+
     // --- Utils ---
     object Base32 {
         private const val ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
-        
+
         fun encode(data: ByteArray): String {
             val sb = StringBuilder()
             var buffer = 0

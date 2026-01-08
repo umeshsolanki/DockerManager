@@ -1,6 +1,7 @@
 package com.umeshsolanki.dockermanager.firewall
 
 import com.umeshsolanki.dockermanager.*
+import com.umeshsolanki.dockermanager.firewall.IptablesRule
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -301,4 +302,15 @@ class FirewallServiceImpl : IFirewallService {
             ExecuteResult("", e.message ?: "Unknown error", -1)
         }
     }
+}
+
+// Service object for easy access
+object FirewallService {
+    private val service: IFirewallService = FirewallServiceImpl()
+    
+    fun listRules() = service.listRules()
+    fun blockIP(request: BlockIPRequest) = service.blockIP(request)
+    fun unblockIP(id: String) = service.unblockIP(id)
+    fun unblockIPByAddress(ip: String) = service.unblockIPByAddress(ip)
+    fun getIptablesVisualisation() = service.getIptablesVisualisation()
 }

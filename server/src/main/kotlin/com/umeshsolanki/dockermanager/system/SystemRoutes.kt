@@ -1,6 +1,5 @@
 package com.umeshsolanki.dockermanager.system
 
-import com.umeshsolanki.dockermanager.DockerService
 import com.umeshsolanki.dockermanager.*
 import com.umeshsolanki.dockermanager.system.SystemService
 import io.ktor.server.request.receive
@@ -13,11 +12,11 @@ fun Route.systemRoutes() {
             call.respond(SystemService.getBatteryStatus())
         }
         get("/config") {
-            call.respond(DockerService.getSystemConfig())
+            call.respond(SystemService.getSystemConfig())
         }
         post("/config") {
             val request = call.receive<UpdateSystemConfigRequest>()
-            DockerService.updateSystemConfig(request)
+            SystemService.updateSystemConfig(request)
             call.respond(mapOf("success" to true))
         }
     }

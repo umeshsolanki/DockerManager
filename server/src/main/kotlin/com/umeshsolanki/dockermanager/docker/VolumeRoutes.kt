@@ -1,6 +1,6 @@
 package com.umeshsolanki.dockermanager.docker
 
-import com.umeshsolanki.dockermanager.DockerService
+import com.umeshsolanki.dockermanager.*
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.response.*

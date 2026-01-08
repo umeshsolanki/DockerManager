@@ -1,6 +1,7 @@
 package com.umeshsolanki.dockermanager.docker
 
-import com.umeshsolanki.dockermanager.*
+import com.github.dockerjava.api.async.ResultCallback
+import java.util.concurrent.TimeUnit
 
 interface IContainerService {
     fun listContainers(): List<DockerContainer>
@@ -13,7 +14,8 @@ interface IContainerService {
     fun getContainerLogs(id: String, tail: Int = 100): String
 }
 
-class ContainerServiceImpl(private val dockerClient: com.github.dockerjava.api.DockerClient) : IContainerService {
+class ContainerServiceImpl(private val dockerClient: com.github.dockerjava.api.DockerClient) :
+    IContainerService {
     override fun listContainers(): List<DockerContainer> {
         val containers = dockerClient.listContainersCmd().withShowAll(true).exec()
         return containers.map { container ->
@@ -29,20 +31,24 @@ class ContainerServiceImpl(private val dockerClient: com.github.dockerjava.api.D
 
     override fun createContainer(request: CreateContainerRequest): String? {
         return try {
-            val cmd = dockerClient.createContainerCmd(request.image)
-                .withName(request.name)
-            
+            val cmd = dockerClient.createContainerCmd(request.image).withName(request.name)
+
             // Port Mappings
             if (request.ports.isNotEmpty()) {
-                val portBindings = request.ports.map { 
-                    com.github.dockerjava.api.model.ExposedPort(it.containerPort, com.github.dockerjava.api.model.InternetProtocol.parse(it.protocol)) to 
-                    com.github.dockerjava.api.model.Ports.Binding.bindPort(it.hostPort)
+                val portBindings = request.ports.map {
+                    com.github.dockerjava.api.model.ExposedPort(
+                        it.containerPort,
+                        com.github.dockerjava.api.model.InternetProtocol.parse(it.protocol)
+                    ) to com.github.dockerjava.api.model.Ports.Binding.bindPort(it.hostPort)
                 }
                 val ports = com.github.dockerjava.api.model.Ports()
                 portBindings.forEach { (exposed, binding) ->
                     ports.bind(exposed, binding)
                 }
-                cmd.withHostConfig(com.github.dockerjava.api.model.HostConfig.newHostConfig().withPortBindings(ports))
+                cmd.withHostConfig(
+                    com.github.dockerjava.api.model.HostConfig.newHostConfig()
+                        .withPortBindings(ports)
+                )
             }
 
             // Environment Variables
@@ -52,25 +58,26 @@ class ContainerServiceImpl(private val dockerClient: com.github.dockerjava.api.D
 
             // Volumes
             if (request.volumes.isNotEmpty()) {
-                val binds = request.volumes.map { 
-                    com.github.dockerjava.api.model.Bind(it.hostPath, com.github.dockerjava.api.model.Volume(it.containerPath))
+                val binds = request.volumes.map {
+                    com.github.dockerjava.api.model.Bind(
+                        it.hostPath, com.github.dockerjava.api.model.Volume(it.containerPath)
+                    )
                 }
-                val currentHostConfig = cmd.hostConfig ?: com.github.dockerjava.api.model.HostConfig.newHostConfig()
+                val currentHostConfig =
+                    cmd.hostConfig ?: com.github.dockerjava.api.model.HostConfig.newHostConfig()
                 cmd.withHostConfig(currentHostConfig.withBinds(binds))
             }
 
             // Networks - Note: docker-java usually requires connecting to extra networks after creation
             // if we want more than one. But we can set the primary one here or use NetworkingConfig.
-            
+
             val response = cmd.exec()
-            
+
             // Connect to networks if specified
             request.networks.forEach { networkIdOrName ->
                 try {
-                    dockerClient.connectToNetworkCmd()
-                        .withContainerId(response.id)
-                        .withNetworkId(networkIdOrName)
-                        .exec()
+                    dockerClient.connectToNetworkCmd().withContainerId(response.id)
+                        .withNetworkId(networkIdOrName).exec()
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -92,17 +99,18 @@ class ContainerServiceImpl(private val dockerClient: com.github.dockerjava.api.D
                 image = details.config.image ?: "unknown",
                 state = details.state.status ?: "unknown",
                 status = details.state.toString(),
-                createdAt = details.created,
+                createdAt = (details.created as? java.util.Date)?.time
+                    ?: (details.created.toString().toLongOrNull() ?: 0L),
                 platform = details.platform ?: "unknown",
                 env = details.config.env?.toList() ?: emptyList(),
                 labels = details.config.labels ?: emptyMap(),
                 mounts = details.mounts?.map { mount ->
                     DockerMount(
                         type = if (mount.driver != null) "volume" else "bind",
-                        source = mount.source,
+                        source = mount.source ?: "",
                         destination = mount.destination?.toString(),
                         mode = mount.mode,
-                        rw = mount.rw
+                        rw = mount.rw ?: false
                     )
                 } ?: emptyList(),
                 ports = details.networkSettings.ports.bindings.flatMap { (exposedPort, bindings) ->
@@ -113,8 +121,7 @@ class ContainerServiceImpl(private val dockerClient: com.github.dockerjava.api.D
                             protocol = exposedPort.protocol.toString()
                         )
                     } ?: emptyList()
-                }
-            )
+                })
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -163,20 +170,17 @@ class ContainerServiceImpl(private val dockerClient: com.github.dockerjava.api.D
 
     override fun getContainerLogs(id: String, tail: Int): String {
         return try {
-            val logCallback = object : com.github.dockerjava.api.async.ResultCallback.Adapter<com.github.dockerjava.api.model.Frame>() {
-                val logs = StringBuilder()
-                override fun onNext(frame: com.github.dockerjava.api.model.Frame) {
-                    logs.append(String(frame.payload))
+            val logCallback =
+                object : ResultCallback.Adapter<com.github.dockerjava.api.model.Frame>() {
+                    val logs = StringBuilder()
+                    override fun onNext(frame: com.github.dockerjava.api.model.Frame) {
+                        logs.append(String(frame.payload))
+                    }
                 }
-            }
-            
-            dockerClient.logContainerCmd(id)
-                .withStdOut(true)
-                .withStdErr(true)
-                .withTail(tail)
-                .exec(logCallback)
-                .awaitCompletion(5, java.util.concurrent.TimeUnit.SECONDS)
-            
+
+            dockerClient.logContainerCmd(id).withStdOut(true).withStdErr(true).withTail(tail)
+                .exec(logCallback).awaitCompletion(5, TimeUnit.SECONDS)
+
             logCallback.logs.toString()
         } catch (e: Exception) {
             e.printStackTrace()

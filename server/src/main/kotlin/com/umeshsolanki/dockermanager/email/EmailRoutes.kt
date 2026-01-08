@@ -1,11 +1,9 @@
 package com.umeshsolanki.dockermanager.email
 
-import com.umeshsolanki.dockermanager.CreateEmailUserRequest
-import com.umeshsolanki.dockermanager.DockerService
-import com.umeshsolanki.dockermanager.EmailTestRequest
-import com.umeshsolanki.dockermanager.ProxyActionResult
-import com.umeshsolanki.dockermanager.SaveComposeRequest
-import com.umeshsolanki.dockermanager.UpdateEmailUserPasswordRequest
+import com.umeshsolanki.dockermanager.*
+import com.umeshsolanki.dockermanager.proxy.ProxyActionResult
+import com.umeshsolanki.dockermanager.docker.SaveComposeRequest
+import com.umeshsolanki.dockermanager.email.UpdateEmailUserPasswordRequest
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
@@ -21,7 +19,7 @@ fun Route.emailRoutes() {
     route("/emails") {
         route("/domains") {
             get {
-                call.respond(DockerService.listEmailDomains())
+                call.respond(EmailService.listEmailDomains())
             }
             put("/{domain}") {
                 val domain = call.parameters["domain"] ?: return@put call.respond(
@@ -29,7 +27,7 @@ fun Route.emailRoutes() {
                         false, "Domain required"
                     )
                 )
-                val success = DockerService.createEmailDomain(domain)
+                val success = EmailService.createEmailDomain(domain)
                 call.respond(
                     ProxyActionResult(
                         success, if (success) "Domain created" else "Failed to create domain"
@@ -42,7 +40,7 @@ fun Route.emailRoutes() {
                         false, "Domain required"
                     )
                 )
-                val success = DockerService.deleteEmailDomain(domain)
+                val success = EmailService.deleteEmailDomain(domain)
                 call.respond(
                     ProxyActionResult(
                         success, if (success) "Domain deleted" else "Failed to delete domain"
@@ -53,7 +51,7 @@ fun Route.emailRoutes() {
 
         route("/users") {
             get {
-                call.respond(DockerService.listEmailUsers())
+                call.respond(EmailService.listEmailUsers())
             }
             put("/{userAddress}") {
                 val userAddress = call.parameters["userAddress"] ?: return@put call.respond(
@@ -62,7 +60,7 @@ fun Route.emailRoutes() {
                     )
                 )
                 val request = call.receive<CreateEmailUserRequest>()
-                val success = DockerService.createEmailUser(userAddress, request)
+                val success = EmailService.createEmailUser(userAddress, request)
                 call.respond(
                     ProxyActionResult(
                         success, if (success) "User created" else "Failed to create user"
@@ -75,7 +73,7 @@ fun Route.emailRoutes() {
                         false, "User address required"
                     )
                 )
-                val success = DockerService.deleteEmailUser(userAddress)
+                val success = EmailService.deleteEmailUser(userAddress)
                 call.respond(
                     ProxyActionResult(
                         success, if (success) "User deleted" else "Failed to delete user"
@@ -89,7 +87,7 @@ fun Route.emailRoutes() {
                     )
                 )
                 val request = call.receive<UpdateEmailUserPasswordRequest>()
-                val success = DockerService.updateEmailUserPassword(userAddress, request)
+                val success = EmailService.updateEmailUserPassword(userAddress, request)
                 call.respond(
                     ProxyActionResult(
                         success, if (success) "Password updated" else "Failed to update password"
@@ -104,7 +102,7 @@ fun Route.emailRoutes() {
                             false, "User address required"
                         )
                     )
-                    call.respond(DockerService.listEmailMailboxes(userAddress))
+                    call.respond(EmailService.listEmailMailboxes(userAddress))
                 }
                 put("/{mailboxName}") {
                     val userAddress = call.parameters["userAddress"] ?: return@put call.respond(
@@ -117,7 +115,7 @@ fun Route.emailRoutes() {
                             false, "Mailbox name required"
                         )
                     )
-                    val success = DockerService.createEmailMailbox(userAddress, mailboxName)
+                    val success = EmailService.createEmailMailbox(userAddress, mailboxName)
                     call.respond(
                         ProxyActionResult(
                             success, if (success) "Mailbox created" else "Failed to create mailbox"
@@ -131,7 +129,7 @@ fun Route.emailRoutes() {
                     val mailboxName = call.parameters["mailboxName"] ?: return@delete call.respond(
                         ProxyActionResult(false, "Mailbox name required")
                     )
-                    val success = DockerService.deleteEmailMailbox(userAddress, mailboxName)
+                    val success = EmailService.deleteEmailMailbox(userAddress, mailboxName)
                     call.respond(
                         ProxyActionResult(
                             success, if (success) "Mailbox deleted" else "Failed to delete mailbox"
@@ -143,17 +141,17 @@ fun Route.emailRoutes() {
 
         route("/groups") {
             get {
-                call.respond(DockerService.listEmailGroups())
+                call.respond(EmailService.listEmailGroups())
             }
             get("/{groupAddress}") {
                 val groupAddress =
                     call.parameters["groupAddress"] ?: return@get call.respond(emptyList<String>())
-                call.respond(DockerService.getEmailGroupMembers(groupAddress))
+                call.respond(EmailService.getEmailGroupMembers(groupAddress))
             }
             put("/{groupAddress}/{memberAddress}") {
                 val groupAddress = call.parameters["groupAddress"] ?: return@put
                 val memberAddress = call.parameters["memberAddress"] ?: return@put
-                val success = DockerService.addEmailGroupMember(groupAddress, memberAddress)
+                val success = EmailService.addEmailGroupMember(groupAddress, memberAddress)
                 call.respond(
                     ProxyActionResult(
                         success,
@@ -164,7 +162,7 @@ fun Route.emailRoutes() {
             delete("/{groupAddress}/{memberAddress}") {
                 val groupAddress = call.parameters["groupAddress"] ?: return@delete
                 val memberAddress = call.parameters["memberAddress"] ?: return@delete
-                val success = DockerService.removeEmailGroupMember(groupAddress, memberAddress)
+                val success = EmailService.removeEmailGroupMember(groupAddress, memberAddress)
                 call.respond(
                     ProxyActionResult(
                         success,
@@ -178,7 +176,7 @@ fun Route.emailRoutes() {
             get("/{userAddress}") {
                 val userAddress = call.parameters["userAddress"] ?: return@get
                 call.respond(
-                    DockerService.getEmailUserQuota(userAddress)
+                    EmailService.getEmailUserQuota(userAddress)
                         ?: HttpStatusCode.NotFound
                 )
             }
@@ -186,12 +184,12 @@ fun Route.emailRoutes() {
                 val userAddress = call.parameters["userAddress"] ?: return@put
                 val type = call.parameters["type"] ?: return@put // "count" or "size"
                 val value = call.receive<String>().toLongOrNull() ?: -1L
-                val success = DockerService.setEmailUserQuota(userAddress, type, value)
+                val success = EmailService.setEmailUserQuota(userAddress, type, value)
                 call.respond(ProxyActionResult(success, if (success) "Quota set" else "Failed"))
             }
             delete("/{userAddress}") {
                 val userAddress = call.parameters["userAddress"] ?: return@delete
-                val success = DockerService.deleteEmailUserQuota(userAddress)
+                val success = EmailService.deleteEmailUserQuota(userAddress)
                 call.respond(ProxyActionResult(success, if (success) "Quota deleted" else "Failed"))
             }
         }
@@ -199,18 +197,18 @@ fun Route.emailRoutes() {
         // James Container Management
         route("/james") {
             get("/status") {
-                call.respond(DockerService.getJamesStatus())
+                call.respond(EmailService.getJamesStatus())
             }
             post("/config") {
-                DockerService.ensureJamesConfig()
+                EmailService.ensureJamesConfig()
                 call.respond(ProxyActionResult(true, "Config ensured"))
             }
             get("/compose") {
-                call.respond(mapOf("content" to DockerService.getJamesComposeConfig()))
+                call.respond(mapOf("content" to EmailService.getJamesComposeConfig()))
             }
             post("/compose") {
                 val request = call.receive<SaveComposeRequest>()
-                val success = DockerService.updateJamesComposeConfig(request.content)
+                val success = EmailService.updateJamesComposeConfig(request.content)
                 call.respond(
                     ProxyActionResult(
                         success, if (success) "Compose config updated" else "Failed to update"
@@ -218,7 +216,7 @@ fun Route.emailRoutes() {
                 )
             }
             post("/start") {
-                val success = DockerService.startJames()
+                val success = EmailService.startJames()
                 call.respond(
                     ProxyActionResult(
                         success, if (success) "James started" else "Failed to start James"
@@ -226,7 +224,7 @@ fun Route.emailRoutes() {
                 )
             }
             post("/stop") {
-                val success = DockerService.stopJames()
+                val success = EmailService.stopJames()
                 call.respond(
                     ProxyActionResult(
                         success, if (success) "James stopped" else "Failed to stop James"
@@ -234,7 +232,7 @@ fun Route.emailRoutes() {
                 )
             }
             post("/restart") {
-                val success = DockerService.restartJames()
+                val success = EmailService.restartJames()
                 call.respond(
                     ProxyActionResult(
                         success, if (success) "James restarted" else "Failed to restart James"
@@ -243,18 +241,18 @@ fun Route.emailRoutes() {
             }
             post("/test") {
                 val request = call.receive<EmailTestRequest>()
-                call.respond(DockerService.testEmailConnection(request))
+                call.respond(EmailService.testEmailConnection(request))
             }
 
             route("/files") {
                 get {
-                    call.respond(DockerService.listJamesConfigFiles())
+                    call.respond(EmailService.listJamesConfigFiles())
                 }
                 get("/{filename}") {
                     val filename = call.parameters["filename"] ?: return@get call.respond(
                         HttpStatusCode.BadRequest
                     )
-                    val content = DockerService.getJamesConfigContent(filename)
+                    val content = EmailService.getJamesConfigContent(filename)
                     if (content != null) {
                         call.respond(mapOf("content" to content))
                     } else {
@@ -268,7 +266,7 @@ fun Route.emailRoutes() {
                     val request = call.receive<Map<String, String>>()
                     val content =
                         request["content"] ?: return@post call.respond(HttpStatusCode.BadRequest)
-                    val success = DockerService.updateJamesConfigContent(filename, content)
+                    val success = EmailService.updateJamesConfigContent(filename, content)
                     call.respond(
                         ProxyActionResult(
                             success,
@@ -280,7 +278,7 @@ fun Route.emailRoutes() {
                     val filename = call.parameters["filename"] ?: return@get call.respond(
                         HttpStatusCode.BadRequest
                     )
-                    val content = DockerService.getDefaultJamesConfigContent(filename)
+                    val content = EmailService.getDefaultJamesConfigContent(filename)
                     if (content != null) {
                         call.respond(mapOf("content" to content))
                     } else {
