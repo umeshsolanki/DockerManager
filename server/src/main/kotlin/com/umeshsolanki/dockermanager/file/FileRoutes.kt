@@ -11,17 +11,19 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import java.io.File
 
+val PathTokenPlugin = createRouteScopedPlugin(name = "PathTokenPlugin") {
+    onCall { call ->
+        val token = call.request.header(HttpHeaders.Authorization)?.removePrefix("Bearer ")
+            ?: call.request.queryParameters["token"]
+        if (token == null || !AuthService.validateToken(token)) {
+            call.respond(HttpStatusCode.Unauthorized, "Invalid or missing token")
+        }
+    }
+}
+
 fun Route.fileRoutes() {
     route("/files") {
-        intercept(ApplicationCallPipeline.Call) {
-            val token = call.request.header(HttpHeaders.Authorization)?.removePrefix("Bearer ")
-                ?: call.request.queryParameters["token"]
-
-            if (token == null || !AuthService.validateToken(token)) {
-                call.respond(HttpStatusCode.Unauthorized, "Invalid or missing token")
-                finish()
-            }
-        }
+        install(PathTokenPlugin)
 
         get("/list") {
             val path = call.request.queryParameters["path"] ?: ""
@@ -29,7 +31,7 @@ fun Route.fileRoutes() {
         }
 
         get("/download") {
-            val path = call.request.queryParameters["path"] ?: return@get call.respond(HttpStatusCode.BadRequest, "Missing path")
+            val path = call.requireQueryParameter("path") ?: return@get
             val file = FileService.getFile(path)
             if (file != null && file.exists()) {
                 call.response.header(
@@ -51,6 +53,7 @@ fun Route.fileRoutes() {
                 if (part is PartData.FileItem) {
                     val fileName = part.originalFileName ?: "uploaded_file"
                     val fullPath = if (path.isEmpty()) fileName else "$path/$fileName"
+                    @Suppress("DEPRECATION")
                     part.streamProvider().use { input ->
                         if (FileService.saveFile(fullPath, input)) {
                             success = true
@@ -60,33 +63,33 @@ fun Route.fileRoutes() {
                 part.dispose()
             }
             
-            if (success) {
-                call.respond(HttpStatusCode.OK, "File uploaded successfully")
-            } else {
-                call.respond(HttpStatusCode.InternalServerError, "Failed to upload file")
-            }
+            call.respondBooleanResult(
+                success,
+                "File uploaded successfully",
+                "Failed to upload file"
+            )
         }
 
         delete("/delete") {
-            val path = call.request.queryParameters["path"] ?: return@delete call.respond(HttpStatusCode.BadRequest, "Missing path")
-            if (FileService.deleteFile(path)) {
-                call.respond(HttpStatusCode.OK, "File deleted successfully")
-            } else {
-                call.respond(HttpStatusCode.InternalServerError, "Failed to delete file")
-            }
+            val path = call.requireQueryParameter("path") ?: return@delete
+            call.respondBooleanResult(
+                FileService.deleteFile(path),
+                "File deleted successfully",
+                "Failed to delete file"
+            )
         }
 
         post("/mkdir") {
-            val path = call.request.queryParameters["path"] ?: return@post call.respond(HttpStatusCode.BadRequest, "Missing path")
-            if (FileService.createDirectory(path)) {
-                call.respond(HttpStatusCode.OK, "Directory created successfully")
-            } else {
-                call.respond(HttpStatusCode.InternalServerError, "Failed to create directory")
-            }
+            val path = call.requireQueryParameter("path") ?: return@post
+            call.respondBooleanResult(
+                FileService.createDirectory(path),
+                "Directory created successfully",
+                "Failed to create directory"
+            )
         }
 
         post("/zip") {
-            val path = call.request.queryParameters["path"] ?: return@post call.respond(HttpStatusCode.BadRequest, "Missing path")
+            val path = call.requireQueryParameter("path") ?: return@post
             val target = call.request.queryParameters["target"] ?: "archive.zip"
             val zipFile = FileService.zipFile(path, target)
             if (zipFile != null) {
@@ -97,13 +100,13 @@ fun Route.fileRoutes() {
         }
 
         post("/unzip") {
-            val path = call.request.queryParameters["path"] ?: return@post call.respond(HttpStatusCode.BadRequest, "Missing path")
+            val path = call.requireQueryParameter("path") ?: return@post
             val target = call.request.queryParameters["target"] ?: "."
-            if (FileService.unzipFile(path, target)) {
-                call.respond(HttpStatusCode.OK, "File unzipped successfully")
-            } else {
-                call.respond(HttpStatusCode.InternalServerError, "Failed to unzip file")
-            }
+            call.respondBooleanResult(
+                FileService.unzipFile(path, target),
+                "File unzipped successfully",
+                "Failed to unzip file"
+            )
         }
     }
 }

@@ -1,0 +1,11 @@
+<lmtpservers>
+    <lmtpserver enabled="true">
+        <jmxName>lmtpserver</jmxName>
+        <bind>0.0.0.0:24</bind>
+        <handlerchain>
+            <handler class="org.apache.james.lmtpserver.CoreCmdHandlerLoader"/>
+        </handlerchain>
+    </lmtpserver>
+</lmtpservers>
+
+

@@ -50,7 +50,6 @@ dependencies {
     implementation(libs.ktor.serverWebsockets)
     implementation(libs.ktor.serverAuth)
     implementation(libs.ktor.serverSessions)
-//    implementation(libs.ktor.serverStaticContent)
     implementation(libs.ktor.serializationKotlinxJson)
     implementation(libs.pty4j)
     implementation(libs.ktor.clientCore)

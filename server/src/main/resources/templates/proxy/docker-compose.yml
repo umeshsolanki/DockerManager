@@ -1,0 +1,21 @@
+services:
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.proxy
+    image: docker-manager-proxy:latest
+    container_name: docker-manager-proxy
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Kolkata
+    volumes:
+      - ${nginxPath}/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+      - ${nginxPath}/conf.d:/etc/nginx/conf.d:ro
+      - ${nginxPath}/logs:/usr/local/openresty/nginx/logs
+      - ${certbotPath}/conf:/etc/letsencrypt
+      - ${certbotPath}/www:/var/www/certbot
+      - ${customCertsPath}:/etc/nginx/custom_certs:ro
+    command: /usr/local/openresty/bin/openresty -g 'daemon off;'
+
+

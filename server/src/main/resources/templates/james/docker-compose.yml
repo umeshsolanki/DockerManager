@@ -1,0 +1,21 @@
+services:
+  james:
+    image: apache/james:jpa-latest
+    container_name: docker-manager-james
+    hostname: james.local
+    ports:
+      - "25:25"     # SMTP
+      - "143:143"   # IMAP
+      - "465:465"   # SMTPS
+      - "587:587"   # Submission
+      - "993:993"   # IMAPS
+      - "8001:8000" # WebAdmin API
+    volumes:
+      - ${jamesPath}/conf:/root/conf
+      - ${jamesPath}/var:/root/var
+      - ${jamesPath}/conf/webadmin.properties:/root/conf/webadmin.properties
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Kolkata
+
+

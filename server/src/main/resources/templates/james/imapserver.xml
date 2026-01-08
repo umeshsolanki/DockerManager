@@ -1,0 +1,14 @@
+<imapservers>
+    <imapserver enabled="true">
+        <jmxName>imapserver</jmxName>
+        <bind>0.0.0.0:143</bind>
+    ${tlsConfig}
+    </imapserver>
+    <imapserver enabled="true">
+        <jmxName>imapserver-ssl</jmxName>
+        <bind>0.0.0.0:993</bind>
+    ${tlsSslConfig}
+    </imapserver>
+</imapservers>
+
+

@@ -4,9 +4,10 @@ import com.umeshsolanki.dockermanager.*
 import com.umeshsolanki.dockermanager.proxy.*
 import com.umeshsolanki.dockermanager.firewall.IFirewallService
 import com.umeshsolanki.dockermanager.jail.IJailManagerService
+import com.umeshsolanki.dockermanager.utils.JsonFileManager
+import com.umeshsolanki.dockermanager.utils.ResourceLoader
+import com.umeshsolanki.dockermanager.utils.CommandExecutor
 import kotlinx.coroutines.*
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
 import java.io.File
 import java.util.*
 import java.text.SimpleDateFormat
@@ -45,7 +46,11 @@ class ProxyServiceImpl(
     private val configDir = AppConfig.proxyConfigDir
     private val logFile = AppConfig.proxyLogFile
     private val hostsFile = AppConfig.proxyHostsFile
-    private val json = AppConfig.json
+    private val jsonFileManager = JsonFileManager.create<List<ProxyHost>>(
+        file = hostsFile,
+        defaultContent = emptyList(),
+        loggerName = ProxyServiceImpl::class.java.name
+    )
 
     val proxyDockerComposeDir: File
         get() {
@@ -87,6 +92,7 @@ class ProxyServiceImpl(
     private val refreshIntervalMs = 60000L // Configurable interval: 10 seconds
     private val scope =
         CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val commandExecutor = CommandExecutor(loggerName = ProxyServiceImpl::class.java.name)
 
     override fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>) {
         AppConfig.updateProxySecuritySettings(enabled, thresholdNon200, rules)
@@ -94,8 +100,6 @@ class ProxyServiceImpl(
 
     init {
         if (!configDir.exists()) configDir.mkdirs()
-        if (!hostsFile.parentFile.exists()) hostsFile.parentFile.mkdirs()
-        if (!hostsFile.exists()) hostsFile.writeText("[]")
         
         // Ensure log directory exists for Nginx
         AppConfig.proxyLogFile.parentFile?.mkdirs()
@@ -220,7 +224,7 @@ class ProxyServiceImpl(
             totalHits = totalHitsCounter.get(),
             hitsByStatus = hitsByStatusMap.toMap(),
             hitsOverTime = hitsByTimeMap.toSortedMap(),
-            topPaths = hitsByPathMap.entries.sortedByDescending { it.value }.take(15).map { PathHit(it.key, it.value) },
+            topPaths = hitsByPathMap.entries.sortedByDescending { it.value }.take(50).map { PathHit(it.key, it.value) },
             recentHits = recentHitsList.toList()
         )
     }
@@ -228,15 +232,11 @@ class ProxyServiceImpl(
     override fun getStats(): ProxyStats = cachedStats
 
     private fun loadHosts(): MutableList<ProxyHost> {
-        return try {
-            json.decodeFromString<List<ProxyHost>>(hostsFile.readText()).toMutableList()
-        } catch (e: Exception) {
-            mutableListOf()
-        }
+        return jsonFileManager.load().toMutableList()
     }
 
     private fun saveHosts(hosts: List<ProxyHost>) {
-        hostsFile.writeText(json.encodeToString(hosts))
+        jsonFileManager.save(hosts)
     }
 
     override fun listHosts(): List<ProxyHost> = loadHosts()
@@ -244,31 +244,21 @@ class ProxyServiceImpl(
     override fun createHost(host: ProxyHost): Pair<Boolean, String> {
         return try {
             val hosts = loadHosts()
-            val newHost =
-                if (host.id.isEmpty()) host.copy(id = UUID.randomUUID().toString()) else host
+            val newHost = if (host.id.isEmpty()) host.copy(id = UUID.randomUUID().toString()) else host
             hosts.add(newHost)
-
-            val configResult = generateNginxConfig(newHost)
-            saveHosts(hosts)
-
-            if (!configResult.first) {
-                return false to configResult.second
-            }
-
-            reloadNginx()
-
+            
+            val result = generateConfigAndReload(newHost, hosts)
+            if (!result.first) return result
+            
             // Check if we fell back to HTTP due to missing certs
-            if (configResult.second.startsWith("SSL Certificate missing")) {
-                // Auto-request SSL in background
-                scope.launch {
-                    requestSSL(newHost.id)
-                }
+            if (result.second.startsWith("SSL Certificate missing")) {
+                scope.launch { requestSSL(newHost.id) }
                 return true to "Host created. Requesting SSL certificate in background..."
             }
-
+            
             true to "Host created successfully"
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger.error("Error creating host", e)
             false to (e.message ?: "Unknown error")
         }
     }
@@ -302,32 +292,32 @@ class ProxyServiceImpl(
             hosts[index] = host
 
             if (host.enabled) {
-                val configResult = generateNginxConfig(host)
-                if (!configResult.first) {
-                    saveHosts(hosts)
-                    return false to configResult.second
-                }
-
+                val result = generateConfigAndReload(host, hosts)
+                if (!result.first) return result
+                
                 // Check if we fell back to HTTP due to missing certs
-                if (configResult.second.startsWith("SSL Certificate missing")) {
-                    saveHosts(hosts)
-                    reloadNginx()
-
-                    // Auto-request SSL in background
-                    scope.launch {
-                        requestSSL(host.id)
-                    }
+                if (result.second.startsWith("SSL Certificate missing")) {
+                    scope.launch { requestSSL(host.id) }
                     return true to "Host updated. Requesting SSL certificate in background..."
                 }
+            } else {
+                saveHosts(hosts)
+                reloadNginx()
             }
-
-            saveHosts(hosts)
-            reloadNginx()
+            
             true to "Host updated successfully"
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger.error("Error updating host", e)
             false to (e.message ?: "Unknown error")
         }
+    }
+    
+    private fun generateConfigAndReload(host: ProxyHost, hosts: MutableList<ProxyHost>): Pair<Boolean, String> {
+        val configResult = generateNginxConfig(host)
+        saveHosts(hosts)
+        if (!configResult.first) return configResult
+        reloadNginx()
+        return configResult
     }
 
     override fun toggleHost(id: String): Boolean {
@@ -339,13 +329,12 @@ class ProxyServiceImpl(
         hosts[index] = updated
 
         if (updated.enabled) {
-            generateNginxConfig(updated)
+            generateConfigAndReload(updated, hosts)
         } else {
             File(configDir, "${updated.domain}.conf").delete()
+            saveHosts(hosts)
+            reloadNginx()
         }
-
-        saveHosts(hosts)
-        reloadNginx()
         return true
     }
 
@@ -430,46 +419,23 @@ class ProxyServiceImpl(
     }
 
     private fun executeCommand(command: String): String {
-        return try {
-            val process = ProcessBuilder("sh", "-c", command)
-                .redirectErrorStream(true)
-                .start()
-            val output = process.inputStream.bufferedReader().readText()
-            val exitCode = process.waitFor()
-            if (exitCode != 0 && output.isNotBlank()) {
-                logger.warn("Command '$command' exited with code $exitCode. Output: $output")
-            }
-            output
-        } catch (e: Exception) {
-            logger.error("executeCommand failed: $command", e)
-            ""
-        }
+        return commandExecutor.execute(command).output
     }
 
     private fun generateNginxConfig(host: ProxyHost): Pair<Boolean, String> {
-        val wsConfig = if (host.websocketEnabled) """
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade ${'$'}http_upgrade;
-            proxy_set_header Connection "upgrade";
-        """.trimIndent() else ""
+        // Load websocket config if enabled
+        val wsConfig = if (host.websocketEnabled) {
+            ResourceLoader.loadResourceOrThrow("templates/proxy/websocket-config.conf")
+        } else ""
 
+        // Generate IP restrictions
         val ipConfig = if (host.allowedIps.isNotEmpty()) {
             host.allowedIps.joinToString("\n        ") { "allow $it;" } + "\n        deny all;"
         } else ""
 
+        // Generate HTTPS server block if SSL is enabled
         val sslConfig = if (host.ssl) {
-            val certsDir = AppConfig.letsEncryptDir
-            
-            val (hostCert, hostKey) = if (!host.customSslPath.isNullOrBlank() && host.customSslPath?.contains("|") == true) {
-                val parts = host.customSslPath!!.split("|")
-                if (parts.size >= 2) parts[0] to parts[1] else {
-                    val folder = findDomainFolder(certsDir, host.domain)
-                    File(folder, "fullchain.pem").absolutePath to File(folder, "privkey.pem").absolutePath
-                }
-            } else {
-                val folder = findDomainFolder(certsDir, host.domain)
-                File(folder, "fullchain.pem").absolutePath to File(folder, "privkey.pem").absolutePath
-            }
+            val (hostCert, hostKey) = resolveSslCertPaths(host)
 
             val hostCertFile = File(hostCert)
             val hostKeyFile = File(hostKey)
@@ -486,61 +452,46 @@ class ProxyServiceImpl(
             
             logger.info("Using SSL config for ${host.domain}: $containerCert")
 
-            val hstsHeader =
-                if (host.hstsEnabled) "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;" else ""
+            val hstsHeader = if (host.hstsEnabled) {
+                "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;"
+            } else ""
 
-            """
-server {
-    listen 443 ssl;
-    server_name ${host.domain};
-
-    ssl_certificate $containerCert;
-    ssl_certificate_key $containerKey;
-    
-    $hstsHeader
-
-    location / {
-        proxy_pass ${host.target};
-        proxy_set_header Host ${'$'}host;
-        proxy_set_header X-Real-IP ${'$'}remote_addr;
-        proxy_set_header X-Forwarded-For ${'$'}proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto ${'$'}scheme;
-        
-        $wsConfig
-        $ipConfig
-    }
-}
-            """.trimIndent()
+            val httpsTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/server-https.conf")
+            ResourceLoader.replacePlaceholders(httpsTemplate, mapOf(
+                "domain" to host.domain,
+                "sslCert" to containerCert,
+                "sslKey" to containerKey,
+                "hstsHeader" to hstsHeader,
+                "target" to host.target,
+                "websocketConfig" to wsConfig,
+                "ipRestrictions" to ipConfig
+            ))
         } else ""
 
-        val config = """
-server {
-    listen 80;
-    server_name ${host.domain};
+        // Generate HTTP server block
+        val httpRedirect = if (host.ssl) {
+            "        return 301 https://\$host\$request_uri;\n"
+        } else ""
 
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
+        val httpProxyConfig = if (!host.ssl) {
+            val proxyTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/http-proxy-config.conf")
+            val proxyContent = ResourceLoader.replacePlaceholders(proxyTemplate, mapOf(
+                "target" to host.target,
+                "websocketConfig" to wsConfig,
+                "ipRestrictions" to ipConfig
+            ))
+            // Indent each line
+            proxyContent.lines().joinToString("\n") { "        $it" }
+        } else ""
 
-    location / {
-        ${if (host.ssl) "return 301 https://${'$'}host${'$'}request_uri;" else ""}
-        ${
-            if (!host.ssl) """
-        proxy_pass ${host.target};
-        proxy_set_header Host ${'$'}host;
-        proxy_set_header X-Real-IP ${'$'}remote_addr;
-        proxy_set_header X-Forwarded-For ${'$'}proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto ${'$'}scheme;
-        
-        $wsConfig
-        $ipConfig
-        """.trimIndent() else ""
-        }
-    }
-}
+        val httpTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/server-http.conf")
+        val httpConfig = ResourceLoader.replacePlaceholders(httpTemplate, mapOf(
+            "domain" to host.domain,
+            "httpRedirect" to httpRedirect,
+            "httpProxyConfig" to httpProxyConfig
+        ))
 
-$sslConfig
-        """.trimIndent()
+        val config = "$httpConfig\n\n$sslConfig".trim()
 
         try {
             File(configDir, "${host.domain}.conf").writeText(config)
@@ -572,32 +523,16 @@ $sslConfig
     override fun buildProxyImage(): Pair<Boolean, String> {
         return try {
             logger.info("Building proxy Docker image using compose...")
-            
             val composeFile = ensureComposeFile()
-            
             val buildCmd = "${AppConfig.dockerComposeCommand} -f ${composeFile.absolutePath} build proxy"
-            logger.info("Build command: $buildCmd")
             
-            val process = ProcessBuilder("sh", "-c", buildCmd)
-                .directory(proxyDockerComposeDir)
-                .redirectErrorStream(true)
-                .start()
-            
-            val outputFull = process.inputStream.bufferedReader().readText()
-            val exitCode = process.waitFor()
-            
-            val output = if (outputFull.length > 10000) {
-                " (Truncated...)\n" + outputFull.takeLast(10000)
-            } else {
-                outputFull
-            }
-            
-            if (exitCode == 0) {
+            val result = executeComposeCommand(buildCmd, truncateOutput = true)
+            if (result.exitCode == 0) {
                 logger.info("Proxy image built successfully")
-                true to "Proxy image built successfully\n$output"
+                true to "Proxy image built successfully\n${result.output}"
             } else {
-                logger.error("Failed to build proxy image. Exit code: $exitCode")
-                false to "Failed to build proxy image. Exit code: $exitCode\n$output"
+                logger.error("Failed to build proxy image. Exit code: ${result.exitCode}")
+                false to "Failed to build proxy image. Exit code: ${result.exitCode}\n${result.output}"
             }
         } catch (e: Exception) {
             logger.error("Error building proxy image", e)
@@ -608,59 +543,16 @@ $sslConfig
     override fun createProxyContainer(): Pair<Boolean, String> {
         return try {
             logger.info("Creating proxy container using compose...")
-            
             ensureComposeFile()
+            ensureProxyDirectories()
             
-            // Ensure host directories exist (as defined in docker-compose.yml bind mounts)
-            val nginxDir = AppConfig.proxyDir
-            val certbotDir = AppConfig.certbotDir
-            
-            nginxDir.mkdirs()
-            File(nginxDir, "conf.d").mkdirs()
-            
-            val logsDir = File(nginxDir, "logs")
-            logsDir.mkdirs()
-            logsDir.setWritable(true, false)
-            logsDir.setReadable(true, false)
-            logsDir.setExecutable(true, false)
-            
-            val accessLog = File(logsDir, "access.log")
-            if (!accessLog.exists()) {
-                accessLog.createNewFile()
-            }
-            accessLog.setWritable(true, false)
-            accessLog.setReadable(true, false)
-            
-            val errorLog = File(logsDir, "error.log")
-            if (!errorLog.exists()) {
-                errorLog.createNewFile()
-            }
-            errorLog.setWritable(true, false)
-            errorLog.setReadable(true, false)
-
-            certbotDir.mkdirs()
-            File(certbotDir, "conf").mkdirs()
-            File(certbotDir, "www").mkdirs()
-            
-            ensureNginxMainConfig()
-            
-            val createCmd = "${AppConfig.dockerComposeCommand} up --no-start proxy"
-            logger.info("Create command: $createCmd")
-            
-            val process = ProcessBuilder("sh", "-c", createCmd)
-                .directory(proxyDockerComposeDir)
-                .redirectErrorStream(true)
-                .start()
-            
-            val output = process.inputStream.bufferedReader().readText()
-            val exitCode = process.waitFor()
-            
-            if (exitCode == 0) {
+            val result = executeComposeCommand("${AppConfig.dockerComposeCommand} up --no-start proxy")
+            if (result.exitCode == 0) {
                 logger.info("Proxy container created successfully")
-                true to "Proxy container created successfully\n$output"
+                true to "Proxy container created successfully\n${result.output}"
             } else {
-                logger.error("Failed to create proxy container. Exit code: $exitCode")
-                false to "Failed to create proxy container. Exit code: $exitCode\n$output"
+                logger.error("Failed to create proxy container. Exit code: ${result.exitCode}")
+                false to "Failed to create proxy container. Exit code: ${result.exitCode}\n${result.output}"
             }
         } catch (e: Exception) {
             logger.error("Error creating proxy container", e)
@@ -669,85 +561,83 @@ $sslConfig
     }
 
     override fun startProxyContainer(): Pair<Boolean, String> {
-        return try {
-            logger.info("Starting proxy container using compose...")
-            
-            ensureComposeFile()
-            
-            val startCmd = "${AppConfig.dockerComposeCommand} start proxy"
-            val process = ProcessBuilder("sh", "-c", startCmd)
-                .directory(proxyDockerComposeDir)
-                .redirectErrorStream(true)
-                .start()
-            
-            val output = process.inputStream.bufferedReader().readText()
-            val exitCode = process.waitFor()
-            
-            if (exitCode == 0) {
-                logger.info("Proxy container started successfully")
-                true to "Proxy container started successfully"
-            } else {
-                logger.error("Failed to start proxy container. Exit code: $exitCode")
-                false to "Failed to start proxy container. Exit code: $exitCode\n$output"
-            }
-        } catch (e: Exception) {
-            logger.error("Error starting proxy container", e)
-            false to "Error starting proxy container: ${e.message}"
-        }
+        return executeContainerCommand("start", "Starting", "started")
     }
 
     override fun stopProxyContainer(): Pair<Boolean, String> {
-        return try {
-            logger.info("Stopping proxy container using compose...")
-            
-            
-            val stopCmd = "${AppConfig.dockerComposeCommand} stop proxy"
-            val process = ProcessBuilder("sh", "-c", stopCmd)
-                .directory(proxyDockerComposeDir)
-                .redirectErrorStream(true)
-                .start()
-            
-            val output = process.inputStream.bufferedReader().readText()
-            val exitCode = process.waitFor()
-            
-            if (exitCode == 0) {
-                logger.info("Proxy container stopped successfully")
-                true to "Proxy container stopped successfully"
-            } else {
-                logger.error("Failed to stop proxy container. Exit code: $exitCode")
-                false to "Failed to stop proxy container. Exit code: $exitCode\n$output"
-            }
-        } catch (e: Exception) {
-            logger.error("Error stopping proxy container", e)
-            false to "Error stopping proxy container: ${e.message}"
-        }
+        return executeContainerCommand("stop", "Stopping", "stopped")
     }
 
     override fun restartProxyContainer(): Pair<Boolean, String> {
+        return executeContainerCommand("restart", "Restarting", "restarted")
+    }
+    
+    private fun executeContainerCommand(action: String, actionPresent: String, actionPast: String): Pair<Boolean, String> {
         return try {
-            logger.info("Restarting proxy container using compose...")
+            logger.info("$actionPresent proxy container using compose...")
+            ensureComposeFile()
             
-            
-            val restartCmd = "${AppConfig.dockerComposeCommand} restart proxy"
-            val process = ProcessBuilder("sh", "-c", restartCmd)
-                .directory(proxyDockerComposeDir)
-                .redirectErrorStream(true)
-                .start()
-            
-            val output = process.inputStream.bufferedReader().readText()
-            val exitCode = process.waitFor()
-            
-            if (exitCode == 0) {
-                logger.info("Proxy container restarted successfully")
-                true to "Proxy container restarted successfully"
+            val result = executeComposeCommand("${AppConfig.dockerComposeCommand} $action proxy")
+            if (result.exitCode == 0) {
+                logger.info("Proxy container $actionPast successfully")
+                true to "Proxy container $actionPast successfully"
             } else {
-                logger.error("Failed to restart proxy container. Exit code: $exitCode")
-                false to "Failed to restart proxy container. Exit code: $exitCode\n$output"
+                logger.error("Failed to $action proxy container. Exit code: ${result.exitCode}")
+                false to "Failed to $action proxy container. Exit code: ${result.exitCode}\n${result.output}"
             }
         } catch (e: Exception) {
-            logger.error("Error restarting proxy container", e)
-            false to "Error restarting proxy container: ${e.message}"
+            logger.error("Error ${action}ing proxy container", e)
+            false to "Error ${action}ing proxy container: ${e.message}"
         }
+    }
+    
+    private fun executeComposeCommand(command: String, truncateOutput: Boolean = false): com.umeshsolanki.dockermanager.utils.ExecuteResult {
+        val processBuilder = ProcessBuilder("sh", "-c", command)
+            .directory(proxyDockerComposeDir)
+            .redirectErrorStream(true)
+        
+        val process = processBuilder.start()
+        val outputFull = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+        
+        val output = if (truncateOutput && outputFull.length > 10000) {
+            " (Truncated...)\n" + outputFull.takeLast(10000)
+        } else {
+            outputFull
+        }
+        
+        return com.umeshsolanki.dockermanager.utils.ExecuteResult(output, "", exitCode)
+    }
+    
+    private fun ensureProxyDirectories() {
+        val nginxDir = AppConfig.proxyDir
+        val certbotDir = AppConfig.certbotDir
+        
+        nginxDir.mkdirs()
+        File(nginxDir, "conf.d").mkdirs()
+        
+        val logsDir = File(nginxDir, "logs")
+        logsDir.mkdirs()
+        logsDir.setWritable(true, false)
+        logsDir.setReadable(true, false)
+        logsDir.setExecutable(true, false)
+        
+        ensureLogFile(File(logsDir, "access.log"))
+        ensureLogFile(File(logsDir, "error.log"))
+
+        certbotDir.mkdirs()
+        File(certbotDir, "conf").mkdirs()
+        File(certbotDir, "www").mkdirs()
+        
+        ensureNginxMainConfig()
+    }
+    
+    private fun ensureLogFile(logFile: File) {
+        if (!logFile.exists()) {
+            logFile.createNewFile()
+        }
+        logFile.setWritable(true, false)
+        logFile.setReadable(true, false)
     }
 
     override fun getProxyContainerStatus(): ProxyContainerStatus {
@@ -812,58 +702,15 @@ $sslConfig
     override fun ensureProxyContainerExists(): Boolean {
         return try {
             logger.info("Ensuring proxy container is ready (using compose up -d)...")
-            
             ensureComposeFile()
+            ensureProxyDirectories()
             
-            // Ensure host directories exist
-            val nginxDir = AppConfig.proxyDir
-            val certbotDir = AppConfig.certbotDir
-            nginxDir.mkdirs()
-            File(nginxDir, "conf.d").mkdirs()
-            
-            val logsDir = File(nginxDir, "logs")
-            logsDir.mkdirs()
-            logsDir.setWritable(true, false)
-            logsDir.setReadable(true, false)
-            logsDir.setExecutable(true, false)
-            
-            val accessLog = File(logsDir, "access.log")
-            if (!accessLog.exists()) {
-                accessLog.createNewFile()
-            }
-            accessLog.setWritable(true, false)
-            accessLog.setReadable(true, false)
-            
-            val errorLog = File(logsDir, "error.log")
-            if (!errorLog.exists()) {
-                errorLog.createNewFile()
-            }
-            errorLog.setWritable(true, false)
-            errorLog.setReadable(true, false)
-            
-            certbotDir.mkdirs()
-            File(certbotDir, "conf").mkdirs()
-            File(certbotDir, "www").mkdirs()
-            
-            ensureNginxMainConfig()
-
-            // Run compose up -d proxy
-            val upCmd = "${AppConfig.dockerComposeCommand} up -d proxy"
-            logger.info("Up command: $upCmd")
-            
-            val process = ProcessBuilder("sh", "-c", upCmd)
-                .directory(proxyDockerComposeDir)
-                .redirectErrorStream(true)
-                .start()
-            
-            val output = process.inputStream.bufferedReader().readText()
-            val exitCode = process.waitFor()
-            
-            if (exitCode == 0) {
+            val result = executeComposeCommand("${AppConfig.dockerComposeCommand} up -d proxy")
+            if (result.exitCode == 0) {
                 logger.info("Proxy container is ready via compose")
                 true
             } else {
-                logger.error("Failed to ensure proxy container. Exit code: $exitCode\n$output")
+                logger.error("Failed to ensure proxy container. Exit code: ${result.exitCode}\n${result.output}")
                 false
             }
         } catch (e: Exception) {
@@ -877,53 +724,16 @@ $sslConfig
     }
 
     private fun getDefaultComposeConfig(): String {
-        return """
-            services:
-              proxy:
-                build:
-                  context: .
-                  dockerfile: Dockerfile.proxy
-                image: docker-manager-proxy:latest
-                container_name: docker-manager-proxy
-                network_mode: host
-                restart: unless-stopped
-                environment:
-                  - TZ=Asia/Kolkata
-                volumes:
-                  - ${nginxPath}/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
-                  - ${nginxPath}/conf.d:/etc/nginx/conf.d:ro
-                  - ${nginxPath}/logs:/usr/local/openresty/nginx/logs
-                  - ${certbotPath}/conf:/etc/letsencrypt
-                  - ${certbotPath}/www:/var/www/certbot
-                  - ${customCertsPath}:/etc/nginx/custom_certs:ro
-                command: /usr/local/openresty/bin/openresty -g 'daemon off;'
-        """.trimIndent()
+        val template = ResourceLoader.loadResourceOrThrow("templates/proxy/docker-compose.yml")
+        return ResourceLoader.replacePlaceholders(template, mapOf(
+            "nginxPath" to nginxPath,
+            "certbotPath" to certbotPath,
+            "customCertsPath" to customCertsPath
+        ))
     }
 
     private fun getDefaultDockerfileConfig(): String {
-        return """
-            FROM openresty/openresty:alpine
-            
-            # Install Certbot, OpenSSL, and utilities
-            RUN apk add --no-cache \
-                certbot \
-                openssl \
-                bash \
-                curl \
-                ca-certificates \
-                tzdata
-            
-            # Create standard directories
-            RUN mkdir -p /var/www/certbot /etc/letsencrypt /usr/local/openresty/nginx/logs
-            
-            # Set proper permissions
-            RUN chmod 755 /var/www/certbot
-            
-            HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-                CMD curl -f http://localhost/ || exit 1
-                
-            CMD ["/usr/local/openresty/bin/openresty", "-g", "daemon off;"]
-        """.trimIndent()
+        return ResourceLoader.loadResourceOrThrow("templates/proxy/Dockerfile.proxy")
     }
 
     private fun ensureComposeFile(): File {
@@ -970,6 +780,26 @@ $sslConfig
         return hostPath
     }
 
+    private fun resolveSslCertPaths(host: ProxyHost): Pair<String, String> {
+        val certsDir = AppConfig.letsEncryptDir
+        
+        return if (!host.customSslPath.isNullOrBlank() && host.customSslPath.contains("|")) {
+            val parts = host.customSslPath.split("|")
+            if (parts.size >= 2) {
+                parts[0] to parts[1]
+            } else {
+                getDefaultCertPaths(certsDir, host.domain)
+            }
+        } else {
+            getDefaultCertPaths(certsDir, host.domain)
+        }
+    }
+    
+    private fun getDefaultCertPaths(certsDir: File, domain: String): Pair<String, String> {
+        val folder = findDomainFolder(certsDir, domain)
+        return File(folder, "fullchain.pem").absolutePath to File(folder, "privkey.pem").absolutePath
+    }
+    
     private fun findDomainFolder(liveDir: File, domain: String): File {
         if (!liveDir.exists()) return File(liveDir, domain)
         
@@ -991,27 +821,7 @@ $sslConfig
     }
 
     private fun getDefaultNginxConfig(): String {
-        return """
-            worker_processes  1;
-            events {
-                worker_connections  1024;
-            }
-            http {
-                include       mime.types;
-                default_type  application/octet-stream;
-                sendfile        on;
-                keepalive_timeout  65;
-
-                log_format  main  '${'$'}remote_addr - ${'$'}remote_user [${'$'}time_local] "${'$'}request" '
-                                  '${'$'}status ${'$'}body_bytes_sent "${'$'}http_referer" '
-                                  '"${'$'}http_user_agent" "${'$'}http_x_forwarded_for" "${'$'}host"';
-
-                access_log  /usr/local/openresty/nginx/logs/access.log  main;
-                error_log   /usr/local/openresty/nginx/logs/error.log;
-
-                include /etc/nginx/conf.d/*.conf;
-            }
-        """.trimIndent()
+        return ResourceLoader.loadResourceOrThrow("templates/proxy/nginx.conf")
     }
 
     override fun updateComposeConfig(content: String): Pair<Boolean, String> {

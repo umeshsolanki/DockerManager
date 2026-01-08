@@ -1,7 +1,6 @@
 package com.umeshsolanki.dockermanager.docker
 
 import com.umeshsolanki.dockermanager.*
-import io.ktor.http.HttpStatusCode
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.*
@@ -13,22 +12,22 @@ fun Route.secretRoutes() {
         }
 
         post {
-            val name = call.request.queryParameters["name"] ?: return@post call.respondText("Missing Name", status = HttpStatusCode.BadRequest)
-            val data = call.request.queryParameters["data"] ?: return@post call.respondText("Missing Data", status = HttpStatusCode.BadRequest)
-            if (DockerService.createSecret(name, data)) {
-                call.respondText("Created")
-            } else {
-                call.respondText("Failed to create", status = HttpStatusCode.InternalServerError)
-            }
+            val name = call.requireQueryParameter("name") ?: return@post
+            val data = call.requireQueryParameter("data") ?: return@post
+            call.respondTextResult(
+                DockerService.createSecret(name, data),
+                "Created",
+                "Failed to create"
+            )
         }
 
         delete("/{id}") {
-            val id = call.parameters["id"] ?: return@delete call.respondText("Missing ID", status = HttpStatusCode.BadRequest)
-            if (DockerService.removeSecret(id)) {
-                call.respondText("Removed")
-            } else {
-                call.respondText("Failed to remove", status = HttpStatusCode.InternalServerError)
-            }
+            val id = call.requireParameter("id") ?: return@delete
+            call.respondTextResult(
+                DockerService.removeSecret(id),
+                "Removed",
+                "Failed to remove"
+            )
         }
     }
 }

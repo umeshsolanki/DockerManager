@@ -1,7 +1,7 @@
 package com.umeshsolanki.dockermanager.proxy
 
-import com.umeshsolanki.dockermanager.AppSettings
-import com.umeshsolanki.dockermanager.UpdateProxyStatsRequest
+import com.umeshsolanki.dockermanager.*
+import com.umeshsolanki.dockermanager.proxy.*
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
@@ -21,51 +21,32 @@ fun Route.proxyRoutes() {
         post("/hosts") {
             val host = call.receive<ProxyHost>()
             val result = ProxyService.createHost(host)
-            if (result.first) {
-                call.respond(HttpStatusCode.Created, result.second)
-            } else {
-                call.respond(
-                    HttpStatusCode.BadRequest, result.second
-                ) // Using BadRequest for explicit errors
-            }
+            call.respondPairResult(result, HttpStatusCode.Created, HttpStatusCode.BadRequest)
         }
 
         put("/hosts/{id}") {
-            val id = call.parameters["id"] ?: return@put call.respond(HttpStatusCode.BadRequest)
+            val id = call.requireParameter("id") ?: return@put
             val host = call.receive<ProxyHost>()
             val result = ProxyService.updateHost(host.copy(id = id))
-            if (result.first) {
-                call.respond(HttpStatusCode.OK, result.second)
-            } else {
-                call.respond(HttpStatusCode.BadRequest, result.second)
-            }
+            call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.BadRequest)
         }
 
         delete("/hosts/{id}") {
-            val id = call.parameters["id"] ?: return@delete call.respond(HttpStatusCode.BadRequest)
-            if (ProxyService.deleteHost(id)) {
-                call.respond(HttpStatusCode.OK)
-            } else {
-                call.respond(HttpStatusCode.InternalServerError)
-            }
+            val id = call.requireParameter("id") ?: return@delete
+            call.respondBooleanResult(
+                ProxyService.deleteHost(id),
+                "Host deleted"
+            )
         }
 
         post("/hosts/{id}/toggle") {
-            val id = call.parameters["id"] ?: return@post call.respond(HttpStatusCode.BadRequest)
-            if (ProxyService.toggleHost(id)) {
-                call.respond(HttpStatusCode.OK)
-            } else {
-                call.respond(HttpStatusCode.InternalServerError)
-            }
+            val id = call.requireParameter("id") ?: return@post
+            call.respondBooleanResult(ProxyService.toggleHost(id))
         }
 
         post("/hosts/{id}/request-ssl") {
-            val id = call.parameters["id"] ?: return@post call.respond(HttpStatusCode.BadRequest)
-            if (ProxyService.requestSSL(id)) {
-                call.respond(HttpStatusCode.OK)
-            } else {
-                call.respond(HttpStatusCode.InternalServerError)
-            }
+            val id = call.requireParameter("id") ?: return@post
+            call.respondBooleanResult(ProxyService.requestSSL(id))
         }
 
         get("/stats") {
@@ -104,57 +85,42 @@ fun Route.proxyRoutes() {
         // Proxy Container Management
         post("/container/build") {
             val result = ProxyService.buildProxyImage()
-            if (result.first) {
-                call.respond(HttpStatusCode.OK, ProxyActionResult(true, result.second))
-            } else {
-                call.respond(
-                    HttpStatusCode.InternalServerError, ProxyActionResult(false, result.second)
-                )
-            }
+            call.respond(
+                if (result.first) HttpStatusCode.OK else HttpStatusCode.InternalServerError,
+                ProxyActionResult(result.first, result.second)
+            )
         }
 
         post("/container/create") {
             val result = ProxyService.createProxyContainer()
-            if (result.first) {
-                call.respond(HttpStatusCode.Created, ProxyActionResult(true, result.second))
-            } else {
-                call.respond(
-                    HttpStatusCode.InternalServerError, ProxyActionResult(false, result.second)
-                )
-            }
+            call.respond(
+                if (result.first) HttpStatusCode.Created else HttpStatusCode.InternalServerError,
+                ProxyActionResult(result.first, result.second)
+            )
         }
 
         post("/container/start") {
             val result = ProxyService.startProxyContainer()
-            if (result.first) {
-                call.respond(HttpStatusCode.OK, ProxyActionResult(true, result.second))
-            } else {
-                call.respond(
-                    HttpStatusCode.InternalServerError, ProxyActionResult(false, result.second)
-                )
-            }
+            call.respond(
+                if (result.first) HttpStatusCode.OK else HttpStatusCode.InternalServerError,
+                ProxyActionResult(result.first, result.second)
+            )
         }
 
         post("/container/stop") {
             val result = ProxyService.stopProxyContainer()
-            if (result.first) {
-                call.respond(HttpStatusCode.OK, ProxyActionResult(true, result.second))
-            } else {
-                call.respond(
-                    HttpStatusCode.InternalServerError, ProxyActionResult(false, result.second)
-                )
-            }
+            call.respond(
+                if (result.first) HttpStatusCode.OK else HttpStatusCode.InternalServerError,
+                ProxyActionResult(result.first, result.second)
+            )
         }
 
         post("/container/restart") {
             val result = ProxyService.restartProxyContainer()
-            if (result.first) {
-                call.respond(HttpStatusCode.OK, ProxyActionResult(true, result.second))
-            } else {
-                call.respond(
-                    HttpStatusCode.InternalServerError, ProxyActionResult(false, result.second)
-                )
-            }
+            call.respond(
+                if (result.first) HttpStatusCode.OK else HttpStatusCode.InternalServerError,
+                ProxyActionResult(result.first, result.second)
+            )
         }
 
         get("/container/status") {
@@ -163,14 +129,10 @@ fun Route.proxyRoutes() {
 
         post("/container/ensure") {
             val result = ProxyService.ensureProxyContainerExists()
-            if (result) {
-                call.respond(HttpStatusCode.OK, ProxyActionResult(true, "Proxy container is ready"))
-            } else {
-                call.respond(
-                    HttpStatusCode.InternalServerError,
-                    ProxyActionResult(false, "Failed to ensure proxy container")
-                )
-            }
+            call.respond(
+                if (result) HttpStatusCode.OK else HttpStatusCode.InternalServerError,
+                ProxyActionResult(result, if (result) "Proxy container is ready" else "Failed to ensure proxy container")
+            )
         }
 
         get("/container/compose") {
@@ -181,13 +143,10 @@ fun Route.proxyRoutes() {
             val request = call.receive<Map<String, String>>()
             val content = request["content"] ?: return@post call.respond(HttpStatusCode.BadRequest)
             val result = ProxyService.updateComposeConfig(content)
-            if (result.first) {
-                call.respond(HttpStatusCode.OK, ProxyActionResult(true, result.second))
-            } else {
-                call.respond(
-                    HttpStatusCode.InternalServerError, ProxyActionResult(false, result.second)
-                )
-            }
+            call.respond(
+                if (result.first) HttpStatusCode.OK else HttpStatusCode.InternalServerError,
+                ProxyActionResult(result.first, result.second)
+            )
         }
     }
 }

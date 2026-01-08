@@ -1,6 +1,7 @@
 package com.umeshsolanki.dockermanager.jail
 
 import com.umeshsolanki.dockermanager.*
+import com.umeshsolanki.dockermanager.constants.TimeoutConstants
 import com.umeshsolanki.dockermanager.firewall.IFirewallService
 import com.umeshsolanki.dockermanager.firewall.BlockIPRequest
 import com.umeshsolanki.dockermanager.proxy.ProxyJailRuleType
@@ -48,15 +49,15 @@ class JailManagerServiceImpl(
                 } catch (e: Exception) {
                     logger.error("Error in JailManager unjail worker", e)
                 }
-                delay(60000) // Check every minute
+                delay(TimeoutConstants.UNJAIL_WORKER_INTERVAL_MS) // Check every minute
             }
         }
     }
 
     private fun checkAndReleaseExpiredRules() {
         val now = System.currentTimeMillis()
-        val expiredRules = firewallService.listRules().filter { 
-            it.expiresAt != null && it.expiresAt!! <= now 
+        val expiredRules = firewallService.listRules().filter { rule ->
+            rule.expiresAt?.let { it <= now } ?: false
         }
 
         if (expiredRules.isNotEmpty()) {
@@ -69,16 +70,18 @@ class JailManagerServiceImpl(
 
     override fun listJails(): List<JailedIP> {
         val now = System.currentTimeMillis()
-        return firewallService.listRules().filter { 
-            it.expiresAt != null && it.expiresAt!! > now 
-        }.map { rule ->
-            JailedIP(
-                ip = rule.ip,
-                country = rule.country ?: getCountryCode(rule.ip),
-                reason = rule.comment ?: "Auto-jailed",
-                expiresAt = rule.expiresAt!!,
-                createdAt = rule.createdAt
-            )
+        return firewallService.listRules().filter { rule ->
+            rule.expiresAt?.let { it > now } ?: false
+        }.mapNotNull { rule ->
+            rule.expiresAt?.let { expiresAt ->
+                JailedIP(
+                    ip = rule.ip,
+                    country = rule.country ?: getCountryCode(rule.ip),
+                    reason = rule.comment ?: "Auto-jailed",
+                    expiresAt = expiresAt,
+                    createdAt = rule.createdAt
+                )
+            }
         }
     }
 
@@ -102,7 +105,8 @@ class JailManagerServiceImpl(
         
         return countryCache.computeIfAbsent(ip) { _ ->
             try {
-                val jsonBody = java.net.URL("http://ip-api.com/json/$ip?fields=countryCode").readText()
+                val url = java.net.URI("http://ip-api.com/json/$ip?fields=countryCode").toURL()
+                val jsonBody = url.readText()
                 val match = "\"countryCode\":\"([^\"]+)\"".toRegex().find(jsonBody)
                 match?.groupValues?.get(1) ?: "??"
             } catch (e: Exception) {

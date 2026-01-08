@@ -2,7 +2,6 @@ package com.umeshsolanki.dockermanager.docker
 
 import com.umeshsolanki.dockermanager.*
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.call
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
@@ -25,35 +24,31 @@ fun Route.containerRoutes() {
         }
 
         get("/{id}/inspect") {
-            val id = call.parameters["id"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+            val id = call.requireParameter("id") ?: return@get
             val details = DockerService.inspectContainer(id)
-            if (details != null) {
-                call.respond(details)
-            } else {
-                call.respond(HttpStatusCode.NotFound)
-            }
+            call.respondNullableResult(details)
         }
 
         post("/{id}/start") {
-            val id = call.parameters["id"] ?: return@post call.respondText("Missing ID", status = HttpStatusCode.BadRequest)
+            val id = call.requireParameter("id") ?: return@post
             DockerService.startContainer(id)
             call.respondText("Started")
         }
 
         post("/{id}/stop") {
-            val id = call.parameters["id"] ?: return@post call.respondText("Missing ID", status = HttpStatusCode.BadRequest)
+            val id = call.requireParameter("id") ?: return@post
             DockerService.stopContainer(id)
             call.respondText("Stopped")
         }
 
         delete("/{id}") {
-            val id = call.parameters["id"] ?: return@delete call.respondText("Missing ID", status = HttpStatusCode.BadRequest)
+            val id = call.requireParameter("id") ?: return@delete
             DockerService.removeContainer(id)
             call.respondText("Removed")
         }
 
         get("/{id}/logs") {
-            val id = call.parameters["id"] ?: return@get call.respondText("Missing ID", status = HttpStatusCode.BadRequest)
+            val id = call.requireParameter("id") ?: return@get
             val tail = call.request.queryParameters["tail"]?.toIntOrNull() ?: 100
             val logs = DockerService.getContainerLogs(id, tail)
             call.respondText(logs)

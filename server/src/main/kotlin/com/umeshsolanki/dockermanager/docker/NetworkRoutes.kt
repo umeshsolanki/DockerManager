@@ -1,9 +1,7 @@
 package com.umeshsolanki.dockermanager.docker
 
 import com.umeshsolanki.dockermanager.*
-import io.ktor.http.*
-import io.ktor.server.application.*
-import io.ktor.server.response.*
+import io.ktor.server.response.respond
 import io.ktor.server.routing.*
 
 fun Route.networkRoutes() {
@@ -13,22 +11,18 @@ fun Route.networkRoutes() {
         }
         
         get("/{id}") {
-            val id = call.parameters["id"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+            val id = call.requireParameter("id") ?: return@get
             val details = DockerService.inspectNetwork(id)
-            if (details != null) {
-                call.respond(details)
-            } else {
-                call.respond(HttpStatusCode.NotFound)
-            }
+            call.respondNullableResult(details)
         }
 
         delete("/{id}") {
-            val id = call.parameters["id"] ?: return@delete call.respond(HttpStatusCode.BadRequest)
-            if (DockerService.removeNetwork(id)) {
-                call.respond(HttpStatusCode.OK)
-            } else {
-                call.respond(HttpStatusCode.InternalServerError)
-            }
+            val id = call.requireParameter("id") ?: return@delete
+            call.respondBooleanResult(
+                DockerService.removeNetwork(id),
+                "Network removed",
+                "Failed to remove network"
+            )
         }
     }
 }

@@ -21,3 +21,4 @@ node_modules/
 /.dockerm/
 /server.log
 /server/src/main/resources/access.log
+/server/bin/

@@ -1,9 +1,7 @@
 package com.umeshsolanki.dockermanager.docker
 
 import com.umeshsolanki.dockermanager.*
-import io.ktor.http.*
-import io.ktor.server.application.*
-import io.ktor.server.response.*
+import io.ktor.server.response.respond
 import io.ktor.server.routing.*
 
 fun Route.volumeRoutes() {
@@ -13,35 +11,31 @@ fun Route.volumeRoutes() {
         }
 
         get("/{name}/inspect") {
-            val name = call.parameters["name"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+            val name = call.requireParameter("name") ?: return@get
             val details = DockerService.inspectVolume(name)
-            if (details != null) {
-                call.respond(details)
-            } else {
-                call.respond(HttpStatusCode.NotFound)
-            }
+            call.respondNullableResult(details)
         }
 
         post("/{name}/backup") {
-            val name = call.parameters["name"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+            val name = call.requireParameter("name") ?: return@post
             call.respond(DockerService.backupVolume(name))
         }
         
         post("/prune") {
-            if (DockerService.pruneVolumes()) {
-                call.respond(HttpStatusCode.OK)
-            } else {
-                call.respond(HttpStatusCode.InternalServerError)
-            }
+            call.respondBooleanResult(
+                DockerService.pruneVolumes(),
+                "Volumes pruned",
+                "Failed to prune volumes"
+            )
         }
         
         delete("/{name}") {
-            val name = call.parameters["name"] ?: return@delete call.respond(HttpStatusCode.BadRequest)
-            if (DockerService.removeVolume(name)) {
-                call.respond(HttpStatusCode.OK)
-            } else {
-                call.respond(HttpStatusCode.InternalServerError)
-            }
+            val name = call.requireParameter("name") ?: return@delete
+            call.respondBooleanResult(
+                DockerService.removeVolume(name),
+                "Volume removed",
+                "Failed to remove volume"
+            )
         }
     }
 }

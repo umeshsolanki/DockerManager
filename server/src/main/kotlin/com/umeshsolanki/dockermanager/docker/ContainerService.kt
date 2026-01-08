@@ -1,5 +1,6 @@
 package com.umeshsolanki.dockermanager.docker
 
+import com.github.dockerjava.api.DockerClient
 import com.github.dockerjava.api.async.ResultCallback
 import java.util.concurrent.TimeUnit
 
@@ -14,7 +15,7 @@ interface IContainerService {
     fun getContainerLogs(id: String, tail: Int = 100): String
 }
 
-class ContainerServiceImpl(private val dockerClient: com.github.dockerjava.api.DockerClient) :
+class ContainerServiceImpl(private val dockerClient: DockerClient) :
     IContainerService {
     override fun listContainers(): List<DockerContainer> {
         val containers = dockerClient.listContainersCmd().withShowAll(true).exec()
@@ -99,8 +100,7 @@ class ContainerServiceImpl(private val dockerClient: com.github.dockerjava.api.D
                 image = details.config.image ?: "unknown",
                 state = details.state.status ?: "unknown",
                 status = details.state.toString(),
-                createdAt = (details.created as? java.util.Date)?.time
-                    ?: (details.created.toString().toLongOrNull() ?: 0L),
+                createdAt = details.created?.toLongOrNull()?.let { it * 1000L } ?: 0L, // Convert seconds to milliseconds
                 platform = details.platform ?: "unknown",
                 env = details.config.env?.toList() ?: emptyList(),
                 labels = details.config.labels ?: emptyMap(),

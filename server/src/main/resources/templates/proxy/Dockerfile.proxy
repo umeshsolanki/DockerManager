@@ -1,0 +1,23 @@
+FROM openresty/openresty:alpine
+
+# Install Certbot, OpenSSL, and utilities
+RUN apk add --no-cache \
+    certbot \
+    openssl \
+    bash \
+    curl \
+    ca-certificates \
+    tzdata
+
+# Create standard directories
+RUN mkdir -p /var/www/certbot /etc/letsencrypt /usr/local/openresty/nginx/logs
+
+# Set proper permissions
+RUN chmod 755 /var/www/certbot
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost/ || exit 1
+    
+CMD ["/usr/local/openresty/bin/openresty", "-g", "daemon off;"]
+
+

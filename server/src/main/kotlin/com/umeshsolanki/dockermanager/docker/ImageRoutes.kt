@@ -1,7 +1,6 @@
 package com.umeshsolanki.dockermanager.docker
 
 import com.umeshsolanki.dockermanager.*
-import io.ktor.http.HttpStatusCode
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.*
@@ -13,16 +12,16 @@ fun Route.imageRoutes() {
         }
 
         post("/pull") {
-            val name = call.request.queryParameters["image"] ?: return@post call.respondText("Missing Image Name", status = HttpStatusCode.BadRequest)
-            if (DockerService.pullImage(name)) {
-                call.respondText("Pulled")
-            } else {
-                call.respondText("Failed to pull", status = HttpStatusCode.InternalServerError)
-            }
+            val name = call.requireQueryParameter("image") ?: return@post
+            call.respondTextResult(
+                DockerService.pullImage(name),
+                "Pulled",
+                "Failed to pull"
+            )
         }
 
         delete("/{id}") {
-            val id = call.parameters["id"] ?: return@delete call.respondText("Missing ID", status = HttpStatusCode.BadRequest)
+            val id = call.requireParameter("id") ?: return@delete
             DockerService.removeImage(id)
             call.respondText("Removed")
         }

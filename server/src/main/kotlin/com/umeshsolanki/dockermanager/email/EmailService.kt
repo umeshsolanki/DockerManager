@@ -3,7 +3,7 @@ package com.umeshsolanki.dockermanager.email
 import com.umeshsolanki.dockermanager.*
 import com.umeshsolanki.dockermanager.email.*
 import com.umeshsolanki.dockermanager.james.JamesSetupService
-
+import com.umeshsolanki.dockermanager.utils.ResourceLoader
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.java.*
@@ -226,27 +226,10 @@ cors.origin=*
 
     private fun getDefaultComposeConfig(): String {
         val jamesPath = jamesDir.absolutePath
-        return """
-services:
-  james:
-    image: apache/james:jpa-latest
-    container_name: docker-manager-james
-    hostname: james.local
-    ports:
-      - "25:25"     # SMTP
-      - "143:143"   # IMAP
-      - "465:465"   # SMTPS
-      - "587:587"   # Submission
-      - "993:993"   # IMAPS
-      - "8001:8000" # WebAdmin API
-    volumes:
-      - $jamesPath/conf:/root/conf
-      - $jamesPath/var:/root/var
-      - $jamesPath/conf/webadmin.properties:/root/conf/webadmin.properties
-    restart: unless-stopped
-    environment:
-      - TZ=Asia/Kolkata
-        """.trimIndent()
+        val template = ResourceLoader.loadResourceOrThrow("templates/james/docker-compose.yml")
+        return ResourceLoader.replacePlaceholders(template, mapOf(
+            "jamesPath" to jamesPath
+        ))
     }
 
     // --- API Methods ---

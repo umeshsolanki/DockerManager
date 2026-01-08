@@ -2,8 +2,11 @@ package com.umeshsolanki.dockermanager.firewall
 
 import com.umeshsolanki.dockermanager.*
 import com.umeshsolanki.dockermanager.firewall.IptablesRule
+import com.umeshsolanki.dockermanager.utils.CommandExecutor
+import com.umeshsolanki.dockermanager.utils.JsonFileManager
+import com.umeshsolanki.dockermanager.constants.FirewallConstants
+import com.umeshsolanki.dockermanager.constants.FileConstants
 import kotlinx.coroutines.*
-import kotlinx.serialization.json.Json
 import java.io.File
 import java.util.UUID
 
@@ -20,18 +23,20 @@ class FirewallServiceImpl : IFirewallService {
     private val dataDir = AppConfig.firewallDataDir
     private val iptablesCmd = AppConfig.iptablesCmd
     private val ipSetCmd = AppConfig.ipsetCmd
-    private val rulesFile = File(dataDir, "rules.json")
-    private val json = AppConfig.json
+    private val rulesFile = File(dataDir, FileConstants.RULES_JSON)
+    private val jsonFileManager = JsonFileManager.create<List<FirewallRule>>(
+        file = rulesFile,
+        defaultContent = emptyList(),
+        loggerName = FirewallServiceImpl::class.java.name
+    )
+    private val commandExecutor = CommandExecutor(loggerName = FirewallServiceImpl::class.java.name)
     private val lock = java.util.concurrent.locks.ReentrantLock()
 
 
     init {
-        if (!dataDir.exists()) dataDir.mkdirs()
-        if (!rulesFile.exists()) rulesFile.writeText("[]")
-        
         // Initialize ipset
         // We use hash:ip because we only put raw IPs here. Port-specific blocks use direct iptables rules.
-        val createSet = executeCommand("$ipSetCmd create dm-blocklist-ip hash:ip timeout 0 -exist")
+        val createSet = commandExecutor.execute("$ipSetCmd create ${FirewallConstants.IPSET_NAME} ${FirewallConstants.IPSET_TYPE} ${FirewallConstants.IPSET_TIMEOUT} -exist")
         if (createSet.exitCode != 0) {
             logger.error("Failed to create ipset: ${createSet.error}")
         }
@@ -42,16 +47,11 @@ class FirewallServiceImpl : IFirewallService {
 
 
     private fun loadRules(): MutableList<FirewallRule> {
-        return try {
-            json.decodeFromString<List<FirewallRule>>(rulesFile.readText()).toMutableList()
-        } catch (e: Exception) {
-            logger.error("Error loading firewall rules", e)
-            mutableListOf()
-        }
+        return jsonFileManager.load().toMutableList()
     }
 
     private fun saveRules(rules: List<FirewallRule>) {
-        rulesFile.writeText(json.encodeToString(rules))
+        jsonFileManager.save(rules)
     }
 
     override fun listRules(): List<FirewallRule> = loadRules()
@@ -85,21 +85,22 @@ class FirewallServiceImpl : IFirewallService {
 
             // Execute system command
             val success = if (request.port != null) {
-                val proto = if (request.protocol == "ALL") "tcp" else request.protocol.lowercase()
+                val proto = if (request.protocol == FirewallConstants.PROTOCOL_ALL) FirewallConstants.PROTOCOL_DEFAULT else request.protocol.lowercase()
+                val comment = "${FirewallConstants.COMMENT_PREFIX_RULE}$id"
                 val cmdDocker =
-                    "$iptablesCmd -w -I DOCKER-USER -s ${request.ip} -p $proto --dport ${request.port} -j DROP -m comment --comment \"dm-rule-$id\""
+                    "$iptablesCmd ${FirewallConstants.FLAG_WAIT} ${FirewallConstants.FLAG_INSERT} ${FirewallConstants.CHAIN_DOCKER_USER} -s ${request.ip} -p $proto --dport ${request.port} -j ${FirewallConstants.TARGET_DROP} -m comment --comment \"$comment\""
                 val cmdHost =
-                    "$iptablesCmd -w -I INPUT -s ${request.ip} -p $proto --dport ${request.port} -j DROP -m comment --comment \"dm-rule-$id\""
+                    "$iptablesCmd ${FirewallConstants.FLAG_WAIT} ${FirewallConstants.FLAG_INSERT} ${FirewallConstants.CHAIN_INPUT} -s ${request.ip} -p $proto --dport ${request.port} -j ${FirewallConstants.TARGET_DROP} -m comment --comment \"$comment\""
 
-                val resDocker = executeCommand(cmdDocker)
-                val resHost = executeCommand(cmdHost)
+                val resDocker = commandExecutor.execute(cmdDocker)
+                val resHost = commandExecutor.execute(cmdHost)
                 
                 if (resDocker.exitCode != 0) logger.warn("Failed to apply Docker rule: ${resDocker.error}")
                 if (resHost.exitCode != 0) logger.warn("Failed to apply Host rule: ${resHost.error}")
                 
                 resDocker.exitCode == 0 || resHost.exitCode == 0
             } else {
-                val resSet = executeCommand("$ipSetCmd add dm-blocklist-ip ${request.ip} -exist")
+                val resSet = commandExecutor.execute("$ipSetCmd add ${FirewallConstants.IPSET_NAME} ${request.ip} -exist")
                 if (resSet.exitCode != 0) {
                      logger.error("Failed to add to ipset: ${resSet.error}")
                      false
@@ -131,11 +132,12 @@ class FirewallServiceImpl : IFirewallService {
             val rule = rules.find { it.id == id } ?: return false
 
             if (rule.port != null) {
-                val proto = if (rule.protocol == "ALL") "tcp" else rule.protocol.lowercase()
-                executeCommand("$iptablesCmd -w -D DOCKER-USER -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-$id\"")
-                executeCommand("$iptablesCmd -w -D INPUT -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-$id\"")
+                val proto = if (rule.protocol == FirewallConstants.PROTOCOL_ALL) FirewallConstants.PROTOCOL_DEFAULT else rule.protocol.lowercase()
+                val comment = "${FirewallConstants.COMMENT_PREFIX_RULE}$id"
+                commandExecutor.execute("$iptablesCmd ${FirewallConstants.FLAG_WAIT} ${FirewallConstants.FLAG_DELETE} ${FirewallConstants.CHAIN_DOCKER_USER} -s ${rule.ip} -p $proto --dport ${rule.port} -j ${FirewallConstants.TARGET_DROP} -m comment --comment \"$comment\"")
+                commandExecutor.execute("$iptablesCmd ${FirewallConstants.FLAG_WAIT} ${FirewallConstants.FLAG_DELETE} ${FirewallConstants.CHAIN_INPUT} -s ${rule.ip} -p $proto --dport ${rule.port} -j ${FirewallConstants.TARGET_DROP} -m comment --comment \"$comment\"")
             } else {
-                executeCommand("$ipSetCmd del dm-blocklist-ip ${rule.ip}")
+                commandExecutor.execute("$ipSetCmd del ${FirewallConstants.IPSET_NAME} ${rule.ip}")
             }
 
             rules.remove(rule)
@@ -157,7 +159,7 @@ class FirewallServiceImpl : IFirewallService {
             val ipRules = rules.filter { it.ip == ip && it.port == null }
             if (ipRules.isEmpty()) return false
 
-            executeCommand("$ipSetCmd del dm-blocklist-ip $ip")
+            commandExecutor.execute("$ipSetCmd del ${FirewallConstants.IPSET_NAME} $ip")
 
             rules.removeAll(ipRules)
             saveRules(rules)
@@ -173,7 +175,7 @@ class FirewallServiceImpl : IFirewallService {
 
 
     override fun getIptablesVisualisation(): Map<String, List<IptablesRule>> {
-        val res = executeCommand("$iptablesCmd -w -L -n -v")
+        val res = commandExecutor.execute("$iptablesCmd ${FirewallConstants.FLAG_WAIT} ${FirewallConstants.FLAG_LIST} ${FirewallConstants.FLAG_NUMERIC} ${FirewallConstants.FLAG_VERBOSE}")
         if (res.exitCode != 0) {
             logger.warn("Failed to list iptables: ${res.error}")
             return emptyMap()
@@ -216,15 +218,15 @@ class FirewallServiceImpl : IFirewallService {
     private fun ensureBaseRules() {
         // Ensure iptables is tracking the ipset for CONTAINER traffic
         // Check exit code of -C. 0 = exists, 1 = missing.
-        val checkDocker = executeCommand("$iptablesCmd -w -C DOCKER-USER -m set --match-set dm-blocklist-ip src -j DROP -m comment --comment \"dm-managed\"")
+        val checkDocker = commandExecutor.execute("$iptablesCmd ${FirewallConstants.FLAG_WAIT} ${FirewallConstants.FLAG_CHECK} ${FirewallConstants.CHAIN_DOCKER_USER} -m set --match-set ${FirewallConstants.IPSET_NAME} ${FirewallConstants.MATCH_SET_SRC} -j ${FirewallConstants.TARGET_DROP} -m comment --comment \"${FirewallConstants.COMMENT_MANAGED}\"")
         if (checkDocker.exitCode != 0) {
-             executeCommand("$iptablesCmd -w -I DOCKER-USER -m set --match-set dm-blocklist-ip src -j DROP -m comment --comment \"dm-managed\"")
+             commandExecutor.execute("$iptablesCmd ${FirewallConstants.FLAG_WAIT} ${FirewallConstants.FLAG_INSERT} ${FirewallConstants.CHAIN_DOCKER_USER} -m set --match-set ${FirewallConstants.IPSET_NAME} ${FirewallConstants.MATCH_SET_SRC} -j ${FirewallConstants.TARGET_DROP} -m comment --comment \"${FirewallConstants.COMMENT_MANAGED}\"")
         }
 
         // Ensure iptables is tracking the ipset for HOST traffic
-        val checkHost = executeCommand("$iptablesCmd -w -C INPUT -m set --match-set dm-blocklist-ip src -j DROP -m comment --comment \"dm-managed-host\"")
+        val checkHost = commandExecutor.execute("$iptablesCmd ${FirewallConstants.FLAG_WAIT} ${FirewallConstants.FLAG_CHECK} ${FirewallConstants.CHAIN_INPUT} -m set --match-set ${FirewallConstants.IPSET_NAME} ${FirewallConstants.MATCH_SET_SRC} -j ${FirewallConstants.TARGET_DROP} -m comment --comment \"${FirewallConstants.COMMENT_MANAGED_HOST}\"")
         if (checkHost.exitCode != 0) {
-             executeCommand("$iptablesCmd -w -I INPUT -m set --match-set dm-blocklist-ip src -j DROP -m comment --comment \"dm-managed-host\"")
+             commandExecutor.execute("$iptablesCmd ${FirewallConstants.FLAG_WAIT} ${FirewallConstants.FLAG_INSERT} ${FirewallConstants.CHAIN_INPUT} -m set --match-set ${FirewallConstants.IPSET_NAME} ${FirewallConstants.MATCH_SET_SRC} -j ${FirewallConstants.TARGET_DROP} -m comment --comment \"${FirewallConstants.COMMENT_MANAGED_HOST}\"")
         }
     }
 
@@ -236,11 +238,12 @@ class FirewallServiceImpl : IFirewallService {
             logger.info("Cleaning up ${localRules.size} local IPs from firewall rules")
             localRules.forEach { rule ->
                 if (rule.port != null) {
-                    val proto = if (rule.protocol == "ALL") "tcp" else rule.protocol.lowercase()
-                    executeCommand("$iptablesCmd -w -D DOCKER-USER -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-${rule.id}\"")
-                    executeCommand("$iptablesCmd -w -D INPUT -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"dm-rule-${rule.id}\"")
+                    val proto = if (rule.protocol == FirewallConstants.PROTOCOL_ALL) FirewallConstants.PROTOCOL_DEFAULT else rule.protocol.lowercase()
+                    val comment = "${FirewallConstants.COMMENT_PREFIX_RULE}${rule.id}"
+                    commandExecutor.execute("$iptablesCmd ${FirewallConstants.FLAG_WAIT} ${FirewallConstants.FLAG_DELETE} ${FirewallConstants.CHAIN_DOCKER_USER} -s ${rule.ip} -p $proto --dport ${rule.port} -j ${FirewallConstants.TARGET_DROP} -m comment --comment \"$comment\"")
+                    commandExecutor.execute("$iptablesCmd ${FirewallConstants.FLAG_WAIT} ${FirewallConstants.FLAG_DELETE} ${FirewallConstants.CHAIN_INPUT} -s ${rule.ip} -p $proto --dport ${rule.port} -j ${FirewallConstants.TARGET_DROP} -m comment --comment \"$comment\"")
                 } else {
-                    executeCommand("$ipSetCmd del dm-blocklist-ip ${rule.ip}")
+                    commandExecutor.execute("$ipSetCmd del ${FirewallConstants.IPSET_NAME} ${rule.ip}")
                 }
             }
             saveRules(validRules)
@@ -250,58 +253,27 @@ class FirewallServiceImpl : IFirewallService {
 
         validRules.forEach { rule ->
             if (rule.port != null) {
-                val proto = if (rule.protocol == "ALL") "tcp" else rule.protocol.lowercase()
+                val proto = if (rule.protocol == FirewallConstants.PROTOCOL_ALL) FirewallConstants.PROTOCOL_DEFAULT else rule.protocol.lowercase()
                 // Just try to insert. If checks are hard, we might duplicate, but -C is better.
                 // Simple approach: Delete then Insert (to avoid dupes) or just Insert (might dupe).
                 // Let's check first.
-                val comment = "dm-rule-${rule.id}"
+                val comment = "${FirewallConstants.COMMENT_PREFIX_RULE}${rule.id}"
                 
-                val checkD = executeCommand("$iptablesCmd -w -C DOCKER-USER -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"$comment\"")
+                val checkD = commandExecutor.execute("$iptablesCmd ${FirewallConstants.FLAG_WAIT} ${FirewallConstants.FLAG_CHECK} ${FirewallConstants.CHAIN_DOCKER_USER} -s ${rule.ip} -p $proto --dport ${rule.port} -j ${FirewallConstants.TARGET_DROP} -m comment --comment \"$comment\"")
                 if (checkD.exitCode != 0) {
-                    executeCommand("$iptablesCmd -w -I DOCKER-USER -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"$comment\"")
+                    commandExecutor.execute("$iptablesCmd ${FirewallConstants.FLAG_WAIT} ${FirewallConstants.FLAG_INSERT} ${FirewallConstants.CHAIN_DOCKER_USER} -s ${rule.ip} -p $proto --dport ${rule.port} -j ${FirewallConstants.TARGET_DROP} -m comment --comment \"$comment\"")
                 }
 
-                val checkH = executeCommand("$iptablesCmd -w -C INPUT -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"$comment\"")
+                val checkH = commandExecutor.execute("$iptablesCmd ${FirewallConstants.FLAG_WAIT} ${FirewallConstants.FLAG_CHECK} ${FirewallConstants.CHAIN_INPUT} -s ${rule.ip} -p $proto --dport ${rule.port} -j ${FirewallConstants.TARGET_DROP} -m comment --comment \"$comment\"")
                 if (checkH.exitCode != 0) {
-                    executeCommand("$iptablesCmd -w -I INPUT -s ${rule.ip} -p $proto --dport ${rule.port} -j DROP -m comment --comment \"$comment\"")
+                    commandExecutor.execute("$iptablesCmd ${FirewallConstants.FLAG_WAIT} ${FirewallConstants.FLAG_INSERT} ${FirewallConstants.CHAIN_INPUT} -s ${rule.ip} -p $proto --dport ${rule.port} -j ${FirewallConstants.TARGET_DROP} -m comment --comment \"$comment\"")
                 }
             } else {
-                executeCommand("$ipSetCmd add dm-blocklist-ip ${rule.ip} -exist")
+                commandExecutor.execute("$ipSetCmd add ${FirewallConstants.IPSET_NAME} ${rule.ip} -exist")
             }
         }
     }
 
-    data class ExecuteResult(val output: String, val error: String, val exitCode: Int)
-
-    private fun executeCommand(command: String): ExecuteResult {
-        return try {
-            val processBuilder = ProcessBuilder("sh", "-c", command)
-            processBuilder.environment()["LC_ALL"] = "C"
-            val process = processBuilder.start()
-            val output = process.inputStream.bufferedReader().readText()
-            val error = process.errorStream.bufferedReader().readText()
-            
-            if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
-                process.destroy()
-                logger.error("Command timed out: $command")
-                return ExecuteResult("", "Timed out", -1)
-            }
-
-            if (process.exitValue() != 0) {
-                // Log only if it's not a Check command (checking usually fails which is fine)
-                if (!command.contains(" -C ")) {
-                    logger.warn("Command failed [${process.exitValue()}]: $command\nError: $error")
-                }
-            } else {
-                logger.debug("Command success: $command")
-            }
-            
-            ExecuteResult(output, error, process.exitValue())
-        } catch (e: Exception) {
-            logger.error("Error executing command: $command", e)
-            ExecuteResult("", e.message ?: "Unknown error", -1)
-        }
-    }
 }
 
 // Service object for easy access
@@ -314,3 +286,4 @@ object FirewallService {
     fun unblockIPByAddress(ip: String) = service.unblockIPByAddress(ip)
     fun getIptablesVisualisation() = service.getIptablesVisualisation()
 }
+

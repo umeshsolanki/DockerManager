@@ -1,6 +1,7 @@
 package com.umeshsolanki.dockermanager
 
 import com.umeshsolanki.dockermanager.proxy.ProxyJailRule
+import com.umeshsolanki.dockermanager.constants.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
@@ -19,15 +20,15 @@ data class UpdateProxyStatsRequest(
 
 @Serializable
 data class AppSettings(
-    val dockerSocket: String = "/var/run/docker.sock",
-    val jamesWebAdminUrl: String = "http://localhost:8001",
+    val dockerSocket: String = SystemConstants.DOCKER_SOCKET_DEFAULT,
+    val jamesWebAdminUrl: String = NetworkConstants.JAMES_WEB_ADMIN_DEFAULT,
     // Jail Settings
     val jailEnabled: Boolean = true,
     val jailThreshold: Int = 5,
     val jailDurationMinutes: Int = 30,
     val monitoringActive: Boolean = true,
     val monitoringIntervalMinutes: Int = 5,
-    val fcmServiceAccountPath: String = "fcm-service-account.json",
+    val fcmServiceAccountPath: String = FileConstants.FCM_SERVICE_ACCOUNT_JSON,
     val proxyStatsActive: Boolean = true,
     val proxyStatsIntervalMs: Long = 10000L,
     
@@ -39,7 +40,7 @@ data class AppSettings(
 
 object AppConfig {
     private val logger = LoggerFactory.getLogger(AppConfig::class.java)
-    private const val DEFAULT_DATA_DIR = "/opt/docker-manager/data"
+    private const val DEFAULT_DATA_DIR = SystemConstants.DEFAULT_DATA_DIR
 
     val json = Json {
         prettyPrint = false
@@ -50,7 +51,7 @@ object AppConfig {
 
     val isDocker: Boolean by lazy {
         val inDocker =
-            File("/.dockerenv").exists() || (File("/proc/1/cgroup").exists() && File("/proc/1/cgroup").readText()
+            File(SystemConstants.DOCKERENV).exists() || (File(SystemConstants.PROC_CGROUP).exists() && File(SystemConstants.PROC_CGROUP).readText()
                 .contains("docker"))
         logger.info("Environment detection: isDocker=$inDocker")
         inDocker
@@ -58,16 +59,16 @@ object AppConfig {
 
     val dataRoot: File by lazy {
         if (isDocker) {
-            File("/app/data")
+            File(SystemConstants.APP_DATA)
         } else {
-            val env = System.getenv("DATA_DIR").ifNullOrBlank(DEFAULT_DATA_DIR)
+            val env = System.getenv(SystemConstants.ENV_DATA_DIR).ifNullOrBlank(DEFAULT_DATA_DIR)
             logger.info("Using DATA_DIR: $env")
             File(env)
         }
     }
 
     private val settingsFile: File by lazy {
-        File(dataRoot, "settings.json")
+        File(dataRoot, FileConstants.SETTINGS_JSON)
     }
 
     private var _settings: AppSettings = loadSettings()
@@ -161,18 +162,18 @@ object AppConfig {
 
 
     val dockerCommand: String
-        get() = if (isDocker) "/usr/bin/docker" else {
-            if (File("/usr/bin/docker").exists()) "/usr/bin/docker" else "docker"
+        get() = if (isDocker) SystemConstants.DOCKER_BIN_DOCKER else {
+            if (File(SystemConstants.DOCKER_BIN_DOCKER).exists()) SystemConstants.DOCKER_BIN_DOCKER else SystemConstants.DOCKER_COMMAND
         }
 
     val dockerComposeCommand: String
-        get() = if (isDocker) "/usr/bin/docker compose" else {
-            if (File("/opt/homebrew/bin/docker-compose").exists()) {
-                "/opt/homebrew/bin/docker-compose"
-            } else if (File("/usr/bin/docker").exists()) {
-                "/usr/bin/docker compose"
+        get() = if (isDocker) SystemConstants.DOCKER_COMPOSE_BIN_USR else {
+            if (File(SystemConstants.DOCKER_COMPOSE_BIN_HOMEBREW).exists()) {
+                SystemConstants.DOCKER_COMPOSE_BIN_HOMEBREW
+            } else if (File(SystemConstants.DOCKER_BIN_DOCKER).exists()) {
+                SystemConstants.DOCKER_COMPOSE_BIN_USR
             } else {
-                "docker compose"
+                SystemConstants.DOCKER_COMPOSE_COMMAND
             }
         }
 
@@ -181,8 +182,8 @@ object AppConfig {
 
 
     //backup dirs
-    val backupDir: File get() = File(dataRoot, "backups")
-    val composeProjDir: File get() = File(dataRoot, "compose-ymls")
+    val backupDir: File get() = File(dataRoot, FileConstants.BACKUPS)
+    val composeProjDir: File get() = File(dataRoot, FileConstants.COMPOSE_YMLS)
 
     val projectRoot: File by lazy {
         logger.info("Using project root: ${composeProjDir.absolutePath}")
@@ -195,24 +196,24 @@ object AppConfig {
     }
 
     // Proxy Service Configs
-    val proxyDir: File get() = File(dataRoot, "nginx")
-    val proxyConfigDir: File get() = File(proxyDir, "conf.d")
-    val proxyLogFile: File get() = File(proxyDir, "logs/access.log")
-    val proxyHostsFile: File get() = File(dataRoot, "proxy/hosts.json")
+    val proxyDir: File get() = File(dataRoot, FileConstants.NGINX)
+    val proxyConfigDir: File get() = File(proxyDir, FileConstants.CONFIG_D)
+    val proxyLogFile: File get() = File(proxyDir, "${FileConstants.LOGS}/${FileConstants.ACCESS_LOG}")
+    val proxyHostsFile: File get() = File(dataRoot, "${FileConstants.PROXY}/${FileConstants.HOSTS_JSON}")
 
     // Log Service Configs
-    val systemLogDir: File get() = if (isDocker) File("/host/var/log") else File("/var/log")
+    val systemLogDir: File get() = if (isDocker) File(SystemConstants.HOST_VAR_LOG) else File(SystemConstants.VAR_LOG)
 
     // Btmp Service Configs
-    val btmpLogFile: File get() = if (isDocker) File("/host/var/log/btmp") else File("/var/log/btmp")
+    val btmpLogFile: File get() = if (isDocker) File(SystemConstants.HOST_BTMP_LOG) else File(SystemConstants.BTMP_LOG)
 
     // Certs
-    val certbotDir: File get() = File(dataRoot, "certbot")
-    val letsEncryptDir: File get() = File(certbotDir, "conf/live")
-    val customCertDir: File get() = File(dataRoot, "certs")
+    val certbotDir: File get() = File(dataRoot, FileConstants.CERTBOT)
+    val letsEncryptDir: File get() = File(certbotDir, "${FileConstants.CONF}/${FileConstants.LIVE}")
+    val customCertDir: File get() = File(dataRoot, FileConstants.CERTS)
 
     // Firewall Configs
-    val firewallDataDir: File get() = File(dataRoot, "firewall")
+    val firewallDataDir: File get() = File(dataRoot, FileConstants.FIREWALL)
 
     // File Manager
     val fileManagerDir: File get() = File.listRoots().first() ?: File("/")
@@ -221,24 +222,24 @@ object AppConfig {
     // NOTE: If user runs jar on valid linux, iptables should be in path, but systemd path might be limited.
     val iptablesCmd: String
         get() {
-            if (isDocker) return "/main/sbin/iptables"
-            if (File("/usr/sbin/iptables").exists()) return "/usr/sbin/iptables"
-            if (File("/sbin/iptables").exists()) return "/sbin/iptables"
-            return "iptables"
+            if (isDocker) return SystemConstants.IPTABLES_BIN_DOCKER
+            if (File(SystemConstants.IPTABLES_BIN_USR_SBIN).exists()) return SystemConstants.IPTABLES_BIN_USR_SBIN
+            if (File(SystemConstants.IPTABLES_BIN_SBIN).exists()) return SystemConstants.IPTABLES_BIN_SBIN
+            return SystemConstants.IPTABLES_COMMAND
         }
 
     val ipsetCmd: String
         get() {
-            if (isDocker) return "/main/sbin/ipset"
-            if (File("/usr/sbin/ipset").exists()) return "/usr/sbin/ipset"
-            if (File("/sbin/ipset").exists()) return "/sbin/ipset"
-            return "ipset"
+            if (isDocker) return SystemConstants.IPSET_BIN_DOCKER
+            if (File(SystemConstants.IPSET_BIN_USR_SBIN).exists()) return SystemConstants.IPSET_BIN_USR_SBIN
+            if (File(SystemConstants.IPSET_BIN_SBIN).exists()) return SystemConstants.IPSET_BIN_SBIN
+            return SystemConstants.IPSET_COMMAND
         }
 
     // James
-    val jamesDir: File get() = File(dataRoot, "james")
-    val jamesConfigDir: File get() = File(jamesDir, "conf")
-    val jamesVarDir: File get() = File(jamesDir, "var")
+    val jamesDir: File get() = File(dataRoot, FileConstants.JAMES)
+    val jamesConfigDir: File get() = File(jamesDir, FileConstants.CONF)
+    val jamesVarDir: File get() = File(jamesDir, FileConstants.VAR)
 
     val jamesWebAdminUrl: String
         get() = _settings.jamesWebAdminUrl
