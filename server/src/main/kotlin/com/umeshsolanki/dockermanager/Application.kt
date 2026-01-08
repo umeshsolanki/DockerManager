@@ -1,5 +1,8 @@
 package com.umeshsolanki.dockermanager
 
+import com.umeshsolanki.dockermanager.auth.AuthService
+import com.umeshsolanki.dockermanager.fcm.FcmService
+import com.umeshsolanki.dockermanager.james.JamesSetupService
 import io.ktor.server.application.Application
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty

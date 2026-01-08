@@ -1,12 +1,19 @@
 package com.umeshsolanki.dockermanager
 
+import com.umeshsolanki.dockermanager.auth.authRoutes
+import com.umeshsolanki.dockermanager.docker.*
+import com.umeshsolanki.dockermanager.email.emailRoutes
+import com.umeshsolanki.dockermanager.file.fileRoutes
+import com.umeshsolanki.dockermanager.firewall.firewallRoutes
+import com.umeshsolanki.dockermanager.proxy.proxyRoutes
+import com.umeshsolanki.dockermanager.shell.ShellService
+import com.umeshsolanki.dockermanager.system.systemRoutes
 import io.ktor.server.application.Application
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.CloseReason
 import io.ktor.websocket.close
-import com.umeshsolanki.dockermanager.routes.*
 import io.ktor.server.auth.authenticate
 
 import io.ktor.server.http.content.*

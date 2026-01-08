@@ -1,5 +1,20 @@
 package com.umeshsolanki.dockermanager
 
+import com.umeshsolanki.dockermanager.auth.AuthService
+import com.umeshsolanki.dockermanager.docker.*
+import com.umeshsolanki.dockermanager.email.EmailServiceImpl
+import com.umeshsolanki.dockermanager.email.IEmailService
+import com.umeshsolanki.dockermanager.file.FileManagerServiceImpl
+import com.umeshsolanki.dockermanager.file.IFileManagerService
+import com.umeshsolanki.dockermanager.firewall.FirewallServiceImpl
+import com.umeshsolanki.dockermanager.firewall.IFirewallService
+import com.umeshsolanki.dockermanager.jail.BtmpServiceImpl
+import com.umeshsolanki.dockermanager.jail.IJailManagerService
+import com.umeshsolanki.dockermanager.jail.IBtmpService
+import com.umeshsolanki.dockermanager.jail.JailManagerServiceImpl
+import com.umeshsolanki.dockermanager.proxy.ProxyServiceImpl
+import com.umeshsolanki.dockermanager.proxy.IProxyService
+import com.umeshsolanki.dockermanager.system.SystemService
 import java.io.InputStream
 
 object DockerService {
@@ -80,7 +95,6 @@ object DockerService {
     fun listFirewallRules() = firewallService.listRules()
     fun blockIP(request: BlockIPRequest) = firewallService.blockIP(request)
     fun unblockIP(id: String) = firewallService.unblockIP(id)
-    fun unblockIPByAddress(ip: String) = firewallService.unblockIPByAddress(ip)
     fun getIptablesVisualisation() = firewallService.getIptablesVisualisation()
 
     fun listProxyHosts() = proxyService.listHosts()

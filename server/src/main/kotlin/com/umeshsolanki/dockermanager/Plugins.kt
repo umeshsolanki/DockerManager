@@ -1,5 +1,6 @@
 package com.umeshsolanki.dockermanager
 
+import com.umeshsolanki.dockermanager.auth.AuthService
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.serialization.kotlinx.json.json
