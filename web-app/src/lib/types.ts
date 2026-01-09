@@ -469,4 +469,16 @@ export interface RedisStatus {
   port: number;
 }
 
+export interface RedisTestResult {
+  success: boolean;
+  message: string;
+  connected: boolean;
+}
+
+export interface RedisConfigUpdateResult {
+  success: boolean;
+  message: string;
+  connected: boolean;
+}
+
 

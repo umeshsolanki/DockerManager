@@ -8,7 +8,7 @@ import {
     UpdateSystemConfigRequest, EmailMailbox, NetworkDetails, EmailTestRequest,
     EmailTestResult, AuthRequest, AuthResponse, UpdatePasswordRequest,
     UpdateUsernameRequest, TwoFactorSetupResponse, Enable2FARequest, EmailGroup, EmailUserDetail, JamesContainerStatus,
-    FileItem, RedisConfig, RedisStatus
+    FileItem, RedisConfig, RedisStatus, RedisTestResult, RedisConfigUpdateResult
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -175,8 +175,8 @@ export const DockerClient = {
     
     // Redis Cache
     getRedisConfig: () => req<RedisConfig>('/cache/redis/config', {}, { enabled: false, host: 'localhost', port: 6379, database: 0, ssl: false, timeout: 5000 }),
-    updateRedisConfig: (config: RedisConfig) => safeReq('/cache/redis/config', { method: 'POST', body: JSON.stringify(config) }),
-    testRedisConnection: (config: RedisConfig) => safeReq('/cache/redis/test', { method: 'POST', body: JSON.stringify(config) }),
+    updateRedisConfig: (config: RedisConfig) => safeReq<RedisConfigUpdateResult>('/cache/redis/config', { method: 'POST', body: JSON.stringify(config) }),
+    testRedisConnection: (config: RedisConfig) => safeReq<RedisTestResult>('/cache/redis/test', { method: 'POST', body: JSON.stringify(config) }),
     getRedisStatus: () => req<RedisStatus>('/cache/redis/status', {}, { enabled: false, connected: false, host: 'localhost', port: 6379 }),
     clearCache: () => safeReq('/cache/clear', { method: 'POST' }),
     installRedis: () => safeReq('/cache/install', { method: 'POST' }),

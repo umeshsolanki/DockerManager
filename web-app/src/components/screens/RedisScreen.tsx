@@ -150,7 +150,7 @@ export default function RedisScreen() {
                     label="Redis Status"
                     value={status?.connected ? 'Connected' : status?.enabled ? 'Disconnected' : 'Disabled'}
                     sub={status?.connected ? 'Cache active' : status?.enabled ? 'Connection failed' : 'Using in-memory cache'}
-                    color={status?.connected ? 'green' : status?.enabled ? 'orange' : 'gray'}
+                    color={status?.connected ? 'green' : status?.enabled ? 'orange' : 'indigo'}
                     icon={status?.connected ? <CheckCircle size={20} /> : <XCircle size={20} />}
                 />
                 <StatCard
