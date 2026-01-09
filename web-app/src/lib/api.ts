@@ -2,13 +2,13 @@ import {
     DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret,
     DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult,
     CreateContainerRequest, SaveComposeRequest, ComposeResult, SystemLog,
-    FirewallRule, BlockIPRequest, ProxyHost, ProxyHit, ProxyStats, DailyProxyStats, BtmpStats,
+    FirewallRule, BlockIPRequest, ProxyHost, PathRoute, ProxyHit, ProxyStats, DailyProxyStats, BtmpStats,
     BtmpEntry, IptablesRule, SSLCertificate, EmailDomain, EmailUser,
     CreateEmailUserRequest, UpdateEmailUserPasswordRequest, SystemConfig,
     UpdateSystemConfigRequest, EmailMailbox, NetworkDetails, EmailTestRequest,
     EmailTestResult, AuthRequest, AuthResponse, UpdatePasswordRequest,
     UpdateUsernameRequest, TwoFactorSetupResponse, Enable2FARequest, EmailGroup, EmailUserDetail, JamesContainerStatus,
-    FileItem
+    FileItem, RedisConfig, RedisStatus
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -160,11 +160,27 @@ export const DockerClient = {
     deleteProxyHost: (id: string) => apiFetch(`/proxy/hosts/${id}`, { method: 'DELETE' }).then(r => r.ok),
     toggleProxyHost: (id: string) => apiFetch(`/proxy/hosts/${id}/toggle`, { method: 'POST' }).then(r => r.ok),
     requestProxySSL: (id: string) => apiFetch(`/proxy/hosts/${id}/request-ssl`, { method: 'POST' }).then(r => r.ok),
+    // Path Routes
+    listPathRoutes: (hostId: string) => req<PathRoute[]>(`/proxy/hosts/${hostId}/paths`, {}, []),
+    createPathRoute: (hostId: string, body: Partial<PathRoute>) => safeReq(`/proxy/hosts/${hostId}/paths`, { method: 'POST', body: JSON.stringify(body) }),
+    updatePathRoute: (hostId: string, pathId: string, body: PathRoute) => safeReq(`/proxy/hosts/${hostId}/paths/${pathId}`, { method: 'PUT', body: JSON.stringify(body) }),
+    deletePathRoute: (hostId: string, pathId: string) => safeReq(`/proxy/hosts/${hostId}/paths/${pathId}`, { method: 'DELETE' }),
+    togglePathRoute: (hostId: string, pathId: string) => safeReq(`/proxy/hosts/${hostId}/paths/${pathId}/toggle`, { method: 'POST' }),
     getProxyStats: () => req<ProxyStats | null>('/proxy/stats', {}, null),
     refreshProxyStats: () => req<ProxyStats | null>('/proxy/stats/refresh', {}, null),
     listAnalyticsDates: () => req<string[]>('/proxy/stats/history/dates', {}, []),
     getHistoricalStats: (date: string) => req<DailyProxyStats | null>(`/proxy/stats/history/${date}`, {}, null),
     getStatsForDateRange: (startDate: string, endDate: string) => req<DailyProxyStats[]>(`/proxy/stats/history/range?start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`, {}, []),
+    updateStatsForAllDaysInCurrentLog: () => safeReq('/proxy/stats/history/update-all-days', { method: 'POST' }),
+    
+    // Redis Cache
+    getRedisConfig: () => req<RedisConfig>('/cache/redis/config', {}, { enabled: false, host: 'localhost', port: 6379, database: 0, ssl: false, timeout: 5000 }),
+    updateRedisConfig: (config: RedisConfig) => safeReq('/cache/redis/config', { method: 'POST', body: JSON.stringify(config) }),
+    testRedisConnection: (config: RedisConfig) => safeReq('/cache/redis/test', { method: 'POST', body: JSON.stringify(config) }),
+    getRedisStatus: () => req<RedisStatus>('/cache/redis/status', {}, { enabled: false, connected: false, host: 'localhost', port: 6379 }),
+    clearCache: () => safeReq('/cache/clear', { method: 'POST' }),
+    installRedis: () => safeReq('/cache/install', { method: 'POST' }),
+    
     getProxySecuritySettings: () => req<SystemConfig | null>('/proxy/security/settings', {}, null),
     updateProxySecuritySettings: (body: Partial<SystemConfig>) => safeReq('/proxy/security/settings', { method: 'POST', body: JSON.stringify(body) }),
     listProxyCertificates: () => req<SSLCertificate[]>('/proxy/certificates', {}, []),

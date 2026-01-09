@@ -5,6 +5,20 @@ import kotlinx.serialization.Serializable
 // ========== Proxy Models ==========
 
 @Serializable
+data class PathRoute(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val path: String, // e.g., "/api", "/static", "/admin"
+    val target: String, // Backend target URL
+    val websocketEnabled: Boolean = false,
+    val allowedIps: List<String> = emptyList(),
+    val stripPrefix: Boolean = false, // If true, removes the path prefix before forwarding
+    val customConfig: String? = null, // Custom Nginx config for this path
+    val enabled: Boolean = true, // Enable/disable this path route
+    val name: String? = null, // Optional name/description for UI display
+    val order: Int = 0 // Order/priority for path matching (higher = more priority)
+)
+
+@Serializable
 data class ProxyHost(
     val id: String = "",
     val domain: String,
@@ -16,7 +30,8 @@ data class ProxyHost(
     val websocketEnabled: Boolean = false,
     val allowedIps: List<String> = emptyList(),
     val customSslPath: String? = null,
-    val hstsEnabled: Boolean = false
+    val hstsEnabled: Boolean = false,
+    val paths: List<PathRoute> = emptyList() // Custom path-based routes
 )
 
 @Serializable

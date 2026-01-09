@@ -49,6 +49,107 @@ fun Route.proxyRoutes() {
             call.respondBooleanResult(ProxyService.requestSSL(id))
         }
 
+        // Path-based routing management
+        get("/hosts/{id}/paths") {
+            val id = call.requireParameter("id") ?: return@get
+            val host = ProxyService.listHosts().find { it.id == id }
+            if (host != null) {
+                call.respond(host.paths)
+            } else {
+                call.respond(HttpStatusCode.NotFound, ProxyActionResult(false, "Host not found"))
+            }
+        }
+
+        post("/hosts/{id}/paths") {
+            val id = call.requireParameter("id") ?: return@post
+            val pathRoute = call.receive<PathRoute>()
+            val hosts = ProxyService.listHosts().toMutableList()
+            val hostIndex = hosts.indexOfFirst { it.id == id }
+            if (hostIndex == -1) {
+                call.respond(HttpStatusCode.NotFound, ProxyActionResult(false, "Host not found"))
+                return@post
+            }
+            val host = hosts[hostIndex]
+            // Ensure path route has an ID
+            val newPathRoute = if (pathRoute.id.isEmpty()) {
+                pathRoute.copy(id = java.util.UUID.randomUUID().toString())
+            } else {
+                // Check if path ID already exists
+                if (host.paths.any { it.id == pathRoute.id }) {
+                    call.respond(HttpStatusCode.BadRequest, ProxyActionResult(false, "Path route with this ID already exists"))
+                    return@post
+                }
+                pathRoute
+            }
+            val updatedPaths = host.paths.toMutableList()
+            updatedPaths.add(newPathRoute)
+            val updatedHost = host.copy(paths = updatedPaths)
+            val result = ProxyService.updateHost(updatedHost)
+            call.respondPairResult(result, HttpStatusCode.Created, HttpStatusCode.BadRequest)
+        }
+
+        put("/hosts/{id}/paths/{pathId}") {
+            val id = call.requireParameter("id") ?: return@put
+            val pathId = call.requireParameter("pathId") ?: return@put
+            val pathRoute = call.receive<PathRoute>()
+            val hosts = ProxyService.listHosts().toMutableList()
+            val hostIndex = hosts.indexOfFirst { it.id == id }
+            if (hostIndex == -1) {
+                call.respond(HttpStatusCode.NotFound, ProxyActionResult(false, "Host not found"))
+                return@put
+            }
+            val host = hosts[hostIndex]
+            val updatedPaths = host.paths.toMutableList()
+            val pathIndex = updatedPaths.indexOfFirst { it.id == pathId }
+            if (pathIndex == -1) {
+                call.respond(HttpStatusCode.NotFound, ProxyActionResult(false, "Path route not found"))
+                return@put
+            }
+            updatedPaths[pathIndex] = pathRoute.copy(id = pathId)
+            val updatedHost = host.copy(paths = updatedPaths)
+            val result = ProxyService.updateHost(updatedHost)
+            call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.BadRequest)
+        }
+
+        delete("/hosts/{id}/paths/{pathId}") {
+            val id = call.requireParameter("id") ?: return@delete
+            val pathId = call.requireParameter("pathId") ?: return@delete
+            val hosts = ProxyService.listHosts().toMutableList()
+            val hostIndex = hosts.indexOfFirst { it.id == id }
+            if (hostIndex == -1) {
+                call.respond(HttpStatusCode.NotFound, ProxyActionResult(false, "Host not found"))
+                return@delete
+            }
+            val host = hosts[hostIndex]
+            val updatedPaths = host.paths.filter { it.id != pathId }
+            val updatedHost = host.copy(paths = updatedPaths)
+            val result = ProxyService.updateHost(updatedHost)
+            call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.BadRequest)
+        }
+
+        post("/hosts/{id}/paths/{pathId}/toggle") {
+            val id = call.requireParameter("id") ?: return@post
+            val pathId = call.requireParameter("pathId") ?: return@post
+            val hosts = ProxyService.listHosts().toMutableList()
+            val hostIndex = hosts.indexOfFirst { it.id == id }
+            if (hostIndex == -1) {
+                call.respond(HttpStatusCode.NotFound, ProxyActionResult(false, "Host not found"))
+                return@post
+            }
+            val host = hosts[hostIndex]
+            val pathIndex = host.paths.indexOfFirst { it.id == pathId }
+            if (pathIndex == -1) {
+                call.respond(HttpStatusCode.NotFound, ProxyActionResult(false, "Path route not found"))
+                return@post
+            }
+            val pathRoute = host.paths[pathIndex]
+            val updatedPaths = host.paths.toMutableList()
+            updatedPaths[pathIndex] = pathRoute.copy(enabled = !pathRoute.enabled)
+            val updatedHost = host.copy(paths = updatedPaths)
+            val result = ProxyService.updateHost(updatedHost)
+            call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.BadRequest)
+        }
+
         get("/stats") {
             call.respond(ProxyService.getStats())
         }
@@ -88,6 +189,28 @@ fun Route.proxyRoutes() {
                 ProxyActionResult(false, "Missing 'end' parameter")
             )
             call.respond(ProxyService.getStatsForDateRange(startDate, endDate))
+        }
+
+        post("/stats/history/{date}/reprocess") {
+            val date = call.requireParameter("date") ?: return@post
+            val stats = ProxyService.forceReprocessLogs(date)
+            if (stats != null) {
+                call.respond(HttpStatusCode.OK, ProxyActionResult(true, "Successfully reprocessed logs for date: $date"))
+            } else {
+                call.respond(HttpStatusCode.NotFound, ProxyActionResult(false, "Failed to reprocess logs for date: $date"))
+            }
+        }
+
+        post("/stats/history/update-all-days") {
+            val results = ProxyService.updateStatsForAllDaysInCurrentLog()
+            val successCount = results.values.count { it }
+            val failureCount = results.size - successCount
+            val message = "Processed ${results.size} dates. Success: $successCount, Failed: $failureCount"
+            call.respond(HttpStatusCode.OK, mapOf(
+                "success" to true,
+                "message" to message,
+                "results" to results
+            ))
         }
 
         get("/security/settings") {

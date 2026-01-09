@@ -8,6 +8,7 @@ import com.umeshsolanki.dockermanager.firewall.firewallRoutes
 import com.umeshsolanki.dockermanager.proxy.proxyRoutes
 import com.umeshsolanki.dockermanager.shell.ShellService
 import com.umeshsolanki.dockermanager.system.systemRoutes
+import com.umeshsolanki.dockermanager.cache.cacheRoutes
 import io.ktor.server.application.Application
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.*
@@ -35,6 +36,7 @@ fun Application.configureRouting() {
             firewallRoutes()
             proxyRoutes()
             emailRoutes()
+            cacheRoutes()
         }
 
         fileRoutes()

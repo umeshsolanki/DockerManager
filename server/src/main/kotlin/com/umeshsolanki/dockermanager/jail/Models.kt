@@ -20,7 +20,7 @@ data class BtmpStats(
     val topIps: List<TopIpEntry> = emptyList(),
     val recentFailures: List<BtmpEntry> = emptyList(),
     val lastUpdated: Long,
-    val jailedIps: List<String> = emptyList(),
+    val jailedIps: List<JailedIP> = emptyList(),
     val autoJailEnabled: Boolean,
     val jailThreshold: Int,
     val jailDurationMinutes: Int,

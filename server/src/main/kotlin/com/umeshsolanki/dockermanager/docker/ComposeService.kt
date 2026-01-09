@@ -37,10 +37,18 @@ class ComposeServiceImpl : IComposeService {
 
     override fun composeUp(filePath: String): ComposeResult {
         val file = File(filePath)
-        if (!file.exists()) return ComposeResult(false, "File not found")
+        if (!file.exists()) return ComposeResult(false, "File not found: $filePath")
 
         return try {
-            val process = ProcessBuilder("docker", "compose", "-f", filePath, "up", "-d")
+            // Use AppConfig.dockerComposeCommand which handles different compose command formats
+            val composeCmd = AppConfig.dockerComposeCommand
+            val process = if (composeCmd.contains("docker compose") || composeCmd == "docker compose") {
+                // New docker compose plugin format
+                ProcessBuilder("docker", "compose", "-f", filePath, "up", "-d")
+            } else {
+                // Legacy docker-compose format
+                ProcessBuilder(composeCmd, "-f", filePath, "up", "-d")
+            }
                 .directory(file.parentFile)
                 .redirectErrorStream(true)
                 .start()
@@ -51,7 +59,7 @@ class ComposeServiceImpl : IComposeService {
             ComposeResult(success, output.ifBlank { if (success) "Up" else "Failed to start" })
         } catch (e: Exception) {
             e.printStackTrace()
-            ComposeResult(false, e.message ?: "Unknown error")
+            ComposeResult(false, "Error: ${e.message ?: "Unknown error"}. Command: ${AppConfig.dockerComposeCommand}")
         }
     }
 

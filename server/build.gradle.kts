@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.umeshsolanki.dockermanager"
-version = "3.0.0"
+version = "3.1.0"
 
 application {
     mainClass.set("com.umeshsolanki.dockermanager.ApplicationKt")
@@ -61,6 +61,10 @@ dependencies {
     implementation(libs.docker.java.transport)
     implementation(libs.firebase.admin)
     implementation(libs.jakarta.mail)
+    
+    // Redis for caching
+    implementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
+    implementation("org.slf4j:slf4j-api:2.0.9")
     testImplementation(libs.ktor.serverTestHost)
     testImplementation(libs.kotlin.testJunit)
 }

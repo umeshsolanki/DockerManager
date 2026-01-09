@@ -195,6 +195,19 @@ export interface IptablesRule {
   extra: string;
 }
 
+export interface PathRoute {
+  id: string;
+  path: string;
+  target: string;
+  websocketEnabled: boolean;
+  allowedIps?: string[];
+  stripPrefix: boolean;
+  customConfig?: string;
+  enabled?: boolean;
+  name?: string;
+  order?: number;
+}
+
 export interface ProxyHost {
   id: string;
   domain: string;
@@ -205,6 +218,7 @@ export interface ProxyHost {
   hstsEnabled: boolean;
   customSslPath?: string;
   allowedIps?: string[];
+  paths?: PathRoute[];
   createdAt: number;
 }
 
@@ -387,7 +401,7 @@ export interface EmailUserDetail {
   quotaCount?: EmailQuota;
 }
 
-export type Screen = 'Dashboard' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Files' | 'Settings' | 'Security' | 'Analytics';
+export type Screen = 'Dashboard' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Files' | 'Settings' | 'Security' | 'Analytics' | 'Redis';
 
 
 export interface AuthRequest {
@@ -436,6 +450,23 @@ export interface EmailTestResult {
   success: boolean;
   message: string;
   logs: string[];
+}
+
+export interface RedisConfig {
+  enabled: boolean;
+  host: string;
+  port: number;
+  password?: string | null;
+  database: number;
+  ssl: boolean;
+  timeout: number;
+}
+
+export interface RedisStatus {
+  enabled: boolean;
+  connected: boolean;
+  host: string;
+  port: number;
 }
 
 

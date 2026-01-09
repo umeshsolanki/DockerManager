@@ -8,6 +8,7 @@ import com.umeshsolanki.dockermanager.utils.JsonPersistence
 import com.umeshsolanki.dockermanager.utils.ResourceLoader
 import com.umeshsolanki.dockermanager.utils.CommandExecutor
 import com.umeshsolanki.dockermanager.proxy.IpFilterUtils
+import com.umeshsolanki.dockermanager.cache.CacheService
 import kotlinx.coroutines.*
 import java.io.File
 import java.util.*
@@ -43,6 +44,8 @@ interface IProxyService {
     fun getHistoricalStats(date: String): DailyProxyStats?
     fun listAvailableDates(): List<String>
     fun getStatsForDateRange(startDate: String, endDate: String): List<DailyProxyStats>
+    fun forceReprocessLogs(date: String): DailyProxyStats?
+    fun updateStatsForAllDaysInCurrentLog(): Map<String, Boolean>
 }
 
 class ProxyServiceImpl(
@@ -101,6 +104,9 @@ class ProxyServiceImpl(
     private val commandExecutor = CommandExecutor(loggerName = ProxyServiceImpl::class.java.name)
     private val analyticsPersistence = AnalyticsPersistenceService()
     private var lastResetDate: String? = null
+    
+    // Cache key prefix for historical stats
+    private val CACHE_KEY_PREFIX = "proxy:historical:stats:"
 
     override fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>) {
         AppConfig.updateProxySecuritySettings(enabled, thresholdNon200, rules)
@@ -149,6 +155,9 @@ class ProxyServiceImpl(
                         analyticsPersistence.saveDailyStats(yesterdayStats, lastResetDate)
                         logger.info("Saved daily stats for $lastResetDate")
                         
+                        // Rotate log file: copy access.log to access_YYYY-MM-DD.log and truncate
+                        rotateAccessLog(lastResetDate!!)
+                        
                         // Reset counters
                         resetDailyStats()
                         logger.info("Reset daily stats for $today")
@@ -159,6 +168,13 @@ class ProxyServiceImpl(
                         lastResetDate = today
                     }
                     
+                    // If date is today, persist current stats (update existing stats file)
+                    if (lastResetDate == today) {
+                        val currentStats = cachedStats
+                        analyticsPersistence.saveDailyStats(currentStats, today)
+                        logger.debug("Updated daily stats for $today")
+                    }
+                    
                     // Check every hour
                     delay(3600000) // 1 hour
                 } catch (e: Exception) {
@@ -166,6 +182,35 @@ class ProxyServiceImpl(
                     delay(3600000) // Fallback delay
                 }
             }
+        }
+    }
+    
+    /**
+     * Rotate access.log by copying it to access_YYYY-MM-DD.log and truncating the original
+     */
+    private fun rotateAccessLog(date: String) {
+        try {
+            if (!logFile.exists() || logFile.length() == 0L) {
+                logger.debug("Access log file does not exist or is empty, skipping rotation")
+                return
+            }
+            
+            val logDir = logFile.parentFile
+            val rotatedLogFile = File(logDir, "access_$date.log")
+            
+            // Copy access.log to access_YYYY-MM-DD.log
+            logFile.copyTo(rotatedLogFile, overwrite = true)
+            logger.info("Copied access.log to ${rotatedLogFile.name}")
+            
+            // Truncate access.log
+            logFile.writeText("")
+            logger.info("Truncated access.log")
+            
+            // Reset lastProcessedOffset since we've rotated the log
+            lastProcessedOffset = 0L
+            
+        } catch (e: Exception) {
+            logger.error("Failed to rotate access log for date $date", e)
         }
     }
 
@@ -330,8 +375,43 @@ class ProxyServiceImpl(
 
     override fun listHosts(): List<ProxyHost> = loadHosts()
 
+    private fun validatePathRoute(pathRoute: PathRoute): Pair<Boolean, String> {
+        if (pathRoute.path.isBlank()) {
+            return false to "Path cannot be empty"
+        }
+        if (pathRoute.target.isBlank()) {
+            return false to "Target URL cannot be empty"
+        }
+        // Validate target URL format
+        try {
+            val uri = java.net.URI(pathRoute.target)
+            if (uri.scheme == null || uri.host == null) {
+                return false to "Target URL must include scheme and host (e.g., http://backend:8080)"
+            }
+        } catch (e: Exception) {
+            return false to "Invalid target URL format: ${e.message}"
+        }
+        return true to ""
+    }
+
+    private fun validateHostPaths(paths: List<PathRoute>): Pair<Boolean, String> {
+        for (path in paths) {
+            val validation = validatePathRoute(path)
+            if (!validation.first) {
+                return false to "Invalid path route '${path.name ?: path.path}': ${validation.second}"
+            }
+        }
+        return true to ""
+    }
+
     override fun createHost(host: ProxyHost): Pair<Boolean, String> {
         return try {
+            // Validate paths
+            val pathValidation = validateHostPaths(host.paths)
+            if (!pathValidation.first) {
+                return pathValidation
+            }
+            
             val hosts = loadHosts()
             val newHost = if (host.id.isEmpty()) host.copy(id = UUID.randomUUID().toString()) else host
             hosts.add(newHost)
@@ -368,6 +448,12 @@ class ProxyServiceImpl(
 
     override fun updateHost(host: ProxyHost): Pair<Boolean, String> {
         return try {
+            // Validate paths
+            val pathValidation = validateHostPaths(host.paths)
+            if (!pathValidation.first) {
+                return pathValidation
+            }
+            
             val hosts = loadHosts()
             val index = hosts.indexOfFirst { it.id == host.id }
             if (index == -1) return false to "Host not found"
@@ -527,6 +613,9 @@ class ProxyServiceImpl(
             host.allowedIps.joinToString("\n        ") { "allow $it;" } + "\n        deny all;"
         } else ""
 
+        // Generate path-based location blocks
+        val pathLocations = generatePathLocations(host.paths, wsConfig)
+
         // Generate HTTPS server block if SSL is enabled
         val sslConfig = if (host.ssl) {
             val (hostCert, hostKey) = resolveSslCertPaths(host)
@@ -558,7 +647,8 @@ class ProxyServiceImpl(
                 "hstsHeader" to hstsHeader,
                 "target" to host.target,
                 "websocketConfig" to wsConfig,
-                "ipRestrictions" to ipConfig
+                "ipRestrictions" to ipConfig,
+                "pathLocations" to pathLocations
             ))
         } else ""
 
@@ -582,7 +672,8 @@ class ProxyServiceImpl(
         val httpConfig = ResourceLoader.replacePlaceholders(httpTemplate, mapOf(
             "domain" to host.domain,
             "httpRedirect" to httpRedirect,
-            "httpProxyConfig" to httpProxyConfig
+            "httpProxyConfig" to httpProxyConfig,
+            "pathLocations" to pathLocations
         ))
 
         val config = "$httpConfig\n\n$sslConfig".trim()
@@ -593,6 +684,68 @@ class ProxyServiceImpl(
         } catch (e: Exception) {
             logger.error("Failed to generate nginx config for ${host.domain}", e)
             return false to "Failed to write config: ${e.message}"
+        }
+    }
+
+    private fun generatePathLocations(paths: List<PathRoute>, defaultWsConfig: String): String {
+        // Filter out disabled paths
+        val enabledPaths = paths.filter { it.enabled }
+        if (enabledPaths.isEmpty()) return ""
+
+        // Ensure all paths start with /
+        val normalizedPaths = enabledPaths.map { route ->
+            val normalizedPath = if (route.path.startsWith("/")) route.path else "/${route.path}"
+            route.copy(path = normalizedPath)
+        }
+
+        // Sort paths by order (higher first), then by specificity (longer/more specific paths first)
+        // This ensures paths with explicit ordering are matched first, then by specificity
+        val sortedPaths = normalizedPaths.sortedWith(
+            compareByDescending<PathRoute> { it.order }
+                .thenByDescending { it.path.length }
+        )
+
+        return sortedPaths.joinToString("\n\n") { pathRoute ->
+            // Load websocket config if enabled for this path
+            val wsConfigRaw = if (pathRoute.websocketEnabled) {
+                ResourceLoader.loadResourceOrThrow("templates/proxy/websocket-config.conf")
+            } else ""
+            
+            val wsConfig = if (wsConfigRaw.isNotEmpty()) {
+                wsConfigRaw.lines().joinToString("\n        ") { it.trim() }
+            } else ""
+
+            // Generate IP restrictions for this path
+            val ipConfig = if (pathRoute.allowedIps.isNotEmpty()) {
+                pathRoute.allowedIps.joinToString("\n        ") { "allow $it;" } + "\n        deny all;"
+            } else ""
+
+            // Determine proxy_pass directive
+            val proxyPass = if (pathRoute.stripPrefix) {
+                // Remove the path prefix before forwarding
+                // e.g., /api -> http://backend:8080 (removes /api prefix)
+                val targetUrl = pathRoute.target.trimEnd('/')
+                "proxy_pass $targetUrl/;"
+            } else {
+                // Keep the path prefix
+                // e.g., /api -> http://backend:8080/api (keeps /api prefix)
+                val targetUrl = pathRoute.target.trimEnd('/')
+                "proxy_pass $targetUrl\$request_uri;"
+            }
+
+            // Custom config for this path
+            val customConfig = pathRoute.customConfig?.let { config ->
+                config.lines().joinToString("\n        ") { it.trim() }
+            } ?: ""
+
+            val locationTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/location-block.conf")
+            ResourceLoader.replacePlaceholders(locationTemplate, mapOf(
+                "path" to pathRoute.path,
+                "proxyPass" to proxyPass,
+                "websocketConfig" to wsConfig,
+                "ipRestrictions" to ipConfig,
+                "customConfig" to customConfig
+            ))
         }
     }
 
@@ -933,9 +1086,20 @@ class ProxyServiceImpl(
     }
 
     override fun getHistoricalStats(date: String): DailyProxyStats? {
-        // First try to load existing stats
+        val cacheKey = "$CACHE_KEY_PREFIX$date"
+        
+        // Check cache first (Redis or in-memory)
+        CacheService.get<DailyProxyStats>(cacheKey)?.let {
+            logger.debug("Returning cached historical stats for $date")
+            return it
+        }
+        
+        // Try to load from saved file
         val existingStats = analyticsPersistence.loadDailyStats(date)
         if (existingStats != null) {
+            // Cache it for future requests (24 hour TTL)
+            CacheService.set(cacheKey, existingStats, ttlSeconds = 86400)
+            logger.debug("Loaded historical stats for $date from file and cached")
             return existingStats
         }
         
@@ -960,17 +1124,50 @@ class ProxyServiceImpl(
                 ),
                 date
             )
-            logger.info("Created historical stats for $date from logs")
+            // Cache the processed stats (24 hour TTL)
+            CacheService.set(cacheKey, processedStats, ttlSeconds = 86400)
+            logger.info("Created and cached historical stats for $date from logs")
         }
         
         return processedStats
     }
     
     /**
+     * Get the appropriate log file for a specific date
+     * Checks rotated log files first (access_YYYY-MM-DD.log), then falls back to current access.log
+     */
+    private fun getLogFileForDate(targetDate: String): File? {
+        val logDir = logFile.parentFile
+        val rotatedLogFile = File(logDir, "access_$targetDate.log")
+        
+        // Check if rotated log file exists for this date
+        if (rotatedLogFile.exists() && rotatedLogFile.length() > 0) {
+            logger.info("Using rotated log file for date $targetDate: ${rotatedLogFile.name}")
+            return rotatedLogFile
+        }
+        
+        // Check if it's today - use current log file
+        val today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        if (targetDate == today && logFile.exists()) {
+            logger.info("Using current log file for today's date: ${logFile.name}")
+            return logFile
+        }
+        
+        // Check current log file as fallback
+        if (logFile.exists() && logFile.length() > 0) {
+            logger.info("Using current log file as fallback for date $targetDate: ${logFile.name}")
+            return logFile
+        }
+        
+        logger.warn("No log file found for date $targetDate")
+        return null
+    }
+    
+    /**
      * Process log file for a specific date and generate stats
      */
     private fun processLogsForDate(targetDate: String): DailyProxyStats? {
-        if (!logFile.exists()) {
+        val fileToProcess = getLogFileForDate(targetDate) ?: run {
             logger.warn("Log file does not exist, cannot process historical stats for $targetDate")
             return null
         }
@@ -1002,7 +1199,7 @@ class ProxyServiceImpl(
         
         return try {
             // Read entire log file (or check rotated logs)
-            java.io.RandomAccessFile(logFile, "r").use { raf ->
+            java.io.RandomAccessFile(fileToProcess, "r").use { raf ->
                 raf.seek(0) // Start from beginning
                 var line: String? = raf.readLine()
                 var processedCount = 0L
@@ -1090,6 +1287,163 @@ class ProxyServiceImpl(
             logger.error("Error processing logs for date $targetDate", e)
             null
         }
+    }
+    
+    /**
+     * Force reprocess logs for a specific date, even if stats already exist
+     * This will regenerate stats from the log files and overwrite existing stats
+     */
+    override fun forceReprocessLogs(date: String): DailyProxyStats? {
+        logger.info("Force reprocessing logs for date: $date")
+        
+        // Validate date format
+        try {
+            java.time.LocalDate.parse(date, java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        } catch (e: Exception) {
+            logger.error("Invalid date format: $date", e)
+            return null
+        }
+        
+        // Process logs for the date
+        val processedStats = processLogsForDate(date)
+        
+        if (processedStats != null) {
+            // Save/overwrite the stats
+            analyticsPersistence.saveDailyStats(
+                ProxyStats(
+                    totalHits = processedStats.totalHits,
+                    hitsByStatus = processedStats.hitsByStatus,
+                    hitsOverTime = processedStats.hitsOverTime,
+                    topPaths = processedStats.topPaths,
+                    recentHits = emptyList(),
+                    hitsByDomain = processedStats.hitsByDomain,
+                    topIps = processedStats.topIps.map { GenericHitEntry(it.label, it.count) },
+                    topIpsWithErrors = processedStats.topIpsWithErrors.map { GenericHitEntry(it.label, it.count) },
+                    topUserAgents = processedStats.topUserAgents.map { GenericHitEntry(it.label, it.count) },
+                    topReferers = processedStats.topReferers.map { GenericHitEntry(it.label, it.count) },
+                    topMethods = processedStats.topMethods.map { GenericHitEntry(it.label, it.count) }
+                ),
+                date
+            )
+            logger.info("Force reprocessed and saved stats for $date")
+        } else {
+            logger.warn("Failed to process logs for date $date")
+        }
+        
+        return processedStats
+    }
+    
+    /**
+     * Extract all unique dates from the current access.log file (scans entire file)
+     */
+    private fun extractAllDatesFromCurrentLog(): Set<String> {
+        if (!logFile.exists()) return emptySet()
+        
+        val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
+        val dateFormatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
+        val dates = mutableSetOf<String>()
+        
+        return try {
+            java.io.RandomAccessFile(logFile, "r").use { raf ->
+                raf.seek(0)
+                var line: String? = raf.readLine()
+                
+                while (line != null) {
+                    val trimmedLine = line.trim()
+                    if (trimmedLine.isNotEmpty()) {
+                        // Try to extract date from log line
+                        val dateMatch = """\[([^\]]+)\]""".toRegex().find(trimmedLine)
+                        dateMatch?.let { match ->
+                            val dateStr = match.groupValues[1]
+                            try {
+                                val timestamp = dateFormat.parse(dateStr)
+                                val logDate = java.time.LocalDate.ofInstant(
+                                    timestamp.toInstant(),
+                                    java.time.ZoneId.systemDefault()
+                                )
+                                dates.add(logDate.format(dateFormatter))
+                            } catch (e: Exception) {
+                                // Ignore parse errors
+                            }
+                        }
+                    }
+                    line = raf.readLine()
+                }
+            }
+            logger.info("Found ${dates.size} unique dates in current access.log: ${dates.sorted().joinToString(", ")}")
+            dates
+        } catch (e: Exception) {
+            logger.error("Error extracting all dates from logs", e)
+            emptySet()
+        }
+    }
+    
+    /**
+     * Update stats for all days found in the current access.log file
+     * Processes logs for each unique date and saves stats
+     */
+    override fun updateStatsForAllDaysInCurrentLog(): Map<String, Boolean> {
+        logger.info("Starting to update stats for all days in current access.log")
+        
+        if (!logFile.exists() || logFile.length() == 0L) {
+            logger.warn("Access log file does not exist or is empty")
+            return emptyMap()
+        }
+        
+        // Extract all unique dates from current log file
+        val dates = extractAllDatesFromCurrentLog()
+        
+        if (dates.isEmpty()) {
+            logger.warn("No dates found in current access.log")
+            return emptyMap()
+        }
+        
+        val results = mutableMapOf<String, Boolean>()
+        
+        // Process each date
+        dates.forEach { date ->
+            try {
+                logger.info("Processing stats for date: $date")
+                val processedStats = processLogsForDate(date)
+                
+                if (processedStats != null) {
+                    // Save/update the stats
+                    analyticsPersistence.saveDailyStats(
+                        ProxyStats(
+                            totalHits = processedStats.totalHits,
+                            hitsByStatus = processedStats.hitsByStatus,
+                            hitsOverTime = processedStats.hitsOverTime,
+                            topPaths = processedStats.topPaths,
+                            recentHits = emptyList(),
+                            hitsByDomain = processedStats.hitsByDomain,
+                            topIps = processedStats.topIps.map { GenericHitEntry(it.label, it.count) },
+                            topIpsWithErrors = processedStats.topIpsWithErrors.map { GenericHitEntry(it.label, it.count) },
+                            topUserAgents = processedStats.topUserAgents.map { GenericHitEntry(it.label, it.count) },
+                            topReferers = processedStats.topReferers.map { GenericHitEntry(it.label, it.count) },
+                            topMethods = processedStats.topMethods.map { GenericHitEntry(it.label, it.count) }
+                        ),
+                        date
+                    )
+                    // Cache the processed stats (24 hour TTL)
+                    val cacheKey = "$CACHE_KEY_PREFIX$date"
+                    CacheService.set(cacheKey, processedStats, ttlSeconds = 86400)
+                    results[date] = true
+                    logger.info("Successfully updated stats for date: $date (${processedStats.totalHits} hits)")
+                } else {
+                    results[date] = false
+                    logger.warn("Failed to process stats for date: $date")
+                }
+            } catch (e: Exception) {
+                logger.error("Error processing stats for date: $date", e)
+                results[date] = false
+            }
+        }
+        
+        val successCount = results.values.count { it }
+        val failureCount = results.size - successCount
+        logger.info("Completed updating stats for all days. Success: $successCount, Failed: $failureCount")
+        
+        return results
     }
 
     override fun listAvailableDates(): List<String> {
@@ -1222,5 +1576,7 @@ object ProxyService {
     fun getHistoricalStats(date: String) = service.getHistoricalStats(date)
     fun listAvailableDates() = service.listAvailableDates()
     fun getStatsForDateRange(startDate: String, endDate: String) = service.getStatsForDateRange(startDate, endDate)
+    fun forceReprocessLogs(date: String) = service.forceReprocessLogs(date)
+    fun updateStatsForAllDaysInCurrentLog() = service.updateStatsForAllDaysInCurrentLog()
 }
 

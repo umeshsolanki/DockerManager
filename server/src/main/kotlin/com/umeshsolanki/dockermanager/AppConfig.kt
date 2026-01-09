@@ -4,6 +4,8 @@ import com.umeshsolanki.dockermanager.proxy.ProxyJailRule
 import com.umeshsolanki.dockermanager.constants.*
 import com.umeshsolanki.dockermanager.proxy.IpFilterUtils
 import com.umeshsolanki.dockermanager.utils.JsonPersistence
+import com.umeshsolanki.dockermanager.cache.RedisConfig
+import com.umeshsolanki.dockermanager.cache.CacheService
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
@@ -38,7 +40,10 @@ data class AppSettings(
     // Proxy Specific Security
     val proxyJailEnabled: Boolean = true,
     val proxyJailThresholdNon200: Int = 20,
-    val proxyJailRules: List<ProxyJailRule> = emptyList()
+    val proxyJailRules: List<ProxyJailRule> = emptyList(),
+    
+    // Redis Cache Configuration
+    val redisConfig: RedisConfig = RedisConfig()
 )
 
 object AppConfig {
@@ -89,10 +94,14 @@ object AppConfig {
             logger.info("Loading settings from ${settingsFile.absolutePath}")
             val loaded = jsonPersistence.load()
             logger.debug("Settings loaded successfully")
+            // Initialize cache service with loaded Redis config
+            CacheService.initialize(loaded.redisConfig)
             loaded
         } catch (e: Exception) {
             logger.error("Failed to load settings (corrupted?), using defaults", e)
-            AppSettings()
+            val defaults = AppSettings()
+            CacheService.initialize(defaults.redisConfig)
+            defaults
         }
     }
 
@@ -146,6 +155,14 @@ object AppConfig {
     val jailSettings: AppSettings get() = _settings
     val proxyStatsSettings: AppSettings get() = _settings
     val proxySecuritySettings: AppSettings get() = _settings
+    
+    fun updateRedisConfig(config: RedisConfig) {
+        _settings = _settings.copy(redisConfig = config)
+        saveSettings()
+        CacheService.updateConfig(config)
+    }
+    
+    val redisConfig: RedisConfig get() = _settings.redisConfig
 
     private fun saveSettings() {
         try {

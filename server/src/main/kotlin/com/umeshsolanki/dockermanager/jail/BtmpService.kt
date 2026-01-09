@@ -299,7 +299,7 @@ class BtmpServiceImpl(
             },
             recentFailures = recentFailuresList.take(200).toList(),
             lastUpdated = System.currentTimeMillis(),
-            jailedIps = jailedIps.map { it.ip },
+            jailedIps = jailedIps.toList(),
             autoJailEnabled = autoJailEnabled,
             jailThreshold = jailThreshold,
             jailDurationMinutes = jailDurationMinutes,

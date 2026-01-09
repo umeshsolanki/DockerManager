@@ -161,5 +161,18 @@ data class SaveComposeRequest(
     val content: String
 )
 
+@Serializable
+data class ComposeFile(
+    val path: String,
+    val name: String,
+    val status: String
+)
+
+@Serializable
+data class ComposeResult(
+    val success: Boolean,
+    val message: String
+)
+
 
 

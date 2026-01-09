@@ -1,6 +1,6 @@
 'use client';
 
-import { LayoutDashboard, Database, Layers, Settings, Lock, Network, HardDrive, FileText, Shield, Globe, Box, Mail, LogOut, Activity } from 'lucide-react';
+import { LayoutDashboard, Database, Layers, Settings, Lock, Network, HardDrive, FileText, Shield, Globe, Box, Mail, LogOut, Activity, Zap } from 'lucide-react';
 
 import { Screen } from '@/lib/types';
 import BatteryIndicator from './BatteryIndicator';
@@ -23,6 +23,7 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
         { label: 'Proxy', icon: <Globe size={20} /> },
         { label: 'Emails', icon: <Mail size={20} /> },
         { label: 'Files', icon: <FileText size={20} /> },
+        { label: 'Redis', icon: <Zap size={20} /> },
     ];
 
 

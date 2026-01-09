@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Globe, Plus, Search, RefreshCw, Trash2, Power, Server, ExternalLink, FileKey, Pencil, Layers, Database, Lock, Network, Activity, ShieldCheck } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { ProxyHost, SSLCertificate } from '@/lib/types';
+import { ProxyHost, PathRoute, SSLCertificate } from '@/lib/types';
 import { toast } from 'sonner';
 import Editor from '@monaco-editor/react';
 
@@ -156,10 +156,20 @@ export default function ProxyScreen() {
                                                     <ExternalLink size={12} className="shrink-0" />
                                                     <span className="font-mono truncate">{host.target}</span>
                                                 </div>
-                                                <div className="flex gap-1.5 mt-1.5">
+                                                <div className="flex gap-1.5 mt-1.5 flex-wrap">
                                                     {host.hstsEnabled && <span className="text-[8px] bg-purple-500/10 text-purple-500 px-1 py-0.5 rounded font-bold uppercase">HSTS</span>}
                                                     {host.websocketEnabled && <span className="text-[8px] bg-blue-500/10 text-blue-500 px-1 py-0.5 rounded font-bold uppercase">WS</span>}
                                                     {host.allowedIps && host.allowedIps.length > 0 && <span className="text-[8px] bg-amber-500/10 text-amber-500 px-1 py-0.5 rounded font-bold uppercase flex items-center gap-0.5"><ShieldCheck size={8} /> IP RESTRICTED</span>}
+                                                    {host.paths && host.paths.length > 0 && (
+                                                        <span className={`text-[8px] px-1 py-0.5 rounded font-bold uppercase flex items-center gap-0.5 ${
+                                                            host.paths.filter(p => p.enabled !== false).length === host.paths.length
+                                                                ? 'bg-indigo-500/10 text-indigo-500'
+                                                                : 'bg-orange-500/10 text-orange-500'
+                                                        }`}>
+                                                            <Layers size={8} /> 
+                                                            {host.paths.filter(p => p.enabled !== false).length}/{host.paths.length} PATH{host.paths.length > 1 ? 'S' : ''}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -473,6 +483,9 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [allowedIps, setAllowedIps] = useState<string[]>(initialHost?.allowedIps || []);
     const [newIp, setNewIp] = useState('');
+    const [paths, setPaths] = useState<PathRoute[]>(initialHost?.paths || []);
+    const [isPathModalOpen, setIsPathModalOpen] = useState(false);
+    const [editingPath, setEditingPath] = useState<PathRoute | null>(null);
 
     useEffect(() => {
         DockerClient.listProxyCertificates().then(setCerts);
@@ -492,6 +505,7 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
             hstsEnabled: sslEnabled ? hstsEnabled : false,
             customSslPath: (sslEnabled && selectedCert) ? selectedCert : undefined,
             allowedIps,
+            paths: paths.length > 0 ? paths : undefined,
             createdAt: initialHost?.createdAt || Date.now()
         };
 
@@ -656,6 +670,69 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
                         </div>
                     </div>
 
+                    {/* Path Routes */}
+                    <div className="pt-2 border-t border-outline/10">
+                        <div className="flex items-center justify-between mb-2">
+                            <label className="block text-xs font-bold text-on-surface-variant uppercase ml-1">Path Routes</label>
+                            <button
+                                type="button"
+                                onClick={() => setIsPathModalOpen(true)}
+                                className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
+                            >
+                                <Plus size={12} />
+                                Add Path
+                            </button>
+                        </div>
+                        {paths.length > 0 ? (
+                            <div className="space-y-2 max-h-32 overflow-y-auto no-scrollbar">
+                                {paths.map(path => (
+                                    <div key={path.id} className={`flex items-center justify-between bg-surface/40 border rounded-lg p-2 group ${path.enabled !== false ? 'border-outline/10' : 'border-red-500/20 opacity-60'}`}>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                {path.name && (
+                                                    <>
+                                                        <span className="text-xs font-bold text-on-surface">{path.name}</span>
+                                                        <span className="text-[10px] text-on-surface-variant">•</span>
+                                                    </>
+                                                )}
+                                                <span className="text-xs font-mono font-bold text-primary">{path.path}</span>
+                                                <span className="text-[10px] text-on-surface-variant">→</span>
+                                                <span className="text-[10px] font-mono truncate text-on-surface-variant">{path.target}</span>
+                                                {path.enabled === false && <span className="text-[8px] bg-red-500/10 text-red-500 px-1 py-0.5 rounded font-bold uppercase">DISABLED</span>}
+                                                {path.stripPrefix && <span className="text-[8px] bg-orange-500/10 text-orange-500 px-1 py-0.5 rounded font-bold uppercase">STRIP</span>}
+                                                {path.websocketEnabled && <span className="text-[8px] bg-blue-500/10 text-blue-500 px-1 py-0.5 rounded font-bold uppercase">WS</span>}
+                                                {path.order !== undefined && path.order !== 0 && <span className="text-[8px] bg-purple-500/10 text-purple-500 px-1 py-0.5 rounded font-bold uppercase">ORDER: {path.order}</span>}
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setEditingPath(path);
+                                                    setIsPathModalOpen(true);
+                                                }}
+                                                className="p-1 text-on-surface-variant hover:text-blue-500 transition-colors"
+                                                title="Edit"
+                                            >
+                                                <Pencil size={12} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setPaths(paths.filter(p => p.id !== path.id))}
+                                                className="p-1 text-on-surface-variant hover:text-red-500 transition-colors"
+                                                title="Delete"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <span className="text-[10px] text-on-surface-variant italic">No custom paths (default route: / → {target})</span>
+                        )}
+                    </div>
+
                     <div className="flex gap-2 pt-2">
                         <button
                             type="button"
@@ -670,6 +747,247 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
                             className="flex-1 bg-primary text-on-primary px-4 py-2 rounded-xl font-bold text-sm shadow-lg shadow-primary/20"
                         >
                             {initialHost ? 'Save Changes' : 'Create Host'}
+                        </button>
+                    </div>
+                </form>
+
+                {/* Path Route Modal - rendered inside ProxyHostModal */}
+                {isPathModalOpen && (
+                    <PathRouteModal
+                        hostId={initialHost?.id || ''}
+                        initialPath={editingPath || undefined}
+                        onClose={() => {
+                            setIsPathModalOpen(false);
+                            setEditingPath(null);
+                        }}
+                        onSave={(path) => {
+                            if (editingPath) {
+                                setPaths(paths.map(p => p.id === path.id ? path : p));
+                            } else {
+                                setPaths([...paths, path]);
+                            }
+                            setIsPathModalOpen(false);
+                            setEditingPath(null);
+                        }}
+                    />
+                )}
+            </div>
+        </div>
+    );
+}
+
+function PathRouteModal({ 
+    onClose, 
+    onSave, 
+    initialPath, 
+    hostId 
+}: { 
+    onClose: () => void, 
+    onSave: (path: PathRoute) => void, 
+    initialPath?: PathRoute,
+    hostId: string
+}) {
+    const [path, setPath] = useState(initialPath?.path || '/');
+    const [target, setTarget] = useState(initialPath?.target || 'http://');
+    const [websocketEnabled, setWebsocketEnabled] = useState(initialPath?.websocketEnabled || false);
+    const [stripPrefix, setStripPrefix] = useState(initialPath?.stripPrefix || false);
+    const [allowedIps, setAllowedIps] = useState<string[]>(initialPath?.allowedIps || []);
+    const [newIp, setNewIp] = useState('');
+    const [customConfig, setCustomConfig] = useState(initialPath?.customConfig || '');
+    const [enabled, setEnabled] = useState(initialPath?.enabled !== undefined ? initialPath.enabled : true);
+    const [name, setName] = useState(initialPath?.name || '');
+    const [order, setOrder] = useState(initialPath?.order?.toString() || '0');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+
+        const pathData: PathRoute = {
+            id: initialPath?.id || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            path: path.startsWith('/') ? path : `/${path}`,
+            target,
+            websocketEnabled,
+            stripPrefix,
+            allowedIps: allowedIps.length > 0 ? allowedIps : undefined,
+            customConfig: customConfig.trim() || undefined,
+            enabled,
+            name: name.trim() || undefined,
+            order: parseInt(order) || 0
+        };
+
+        // Save path route - it will be included when the host is saved
+        onSave(pathData);
+        onClose();
+        setIsSubmitting(false);
+    };
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-surface border border-outline/20 rounded-2xl w-full max-w-md shadow-2xl p-5 max-h-[90vh] overflow-y-auto">
+                <h2 className="text-lg font-bold mb-4">{initialPath ? 'Edit Path Route' : 'Add Path Route'}</h2>
+                <form onSubmit={handleSubmit} className="space-y-3">
+                    <div>
+                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1 ml-1">Name (Optional)</label>
+                        <input
+                            type="text"
+                            placeholder="e.g. API Backend, Static Files"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2 focus:outline-none focus:border-primary text-sm"
+                        />
+                        <p className="text-[10px] text-on-surface-variant mt-1 ml-1">Display name for this path route</p>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1 ml-1">Path</label>
+                        <input
+                            required
+                            type="text"
+                            placeholder="e.g. /api, /static, /admin"
+                            value={path}
+                            onChange={(e) => setPath(e.target.value)}
+                            className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2 focus:outline-none focus:border-primary font-mono text-sm"
+                        />
+                        <p className="text-[10px] text-on-surface-variant mt-1 ml-1">Must start with /</p>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1 ml-1">Target URL</label>
+                        <input
+                            required
+                            type="text"
+                            placeholder="e.g. http://backend:8080"
+                            value={target}
+                            onChange={(e) => setTarget(e.target.value)}
+                            className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2 focus:outline-none focus:border-primary font-mono text-sm"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1 ml-1">Order/Priority</label>
+                        <input
+                            type="number"
+                            placeholder="0"
+                            value={order}
+                            onChange={(e) => setOrder(e.target.value)}
+                            className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2 focus:outline-none focus:border-primary font-mono text-sm"
+                        />
+                        <p className="text-[10px] text-on-surface-variant mt-1 ml-1">Higher numbers = higher priority (matched first)</p>
+                    </div>
+
+                    <div className="flex flex-col gap-2 pt-2 border-t border-outline/10">
+                        <div className="flex items-center gap-3 py-1">
+                            <input
+                                type="checkbox"
+                                id="path-enabled-toggle"
+                                checked={enabled}
+                                onChange={(e) => setEnabled(e.target.checked)}
+                                className="w-5 h-5 rounded border-outline/20 bg-white/5 checked:bg-green-500 accent-green-500"
+                            />
+                            <label htmlFor="path-enabled-toggle" className="text-sm font-medium cursor-pointer text-on-surface flex items-center gap-2">
+                                Enable Path Route
+                                <span className="text-[9px] bg-green-500/10 text-green-500 px-1 py-0.5 rounded font-bold uppercase">Active</span>
+                            </label>
+                        </div>
+
+                        <div className="flex items-center gap-3 py-1">
+                            <input
+                                type="checkbox"
+                                id="path-ws-toggle"
+                                checked={websocketEnabled}
+                                onChange={(e) => setWebsocketEnabled(e.target.checked)}
+                                className="w-5 h-5 rounded border-outline/20 bg-white/5 checked:bg-primary accent-primary"
+                            />
+                            <label htmlFor="path-ws-toggle" className="text-sm font-medium cursor-pointer text-on-surface">Enable Websockets</label>
+                        </div>
+
+                        <div className="flex items-center gap-3 py-1">
+                            <input
+                                type="checkbox"
+                                id="strip-prefix-toggle"
+                                checked={stripPrefix}
+                                onChange={(e) => setStripPrefix(e.target.checked)}
+                                className="w-5 h-5 rounded border-outline/20 bg-white/5 checked:bg-orange-500 accent-orange-500"
+                            />
+                            <label htmlFor="strip-prefix-toggle" className="text-sm font-medium cursor-pointer text-on-surface flex items-center gap-2">
+                                Strip Path Prefix
+                                <span className="text-[9px] bg-orange-500/10 text-orange-500 px-1 py-0.5 rounded font-bold uppercase">Remove /path before forwarding</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    {/* IP Restrictions */}
+                    <div className="pt-2 border-t border-outline/10">
+                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-2 ml-1">IP Restrictions (Optional)</label>
+                        <div className="flex gap-2 mb-2">
+                            <input
+                                type="text"
+                                placeholder="IP or CIDR"
+                                value={newIp}
+                                onChange={(e) => setNewIp(e.target.value)}
+                                className="flex-1 bg-white/5 border border-outline/20 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:border-primary"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        if (newIp.trim()) {
+                                            setAllowedIps([...allowedIps, newIp.trim()]);
+                                            setNewIp('');
+                                        }
+                                    }
+                                }}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (newIp.trim()) {
+                                        setAllowedIps([...allowedIps, newIp.trim()]);
+                                        setNewIp('');
+                                    }
+                                }}
+                                className="bg-primary/20 text-primary p-2 rounded-xl hover:bg-primary/30 transition-all"
+                            >
+                                <Plus size={16} />
+                            </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2 max-h-20 overflow-y-auto no-scrollbar p-1">
+                            {allowedIps.map(ip => (
+                                <div key={ip} className="flex items-center gap-2 bg-surface border border-outline/20 px-2 py-1 rounded-lg text-[10px] font-mono">
+                                    <span>{ip}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAllowedIps(allowedIps.filter(i => i !== ip))}
+                                        className="text-on-surface-variant hover:text-red-500 transition-colors"
+                                    >
+                                        <Plus size={10} className="rotate-45" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Custom Config */}
+                    <div className="pt-2 border-t border-outline/10">
+                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-2 ml-1">Custom Nginx Config (Optional)</label>
+                        <textarea
+                            value={customConfig}
+                            onChange={(e) => setCustomConfig(e.target.value)}
+                            placeholder="e.g. proxy_read_timeout 300s;&#10;proxy_connect_timeout 60s;"
+                            className="w-full bg-white/5 border border-outline/20 rounded-xl px-3 py-2 text-xs font-mono focus:outline-none focus:border-primary h-20 resize-none"
+                        />
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="flex-1 px-4 py-2 rounded-xl border border-outline/20 hover:bg-white/5 text-sm font-bold"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="flex-1 bg-primary text-on-primary px-4 py-2 rounded-xl font-bold text-sm shadow-lg shadow-primary/20"
+                        >
+                            {initialPath ? 'Save Changes' : 'Create Path'}
                         </button>
                     </div>
                 </form>
