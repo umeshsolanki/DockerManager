@@ -22,8 +22,8 @@ data class PathRoute(
 data class ProxyHost(
     val id: String = "",
     val domain: String,
-    val upstream: String,
-    val target: String = upstream,
+    val upstream: String? = null, // Optional: defaults to target if not provided
+    val target: String,
     val ssl: Boolean = false,
     val enabled: Boolean = true,
     val customConfig: String? = null,
@@ -32,7 +32,10 @@ data class ProxyHost(
     val customSslPath: String? = null,
     val hstsEnabled: Boolean = false,
     val paths: List<PathRoute> = emptyList() // Custom path-based routes
-)
+) {
+    // Computed property to get upstream, defaulting to target if not provided
+    val effectiveUpstream: String get() = upstream ?: target
+}
 
 @Serializable
 data class ProxyStats(

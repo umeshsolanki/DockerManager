@@ -546,11 +546,11 @@ class ProxyServiceImpl(
                         order = pathObj["order"]?.jsonPrimitive?.intOrNull ?: 0)
                 } ?: emptyList()
 
-                // Create migrated host with upstream field
+                // Create migrated host - set upstream to null if it equals target (to avoid redundancy)
                 val migratedHost = ProxyHost(
                     id = id,
                     domain = domain,
-                    upstream = upstream,
+                    upstream = if (upstream == target) null else upstream,
                     target = target.ifEmpty { upstream }, // Use upstream if target is empty
                     ssl = ssl,
                     enabled = enabled,
@@ -646,6 +646,39 @@ class ProxyServiceImpl(
 
     override fun createHost(host: ProxyHost): Pair<Boolean, String> {
         return try {
+            // Validate required fields
+            if (host.domain.isBlank()) {
+                return false to "Domain is required"
+            }
+            if (host.target.isBlank()) {
+                return false to "Target is required"
+            }
+
+            // Validate domain format (basic check)
+            if (!host.domain.matches(Regex("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"))) {
+                return false to "Invalid domain format"
+            }
+
+            // Validate upstream/target URL format (upstream defaults to target if not provided)
+            val effectiveUpstream = host.effectiveUpstream
+            try {
+                val upstreamUri = java.net.URI(effectiveUpstream)
+                if (upstreamUri.scheme == null || upstreamUri.host == null) {
+                    return false to "Upstream must include scheme and host (e.g., http://backend:8080)"
+                }
+            } catch (e: Exception) {
+                return false to "Invalid upstream URL format: ${e.message}"
+            }
+
+            try {
+                val targetUri = java.net.URI(host.target)
+                if (targetUri.scheme == null || targetUri.host == null) {
+                    return false to "Target must include scheme and host (e.g., http://backend:8080)"
+                }
+            } catch (e: Exception) {
+                return false to "Invalid target URL format: ${e.message}"
+            }
+
             // Validate paths
             val pathValidation = validateHostPaths(host.paths)
             if (!pathValidation.first) {
@@ -653,6 +686,12 @@ class ProxyServiceImpl(
             }
 
             val hosts = loadHosts()
+            
+            // Check for duplicate domain
+            if (hosts.any { it.domain == host.domain && it.id != host.id }) {
+                return false to "A proxy host with domain '${host.domain}' already exists"
+            }
+
             val newHost =
                 if (host.id.isEmpty()) host.copy(id = UUID.randomUUID().toString()) else host
             hosts.add(newHost)
@@ -679,8 +718,17 @@ class ProxyServiceImpl(
             val host = hosts.find { it.id == id } ?: return false
             File(configDir, "${host.domain}.conf").delete()
             hosts.remove(host)
-            saveHosts(hosts)
-            reloadNginx()
+            try {
+                saveHosts(hosts)
+            } catch (e: Exception) {
+                logger.error("Failed to save hosts when deleting", e)
+                return false
+            }
+            val reloadResult = reloadNginx()
+            if (!reloadResult.first) {
+                logger.error("Failed to reload nginx when deleting host: ${reloadResult.second}")
+                return false
+            }
             true
         } catch (e: Exception) {
             logger.error("Error deleting host $id", e)
@@ -690,6 +738,39 @@ class ProxyServiceImpl(
 
     override fun updateHost(host: ProxyHost): Pair<Boolean, String> {
         return try {
+            // Validate required fields
+            if (host.domain.isBlank()) {
+                return false to "Domain is required"
+            }
+            if (host.target.isBlank()) {
+                return false to "Target is required"
+            }
+
+            // Validate domain format (basic check)
+            if (!host.domain.matches(Regex("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"))) {
+                return false to "Invalid domain format"
+            }
+
+            // Validate upstream/target URL format (upstream defaults to target if not provided)
+            val effectiveUpstream = host.effectiveUpstream
+            try {
+                val upstreamUri = java.net.URI(effectiveUpstream)
+                if (upstreamUri.scheme == null || upstreamUri.host == null) {
+                    return false to "Upstream must include scheme and host (e.g., http://backend:8080)"
+                }
+            } catch (e: Exception) {
+                return false to "Invalid upstream URL format: ${e.message}"
+            }
+
+            try {
+                val targetUri = java.net.URI(host.target)
+                if (targetUri.scheme == null || targetUri.host == null) {
+                    return false to "Target must include scheme and host (e.g., http://backend:8080)"
+                }
+            } catch (e: Exception) {
+                return false to "Invalid target URL format: ${e.message}"
+            }
+
             // Validate paths
             val pathValidation = validateHostPaths(host.paths)
             if (!pathValidation.first) {
@@ -699,6 +780,11 @@ class ProxyServiceImpl(
             val hosts = loadHosts()
             val index = hosts.indexOfFirst { it.id == host.id }
             if (index == -1) return false to "Host not found"
+
+            // Check for duplicate domain (excluding current host)
+            if (hosts.any { it.domain == host.domain && it.id != host.id }) {
+                return false to "A proxy host with domain '${host.domain}' already exists"
+            }
 
             val oldHost = hosts[index]
             // If domain changed or disabled, remove old config
@@ -718,8 +804,17 @@ class ProxyServiceImpl(
                     return true to "Host updated. Requesting SSL certificate in background..."
                 }
             } else {
-                saveHosts(hosts)
-                reloadNginx()
+                try {
+                    saveHosts(hosts)
+                } catch (e: Exception) {
+                    logger.error("Failed to save hosts when updating", e)
+                    return false to "Failed to save proxy hosts: ${e.message}"
+                }
+                val reloadResult = reloadNginx()
+                if (!reloadResult.first) {
+                    logger.error("Failed to reload nginx when updating host: ${reloadResult.second}")
+                    return false to "Config saved, but failed to reload nginx: ${reloadResult.second}"
+                }
             }
 
             true to "Host updated successfully"
@@ -734,9 +829,29 @@ class ProxyServiceImpl(
         hosts: MutableList<ProxyHost>,
     ): Pair<Boolean, String> {
         val configResult = generateNginxConfig(host)
-        saveHosts(hosts)
         if (!configResult.first) return configResult
-        reloadNginx()
+        
+        // Save hosts first
+        try {
+            saveHosts(hosts)
+        } catch (e: Exception) {
+            logger.error("Failed to save proxy hosts", e)
+            return false to "Failed to save proxy hosts: ${e.message}"
+        }
+        
+        // Ensure proxy container exists before reloading
+        if (!ensureProxyContainerExists()) {
+            logger.warn("Proxy container does not exist, but config was generated and saved")
+            return true to "Config generated and saved, but proxy container is not running. Please start the proxy container."
+        }
+        
+        // Reload nginx
+        val reloadResult = reloadNginx()
+        if (!reloadResult.first) {
+            logger.error("Failed to reload nginx: ${reloadResult.second}")
+            return false to "Config generated and saved, but failed to reload nginx: ${reloadResult.second}"
+        }
+        
         return configResult
     }
 
@@ -757,8 +872,17 @@ class ProxyServiceImpl(
                 }
             } else {
                 File(configDir, "${updated.domain}.conf").delete()
-                saveHosts(hosts)
-                reloadNginx()
+                try {
+                    saveHosts(hosts)
+                } catch (e: Exception) {
+                    logger.error("Failed to save hosts when toggling", e)
+                    return false
+                }
+                val reloadResult = reloadNginx()
+                if (!reloadResult.first) {
+                    logger.error("Failed to reload nginx when toggling host: ${reloadResult.second}")
+                    return false
+                }
             }
             true
         } catch (e: Exception) {
@@ -776,8 +900,17 @@ class ProxyServiceImpl(
             val host = hosts[index]
 
             // Ensure we have a basic HTTP config for ACME challenge
-            generateNginxConfig(host.copy(ssl = false))
-            reloadNginx()
+            val httpConfigResult = generateNginxConfig(host.copy(ssl = false))
+            if (!httpConfigResult.first) {
+                logger.error("Failed to generate HTTP config for SSL request: ${httpConfigResult.second}")
+                return false
+            }
+            
+            val reloadResult = reloadNginx()
+            if (!reloadResult.first) {
+                logger.error("Failed to reload nginx for SSL request: ${reloadResult.second}")
+                return false
+            }
 
             try {
                 // Run certbot via docker using absolute paths map to the certbot volume
@@ -792,9 +925,24 @@ class ProxyServiceImpl(
 
                     val updated = host.copy(ssl = true)
                     hosts[index] = updated
-                    saveHosts(hosts)
-                    generateNginxConfig(updated)
-                    reloadNginx()
+                    try {
+                        saveHosts(hosts)
+                    } catch (e: Exception) {
+                        logger.error("Failed to save hosts after SSL certificate obtained", e)
+                        return false
+                    }
+                    
+                    val sslConfigResult = generateNginxConfig(updated)
+                    if (!sslConfigResult.first) {
+                        logger.error("Failed to generate SSL config: ${sslConfigResult.second}")
+                        return false
+                    }
+                    
+                    val reloadResult = reloadNginx()
+                    if (!reloadResult.first) {
+                        logger.error("Failed to reload nginx after SSL certificate: ${reloadResult.second}")
+                        return false
+                    }
                     return true
                 }
             } catch (e: Exception) {
@@ -1017,13 +1165,39 @@ class ProxyServiceImpl(
         }
     }
 
-    private fun reloadNginx() {
-        // Use executeCommand to capture output and potential errors
-        logger.info("Reloading Nginx...")
-        val result =
-            executeCommand("${AppConfig.dockerCommand} exec docker-manager-proxy openresty -s reload")
-        if (result.isNotBlank()) {
-            logger.info("Nginx Reload Output: $result")
+    private fun reloadNginx(): Pair<Boolean, String> {
+        return try {
+            logger.info("Reloading Nginx...")
+            
+            // Check if container is running first
+            val checkCmd = "${AppConfig.dockerCommand} ps --filter name=$PROXY_CONTAINER_NAME --filter status=running --format '{{.Names}}'"
+            val runningCheck = executeCommand(checkCmd).trim()
+            if (runningCheck != PROXY_CONTAINER_NAME) {
+                return false to "Proxy container is not running"
+            }
+            
+            val reloadCmd = "${AppConfig.dockerCommand} exec $PROXY_CONTAINER_NAME openresty -s reload"
+            val result = executeCommand(reloadCmd)
+            
+            // Check if reload was successful (nginx reload returns empty string on success)
+            // Also check for common error patterns
+            if (result.contains("error", ignoreCase = true) || 
+                result.contains("failed", ignoreCase = true) ||
+                result.contains("invalid", ignoreCase = true)) {
+                logger.error("Nginx reload failed: $result")
+                return false to result.ifBlank { "Nginx reload failed" }
+            }
+            
+            if (result.isNotBlank()) {
+                logger.info("Nginx Reload Output: $result")
+            } else {
+                logger.info("Nginx reloaded successfully")
+            }
+            
+            true to "Nginx reloaded successfully"
+        } catch (e: Exception) {
+            logger.error("Error reloading nginx", e)
+            false to "Error reloading nginx: ${e.message}"
         }
     }
 

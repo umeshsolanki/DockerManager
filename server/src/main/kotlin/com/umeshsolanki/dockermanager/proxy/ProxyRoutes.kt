@@ -19,14 +19,30 @@ fun Route.proxyRoutes() {
         }
 
         post("/hosts") {
-            val host = call.receive<ProxyHost>()
+            val host = try {
+                call.receive<ProxyHost>()
+            } catch (e: Exception) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ProxyActionResult(false, "Invalid request body: ${e.message ?: "Failed to parse ProxyHost"}")
+                )
+                return@post
+            }
             val result = ProxyService.createHost(host)
             call.respondPairResult(result, HttpStatusCode.Created, HttpStatusCode.BadRequest)
         }
 
         put("/hosts/{id}") {
             val id = call.requireParameter("id") ?: return@put
-            val host = call.receive<ProxyHost>()
+            val host = try {
+                call.receive<ProxyHost>()
+            } catch (e: Exception) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ProxyActionResult(false, "Invalid request body: ${e.message ?: "Failed to parse ProxyHost"}")
+                )
+                return@put
+            }
             val result = ProxyService.updateHost(host.copy(id = id))
             call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.BadRequest)
         }
