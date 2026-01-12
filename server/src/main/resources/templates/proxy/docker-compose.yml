@@ -13,6 +13,7 @@ services:
       - ${nginxPath}/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
       - ${nginxPath}/conf.d:/etc/nginx/conf.d:ro
       - ${nginxPath}/logs:/usr/local/openresty/nginx/logs
+      - ${nginxPath}/www/html:/var/www/html:ro
       - ${certbotPath}/conf:/etc/letsencrypt
       - ${certbotPath}/www:/var/www/certbot
       - ${customCertsPath}:/etc/nginx/custom_certs:ro
