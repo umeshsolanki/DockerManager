@@ -410,11 +410,42 @@ class ProxyServiceImpl(
     override fun getStats(): ProxyStats = cachedStats
 
     private fun loadHosts(): MutableList<ProxyHost> {
-        return jsonPersistence.load().toMutableList()
+        // Load from file first (source of truth)
+        val hosts = jsonPersistence.load().toMutableList()
+        
+        // If Redis is enabled, try to sync to Redis (in case Redis is empty or out of sync)
+        if (CacheService.currentConfig.enabled && hosts.isNotEmpty()) {
+            try {
+                val cachedHosts = CacheService.get<List<ProxyHost>>("proxy:hosts")
+                // If Redis is empty or has different data, sync file data to Redis
+                if (cachedHosts == null || cachedHosts.isEmpty() || cachedHosts.size != hosts.size) {
+                    CacheService.set("proxy:hosts", hosts, null)
+                    logger.debug("Synced ${hosts.size} proxy hosts from file to Redis")
+                } else {
+                    logger.debug("Loaded ${hosts.size} proxy hosts from file (Redis already in sync)")
+                }
+            } catch (e: Exception) {
+                logger.warn("Failed to sync proxy hosts to Redis: ${e.message}", e)
+            }
+        }
+        
+        logger.debug("Loaded ${hosts.size} proxy hosts from file")
+        return hosts
     }
 
     private fun saveHosts(hosts: List<ProxyHost>) {
+        // Save to file first
         jsonPersistence.save(hosts)
+        
+        // If Redis is enabled, also sync to Redis
+        if (CacheService.currentConfig.enabled) {
+            try {
+                CacheService.set("proxy:hosts", hosts, null)
+                logger.debug("Synced ${hosts.size} proxy hosts to Redis")
+            } catch (e: Exception) {
+                logger.warn("Failed to sync proxy hosts to Redis: ${e.message}", e)
+            }
+        }
     }
 
     override fun listHosts(): List<ProxyHost> = loadHosts()
