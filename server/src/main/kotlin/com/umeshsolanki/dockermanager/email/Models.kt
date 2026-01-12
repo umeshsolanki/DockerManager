@@ -6,12 +6,12 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class EmailDomain(
-    val domain: String
+    val name: String
 )
 
 @Serializable
 data class EmailUser(
-    val address: String,
+    val userAddress: String,
     val name: String? = null
 )
 
@@ -74,5 +74,15 @@ data class JamesContainerStatus(
     val containerId: String? = null,
     val status: String? = null,
     val uptime: String? = null
+)
+
+@Serializable
+data class MailcowContainerStatus(
+    val exists: Boolean,
+    val running: Boolean,
+    val containerId: String? = null,
+    val status: String? = null,
+    val uptime: String? = null,
+    val webmailUrl: String? = null
 )
 

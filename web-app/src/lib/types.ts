@@ -41,6 +41,46 @@ export interface ComposeFile {
   status: string; // active, inactive
 }
 
+export interface DockerStack {
+  name: string;
+  services: number;
+  orchestrator?: string;
+}
+
+export interface StackService {
+  id: string;
+  name: string;
+  image: string;
+  mode: string;
+  replicas: string;
+  ports?: string;
+}
+
+export interface StackTask {
+  id: string;
+  name: string;
+  image: string;
+  node: string;
+  desiredState: string;
+  currentState: string;
+  error?: string;
+  ports?: string;
+}
+
+export interface DeployStackRequest {
+  stackName: string;
+  composeFile: string;
+}
+
+export interface MigrateComposeToStackRequest {
+  composeFile: string;
+  stackName: string;
+}
+
+export interface StopStackRequest {
+  stackName: string;
+}
+
 export interface BatteryStatus {
   percentage: number;
   isCharging: boolean;

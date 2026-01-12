@@ -2,5 +2,6 @@
     <repository name="LocalUsersRepository" class="org.apache.james.user.jpa.JPAUsersRepository">
         <algorithm>MD5</algorithm>
         <enableVirtualHosting>true</enableVirtualHosting>
+        <verifyFailureDelay>0</verifyFailureDelay>
     </repository>
 </usersrepository>

@@ -104,6 +104,7 @@ class ProxyServiceImpl(
     private val commandExecutor = CommandExecutor(loggerName = ProxyServiceImpl::class.java.name)
     private val analyticsPersistence = AnalyticsPersistenceService()
     private var lastResetDate: String? = null
+    private var lastRotationDate: String? = null // Track when we last rotated logs
     
     // Cache key prefix for historical stats
     private val CACHE_KEY_PREFIX = "proxy:historical:stats:"
@@ -150,13 +151,24 @@ class ProxyServiceImpl(
                     
                     // Check if we need to reset (new day)
                     if (lastResetDate != null && lastResetDate != today) {
-                        // Save yesterday's stats before resetting
-                        val yesterdayStats = cachedStats
-                        analyticsPersistence.saveDailyStats(yesterdayStats, lastResetDate)
-                        logger.info("Saved daily stats for $lastResetDate")
-                        
-                        // Rotate log file: copy access.log to access_YYYY-MM-DD.log and truncate
-                        rotateAccessLog(lastResetDate!!)
+                        // Only rotate logs once per day - check if we've already rotated for yesterday
+                        if (lastRotationDate != lastResetDate) {
+                            // Save yesterday's stats before resetting
+                            val yesterdayStats = cachedStats
+                            analyticsPersistence.saveDailyStats(yesterdayStats, lastResetDate)
+                            logger.info("Saved daily stats for $lastResetDate")
+                            
+                            // Rotate log file: copy access.log to access_YYYY-MM-DD.log and truncate
+                            // Only rotate if log file has substantial content (at least 1KB to avoid rotating empty files)
+                            if (logFile.exists() && logFile.length() > 1024) {
+                                rotateAccessLog(lastResetDate!!)
+                                lastRotationDate = lastResetDate
+                            } else {
+                                logger.info("Skipping log rotation for $lastResetDate - log file is too small or doesn't exist")
+                            }
+                        } else {
+                            logger.debug("Log rotation already completed for $lastResetDate, skipping")
+                        }
                         
                         // Reset counters
                         resetDailyStats()
@@ -187,27 +199,52 @@ class ProxyServiceImpl(
     
     /**
      * Rotate access.log by copying it to access_YYYY-MM-DD.log and truncating the original
+     * Only rotates if the log file has substantial content to prevent accidental data loss
      */
     private fun rotateAccessLog(date: String) {
         try {
-            if (!logFile.exists() || logFile.length() == 0L) {
-                logger.debug("Access log file does not exist or is empty, skipping rotation")
+            if (!logFile.exists()) {
+                logger.debug("Access log file does not exist, skipping rotation")
+                return
+            }
+            
+            val currentSize = logFile.length()
+            if (currentSize == 0L) {
+                logger.debug("Access log file is empty, skipping rotation")
+                return
+            }
+            
+            // Additional safety check: don't rotate if file is suspiciously small (might have been recently rotated)
+            // Only rotate if file is at least 10KB to avoid rotating files that were just created
+            if (currentSize < 10240) {
+                logger.warn("Access log file is too small (${currentSize} bytes), skipping rotation to prevent data loss. File may have been recently rotated.")
                 return
             }
             
             val logDir = logFile.parentFile
             val rotatedLogFile = File(logDir, "access_$date.log")
             
+            // Check if rotated file already exists and is larger - don't overwrite with smaller file
+            if (rotatedLogFile.exists() && rotatedLogFile.length() > currentSize) {
+                logger.warn("Rotated log file ${rotatedLogFile.name} already exists and is larger (${rotatedLogFile.length()} > $currentSize bytes). Skipping rotation to prevent data loss.")
+                return
+            }
+            
             // Copy access.log to access_YYYY-MM-DD.log
             logFile.copyTo(rotatedLogFile, overwrite = true)
-            logger.info("Copied access.log to ${rotatedLogFile.name}")
+            logger.info("Copied access.log (${currentSize} bytes) to ${rotatedLogFile.name}")
             
-            // Truncate access.log
-            logFile.writeText("")
-            logger.info("Truncated access.log")
-            
-            // Reset lastProcessedOffset since we've rotated the log
-            lastProcessedOffset = 0L
+            // Verify copy was successful before truncating
+            if (rotatedLogFile.exists() && rotatedLogFile.length() == currentSize) {
+                // Truncate access.log only after successful copy
+                logFile.writeText("")
+                logger.info("Truncated access.log after successful rotation")
+                
+                // Reset lastProcessedOffset since we've rotated the log
+                lastProcessedOffset = 0L
+            } else {
+                logger.error("Rotated log file size mismatch! Expected ${currentSize} bytes but got ${rotatedLogFile.length()} bytes. Aborting truncation to prevent data loss.")
+            }
             
         } catch (e: Exception) {
             logger.error("Failed to rotate access log for date $date", e)
@@ -249,11 +286,18 @@ class ProxyServiceImpl(
         val currentLength = logFile.length()
         
         // Handle log rotation or truncated file
-        if (currentLength < lastProcessedOffset) {
-            logger.info("Log file rotated or truncated, resetting offset")
-            lastProcessedOffset = 0
-            // Optionally clear stats here if you want fresh analytics on rotation
-            // For now we keep cumulative stats
+        // Only reset if the file was significantly reduced (more than 50% smaller)
+        // This prevents false positives from minor file changes or external processes
+        if (currentLength < lastProcessedOffset && lastProcessedOffset > 0) {
+            val reductionPercent = ((lastProcessedOffset - currentLength).toDouble() / lastProcessedOffset.toDouble()) * 100
+            if (reductionPercent > 50) {
+                logger.info("Log file rotated or truncated (was ${lastProcessedOffset} bytes, now ${currentLength} bytes, ${reductionPercent.toInt()}% reduction), resetting offset")
+                lastProcessedOffset = 0
+            } else {
+                // File got smaller but not significantly - might be external truncation or write issue
+                logger.warn("Log file size decreased unexpectedly (was ${lastProcessedOffset} bytes, now ${currentLength} bytes, ${reductionPercent.toInt()}% reduction). Adjusting offset instead of resetting.")
+                lastProcessedOffset = currentLength // Adjust offset instead of resetting to avoid reprocessing
+            }
         }
 
         if (currentLength == lastProcessedOffset) return
@@ -1086,47 +1130,81 @@ class ProxyServiceImpl(
     }
 
     override fun getHistoricalStats(date: String): DailyProxyStats? {
+        // Validate date format
+        try {
+            java.time.LocalDate.parse(date, java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        } catch (e: Exception) {
+            logger.error("Invalid date format: $date", e)
+            return null
+        }
+        
         val cacheKey = "$CACHE_KEY_PREFIX$date"
         
         // Check cache first (Redis or in-memory)
-        CacheService.get<DailyProxyStats>(cacheKey)?.let {
+        val cachedStats = try {
+            CacheService.get<DailyProxyStats>(cacheKey)
+        } catch (e: Exception) {
+            logger.warn("Error reading cached stats for $date", e)
+            null
+        }
+        cachedStats?.let {
             logger.debug("Returning cached historical stats for $date")
             return it
         }
         
         // Try to load from saved file
-        val existingStats = analyticsPersistence.loadDailyStats(date)
+        val existingStats = try {
+            analyticsPersistence.loadDailyStats(date)
+        } catch (e: Exception) {
+            logger.error("Error loading saved stats for $date", e)
+            null
+        }
         if (existingStats != null) {
             // Cache it for future requests (24 hour TTL)
-            CacheService.set(cacheKey, existingStats, ttlSeconds = 86400)
+            try {
+                CacheService.set(cacheKey, existingStats, ttlSeconds = 86400)
+            } catch (e: Exception) {
+                logger.warn("Error caching stats for $date", e)
+            }
             logger.debug("Loaded historical stats for $date from file and cached")
             return existingStats
         }
         
         // If not found, process logs for that date and create stats
         logger.info("Historical stats not found for $date, processing logs...")
-        val processedStats = processLogsForDate(date)
+        val processedStats = try {
+            processLogsForDate(date)
+        } catch (e: Exception) {
+            logger.error("Error processing logs for date $date", e)
+            null
+        }
         if (processedStats != null) {
             // Save the processed stats for future use
-            analyticsPersistence.saveDailyStats(
-                ProxyStats(
-                    totalHits = processedStats.totalHits,
-                    hitsByStatus = processedStats.hitsByStatus,
-                    hitsOverTime = processedStats.hitsOverTime,
-                    topPaths = processedStats.topPaths,
-                    recentHits = emptyList(),
-                    hitsByDomain = processedStats.hitsByDomain,
-                    topIps = processedStats.topIps,
-                    topIpsWithErrors = processedStats.topIpsWithErrors,
-                    topUserAgents = processedStats.topUserAgents,
-                    topReferers = processedStats.topReferers,
-                    topMethods = processedStats.topMethods
-                ),
-                date
-            )
-            // Cache the processed stats (24 hour TTL)
-            CacheService.set(cacheKey, processedStats, ttlSeconds = 86400)
-            logger.info("Created and cached historical stats for $date from logs")
+            try {
+                analyticsPersistence.saveDailyStats(
+                    ProxyStats(
+                        totalHits = processedStats.totalHits,
+                        hitsByStatus = processedStats.hitsByStatus,
+                        hitsOverTime = processedStats.hitsOverTime,
+                        topPaths = processedStats.topPaths,
+                        recentHits = emptyList(),
+                        hitsByDomain = processedStats.hitsByDomain,
+                        topIps = processedStats.topIps,
+                        topIpsWithErrors = processedStats.topIpsWithErrors,
+                        topUserAgents = processedStats.topUserAgents,
+                        topReferers = processedStats.topReferers,
+                        topMethods = processedStats.topMethods
+                    ),
+                    date
+                )
+                // Cache the processed stats (24 hour TTL)
+                CacheService.set(cacheKey, processedStats, ttlSeconds = 86400)
+                logger.info("Created and cached historical stats for $date from logs")
+            } catch (e: Exception) {
+                logger.error("Error saving processed stats for $date", e)
+            }
+        } else {
+            logger.warn("No stats processed for date $date - log file may not exist or contain no entries for this date")
         }
         
         return processedStats
@@ -1198,72 +1276,76 @@ class ProxyServiceImpl(
         val tempHitsByTimeMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
         
         return try {
-            // Read entire log file (or check rotated logs)
-            java.io.RandomAccessFile(fileToProcess, "r").use { raf ->
-                raf.seek(0) // Start from beginning
-                var line: String? = raf.readLine()
+            // Read entire log file (or check rotated logs) - use BufferedReader for better UTF-8 support
+            fileToProcess.bufferedReader(Charsets.UTF_8).use { reader ->
+                var line: String? = reader.readLine()
                 var processedCount = 0L
                 var skippedCount = 0L
                 
                 while (line != null) {
-                    val trimmedLine = line.trim()
-                    if (trimmedLine.isNotEmpty()) {
-                        lineRegex.find(trimmedLine)?.let { match ->
-                            val (ip, dateStr, fullRequest, statusStr, _, referer, ua, _) = match.destructured
-                            val status = statusStr.toIntOrNull() ?: 0
-                            
-                            // Parse date from log entry
-                            try {
-                                val timestamp = dateFormat.parse(dateStr)
-                                val logDate = java.time.LocalDate.ofInstant(
-                                    timestamp.toInstant(),
-                                    java.time.ZoneId.systemDefault()
-                                )
+                    try {
+                        val trimmedLine = line.trim()
+                        if (trimmedLine.isNotEmpty()) {
+                            lineRegex.find(trimmedLine)?.let { match ->
+                                val (ip, dateStr, fullRequest, statusStr, _, referer, ua, _) = match.destructured
+                                val status = statusStr.toIntOrNull() ?: 0
                                 
-                                // Only process entries for the target date
-                                // Compare dates directly (ignoring time)
-                                if (!logDate.isEqual(targetLocalDate)) {
-                                    skippedCount++
-                                    return@let
+                                // Parse date from log entry
+                                try {
+                                    val timestamp = dateFormat.parse(dateStr)
+                                    val logDate = java.time.LocalDate.ofInstant(
+                                        timestamp.toInstant(),
+                                        java.time.ZoneId.systemDefault()
+                                    )
+                                    
+                                    // Only process entries for the target date
+                                    // Compare dates directly (ignoring time)
+                                    if (!logDate.isEqual(targetLocalDate)) {
+                                        skippedCount++
+                                        return@let
+                                    }
+                                    
+                                    logger.debug("Processing log entry for date $targetDate: $dateStr -> $logDate")
+                                    
+                                    // Filter local IPs if enabled
+                                    if (shouldFilterLocalIps && IpFilterUtils.isLocalIp(ip)) {
+                                        return@let
+                                    }
+                                    
+                                    val reqParts = fullRequest.split(" ")
+                                    val method = reqParts.getOrNull(0) ?: "-"
+                                    val path = reqParts.getOrNull(1) ?: fullRequest
+                                    val domain = if (referer != "-") try { java.net.URI(referer).host } catch(e: Exception) { null } else null
+                                    
+                                    // Update stats
+                                    tempTotalHits.incrementAndGet()
+                                    tempHitsByStatusMap.merge(status, 1L, Long::plus)
+                                    tempHitsByIpMap.merge(ip, 1L, Long::plus)
+                                    tempHitsByMethodMap.merge(method, 1L, Long::plus)
+                                    tempHitsByPathMap.merge(path, 1L, Long::plus)
+                                    if (ua != "-") tempHitsByUserAgentMap.merge(ua, 1L, Long::plus)
+                                    if (referer != "-") tempHitsByRefererMap.merge(referer, 1L, Long::plus)
+                                    if (domain != null) tempHitsByDomainMap.merge(domain, 1L, Long::plus)
+                                    
+                                    if (status >= 400 || status == 0) {
+                                        tempHitsByIpErrorMap.merge(ip, 1L, Long::plus)
+                                    }
+                                    
+                                    // Time-based aggregation (HH:00)
+                                    val hourKey = SimpleDateFormat("HH:00", Locale.US).format(timestamp)
+                                    tempHitsByTimeMap.merge(hourKey, 1L, Long::plus)
+                                    
+                                    processedCount++
+                                } catch (e: Exception) {
+                                    // Log parse errors for debugging but continue processing
+                                    logger.debug("Error parsing date from log entry: $dateStr", e)
                                 }
-                                
-                                logger.debug("Processing log entry for date $targetDate: $dateStr -> $logDate")
-                                
-                                // Filter local IPs if enabled
-                                if (shouldFilterLocalIps && IpFilterUtils.isLocalIp(ip)) {
-                                    return@let
-                                }
-                                
-                                val reqParts = fullRequest.split(" ")
-                                val method = reqParts.getOrNull(0) ?: "-"
-                                val path = reqParts.getOrNull(1) ?: fullRequest
-                                val domain = if (referer != "-") try { java.net.URI(referer).host } catch(e: Exception) { null } else null
-                                
-                                // Update stats
-                                tempTotalHits.incrementAndGet()
-                                tempHitsByStatusMap.merge(status, 1L, Long::plus)
-                                tempHitsByIpMap.merge(ip, 1L, Long::plus)
-                                tempHitsByMethodMap.merge(method, 1L, Long::plus)
-                                tempHitsByPathMap.merge(path, 1L, Long::plus)
-                                if (ua != "-") tempHitsByUserAgentMap.merge(ua, 1L, Long::plus)
-                                if (referer != "-") tempHitsByRefererMap.merge(referer, 1L, Long::plus)
-                                if (domain != null) tempHitsByDomainMap.merge(domain, 1L, Long::plus)
-                                
-                                if (status >= 400 || status == 0) {
-                                    tempHitsByIpErrorMap.merge(ip, 1L, Long::plus)
-                                }
-                                
-                                // Time-based aggregation (HH:00)
-                                val hourKey = SimpleDateFormat("HH:00", Locale.US).format(timestamp)
-                                tempHitsByTimeMap.merge(hourKey, 1L, Long::plus)
-                                
-                                processedCount++
-                            } catch (e: Exception) {
-                                // Ignore date parse errors
                             }
                         }
+                    } catch (e: Exception) {
+                        logger.debug("Error processing log line", e)
                     }
-                    line = raf.readLine()
+                    line = reader.readLine()
                 }
                 
                 logger.info("Processed $processedCount log entries for date $targetDate (skipped $skippedCount entries from other dates)")
@@ -1447,62 +1529,101 @@ class ProxyServiceImpl(
     }
 
     override fun listAvailableDates(): List<String> {
-        val savedDates = analyticsPersistence.listAvailableDates().toMutableSet()
+        val savedDates = try {
+            analyticsPersistence.listAvailableDates().toMutableSet()
+        } catch (e: Exception) {
+            logger.error("Error loading saved dates from analytics persistence", e)
+            mutableSetOf<String>()
+        }
         
         // Also scan log file for dates that can be processed
-        val datesFromLogs = extractDatesFromLogs()
+        val datesFromLogs = try {
+            extractDatesFromLogs()
+        } catch (e: Exception) {
+            logger.error("Error extracting dates from logs", e)
+            emptySet<String>()
+        }
         savedDates.addAll(datesFromLogs)
         
         // Include today's date if stats are active
-        val today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
-        savedDates.add(today)
+        val today = try {
+            java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        } catch (e: Exception) {
+            logger.error("Error formatting today's date", e)
+            null
+        }
+        if (today != null) {
+            savedDates.add(today)
+        }
         
-        return savedDates.sorted().reversed() // Most recent first
+        val result = savedDates.sorted().reversed() // Most recent first
+        logger.debug("Listed ${result.size} available dates for analytics")
+        return result
     }
     
     /**
      * Extract all unique dates from the log file
      */
     private fun extractDatesFromLogs(): Set<String> {
-        if (!logFile.exists()) return emptySet()
+        if (!logFile.exists()) {
+            logger.debug("Log file does not exist: ${logFile.absolutePath}")
+            return emptySet()
+        }
         
         val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
         val dateFormatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
         val dates = mutableSetOf<String>()
         
         return try {
-            java.io.RandomAccessFile(logFile, "r").use { raf ->
-                raf.seek(0)
-                var line: String? = raf.readLine()
+            // Use BufferedReader for better UTF-8 support and error handling
+            logFile.bufferedReader(Charsets.UTF_8).use { reader ->
+                var line: String? = reader.readLine()
                 var lineCount = 0
                 val maxLinesToScan = 100000 // Limit scanning to avoid performance issues
                 
                 while (line != null && lineCount < maxLinesToScan) {
-                    val trimmedLine = line.trim()
-                    if (trimmedLine.isNotEmpty()) {
-                        // Try to extract date from log line
-                        val dateMatch = """\[([^\]]+)\]""".toRegex().find(trimmedLine)
-                        dateMatch?.let { match ->
-                            val dateStr = match.groupValues[1]
-                            try {
-                                val timestamp = dateFormat.parse(dateStr)
-                                val logDate = java.time.LocalDate.ofInstant(
-                                    timestamp.toInstant(),
-                                    java.time.ZoneId.systemDefault()
-                                )
-                                dates.add(logDate.format(dateFormatter))
-                            } catch (e: Exception) {
-                                // Ignore parse errors
+                    try {
+                        val trimmedLine = line.trim()
+                        if (trimmedLine.isNotEmpty()) {
+                            // Try to extract date from log line - support multiple formats
+                            val dateMatch = """\[([^\]]+)\]""".toRegex().find(trimmedLine)
+                            dateMatch?.let { match ->
+                                val dateStr = match.groupValues[1]
+                                try {
+                                    val timestamp = dateFormat.parse(dateStr)
+                                    val logDate = java.time.LocalDate.ofInstant(
+                                        timestamp.toInstant(),
+                                        java.time.ZoneId.systemDefault()
+                                    )
+                                    dates.add(logDate.format(dateFormatter))
+                                } catch (e: Exception) {
+                                    // Try alternative date format (dd/MMM/yyyy:HH:mm:ss)
+                                    try {
+                                        val altDateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss", Locale.US)
+                                        val altTimestamp = altDateFormat.parse(dateStr)
+                                        val logDate = java.time.LocalDate.ofInstant(
+                                            altTimestamp.toInstant(),
+                                            java.time.ZoneId.systemDefault()
+                                        )
+                                        dates.add(logDate.format(dateFormatter))
+                                    } catch (e2: Exception) {
+                                        // Ignore parse errors - log format might be different
+                                        logger.debug("Could not parse date from log line: $dateStr", e2)
+                                    }
+                                }
                             }
                         }
+                    } catch (e: Exception) {
+                        logger.debug("Error processing log line $lineCount", e)
                     }
-                    line = raf.readLine()
+                    line = reader.readLine()
                     lineCount++
                 }
+                logger.debug("Extracted ${dates.size} unique dates from logs (scanned $lineCount lines)")
             }
             dates
         } catch (e: Exception) {
-            logger.error("Error extracting dates from logs", e)
+            logger.error("Error extracting dates from logs: ${logFile.absolutePath}", e)
             emptySet()
         }
     }

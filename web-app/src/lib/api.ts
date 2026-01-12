@@ -8,7 +8,8 @@ import {
     UpdateSystemConfigRequest, EmailMailbox, NetworkDetails, EmailTestRequest,
     EmailTestResult, AuthRequest, AuthResponse, UpdatePasswordRequest,
     UpdateUsernameRequest, TwoFactorSetupResponse, Enable2FARequest, EmailGroup, EmailUserDetail, JamesContainerStatus,
-    FileItem, RedisConfig, RedisStatus, RedisTestResult, RedisConfigUpdateResult
+    FileItem, RedisConfig, RedisStatus, RedisTestResult, RedisConfigUpdateResult,
+    DockerStack, StackService, StackTask, DeployStackRequest, MigrateComposeToStackRequest, StopStackRequest
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -113,6 +114,20 @@ export const DockerClient = {
     getComposeFileContent: (path: string) => textReq(`/compose/content?file=${encodeURIComponent(path)}`),
     backupCompose: (name: string) => req<BackupResult | null>(`/compose/${name}/backup`, { method: 'POST' }, null),
     backupAllCompose: () => req<BackupResult | null>('/compose/backup-all', { method: 'POST' }, null),
+    
+    // --- Docker Stack (Swarm) ---
+    listStacks: () => req<DockerStack[]>('/compose/stack', {}, []),
+    deployStack: (body: DeployStackRequest) => safeReq<ComposeResult>('/compose/stack/deploy', { method: 'POST', body: JSON.stringify(body) }),
+    startStack: (body: DeployStackRequest) => safeReq<ComposeResult>('/compose/stack/start', { method: 'POST', body: JSON.stringify(body) }),
+    stopStack: (stackName: string) => safeReq<ComposeResult>(`/compose/stack/stop?stackName=${encodeURIComponent(stackName)}`, { method: 'POST' }),
+    restartStack: (body: DeployStackRequest) => safeReq<ComposeResult>('/compose/stack/restart', { method: 'POST', body: JSON.stringify(body) }),
+    updateStack: (body: DeployStackRequest) => safeReq<ComposeResult>('/compose/stack/update', { method: 'POST', body: JSON.stringify(body) }),
+    removeStack: (stackName: string) => safeReq<ComposeResult>(`/compose/stack/${encodeURIComponent(stackName)}`, { method: 'DELETE' }),
+    listStackServices: (stackName: string) => req<StackService[]>(`/compose/stack/${encodeURIComponent(stackName)}/services`, {}, []),
+    listStackTasks: (stackName: string) => req<StackTask[]>(`/compose/stack/${encodeURIComponent(stackName)}/tasks`, {}, []),
+    checkStackStatus: (stackName: string) => req<{ status: string }>(`/compose/stack/${encodeURIComponent(stackName)}/status`, {}, { status: 'unknown' }),
+    checkComposeStatus: (filePath: string) => req<{ status: string }>(`/compose/status?file=${encodeURIComponent(filePath)}`, {}, { status: 'unknown' }),
+    migrateComposeToStack: (body: MigrateComposeToStackRequest) => safeReq<ComposeResult>('/compose/migrate-to-stack', { method: 'POST', body: JSON.stringify(body) }),
 
     // --- Resources: Secrets, Networks, Volumes ---
     listSecrets: () => req<DockerSecret[]>('/secrets', {}, []),

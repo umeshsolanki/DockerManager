@@ -174,5 +174,51 @@ data class ComposeResult(
     val message: String
 )
 
+@Serializable
+data class DockerStack(
+    val name: String,
+    val services: Int = 0,
+    val orchestrator: String = "swarm"
+)
+
+@Serializable
+data class StackService(
+    val id: String,
+    val name: String,
+    val image: String,
+    val mode: String,
+    val replicas: String,
+    val ports: String? = null
+)
+
+@Serializable
+data class StackTask(
+    val id: String,
+    val name: String,
+    val image: String,
+    val node: String,
+    val desiredState: String,
+    val currentState: String,
+    val error: String? = null,
+    val ports: String? = null
+)
+
+@Serializable
+data class DeployStackRequest(
+    val stackName: String,
+    val composeFile: String
+)
+
+@Serializable
+data class MigrateComposeToStackRequest(
+    val composeFile: String,
+    val stackName: String
+)
+
+@Serializable
+data class StopStackRequest(
+    val stackName: String
+)
+
 
 

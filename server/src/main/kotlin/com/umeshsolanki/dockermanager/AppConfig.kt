@@ -257,6 +257,11 @@ object AppConfig {
     val jamesDir: File get() = File(dataRoot, FileConstants.JAMES)
     val jamesConfigDir: File get() = File(jamesDir, FileConstants.CONF)
     val jamesVarDir: File get() = File(jamesDir, FileConstants.VAR)
+    
+    // Mailcow
+    val mailcowDir: File get() = File(dataRoot, FileConstants.MAILCOW)
+    val mailcowConfigDir: File get() = File(mailcowDir, FileConstants.CONF)
+    val mailcowDataDir: File get() = File(mailcowDir, "data")
 
     val jamesWebAdminUrl: String
         get() = _settings.jamesWebAdminUrl

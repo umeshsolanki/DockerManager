@@ -60,10 +60,10 @@ fun Route.emailRoutes() {
                     )
                 )
                 val request = call.receive<CreateEmailUserRequest>()
-                val success = EmailService.createEmailUser(userAddress, request)
+                val result = EmailService.createEmailUser(userAddress, request)
                 call.respond(
                     ProxyActionResult(
-                        success, if (success) "User created" else "Failed to create user"
+                        result.first, result.second
                     )
                 )
             }
@@ -285,6 +285,53 @@ fun Route.emailRoutes() {
                         call.respond(HttpStatusCode.NotFound)
                     }
                 }
+            }
+        }
+
+        // Mailcow Container Management
+        route("/mailcow") {
+            get("/status") {
+                call.respond(EmailService.getMailcowStatus())
+            }
+            post("/config") {
+                EmailService.ensureMailcowConfig()
+                call.respond(ProxyActionResult(true, "Config ensured"))
+            }
+            get("/compose") {
+                call.respond(mapOf("content" to EmailService.getMailcowComposeConfig()))
+            }
+            post("/compose") {
+                val request = call.receive<SaveComposeRequest>()
+                val success = EmailService.updateMailcowComposeConfig(request.content)
+                call.respond(
+                    ProxyActionResult(
+                        success, if (success) "Compose config updated" else "Failed to update"
+                    )
+                )
+            }
+            post("/start") {
+                val success = EmailService.startMailcow()
+                call.respond(
+                    ProxyActionResult(
+                        success, if (success) "Mailcow started" else "Failed to start Mailcow"
+                    )
+                )
+            }
+            post("/stop") {
+                val success = EmailService.stopMailcow()
+                call.respond(
+                    ProxyActionResult(
+                        success, if (success) "Mailcow stopped" else "Failed to stop Mailcow"
+                    )
+                )
+            }
+            post("/restart") {
+                val success = EmailService.restartMailcow()
+                call.respond(
+                    ProxyActionResult(
+                        success, if (success) "Mailcow restarted" else "Failed to restart Mailcow"
+                    )
+                )
             }
         }
     }

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<droplists>
+    <!-- Empty droplists configuration -->
+    <!-- This file prevents James from logging warnings about missing droplists.xml -->
+</droplists>
+

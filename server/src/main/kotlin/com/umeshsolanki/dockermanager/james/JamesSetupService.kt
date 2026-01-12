@@ -21,9 +21,11 @@ object JamesSetupService {
             "james-database.properties" to ResourceLoader.loadResourceOrThrow("templates/james/james-database.properties"),
             "usersrepository.xml" to ResourceLoader.loadResourceOrThrow("templates/james/usersrepository.xml"),
             "domainlist.xml" to ResourceLoader.loadResourceOrThrow("templates/james/domainlist.xml"),
+            "droplists.xml" to ResourceLoader.loadResourceOrThrow("templates/james/droplists.xml"),
             "smtpserver.xml" to loadSmtpServerConfig(),
             "imapserver.xml" to loadImapServerConfig(),
-            "lmtpserver.xml" to ResourceLoader.loadResourceOrThrow("templates/james/lmtpserver.xml")
+            "lmtpserver.xml" to ResourceLoader.loadResourceOrThrow("templates/james/lmtpserver.xml"),
+            "logback.xml" to ResourceLoader.loadResourceOrThrow("templates/james/logback.xml")
         )
     }
 
@@ -53,14 +55,14 @@ object JamesSetupService {
         ))
     }
 
-    fun initialize() {
+    fun initialize(forceOverwrite: Boolean = false) {
         val configDir = AppConfig.jamesConfigDir
         if (!configDir.exists()) {
             configDir.mkdirs()
         }
 
         defaults.forEach { (filename, content) ->
-            ensureFile(configDir, filename, content)
+            ensureFile(configDir, filename, content, forceOverwrite)
         }
         
         // Ensure var directory exists
@@ -78,10 +80,10 @@ object JamesSetupService {
         return defaults.keys.toList()
     }
 
-    private fun ensureFile(dir: File, filename: String, content: String) {
+    private fun ensureFile(dir: File, filename: String, content: String, forceOverwrite: Boolean = false) {
         val file = File(dir, filename)
-        if (!file.exists()) {
-            logger.info("Generating default James configuration: $filename")
+        if (!file.exists() || forceOverwrite) {
+            logger.info("Generating default James configuration: $filename${if (forceOverwrite) " (overwriting existing)" else ""}")
             file.writeText(content)
         }
     }

@@ -1,13 +1,20 @@
 package com.umeshsolanki.dockermanager.cache
 
+import com.umeshsolanki.dockermanager.AppConfig
+import com.umeshsolanki.dockermanager.AppSettings
+import com.umeshsolanki.dockermanager.FcmTokenDetail
+import com.umeshsolanki.dockermanager.constants.FileConstants
+import com.umeshsolanki.dockermanager.email.EmailService
 import io.lettuce.core.RedisClient
 import io.lettuce.core.api.StatefulRedisConnection
 import io.lettuce.core.api.sync.RedisCommands
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
+import java.io.File
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.locks.ReentrantLock
@@ -21,7 +28,7 @@ data class RedisConfig(
     val password: String? = null,
     val database: Int = 0,
     val ssl: Boolean = false,
-    val timeout: Int = 5000
+    val timeout: Int = 5000,
 )
 
 @Serializable
@@ -29,7 +36,7 @@ data class RedisStatus(
     val enabled: Boolean,
     val connected: Boolean,
     val host: String,
-    val port: Int
+    val port: Int,
 )
 
 @Serializable
@@ -41,26 +48,32 @@ data class RedisInstallResult(
     val usingDockerSecret: Boolean = false,
     val errorOutput: String? = null,
     val errorType: String? = null,
-    val stackTrace: String? = null
+    val stackTrace: String? = null,
 )
 
 @Serializable
 data class RedisConfigUpdateResult(
     val success: Boolean,
     val message: String,
-    val connected: Boolean
+    val connected: Boolean,
 )
 
 @Serializable
 data class RedisTestResult(
     val success: Boolean,
     val message: String,
-    val connected: Boolean
+    val connected: Boolean,
 )
 
 interface ICacheService {
     fun <T : Any> get(key: String, serializer: kotlinx.serialization.KSerializer<T>): T?
-    fun <T : Any> set(key: String, value: T, serializer: kotlinx.serialization.KSerializer<T>, ttlSeconds: Long? = null): Boolean
+    fun <T : Any> set(
+        key: String,
+        value: T,
+        serializer: kotlinx.serialization.KSerializer<T>,
+        ttlSeconds: Long? = null,
+    ): Boolean
+
     fun delete(key: String): Boolean
     fun exists(key: String): Boolean
     fun clear(): Boolean
@@ -69,30 +82,30 @@ interface ICacheService {
 }
 
 class RedisServiceImpl(
-    private var config: RedisConfig
+    private var config: RedisConfig,
 ) : ICacheService {
     private val logger = LoggerFactory.getLogger(RedisServiceImpl::class.java)
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
-    
+
     private var redisClient: RedisClient? = null
     private var connection: StatefulRedisConnection<String, String>? = null
     private var commands: RedisCommands<String, String>? = null
     private val lock = ReentrantLock()
-    
+
     init {
         if (config.enabled) {
             connect()
         }
     }
-    
+
     fun updateConfig(newConfig: RedisConfig) {
         lock.withLock {
             val wasEnabled = config.enabled
             config = newConfig
-            
+
             if (wasEnabled && !newConfig.enabled) {
                 // Disable Redis
                 disconnect()
@@ -105,21 +118,21 @@ class RedisServiceImpl(
             }
         }
     }
-    
+
     private fun connect() {
         try {
             lock.withLock {
                 if (connection != null && connection!!.isOpen) {
                     return
                 }
-                
+
                 val uri = buildRedisUri()
                 logger.info("Connecting to Redis: ${config.host}:${config.port}")
-                
+
                 redisClient = RedisClient.create(uri)
                 connection = redisClient!!.connect()
                 commands = connection!!.sync()
-                
+
                 // Test connection
                 commands!!.ping()
                 logger.info("Successfully connected to Redis")
@@ -130,12 +143,12 @@ class RedisServiceImpl(
             throw e
         }
     }
-    
+
     private fun reconnect() {
         disconnect()
         connect()
     }
-    
+
     private fun disconnect() {
         lock.withLock {
             try {
@@ -150,7 +163,7 @@ class RedisServiceImpl(
             }
         }
     }
-    
+
     private fun buildRedisUri(): String {
         val protocol = if (config.ssl) "rediss" else "redis"
         val auth = if (config.password != null) {
@@ -161,10 +174,10 @@ class RedisServiceImpl(
         }
         return "$protocol://$auth${config.host}:${config.port}/${config.database}"
     }
-    
+
     override fun <T : Any> get(key: String, serializer: kotlinx.serialization.KSerializer<T>): T? {
         if (!config.enabled || commands == null) return null
-        
+
         return try {
             lock.withLock {
                 val value = commands!!.get(key) ?: return null
@@ -175,10 +188,15 @@ class RedisServiceImpl(
             null
         }
     }
-    
-    override fun <T : Any> set(key: String, value: T, serializer: kotlinx.serialization.KSerializer<T>, ttlSeconds: Long?): Boolean {
+
+    override fun <T : Any> set(
+        key: String,
+        value: T,
+        serializer: kotlinx.serialization.KSerializer<T>,
+        ttlSeconds: Long?,
+    ): Boolean {
         if (!config.enabled || commands == null) return false
-        
+
         return try {
             lock.withLock {
                 val jsonValue = json.encodeToString(serializer, value)
@@ -194,10 +212,10 @@ class RedisServiceImpl(
             false
         }
     }
-    
+
     override fun delete(key: String): Boolean {
         if (!config.enabled || commands == null) return false
-        
+
         return try {
             lock.withLock {
                 commands!!.del(key) > 0
@@ -207,10 +225,10 @@ class RedisServiceImpl(
             false
         }
     }
-    
+
     override fun exists(key: String): Boolean {
         if (!config.enabled || commands == null) return false
-        
+
         return try {
             lock.withLock {
                 commands!!.exists(key) > 0
@@ -220,10 +238,10 @@ class RedisServiceImpl(
             false
         }
     }
-    
+
     override fun clear(): Boolean {
         if (!config.enabled || commands == null) return false
-        
+
         return try {
             lock.withLock {
                 commands!!.flushdb()
@@ -234,10 +252,10 @@ class RedisServiceImpl(
             false
         }
     }
-    
+
     override fun testConnection(): Boolean {
         if (!config.enabled) return false
-        
+
         return try {
             lock.withLock {
                 if (commands == null) {
@@ -250,7 +268,7 @@ class RedisServiceImpl(
             false
         }
     }
-    
+
     override fun close() {
         disconnect()
     }
@@ -263,7 +281,7 @@ class InMemoryCacheService : ICacheService {
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
-    
+
     override fun <T : Any> get(key: String, serializer: kotlinx.serialization.KSerializer<T>): T? {
         return try {
             val value = cache[key] ?: return null
@@ -272,8 +290,13 @@ class InMemoryCacheService : ICacheService {
             null
         }
     }
-    
-    override fun <T : Any> set(key: String, value: T, serializer: kotlinx.serialization.KSerializer<T>, ttlSeconds: Long?): Boolean {
+
+    override fun <T : Any> set(
+        key: String,
+        value: T,
+        serializer: kotlinx.serialization.KSerializer<T>,
+        ttlSeconds: Long?,
+    ): Boolean {
         return try {
             val jsonValue = json.encodeToString(serializer, value)
             cache[key] = jsonValue
@@ -282,24 +305,24 @@ class InMemoryCacheService : ICacheService {
             false
         }
     }
-    
+
     override fun delete(key: String): Boolean {
         return cache.remove(key) != null
     }
-    
+
     override fun exists(key: String): Boolean {
         return cache.containsKey(key)
     }
-    
+
     override fun clear(): Boolean {
         cache.clear()
         return true
     }
-    
+
     override fun testConnection(): Boolean {
-        return true // Always available
+        return false // In-memory cache is not Redis, so return false
     }
-    
+
     override fun close() {
         cache.clear()
     }
@@ -314,13 +337,129 @@ object CacheService {
     var currentConfig: RedisConfig = RedisConfig(enabled = false)
         private set
     private val logger = LoggerFactory.getLogger(CacheService::class.java)
-    
+
+    /**
+     * Sync application data (hosts, users, tokens, domains) into Redis when Redis is enabled.
+     * This imports data from file-based storage into Redis cache.
+     */
+    suspend fun syncApplicationDataToRedis() {
+        if (!currentConfig.enabled || redisService == null) {
+            logger.debug("Redis not enabled, skipping data sync")
+            return
+        }
+
+        try {
+            logger.info("Starting Redis data sync: importing hosts, users, tokens, domains, and settings...")
+            var syncedCount = 0
+
+            // 1. Sync Proxy Hosts (from hosts.json)
+            try {
+                val hosts = com.umeshsolanki.dockermanager.proxy.ProxyService.listHosts()
+                if (hosts.isNotEmpty()) {
+                    redisService?.set(
+                        "proxy:hosts",
+                        hosts,
+                        kotlinx.serialization.serializer(),
+                        null
+                    )
+                    syncedCount += hosts.size
+                    logger.info("Synced ${hosts.size} proxy hosts to Redis")
+                }
+            } catch (e: Exception) {
+                logger.warn("Failed to sync proxy hosts to Redis: ${e.message}", e)
+            }
+
+            // 2. Sync Email Domains
+            try {
+                val domains = EmailService.listEmailDomains()
+                if (domains.isNotEmpty()) {
+                    redisService?.set(
+                        "email:domains",
+                        domains,
+                        kotlinx.serialization.serializer(),
+                        null
+                    )
+                    syncedCount += domains.size
+                    logger.info("Synced ${domains.size} email domains to Redis")
+                }
+            } catch (e: Exception) {
+                logger.warn("Failed to sync email domains to Redis: ${e.message}", e)
+            }
+
+            // 3. Sync Email Users
+            try {
+                val users = EmailService.listEmailUsers()
+                if (users.isNotEmpty()) {
+                    redisService?.set(
+                        "email:users",
+                        users,
+                        kotlinx.serialization.serializer(),
+                        null
+                    )
+                    syncedCount += users.size
+                    logger.info("Synced ${users.size} email users to Redis")
+                }
+            } catch (e: Exception) {
+                logger.warn("Failed to sync email users to Redis: ${e.message}", e)
+            }
+
+            // 4. Sync FCM Tokens (from fcm-tokens.json file)
+            try {
+                val tokensFile = AppConfig.fcmTokensFile
+                if (tokensFile.exists() && tokensFile.canRead()) {
+                    val tokensJson = tokensFile.readText()
+                    val tokens = AppConfig.json.decodeFromString<List<FcmTokenDetail>>(tokensJson)
+                    if (tokens.isNotEmpty()) {
+                        redisService?.set(
+                            "fcm:tokens",
+                            tokens,
+                            kotlinx.serialization.serializer(),
+                            null
+                        )
+                        syncedCount += tokens.size
+                        logger.info("Synced ${tokens.size} FCM tokens to Redis")
+                    }
+                }
+            } catch (e: Exception) {
+                logger.warn("Failed to sync FCM tokens to Redis: ${e.message}", e)
+            }
+
+            // 5. Sync App Settings
+            try {
+                // Load AppSettings from settings.json file
+                val settingsFile = File(AppConfig.dataRoot, FileConstants.SETTINGS_JSON)
+                if (settingsFile.exists() && settingsFile.canRead()) {
+                    val settingsJson = settingsFile.readText()
+                    val settings = AppConfig.json.decodeFromString<AppSettings>(settingsJson)
+                    redisService?.set(
+                        "app:settings",
+                        settings,
+                        kotlinx.serialization.serializer(),
+                        null
+                    )
+                    syncedCount += 1
+                    logger.info("Synced AppSettings to Redis")
+                }
+            } catch (e: Exception) {
+                logger.warn("Failed to sync AppSettings to Redis: ${e.message}", e)
+            }
+
+            logger.info("Redis data sync completed. Total items synced: $syncedCount")
+        } catch (e: Exception) {
+            logger.error("Error during Redis data sync: ${e.message}", e)
+        }
+    }
+
     fun initialize(config: RedisConfig) {
         currentConfig = config
         if (config.enabled) {
             try {
                 redisService = RedisServiceImpl(config)
                 logger.info("Redis cache initialized")
+                // Sync application data to Redis in background
+                CoroutineScope(Dispatchers.IO).launch {
+                    syncApplicationDataToRedis()
+                }
             } catch (e: Exception) {
                 logger.error("Failed to initialize Redis, falling back to in-memory cache", e)
                 redisService = null
@@ -330,50 +469,61 @@ object CacheService {
             logger.info("Using in-memory cache (Redis disabled)")
         }
     }
-    
+
     fun updateConfig(config: RedisConfig) {
+        val wasEnabled = currentConfig.enabled
         currentConfig = config
         redisService?.updateConfig(config) ?: run {
             if (config.enabled) {
                 initialize(config)
             }
         }
+
+        // If Redis is being enabled for the first time, sync application data
+        if (config.enabled && !wasEnabled) {
+            CoroutineScope(Dispatchers.IO).launch {
+                syncApplicationDataToRedis()
+            }
+        }
     }
-    
+
     fun getConfig(): RedisConfig {
         return currentConfig
     }
-    
+
     inline fun <reified T : Any> get(key: String): T? {
         val service = redisService ?: inMemoryService
         return service.get(key, kotlinx.serialization.serializer())
     }
-    
+
     inline fun <reified T : Any> set(key: String, value: T, ttlSeconds: Long? = null): Boolean {
         val service = redisService ?: inMemoryService
         return service.set(key, value, kotlinx.serialization.serializer(), ttlSeconds)
     }
-    
+
     fun delete(key: String): Boolean {
         val service = redisService ?: inMemoryService
         return service.delete(key)
     }
-    
+
     fun exists(key: String): Boolean {
         val service = redisService ?: inMemoryService
         return service.exists(key)
     }
-    
+
     fun clear(): Boolean {
         val service = redisService ?: inMemoryService
         return service.clear()
     }
-    
+
     fun testConnection(): Boolean {
-        val service = redisService ?: inMemoryService
-        return service.testConnection()
+        // Only test Redis connection if Redis is enabled
+        if (!currentConfig.enabled) {
+            return false
+        }
+        return redisService?.testConnection() ?: false
     }
-    
+
     fun close() {
         redisService?.close()
         inMemoryService.close()

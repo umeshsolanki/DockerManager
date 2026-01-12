@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Suppress BeanUtils introspection warnings for setProperty method -->
+    <!-- This is a known non-fatal issue with Apache Commons Configuration -->
+    <!-- The error occurs because setProperty(String, Object) doesn't conform to JavaBeans setter convention -->
+    <!-- This warning is harmless and doesn't affect functionality -->
+    
+    <!-- Suppress FluentPropertyBeanIntrospector INFO/DEBUG logs about setProperty introspection errors -->
+    <logger name="org.apache.commons.beanutils.FluentPropertyBeanIntrospector" level="WARN"/>
+    
+    <!-- Suppress IntrospectionException warnings if logged at package level -->
+    <logger name="java.beans" level="WARN"/>
+    
+    <!-- Keep root logger configuration - James will merge this with its default configuration -->
+    <root level="INFO"/>
+</configuration>
+

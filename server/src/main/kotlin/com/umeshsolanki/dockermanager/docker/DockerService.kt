@@ -45,6 +45,20 @@ object DockerService {
     fun getComposeFileContent(filePath: String) = composeService.getComposeFileContent(filePath)
     fun backupCompose(name: String) = composeService.backupCompose(name)
     fun backupAllCompose() = composeService.backupAllCompose()
+    
+    // Docker Stack operations
+    fun listStacks() = composeService.listStacks()
+    fun deployStack(stackName: String, composeFile: String) = composeService.deployStack(stackName, composeFile)
+    fun removeStack(stackName: String) = composeService.removeStack(stackName)
+    fun startStack(stackName: String, composeFile: String) = composeService.startStack(stackName, composeFile)
+    fun stopStack(stackName: String) = composeService.stopStack(stackName)
+    fun restartStack(stackName: String, composeFile: String) = composeService.restartStack(stackName, composeFile)
+    fun updateStack(stackName: String, composeFile: String) = composeService.updateStack(stackName, composeFile)
+    fun listStackServices(stackName: String) = composeService.listStackServices(stackName)
+    fun listStackTasks(stackName: String) = composeService.listStackTasks(stackName)
+    fun checkStackStatus(stackName: String) = composeService.checkStackStatus(stackName)
+    fun checkComposeFileStatus(filePath: String) = composeService.checkComposeFileStatus(filePath)
+    fun migrateComposeToStack(composeFilePath: String, stackName: String) = composeService.migrateComposeToStack(composeFilePath, stackName)
 
     fun listSecrets() = secretService.listSecrets()
     fun createSecret(name: String, data: String) = secretService.createSecret(name, data)

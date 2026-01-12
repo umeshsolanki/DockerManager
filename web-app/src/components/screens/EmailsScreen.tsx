@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Mail, Shield, Plus, Trash, Key, Globe, User, RefreshCw, Inbox, Server, Play, Square, RotateCw, Save, Activity, FileText, Undo, AlertCircle, ShieldCheck, Terminal, CheckCircle2, XCircle } from 'lucide-react';
+import { Mail, Shield, Plus, Trash, Key, Globe, User, RefreshCw, Inbox, Server, Play, Square, RotateCw, Save, Activity, FileText, Undo, AlertCircle, ShieldCheck, Terminal, CheckCircle2, XCircle, Wrench } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { EmailDomain, EmailUser, EmailMailbox, JamesContainerStatus, EmailTestResult } from '@/lib/types';
 import { toast } from 'sonner';
@@ -226,16 +226,21 @@ function ManageJames() {
         return () => clearInterval(interval);
     }, []);
 
-    const handleAction = async (action: 'start' | 'stop' | 'restart' | 'install') => {
+    const handleAction = async (action: 'start' | 'stop' | 'restart' | 'install' | 'regenerate') => {
         let res;
         setIsLoading(true);
         if (action === 'install') res = await DockerClient.ensureJamesConfig();
+        else if (action === 'regenerate') res = await DockerClient.ensureJamesConfig();
         else if (action === 'start') res = await DockerClient.startJames();
         else if (action === 'stop') res = await DockerClient.stopJames();
         else if (action === 'restart') res = await DockerClient.restartJames();
 
         if (res?.success) {
-            toast.success(`James ${action}ed successfully`);
+            if (action === 'regenerate') {
+                toast.success('Configuration regenerated successfully');
+            } else {
+                toast.success(`James ${action}ed successfully`);
+            }
             fetchStatus();
         } else {
             toast.error(res?.message || 'Action failed');
@@ -291,6 +296,14 @@ function ManageJames() {
                             )}
                             <button onClick={() => handleAction('restart')} disabled={isLoading} className="flex items-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-xl font-bold transition-all">
                                 <RotateCw size={18} /> Restart
+                            </button>
+                            <button 
+                                onClick={() => handleAction('regenerate')} 
+                                disabled={isLoading} 
+                                className="flex items-center gap-2 px-4 py-2 bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 rounded-xl font-bold transition-all"
+                                title="Regenerate configuration files and SSL certificates"
+                            >
+                                <Wrench size={18} /> Regenerate Config
                             </button>
                         </div>
                     ) : (
@@ -562,8 +575,8 @@ function DomainsList({ domains, onRefresh }: { domains: EmailDomain[], onRefresh
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {domains.map(domain => (
-                    <div key={domain.name} className="bg-surface/50 border border-outline/10 rounded-xl p-4 flex items-center justify-between hover:bg-surface transition-colors">
+                {domains.map((domain, index) => (
+                    <div key={domain.name || `domain-${index}`} className="bg-surface/50 border border-outline/10 rounded-xl p-4 flex items-center justify-between hover:bg-surface transition-colors">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                                 <Globe size={20} />
@@ -652,7 +665,9 @@ function UsersList({ users, onRefresh }: { users: EmailUser[], onRefresh: () => 
                             </div>
                             <div className="flex flex-col">
                                 <span className="font-medium">{user.userAddress}</span>
-                                <span className="text-xs text-on-surface-variant uppercase tracking-wider font-bold">Account Active</span>
+                                <span className="text-xs text-on-surface-variant">
+                                    {user.userAddress.includes('@') ? user.userAddress.split('@')[1] : 'Account'} • Active
+                                </span>
                             </div>
                         </div>
                         <div className="flex gap-2">

@@ -1,8 +1,6 @@
 <domainlist name="JPADomainList">
     <domainnames>
-        <domainname>localhost</domainname>
     </domainnames>
-    <autodetect>true</autodetect>
-    <autodetectIP>true</autodetectIP>
-    <defaultDomain>localhost</defaultDomain>
+    <autodetect>false</autodetect>
+    <autodetectIP>false</autodetectIP>
 </domainlist>
