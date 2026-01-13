@@ -15,8 +15,10 @@ import {
 } from 'recharts';
 import { toast } from 'sonner';
 import { StatCard } from '../ui/StatCard';
+import { useTheme } from '@/contexts/ThemeContext';
 
 export default function AnalyticsScreen() {
+    const { theme } = useTheme();
     const [stats, setStats] = useState<ProxyStats | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [refreshInterval, setRefreshInterval] = useState(30000);
@@ -41,6 +43,19 @@ export default function AnalyticsScreen() {
         methods: 10,
         domains: 10
     });
+
+    // Theme-aware colors for charts
+    const chartColors = useMemo(() => {
+        const isDark = theme === 'dark';
+        return {
+            axisStroke: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+            axisTick: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',
+            tooltipBg: isDark ? 'rgba(15,15,15,0.95)' : 'rgba(255,255,255,0.95)',
+            tooltipBorder: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+            tooltipText: isDark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.9)',
+            primary: isDark ? 'var(--color-primary)' : 'var(--color-primary)',
+        };
+    }, [theme]);
 
     const fetchData = async (manual = false) => {
         if (manual) setIsLoading(true);
@@ -332,38 +347,40 @@ export default function AnalyticsScreen() {
                             <AreaChart data={chartData}>
                                 <defs>
                                     <linearGradient id="colorHits" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="var(--md-sys-color-primary)" stopOpacity={0.3} />
-                                        <stop offset="95%" stopColor="var(--md-sys-color-primary)" stopOpacity={0} />
+                                        <stop offset="5%" stopColor={chartColors.primary} stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor={chartColors.primary} stopOpacity={0} />
                                     </linearGradient>
                                 </defs>
                                 <XAxis
                                     dataKey="time"
-                                    stroke="rgba(255,255,255,0.05)"
-                                    tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }}
+                                    stroke={chartColors.axisStroke}
+                                    tick={{ fill: chartColors.axisTick, fontSize: 10 }}
                                     axisLine={false}
                                     tickLine={false}
                                 />
                                 <YAxis
-                                    stroke="rgba(255,255,255,0.05)"
-                                    tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }}
+                                    stroke={chartColors.axisStroke}
+                                    tick={{ fill: chartColors.axisTick, fontSize: 10 }}
                                     axisLine={false}
                                     tickLine={false}
                                 />
                                 <Tooltip
                                     contentStyle={{
-                                        backgroundColor: 'rgba(15,15,15,0.9)',
+                                        backgroundColor: chartColors.tooltipBg,
                                         borderRadius: '20px',
-                                        border: '1px solid rgba(255,255,255,0.1)',
+                                        border: `1px solid ${chartColors.tooltipBorder}`,
                                         backdropFilter: 'blur(12px)',
                                         fontSize: '12px',
-                                        fontWeight: 'bold'
+                                        fontWeight: 'bold',
+                                        color: chartColors.tooltipText
                                     }}
-                                    itemStyle={{ color: 'var(--md-sys-color-primary)' }}
+                                    itemStyle={{ color: chartColors.primary }}
+                                    labelStyle={{ color: chartColors.tooltipText }}
                                 />
                                 <Area
                                     type="monotone"
                                     dataKey="hits"
-                                    stroke="var(--md-sys-color-primary)"
+                                    stroke={chartColors.primary}
                                     strokeWidth={3}
                                     fillOpacity={1}
                                     fill="url(#colorHits)"
@@ -395,7 +412,7 @@ export default function AnalyticsScreen() {
                                             {count.toLocaleString()}
                                         </span>
                                     </div>
-                                    <div className="h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                                    <div className={`h-2 ${theme === 'dark' ? 'bg-white/5' : 'bg-black/5'} rounded-full overflow-hidden border ${theme === 'dark' ? 'border-white/5' : 'border-black/5'}`}>
                                         <div
                                             className="h-full bg-primary/60 rounded-full transition-all duration-1000"
                                             style={{ width: `${Math.min((count / (stats.totalHits || 1)) * 100, 100)}%` }}
@@ -588,7 +605,7 @@ export default function AnalyticsScreen() {
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="bg-black/20">
+                                <tr className={theme === 'dark' ? 'bg-black/20' : 'bg-white/20'}>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest">Timestamp</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest">Method</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest">Domain</th>
@@ -600,7 +617,7 @@ export default function AnalyticsScreen() {
                             </thead>
                             <tbody className="divide-y divide-outline/5">
                                 {stats?.recentHits.slice(0, 50).map((hit, i) => (
-                                    <tr key={i} className="hover:bg-white/[0.02] transition-colors group">
+                                    <tr key={i} className={`${theme === 'dark' ? 'hover:bg-white/[0.02]' : 'hover:bg-black/[0.02]'} transition-colors group`}>
                                         <td className="px-6 py-3 font-mono text-[10px] text-on-surface-variant">
                                             {new Date(hit.timestamp).toLocaleTimeString()}
                                         </td>
@@ -668,6 +685,7 @@ function ExpandableStatsCard({
     itemsToShow: number,
     onShowMore: () => void
 }) {
+    const { theme } = useTheme();
     const colorClasses: Record<string, string> = {
         primary: 'text-primary bg-primary/10',
         indigo: 'text-indigo-500 bg-indigo-500/10',
@@ -694,7 +712,7 @@ function ExpandableStatsCard({
                 </div>
                 <button
                     onClick={onToggle}
-                    className="p-1.5 hover:bg-white/5 rounded-lg transition-all"
+                    className={`p-1.5 ${theme === 'dark' ? 'hover:bg-white/5' : 'hover:bg-black/5'} rounded-lg transition-all`}
                     title={expanded ? 'Collapse' : 'Expand'}
                 >
                     {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -713,7 +731,7 @@ function ExpandableStatsCard({
                                 </div>
                                 <span className="text-[10px] font-black text-on-surface-variant ml-2 shrink-0">{item.value?.toLocaleString()}</span>
                             </div>
-                            <div className="h-1 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                            <div className={`h-1 ${theme === 'dark' ? 'bg-white/5' : 'bg-black/5'} rounded-full overflow-hidden border ${theme === 'dark' ? 'border-white/5' : 'border-black/5'}`}>
                                 <div
                                     className={`h-full opacity-60 rounded-full transition-all duration-1000 ${
                                         color === 'primary' ? 'bg-primary' :

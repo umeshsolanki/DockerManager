@@ -52,8 +52,9 @@ fun Application.configureRouting() {
 
         // Serve UI (React App)
         singlePageApplication {
+            this.react("ui")
             useResources = true
-            filesPath = "ui"
+//            filesPath = "ui"
             defaultPage = "index.html"
         }
     }

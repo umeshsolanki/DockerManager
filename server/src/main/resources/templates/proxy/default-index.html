@@ -11,94 +11,303 @@
             box-sizing: border-box;
         }
         
+        :root {
+            --bg-gradient-start: #667eea;
+            --bg-gradient-end: #764ba2;
+            --container-bg: white;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --info-box-bg: #f8fafc;
+            --info-box-border: #e2e8f0;
+            --shadow: rgba(0, 0, 0, 0.1);
+            --shadow-lg: rgba(0, 0, 0, 0.15);
+            --status-bg: #10b981;
+            --status-text: white;
+            --toggle-bg: rgba(255, 255, 255, 0.9);
+            --toggle-hover: rgba(255, 255, 255, 1);
+            --accent: #667eea;
+            --accent-hover: #5568d3;
+        }
+        
+        [data-theme="dark"] {
+            --bg-gradient-start: #0f172a;
+            --bg-gradient-end: #1e293b;
+            --container-bg: #1e293b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --info-box-bg: #0f172a;
+            --info-box-border: #334155;
+            --shadow: rgba(0, 0, 0, 0.3);
+            --shadow-lg: rgba(0, 0, 0, 0.5);
+            --status-bg: #10b981;
+            --status-text: white;
+            --toggle-bg: rgba(30, 41, 59, 0.9);
+            --toggle-hover: rgba(30, 41, 59, 1);
+            --accent: #8b5cf6;
+            --accent-hover: #7c3aed;
+        }
+        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+            background-attachment: fixed;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 20px;
+            transition: background 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow-x: hidden;
         }
         
-        .container {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            padding: 60px 40px;
-            max-width: 600px;
-            width: 100%;
-            text-align: center;
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(102, 126, 234, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(118, 75, 162, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
         }
         
-        .logo {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 30px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 20px;
+        .theme-toggle {
+            position: fixed;
+            top: 24px;
+            right: 24px;
+            background: var(--toggle-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 2px solid var(--accent);
+            border-radius: 50px;
+            width: auto;
+            min-width: 56px;
+            height: 56px;
+            padding: 0 16px;
+            cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 40px;
+            gap: 8px;
+            font-size: 26px;
+            box-shadow: 0 4px 20px var(--shadow-lg), 0 0 0 4px rgba(102, 126, 234, 0.1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 1000;
+        }
+        
+        .theme-toggle-text {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: none;
+        }
+        
+        @media (min-width: 768px) {
+            .theme-toggle-text {
+                display: inline-block;
+            }
+        }
+        
+        [data-theme="dark"] .theme-toggle {
+            border-color: var(--accent);
+            box-shadow: 0 4px 20px var(--shadow-lg), 0 0 0 4px rgba(139, 92, 246, 0.1);
+        }
+        
+        .theme-toggle:hover {
+            transform: scale(1.1) rotate(15deg);
+            background: var(--toggle-hover);
+            box-shadow: 0 6px 24px var(--shadow-lg), 0 0 0 6px rgba(102, 126, 234, 0.15);
+            border-width: 3px;
+        }
+        
+        .theme-toggle:active {
+            transform: scale(0.95);
+        }
+        
+        .theme-toggle:focus {
+            outline: none;
+            box-shadow: 0 4px 20px var(--shadow-lg), 0 0 0 4px rgba(102, 126, 234, 0.2);
+        }
+        
+        .container {
+            background: var(--container-bg);
+            border-radius: 24px;
+            box-shadow: 0 24px 64px var(--shadow-lg);
+            padding: 64px 48px;
+            max-width: 640px;
+            width: 100%;
+            text-align: center;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            z-index: 1;
+            border: 1px solid var(--info-box-border);
+            animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .logo {
+            width: 96px;
+            height: 96px;
+            margin: 0 auto 32px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
             color: white;
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.3);
+            transition: transform 0.3s ease;
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0px);
+            }
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+        
+        .logo:hover {
+            transform: scale(1.05) translateY(-5px);
+            animation: none;
         }
         
         h1 {
-            color: #333;
-            font-size: 32px;
-            margin-bottom: 15px;
-            font-weight: 700;
+            color: var(--text-primary);
+            font-size: 36px;
+            margin-bottom: 12px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            transition: color 0.3s ease;
+            line-height: 1.2;
         }
         
         .subtitle {
-            color: #666;
+            color: var(--text-secondary);
             font-size: 18px;
-            margin-bottom: 40px;
+            margin-bottom: 32px;
             line-height: 1.6;
-        }
-        
-        .info-box {
-            background: #f8f9fa;
-            border-radius: 12px;
-            padding: 25px;
-            margin-top: 30px;
-            text-align: left;
-        }
-        
-        .info-box h2 {
-            color: #333;
-            font-size: 20px;
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .info-box p {
-            color: #666;
-            font-size: 14px;
-            line-height: 1.8;
-            margin-bottom: 10px;
-        }
-        
-        .info-box ul {
-            color: #666;
-            font-size: 14px;
-            line-height: 1.8;
-            margin-left: 20px;
-            margin-top: 10px;
+            transition: color 0.3s ease;
+            font-weight: 400;
         }
         
         .status {
-            display: inline-block;
-            padding: 8px 16px;
-            background: #10b981;
-            color: white;
-            border-radius: 20px;
-            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            background: var(--status-bg);
+            color: var(--status-text);
+            border-radius: 50px;
+            font-size: 15px;
             font-weight: 600;
-            margin-top: 20px;
+            margin-top: 8px;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .status:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+        }
+        
+        .status-icon {
+            font-size: 18px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.7;
+            }
+        }
+        
+        .info-box {
+            background: var(--info-box-bg);
+            border: 1px solid var(--info-box-border);
+            border-radius: 16px;
+            padding: 32px;
+            margin-top: 40px;
+            text-align: left;
+            transition: all 0.3s ease;
+        }
+        
+        .info-box:hover {
+            border-color: var(--accent);
+            box-shadow: 0 4px 16px var(--shadow);
+        }
+        
+        .info-box h2 {
+            color: var(--text-primary);
+            font-size: 22px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: color 0.3s ease;
+            font-weight: 700;
+        }
+        
+        .info-box h2 .icon {
+            font-size: 24px;
+            filter: grayscale(0);
+        }
+        
+        .info-box p {
+            color: var(--text-secondary);
+            font-size: 15px;
+            line-height: 1.8;
+            margin-bottom: 16px;
+            transition: color 0.3s ease;
+        }
+        
+        .info-box p strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+        
+        .info-box ul {
+            color: var(--text-secondary);
+            font-size: 15px;
+            line-height: 2;
+            margin-left: 24px;
+            margin-top: 12px;
+            transition: color 0.3s ease;
+            list-style: none;
+        }
+        
+        .info-box ul li {
+            position: relative;
+            padding-left: 24px;
+            margin-bottom: 8px;
+        }
+        
+        .info-box ul li::before {
+            content: '→';
+            position: absolute;
+            left: 0;
+            color: var(--accent);
+            font-weight: bold;
         }
         
         .icon {
@@ -107,15 +316,62 @@
             height: 24px;
             vertical-align: middle;
         }
+        
+        @media (max-width: 640px) {
+            .container {
+                padding: 48px 32px;
+                border-radius: 20px;
+            }
+            
+            h1 {
+                font-size: 28px;
+            }
+            
+            .subtitle {
+                font-size: 16px;
+            }
+            
+            .logo {
+                width: 80px;
+                height: 80px;
+                font-size: 40px;
+            }
+            
+            .theme-toggle {
+                min-width: 48px;
+                width: 48px;
+                height: 48px;
+                font-size: 20px;
+                padding: 0;
+                top: 16px;
+                right: 16px;
+            }
+            
+            .theme-toggle-text {
+                display: none !important;
+            }
+            
+            .info-box {
+                padding: 24px;
+            }
+        }
     </style>
 </head>
 <body>
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme" title="Toggle theme (Light/Dark)">
+        <span id="themeIcon">🌙</span>
+        <span class="theme-toggle-text" id="themeToggleText">Dark</span>
+    </button>
+    
     <div class="container">
         <div class="logo">🐳</div>
         <h1>Docker Manager Proxy</h1>
         <p class="subtitle">Reverse proxy service is running</p>
         
-        <div class="status">✓ Service Active</div>
+        <div class="status">
+            <span class="status-icon">✓</span>
+            <span>Service Active</span>
+        </div>
         
         <div class="info-box">
             <h2>
@@ -134,7 +390,43 @@
             </ul>
         </div>
     </div>
+    
+    <script>
+        (function() {
+            // Get theme from localStorage or system preference
+            const getStoredTheme = () => localStorage.getItem('theme');
+            const getSystemTheme = () => window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            const getTheme = () => getStoredTheme() || getSystemTheme();
+            
+            // Set theme
+            const setTheme = (theme) => {
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('theme', theme);
+                const icon = document.getElementById('themeIcon');
+                const text = document.getElementById('themeToggleText');
+                icon.textContent = theme === 'dark' ? '☀️' : '🌙';
+                if (text) {
+                    text.textContent = theme === 'dark' ? 'Light' : 'Dark';
+                }
+            };
+            
+            // Initialize theme
+            setTheme(getTheme());
+            
+            // Toggle theme on button click
+            document.getElementById('themeToggle').addEventListener('click', () => {
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                setTheme(newTheme);
+            });
+            
+            // Listen for system theme changes
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+                if (!getStoredTheme()) {
+                    setTheme(e.matches ? 'dark' : 'light');
+                }
+            });
+        })();
+    </script>
 </body>
 </html>
-
-

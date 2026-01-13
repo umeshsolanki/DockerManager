@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 @theme {
+  /* Dark theme (default) */
   --color-background: #1C1B1F;
   --color-foreground: #E6E1E5;
   --color-primary: #D0BCFF;
@@ -14,6 +15,20 @@
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+}
+
+/* Light theme */
+[data-theme="light"] {
+  --color-background: #FEFBFF;
+  --color-foreground: #1C1B1F;
+  --color-primary: #6750A4;
+  --color-secondary: #625B71;
+  --color-tertiary: #7D5260;
+  --color-surface: #FFFBFE;
+  --color-on-surface: #1C1B1F;
+  --color-on-surface-variant: #49454F;
+  --color-outline: #79747E;
+  --color-error: #BA1A1A;
 }
 
 body {
@@ -37,6 +52,14 @@ body {
 
   .nav-rail-item:hover {
     @apply bg-white/5;
+  }
+
+  [data-theme="light"] .nav-rail-item:hover {
+    @apply bg-black/5;
+  }
+
+  [data-theme="light"] .nav-rail-item {
+    @apply text-on-surface-variant;
   }
 }
 
@@ -65,6 +88,14 @@ body {
   background: rgba(208, 188, 255, 0.5) !important;
 }
 
+[data-theme="light"] *:hover::-webkit-scrollbar-thumb {
+  background: rgba(121, 116, 126, 0.3);
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(103, 80, 164, 0.5) !important;
+}
+
 /* Root level scrollbar for Firefox */
 * {
   scrollbar-width: thin;
@@ -74,4 +105,8 @@ body {
 
 *:hover {
   scrollbar-color: rgba(147, 143, 153, 0.2) transparent;
+}
+
+[data-theme="light"] *:hover {
+  scrollbar-color: rgba(121, 116, 126, 0.3) transparent;
 }

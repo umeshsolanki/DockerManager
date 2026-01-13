@@ -83,10 +83,10 @@ function HomeContent() {
   };
 
   if (isAuthenticated === null) {
-    return <div className="flex h-screen items-center justify-center bg-background text-white">
+    return <div className="flex h-screen items-center justify-center bg-background text-foreground">
       <div className="flex flex-col items-center gap-4">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-500 border-t-transparent"></div>
-        <p className="text-sm font-medium tracking-wide text-gray-400">Securing Session...</p>
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+        <p className="text-sm font-medium tracking-wide text-on-surface-variant">Securing Session...</p>
       </div>
     </div>;
   }
@@ -134,7 +134,7 @@ function HomeContent() {
 
 export default function Home() {
   return (
-    <Suspense fallback={<div className="flex h-screen items-center justify-center bg-background text-white">Loading...</div>}>
+    <Suspense fallback={<div className="flex h-screen items-center justify-center bg-background text-foreground">Loading...</div>}>
       <HomeContent />
     </Suspense>
   );

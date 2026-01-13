@@ -47,8 +47,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     };
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-[#0a0a0b] p-4 text-white">
-            <div className="w-full max-w-md overflow-hidden rounded-3xl bg-[#141416]/80 backdrop-blur-xl border border-white/5 shadow-2xl">
+        <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
+            <div className="w-full max-w-md overflow-hidden rounded-3xl bg-surface/80 backdrop-blur-xl border border-outline/20 shadow-2xl">
                 <div className="p-8 md:p-12">
                     <div className="mb-10 text-center">
                         <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/20">
@@ -69,7 +69,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                         <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-white to-white/70">
                             UCpanel
                         </h1>
-                        <p className="mt-2 text-sm text-gray-400">
+                        <p className="mt-2 text-sm text-on-surface-variant">
                             Security gateway for system administration
                         </p>
                     </div>
@@ -78,28 +78,28 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                         {!requires2FA ? (
                             <>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-semibold uppercase tracking-wider text-gray-500 ml-1">
+                                    <label className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant ml-1">
                                         System Username
                                     </label>
                                     <input
                                         type="text"
                                         value={username}
                                         onChange={(e) => setUsername(e.target.value)}
-                                        className="w-full rounded-2xl bg-[#1c1c1f] border border-white/10 px-5 py-4 text-white placeholder-gray-600 outline-none transition-all focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/10"
+                                        className="w-full rounded-2xl bg-surface border border-outline/20 px-5 py-4 text-foreground placeholder-on-surface-variant outline-none transition-all focus:border-primary/50 focus:ring-4 focus:ring-primary/10"
                                         placeholder="e.g. admin"
                                         required
                                         autoFocus
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-semibold uppercase tracking-wider text-gray-500 ml-1">
+                                    <label className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant ml-1">
                                         Administrator Password
                                     </label>
                                     <input
                                         type="password"
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
-                                        className="w-full rounded-2xl bg-[#1c1c1f] border border-white/10 px-5 py-4 text-white placeholder-gray-600 outline-none transition-all focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/10"
+                                        className="w-full rounded-2xl bg-surface border border-outline/20 px-5 py-4 text-foreground placeholder-on-surface-variant outline-none transition-all focus:border-primary/50 focus:ring-4 focus:ring-primary/10"
                                         placeholder="Enter access password"
                                         required
                                     />
@@ -118,14 +118,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                                     </div>
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-semibold uppercase tracking-wider text-gray-500 ml-1">
+                                    <label className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant ml-1">
                                         Verification Code
                                     </label>
                                     <input
                                         type="text"
                                         value={otpCode}
                                         onChange={(e) => setOtpCode(e.target.value)}
-                                        className="w-full rounded-2xl bg-[#1c1c1f] border border-white/10 px-5 py-4 text-white placeholder-gray-600 outline-none transition-all focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/10 tracking-[0.5em] text-center text-xl font-mono"
+                                        className="w-full rounded-2xl bg-surface border border-outline/20 px-5 py-4 text-foreground placeholder-on-surface-variant outline-none transition-all focus:border-primary/50 focus:ring-4 focus:ring-primary/10 tracking-[0.5em] text-center text-xl font-mono"
                                         placeholder="000000"
                                         maxLength={6}
                                         required
@@ -144,7 +144,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="relative w-full overflow-hidden rounded-2xl bg-blue-600 py-4 font-semibold text-white transition-all hover:bg-blue-500 active:scale-[0.98] disabled:opacity-50 group"
+                            className="relative w-full overflow-hidden rounded-2xl bg-primary py-4 font-semibold text-on-surface transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50 group"
                         >
                             {loading ? (
                                 <div className="flex items-center justify-center gap-2">
@@ -171,7 +171,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                     </form>
 
                     <div className="mt-8 text-center">
-                        <p className="text-xs text-gray-600">
+                        <p className="text-xs text-on-surface-variant">
                             Protected Workspace &bull; v1.1.2
                         </p>
                     </div>

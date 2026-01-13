@@ -4,6 +4,7 @@ import { LayoutDashboard, Database, Layers, Settings, Lock, Network, HardDrive, 
 
 import { Screen } from '@/lib/types';
 import BatteryIndicator from './BatteryIndicator';
+import ThemeToggle from './ui/ThemeToggle';
 
 interface Props {
     selectedScreen: Screen;
@@ -29,12 +30,12 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
 
 
     return (
-        <div className="flex flex-col h-full w-20 bg-surface border-r border-white/5 items-center py-4">
+        <div className="flex flex-col h-full w-20 bg-surface border-r border-outline/10 items-center py-4">
             <div className="mb-2 text-primary font-bold text-xl tracking-tight">UC</div>
 
             <BatteryIndicator />
 
-            <div className="w-8 h-[1px] bg-white/10 my-4" />
+            <div className="w-8 h-[1px] bg-outline/20 my-4" />
 
             <div className="flex flex-col gap-2 flex-1 overflow-y-auto w-full no-scrollbar">
                 {items.map((item) => {
@@ -56,7 +57,9 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
 
             </div>
 
-            <div className="w-8 h-[1px] bg-white/10 my-4" />
+            <div className="w-8 h-[1px] bg-outline/20 my-4" />
+
+            <ThemeToggle />
 
             <button
                 onClick={() => onScreenChange('Settings')}
@@ -73,7 +76,7 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
                 title="Logout"
             >
                 <LogOut size={20} />
-                <span className="text-[9px] mt-1 font-medium text-white/40">Log Out</span>
+                <span className="text-[9px] mt-1 font-medium text-on-surface-variant/60">Log Out</span>
             </button>
         </div>
     );
