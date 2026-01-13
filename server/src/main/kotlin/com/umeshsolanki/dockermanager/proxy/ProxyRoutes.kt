@@ -166,69 +166,6 @@ fun Route.proxyRoutes() {
             call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.BadRequest)
         }
 
-        get("/stats") {
-            call.respond(ProxyService.getStats())
-        }
-
-        post("/stats/settings") {
-            val request = call.receive<UpdateProxyStatsRequest>()
-            ProxyService.updateStatsSettings(request.active, request.intervalMs, request.filterLocalIps)
-            call.respond(HttpStatusCode.OK, ProxyActionResult(true, "Proxy stats settings updated"))
-        }
-
-        get("/stats/refresh") {
-            call.respond(ProxyService.getStats())
-        }
-
-        // Historical Analytics
-        get("/stats/history/dates") {
-            call.respond(ProxyService.listAvailableDates())
-        }
-
-        get("/stats/history/{date}") {
-            val date = call.requireParameter("date") ?: return@get
-            val stats = ProxyService.getHistoricalStats(date)
-            if (stats != null) {
-                call.respond(stats)
-            } else {
-                call.respond(HttpStatusCode.NotFound, ProxyActionResult(false, "No stats found for date: $date"))
-            }
-        }
-
-        get("/stats/history/range") {
-            val startDate = call.request.queryParameters["start"] ?: return@get call.respond(
-                HttpStatusCode.BadRequest,
-                ProxyActionResult(false, "Missing 'start' parameter")
-            )
-            val endDate = call.request.queryParameters["end"] ?: return@get call.respond(
-                HttpStatusCode.BadRequest,
-                ProxyActionResult(false, "Missing 'end' parameter")
-            )
-            call.respond(ProxyService.getStatsForDateRange(startDate, endDate))
-        }
-
-        post("/stats/history/{date}/reprocess") {
-            val date = call.requireParameter("date") ?: return@post
-            val stats = ProxyService.forceReprocessLogs(date)
-            if (stats != null) {
-                call.respond(HttpStatusCode.OK, ProxyActionResult(true, "Successfully reprocessed logs for date: $date"))
-            } else {
-                call.respond(HttpStatusCode.NotFound, ProxyActionResult(false, "Failed to reprocess logs for date: $date"))
-            }
-        }
-
-        post("/stats/history/update-all-days") {
-            val results = ProxyService.updateStatsForAllDaysInCurrentLog()
-            val successCount = results.values.count { it }
-            val failureCount = results.size - successCount
-            val message = "Processed ${results.size} dates. Success: $successCount, Failed: $failureCount"
-            call.respond(HttpStatusCode.OK, mapOf(
-                "success" to true,
-                "message" to message,
-                "results" to results
-            ))
-        }
-
         get("/security/settings") {
             call.respond(ProxyService.getProxySecuritySettings())
         }

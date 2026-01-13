@@ -181,12 +181,12 @@ export const DockerClient = {
     updatePathRoute: (hostId: string, pathId: string, body: PathRoute) => safeReq(`/proxy/hosts/${hostId}/paths/${pathId}`, { method: 'PUT', body: JSON.stringify(body) }),
     deletePathRoute: (hostId: string, pathId: string) => safeReq(`/proxy/hosts/${hostId}/paths/${pathId}`, { method: 'DELETE' }),
     togglePathRoute: (hostId: string, pathId: string) => safeReq(`/proxy/hosts/${hostId}/paths/${pathId}/toggle`, { method: 'POST' }),
-    getProxyStats: () => req<ProxyStats | null>('/proxy/stats', {}, null),
-    refreshProxyStats: () => req<ProxyStats | null>('/proxy/stats/refresh', {}, null),
-    listAnalyticsDates: () => req<string[]>('/proxy/stats/history/dates', {}, []),
-    getHistoricalStats: (date: string) => req<DailyProxyStats | null>(`/proxy/stats/history/${date}`, {}, null),
-    getStatsForDateRange: (startDate: string, endDate: string) => req<DailyProxyStats[]>(`/proxy/stats/history/range?start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`, {}, []),
-    updateStatsForAllDaysInCurrentLog: () => safeReq('/proxy/stats/history/update-all-days', { method: 'POST' }),
+    getProxyStats: () => req<ProxyStats | null>('/analytics/stats', {}, null),
+    refreshProxyStats: () => req<ProxyStats | null>('/analytics/stats/refresh', {}, null),
+    listAnalyticsDates: () => req<string[]>('/analytics/stats/history/dates', {}, []),
+    getHistoricalStats: (date: string) => req<DailyProxyStats | null>(`/analytics/stats/history/${date}`, {}, null),
+    getStatsForDateRange: (startDate: string, endDate: string) => req<DailyProxyStats[]>(`/analytics/stats/history/range?start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`, {}, []),
+    updateStatsForAllDaysInCurrentLog: () => safeReq('/analytics/stats/history/update-all-days', { method: 'POST' }),
     
     // Redis Cache
     getRedisConfig: () => req<RedisConfig>('/cache/redis/config', {}, { enabled: false, host: 'localhost', port: 6379, database: 0, ssl: false, timeout: 5000 }),

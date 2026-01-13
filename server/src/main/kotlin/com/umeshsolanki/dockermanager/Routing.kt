@@ -6,6 +6,7 @@ import com.umeshsolanki.dockermanager.email.emailRoutes
 import com.umeshsolanki.dockermanager.file.fileRoutes
 import com.umeshsolanki.dockermanager.firewall.firewallRoutes
 import com.umeshsolanki.dockermanager.proxy.proxyRoutes
+import com.umeshsolanki.dockermanager.proxy.analyticsRoutes
 import com.umeshsolanki.dockermanager.shell.ShellService
 import com.umeshsolanki.dockermanager.system.systemRoutes
 import com.umeshsolanki.dockermanager.cache.cacheRoutes
@@ -35,6 +36,7 @@ fun Application.configureRouting() {
             logRoutes()
             firewallRoutes()
             proxyRoutes()
+            analyticsRoutes()
             emailRoutes()
             cacheRoutes()
         }

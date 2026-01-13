@@ -222,29 +222,29 @@ export default function ProxyScreen() {
                 {activeTab === 'container' && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         {/* Container Management Card */}
-                        <div className="bg-gradient-to-br from-primary/10 to-secondary/10 border border-primary/20 rounded-3xl p-5 shadow-inner overflow-hidden relative">
-                            <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
-                                <Server size={140} />
+                        <div className="bg-gradient-to-br from-primary/10 to-secondary/10 border border-primary/20 rounded-2xl p-6 shadow-lg overflow-hidden relative">
+                            <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
+                                <Server size={120} />
                             </div>
 
-                            <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-5 relative z-10">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center shadow-lg backdrop-blur-md border border-white/10">
-                                        <Server size={24} className="text-primary" />
+                            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6 relative z-10">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-14 h-14 rounded-xl bg-primary/20 flex items-center justify-center shadow-lg backdrop-blur-md border border-white/10">
+                                        <Server size={26} className="text-primary" />
                                     </div>
                                     <div>
                                         <h2 className="text-xl font-bold">Proxy Engine</h2>
-                                        <p className="text-xs text-on-surface-variant">OpenResty & Certbot Management</p>
+                                        <p className="text-xs text-on-surface-variant mt-0.5">OpenResty & Certbot Management</p>
                                     </div>
                                 </div>
                                 {containerStatus && (
-                                    <div className={`px-4 py-2 rounded-xl font-bold text-base flex items-center gap-2 shadow-lg backdrop-blur-md border ${containerStatus.running
+                                    <div className={`px-4 py-2 rounded-xl font-semibold text-sm flex items-center gap-2 shadow-md backdrop-blur-md border ${containerStatus.running
                                         ? 'bg-green-500/20 text-green-500 border-green-500/30'
                                         : containerStatus.exists
                                             ? 'bg-orange-500/20 text-orange-500 border-orange-500/30'
                                             : 'bg-red-500/20 text-red-500 border-red-500/30'
                                         }`}>
-                                        <div className={`w-2.5 h-2.5 rounded-full ${containerStatus.running ? 'bg-green-500 animate-pulse' : 'bg-current'
+                                        <div className={`w-2 h-2 rounded-full ${containerStatus.running ? 'bg-green-500 animate-pulse' : 'bg-current'
                                             }`} />
                                         {containerStatus.running ? 'RUNNING' : containerStatus.exists ? 'STOPPED' : 'NOT CREATED'}
                                     </div>
@@ -252,31 +252,31 @@ export default function ProxyScreen() {
                             </div>
 
                             {containerStatus && (
-                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
                                     {[
-                                        { label: 'Infrastructure', value: containerStatus.exists ? 'Deployed' : 'Missing', color: containerStatus.exists ? 'text-green-500' : 'text-red-500', icon: <Layers size={12} /> },
-                                        { label: 'Docker Image', value: containerStatus.imageExists ? 'Available' : 'Missing', color: containerStatus.imageExists ? 'text-green-500' : 'text-red-500', icon: <Database size={12} /> },
-                                        { label: 'Lifecycle', value: containerStatus.status, color: 'text-primary', icon: <Activity size={12} /> },
-                                        { label: 'System ID', value: containerStatus.containerId?.substring(0, 12) || 'N/A', color: 'text-on-surface', icon: <FileKey size={12} /> }
+                                        { label: 'Infrastructure', value: containerStatus.exists ? 'Deployed' : 'Missing', color: containerStatus.exists ? 'text-green-500' : 'text-red-500', icon: <Layers size={14} /> },
+                                        { label: 'Docker Image', value: containerStatus.imageExists ? 'Available' : 'Missing', color: containerStatus.imageExists ? 'text-green-500' : 'text-red-500', icon: <Database size={14} /> },
+                                        { label: 'Lifecycle', value: containerStatus.status, color: 'text-primary', icon: <Activity size={14} /> },
+                                        { label: 'System ID', value: containerStatus.containerId?.substring(0, 12) || 'N/A', color: 'text-on-surface', icon: <FileKey size={14} /> }
                                     ].map((stat, i) => (
-                                        <div key={i} className="bg-surface/40 backdrop-blur-sm rounded-xl p-3 border border-white/5 shadow-sm">
-                                            <div className="flex items-center gap-1.5 text-[9px] text-on-surface-variant uppercase font-bold mb-1 tracking-wider">
+                                        <div key={i} className="bg-surface/50 backdrop-blur-sm rounded-xl p-3.5 border border-outline/10 shadow-sm">
+                                            <div className="flex items-center gap-1.5 text-[10px] text-on-surface-variant uppercase font-semibold mb-1.5 tracking-wider">
                                                 {stat.icon}
                                                 <span>{stat.label}</span>
                                             </div>
-                                            <div className={`text-base font-bold font-mono ${stat.color}`}>{stat.value}</div>
+                                            <div className={`text-sm font-bold font-mono ${stat.color}`}>{stat.value}</div>
                                         </div>
                                     ))}
                                 </div>
                             )}
 
-                            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
+                            <div className="flex flex-wrap gap-2 mb-4">
                                 {[
-                                    { label: 'Build', icon: <Activity className="rotate-90" />, action: () => DockerClient.buildProxyImage(), color: 'bg-surface hover:bg-surface-variant border-outline/20' },
-                                    { label: 'Create', icon: <Plus />, action: () => DockerClient.createProxyContainer(), color: 'bg-surface hover:bg-surface-variant border-outline/20', disabled: !containerStatus?.imageExists },
-                                    { label: 'Start', icon: <Activity />, action: () => DockerClient.startProxyContainer(), color: 'bg-green-500 text-on-primary', disabled: !containerStatus?.exists || containerStatus?.running },
-                                    { label: 'Stop', icon: <Power />, action: () => DockerClient.stopProxyContainer(), color: 'bg-red-500 text-on-primary', disabled: !containerStatus?.running },
-                                    { label: 'Restart', icon: <RefreshCw />, action: () => DockerClient.restartProxyContainer(), color: 'bg-orange-500 text-on-primary', disabled: !containerStatus?.running },
+                                    { label: 'Build', icon: <Activity className="rotate-90" />, action: () => DockerClient.buildProxyImage(), color: 'bg-surface hover:bg-surface-variant border-outline/20 text-on-surface' },
+                                    { label: 'Create', icon: <Plus />, action: () => DockerClient.createProxyContainer(), color: 'bg-surface hover:bg-surface-variant border-outline/20 text-on-surface', disabled: !containerStatus?.imageExists },
+                                    { label: 'Start', icon: <Activity />, action: () => DockerClient.startProxyContainer(), color: 'bg-green-500 hover:bg-green-600 text-white', disabled: !containerStatus?.exists || containerStatus?.running },
+                                    { label: 'Stop', icon: <Power />, action: () => DockerClient.stopProxyContainer(), color: 'bg-red-500 hover:bg-red-600 text-white', disabled: !containerStatus?.running },
+                                    { label: 'Restart', icon: <RefreshCw />, action: () => DockerClient.restartProxyContainer(), color: 'bg-orange-500 hover:bg-orange-600 text-white', disabled: !containerStatus?.running },
                                 ].map((btn, i) => (
                                     <button
                                         key={i}
@@ -292,7 +292,7 @@ export default function ProxyScreen() {
                                             setIsContainerActionLoading(false);
                                         }}
                                         disabled={isContainerActionLoading || btn.disabled}
-                                        className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl transition-all shadow-md active:scale-95 border border-white/5 font-bold text-xs disabled:opacity-30 disabled:grayscale ${btn.color}`}
+                                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl transition-all shadow-md active:scale-[0.98] border font-semibold text-xs disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed ${btn.color}`}
                                     >
                                         {React.cloneElement(btn.icon as React.ReactElement<any>, { size: 16 })}
                                         <span>{btn.label}</span>
@@ -300,87 +300,86 @@ export default function ProxyScreen() {
                                 ))}
                             </div>
 
-                            <button
-                                onClick={async () => {
-                                    setIsContainerActionLoading(true);
-                                    toast.promise(
-                                        DockerClient.ensureProxyContainer(),
-                                        {
-                                            loading: 'Initializing absolute proxy infrastructure...',
-                                            success: (result) => {
-                                                setTimeout(fetchContainerStatus, 1500);
-                                                return result.message || 'Infrastructure synchronized!';
-                                            },
-                                            error: (err) => err.message || 'Synchronization failed'
-                                        }
-                                    );
-                                    setIsContainerActionLoading(false);
-                                }}
-                                disabled={isContainerActionLoading}
-                                className="w-full bg-primary hover:bg-primary/90 text-on-primary px-4 py-3.5 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all shadow-xl active:scale-[0.98] disabled:opacity-50"
-                            >
-                                <Activity size={20} />
-                                <span>AUTOMATIC INFRASTRUCTURE SYNC</span>
-                            </button>
-
-                            <div className="mt-3 flex justify-center">
+                            <div className="flex flex-col sm:flex-row items-center gap-3 mb-4">
+                                <button
+                                    onClick={async () => {
+                                        setIsContainerActionLoading(true);
+                                        toast.promise(
+                                            DockerClient.ensureProxyContainer(),
+                                            {
+                                                loading: 'Initializing proxy infrastructure...',
+                                                success: (result) => {
+                                                    setTimeout(fetchContainerStatus, 1500);
+                                                    return result.message || 'Infrastructure synchronized!';
+                                                },
+                                                error: (err) => err.message || 'Synchronization failed'
+                                            }
+                                        );
+                                        setIsContainerActionLoading(false);
+                                    }}
+                                    disabled={isContainerActionLoading}
+                                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-on-primary px-5 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-lg active:scale-[0.98] disabled:opacity-50"
+                                >
+                                    <Activity size={18} />
+                                    <span>Sync Infrastructure</span>
+                                </button>
                                 <button
                                     onClick={() => setIsComposeModalOpen(true)}
-                                    className="text-xs font-bold text-on-surface-variant hover:text-primary flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all"
+                                    className="inline-flex items-center gap-2 text-xs font-semibold text-on-surface-variant hover:text-primary px-4 py-2.5 rounded-xl hover:bg-white/5 transition-all border border-outline/10"
                                 >
-                                    <Pencil size={12} />
-                                    <span>Edit Proxy Compose File</span>
+                                    <Pencil size={14} />
+                                    <span>Edit Compose</span>
                                 </button>
                             </div>
                         </div>
 
                         {/* Information Guide */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="bg-surface border border-outline/10 rounded-3xl p-6">
-                                <h3 className="text-xl font-bold mb-4 flex items-center gap-3">
-                                    <ShieldCheck className="text-green-500" />
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg">
+                                <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                                    <ShieldCheck className="text-green-500" size={20} />
                                     <span>Security & Compliance</span>
                                 </h3>
-                                <ul className="space-y-4 text-sm text-on-surface-variant">
+                                <ul className="space-y-3 text-sm text-on-surface-variant">
                                     <li className="flex gap-3">
-                                        <div className="w-6 h-6 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0">
+                                        <div className="w-5 h-5 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0 mt-0.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
                                         </div>
                                         <p>Automatic SSL certificate renewal every 60 days via Let's Encrypt.</p>
                                     </li>
                                     <li className="flex gap-3">
-                                        <div className="w-6 h-6 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0">
+                                        <div className="w-5 h-5 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0 mt-0.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
                                         </div>
                                         <p>Enhanced OpenResty build with custom security headers and HSTS support.</p>
                                     </li>
                                     <li className="flex gap-3">
-                                        <div className="w-6 h-6 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0">
+                                        <div className="w-5 h-5 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0 mt-0.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
                                         </div>
                                         <p>Isolated network mode ensures maximum performance and compatibility.</p>
                                     </li>
                                 </ul>
                             </div>
-                            <div className="bg-surface border border-outline/10 rounded-3xl p-6">
-                                <h3 className="text-xl font-bold mb-4 flex items-center gap-3">
-                                    <Network className="text-primary" />
+                            <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg">
+                                <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                                    <Network className="text-primary" size={20} />
                                     <span>Network Topology</span>
                                 </h3>
-                                <div className="space-y-4 text-sm text-on-surface-variant">
-                                    <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="font-bold text-primary">Inbound (Wan)</span>
-                                            <span className="text-xs font-mono bg-white/5 px-2 py-1 rounded">Ports: 80, 443</span>
+                                <div className="space-y-3 text-sm text-on-surface-variant">
+                                    <div className="p-3.5 bg-primary/5 rounded-xl border border-primary/10">
+                                        <div className="flex justify-between items-center mb-1.5">
+                                            <span className="font-semibold text-primary text-sm">Inbound (WAN)</span>
+                                            <span className="text-[10px] font-mono bg-white/5 px-2 py-0.5 rounded">80, 443</span>
                                         </div>
-                                        <p className="text-xs">Traffic enters through the proxy container and is routed to internal targets based on the Host header.</p>
+                                        <p className="text-xs leading-relaxed">Traffic enters through the proxy container and is routed to internal targets based on the Host header.</p>
                                     </div>
-                                    <div className="p-4 bg-secondary/5 rounded-2xl border border-secondary/10">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="font-bold text-secondary">Local Storage</span>
-                                            <span className="text-xs font-mono bg-white/5 px-2 py-1 rounded">Volume: data/nginx</span>
+                                    <div className="p-3.5 bg-secondary/5 rounded-xl border border-secondary/10">
+                                        <div className="flex justify-between items-center mb-1.5">
+                                            <span className="font-semibold text-secondary text-sm">Local Storage</span>
+                                            <span className="text-[10px] font-mono bg-white/5 px-2 py-0.5 rounded">data/nginx</span>
                                         </div>
-                                        <p className="text-xs">Configurations and logs are persisted locally for easy access and backup.</p>
+                                        <p className="text-xs leading-relaxed">Configurations and logs are persisted locally for easy access and backup.</p>
                                     </div>
                                 </div>
                             </div>
@@ -1035,23 +1034,43 @@ function CertificateCard({ cert, hosts, onRenew }: { cert: SSLCertificate, hosts
             {/* Status Badge */}
             <div className="mb-2 relative z-10">
                 {isExpired ? (
-                    <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/20 rounded-lg px-2 py-1">
-                        <AlertTriangle size={10} className="text-red-500" />
-                        <span className="text-[9px] font-bold text-red-500">EXPIRED</span>
+                    <div className="flex flex-col gap-1 bg-red-500/10 border border-red-500/20 rounded-lg px-2 py-1.5">
+                        <div className="flex items-center gap-1.5">
+                            <AlertTriangle size={10} className="text-red-500" />
+                            <span className="text-[9px] font-bold text-red-500">EXPIRED</span>
+                        </div>
+                        {expiresAt && (
+                            <div className="flex items-center gap-1 text-[8px] text-red-500/80 font-medium">
+                                <Calendar size={8} />
+                                <span>{expiresAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                            </div>
+                        )}
                     </div>
                 ) : isExpiringSoon ? (
-                    <div className="flex items-center gap-1.5 bg-orange-500/10 border border-orange-500/20 rounded-lg px-2 py-1">
-                        <AlertTriangle size={10} className="text-orange-500" />
-                        <span className="text-[9px] font-bold text-orange-500">
-                            {daysUntilExpiry}d left
-                        </span>
+                    <div className="flex flex-col gap-1 bg-orange-500/10 border border-orange-500/20 rounded-lg px-2 py-1.5">
+                        <div className="flex items-center gap-1.5">
+                            <AlertTriangle size={10} className="text-orange-500" />
+                            <span className="text-[9px] font-bold text-orange-500">
+                                {daysUntilExpiry}d left
+                            </span>
+                        </div>
+                        {expiresAt && (
+                            <div className="flex items-center gap-1 text-[8px] text-orange-500/80 font-medium">
+                                <Calendar size={8} />
+                                <span>Expires {expiresAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                            </div>
+                        )}
                     </div>
                 ) : expiresAt ? (
-                    <div className="flex items-center gap-1.5 bg-green-500/10 border border-green-500/20 rounded-lg px-2 py-1">
-                        <CheckCircle2 size={10} className="text-green-500" />
-                        <span className="text-[9px] font-bold text-green-500 truncate">
-                            {expiresAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        </span>
+                    <div className="flex flex-col gap-1 bg-green-500/10 border border-green-500/20 rounded-lg px-2 py-1.5">
+                        <div className="flex items-center gap-1.5">
+                            <CheckCircle2 size={10} className="text-green-500" />
+                            <span className="text-[9px] font-bold text-green-500">VALID</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-[8px] text-green-500/80 font-medium">
+                            <Calendar size={8} />
+                            <span>Expires {expiresAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                        </div>
                     </div>
                 ) : (
                     <div className="flex items-center gap-1.5 bg-surface-variant/10 border border-outline/10 rounded-lg px-2 py-1">
@@ -1114,11 +1133,11 @@ function CertificateCard({ cert, hosts, onRenew }: { cert: SSLCertificate, hosts
             {/* Footer Actions */}
             <div className="pt-2 border-t border-outline/5 flex justify-between items-center relative z-10">
                 {expiresAt && (
-                    <div className="flex items-center gap-1 text-[8px] text-on-surface-variant">
+                    <div className="flex items-center gap-1.5 text-[8px] text-on-surface-variant">
                         <Calendar size={8} />
                         <span className="font-medium">
                             {daysUntilExpiry !== null && daysUntilExpiry > 0 
-                                ? `${daysUntilExpiry}d`
+                                ? `${daysUntilExpiry} days remaining`
                                 : 'Expired'
                             }
                         </span>
