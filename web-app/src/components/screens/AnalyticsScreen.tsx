@@ -592,61 +592,57 @@ export default function AnalyticsScreen() {
             {/* Advanced Analytics Table - Recent Hits Log (only for today) */}
             {viewMode === 'today' && (
                 <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] overflow-hidden">
-                    <div className="p-6 border-b border-outline/5 flex items-center justify-between">
+                    <div className="px-4 py-3 border-b border-outline/5 flex items-center justify-between">
                         <div>
-                            <h3 className="text-xl font-bold">Real-time Traffic Stream</h3>
-                            <p className="text-xs text-on-surface-variant font-medium">Last 50 edge requests</p>
+                            <h3 className="text-lg font-bold">Real-time Traffic Stream</h3>
+                            <p className="text-[10px] text-on-surface-variant font-medium">Last 50 edge requests</p>
                         </div>
                         <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                            <span className="text-[10px] font-black uppercase text-on-surface-variant tracking-widest">Live</span>
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                            <span className="text-[9px] font-black uppercase text-on-surface-variant tracking-widest">Live</span>
                         </div>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className={theme === 'dark' ? 'bg-black/20' : 'bg-white/20'}>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest">Timestamp</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest">Method</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest">Domain</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest">Path</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest">Source IP</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest text-center">Status</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest text-right">Time</th>
+                                    <th className="px-3 py-2 text-[9px] font-black uppercase text-on-surface-variant/60 tracking-widest">Timestamp</th>
+                                    <th className="px-3 py-2 text-[9px] font-black uppercase text-on-surface-variant/60 tracking-widest">Domain</th>
+                                    <th className="px-3 py-2 text-[9px] font-black uppercase text-on-surface-variant/60 tracking-widest">Path</th>
+                                    <th className="px-3 py-2 text-[9px] font-black uppercase text-on-surface-variant/60 tracking-widest">Source IP</th>
+                                    <th className="px-3 py-2 text-[9px] font-black uppercase text-on-surface-variant/60 tracking-widest text-right">Time</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-outline/5">
                                 {stats?.recentHits.slice(0, 50).map((hit, i) => (
                                     <tr key={i} className={`${theme === 'dark' ? 'hover:bg-white/[0.02]' : 'hover:bg-black/[0.02]'} transition-colors group`}>
-                                        <td className="px-6 py-3 font-mono text-[10px] text-on-surface-variant">
+                                        <td className="px-3 py-1.5 font-mono text-[9px] text-on-surface-variant">
                                             {new Date(hit.timestamp).toLocaleTimeString()}
                                         </td>
-                                        <td className="px-6 py-3">
-                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded ${hit.method === 'GET' ? 'bg-green-500/10 text-green-500' :
-                                                hit.method === 'POST' ? 'bg-blue-500/10 text-blue-500' :
-                                                    'bg-purple-500/10 text-purple-500'
-                                                }`}>
-                                                {hit.method}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-3 text-xs font-bold truncate max-w-[150px]" title={hit.domain || undefined}>
+                                        <td className="px-3 py-1.5 text-[10px] font-bold truncate max-w-[150px]" title={hit.domain || undefined}>
                                             {hit.domain}
                                         </td>
-                                        <td className="px-6 py-3 text-xs font-medium truncate max-w-[200px]" title={hit.path}>
-                                            {hit.path}
+                                        <td className="px-3 py-1.5 text-[10px] font-medium truncate max-w-[300px]" title={hit.path}>
+                                            <div className="flex items-center gap-1.5">
+                                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${hit.method === 'GET' ? 'bg-green-500/10 text-green-500' :
+                                                    hit.method === 'POST' ? 'bg-blue-500/10 text-blue-500' :
+                                                        'bg-purple-500/10 text-purple-500'
+                                                    }`}>
+                                                    {hit.method}
+                                                </span>
+                                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${hit.status.toString().startsWith('2') ? 'bg-green-500/10 text-green-500' :
+                                                    hit.status.toString().startsWith('3') ? 'bg-blue-500/10 text-blue-500' :
+                                                        'bg-red-500/10 text-red-500'
+                                                    }`}>
+                                                    {hit.status}
+                                                </span>
+                                                <span className="truncate">{hit.path}</span>
+                                            </div>
                                         </td>
-                                        <td className="px-6 py-3 text-xs font-mono text-on-surface-variant">
+                                        <td className="px-3 py-1.5 text-[9px] font-mono text-on-surface-variant">
                                             {hit.ip}
                                         </td>
-                                        <td className="px-6 py-3 text-center">
-                                            <span className={`text-[10px] font-black ${hit.status.toString().startsWith('2') ? 'text-green-500' :
-                                                hit.status.toString().startsWith('3') ? 'text-blue-500' :
-                                                    'text-red-500'
-                                                }`}>
-                                                {hit.status}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-3 text-right font-mono text-[10px] text-on-surface-variant">
+                                        <td className="px-3 py-1.5 text-right font-mono text-[9px] text-on-surface-variant">
                                             {hit.responseTime}ms
                                         </td>
                                     </tr>

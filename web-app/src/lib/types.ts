@@ -267,6 +267,9 @@ export interface SSLCertificate {
   domain: string;
   certPath: string;
   keyPath: string;
+  type?: string; // "letsencrypt" or "custom"
+  expiresAt?: number; // Unix timestamp
+  issuer?: string;
 }
 
 export interface ProxyHit {

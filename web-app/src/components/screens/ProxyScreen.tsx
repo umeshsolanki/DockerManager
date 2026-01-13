@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Globe, Plus, Search, RefreshCw, Trash2, Power, Server, ExternalLink, FileKey, Pencil, Layers, Database, Lock, Network, Activity, ShieldCheck } from 'lucide-react';
+import { Globe, Plus, Search, RefreshCw, Trash2, Power, Server, ExternalLink, FileKey, Pencil, Layers, Database, Lock, Network, Activity, ShieldCheck, Copy, CheckCircle2, Calendar, Building2, AlertTriangle } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { ProxyHost, PathRoute, SSLCertificate } from '@/lib/types';
 import { toast } from 'sonner';
@@ -390,57 +390,41 @@ export default function ProxyScreen() {
 
                 {activeTab === 'certs' && (
                     <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-2xl font-bold">Installed Certificates</h2>
-                            <span className="bg-surface border border-outline/20 px-4 py-1.5 rounded-full text-sm font-bold">
-                                {certs.length} Active Certificates
-                            </span>
+                        <div className="flex items-center justify-between mb-4">
+                            <div>
+                                <h2 className="text-xl font-bold">SSL Certificates</h2>
+                                <p className="text-[10px] text-on-surface-variant mt-0.5">Manage TLS certificates for your proxy hosts</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={fetchData}
+                                    className="p-1.5 bg-surface border border-outline/10 rounded-lg hover:bg-white/5 transition-all text-primary"
+                                    title="Refresh certificates"
+                                >
+                                    <RefreshCw size={14} />
+                                </button>
+                                <span className="bg-surface border border-outline/20 px-3 py-1 rounded-full text-[10px] font-bold">
+                                    {certs.length} {certs.length === 1 ? 'Cert' : 'Certs'}
+                                </span>
+                            </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                             {certs.map(cert => (
-                                <div key={cert.id} className="bg-surface/50 border border-outline/10 rounded-3xl p-5 relative overflow-hidden group">
-                                    <div className="absolute top-0 right-0 p-6 opacity-5">
-                                        <FileKey size={48} />
-                                    </div>
-                                    <div className="flex items-center gap-4 mb-4">
-                                        <div className="w-12 h-12 rounded-2xl bg-green-500/10 text-green-500 flex items-center justify-center shadow-inner">
-                                            <Lock size={20} />
-                                        </div>
-                                        <div className="overflow-hidden">
-                                            <h3 className="font-bold truncate text-lg pr-4">{cert.domain}</h3>
-                                            <p className="text-[10px] text-on-surface-variant font-mono uppercase tracking-tighter truncate">{cert.id}</p>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2 mt-4">
-                                        <div className="flex flex-col gap-1">
-                                            <span className="text-[9px] text-on-surface-variant uppercase font-black tracking-widest">Public Key Chain</span>
-                                            <div className="text-[10px] bg-black/10 p-2 rounded-lg font-mono truncate border border-outline/5 text-on-surface-variant">
-                                                {cert.certPath}
-                                            </div>
-                                        </div>
-                                        <div className="flex flex-col gap-1">
-                                            <span className="text-[9px] text-on-surface-variant uppercase font-black tracking-widest">Private RSA Key</span>
-                                            <div className="text-[10px] bg-black/10 p-2 rounded-lg font-mono truncate border border-outline/5 text-on-surface-variant">
-                                                {cert.keyPath}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="mt-4 pt-4 border-t border-outline/5 flex justify-between items-center">
-                                        <span className="text-[10px] font-bold text-green-500 flex items-center gap-1">
-                                            <ShieldCheck size={12} />
-                                            VALIDATED
-                                        </span>
-                                        <button className="text-[10px] font-bold text-primary hover:underline">RENEW</button>
-                                    </div>
-                                </div>
+                                <CertificateCard 
+                                    key={cert.id} 
+                                    cert={cert} 
+                                    hosts={hosts}
+                                    onRenew={handleRequestSSL}
+                                />
                             ))}
                         </div>
 
                         {certs.length === 0 && (
-                            <div className="flex flex-col items-center justify-center text-on-surface-variant py-20 opacity-30">
-                                <FileKey size={80} className="mb-4" />
-                                <p className="italic text-xl">No certificates found</p>
+                            <div className="flex flex-col items-center justify-center text-on-surface-variant py-16 opacity-30">
+                                <FileKey size={60} className="mb-3" />
+                                <p className="italic text-base mb-1">No certificates found</p>
+                                <p className="text-xs">Request SSL certificates for your proxy hosts</p>
                             </div>
                         )}
                     </div>
@@ -991,6 +975,172 @@ function PathRouteModal({
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+    );
+}
+
+function CertificateCard({ cert, hosts, onRenew }: { cert: SSLCertificate, hosts: ProxyHost[], onRenew: (id: string) => void }) {
+    const isLetsEncrypt = cert.type === 'letsencrypt' || !cert.type;
+    const expiresAt = cert.expiresAt ? new Date(cert.expiresAt * 1000) : null;
+    const now = new Date();
+    const daysUntilExpiry = expiresAt ? Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+    const isExpiringSoon = daysUntilExpiry !== null && daysUntilExpiry <= 30;
+    const isExpired = daysUntilExpiry !== null && daysUntilExpiry <= 0;
+    
+    const [copiedPath, setCopiedPath] = useState<string | null>(null);
+    
+    const copyToClipboard = async (text: string, pathType: 'cert' | 'key') => {
+        await navigator.clipboard.writeText(text);
+        setCopiedPath(pathType);
+        setTimeout(() => setCopiedPath(null), 2000);
+    };
+
+    return (
+        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-3 relative overflow-hidden group hover:border-primary/20 transition-all">
+            <div className="absolute top-0 right-0 p-3 opacity-5">
+                <FileKey size={32} />
+            </div>
+            
+            {/* Header */}
+            <div className="flex items-start justify-between mb-2 relative z-10">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shadow-inner shrink-0 ${
+                        isExpired ? 'bg-red-500/10 text-red-500' :
+                        isExpiringSoon ? 'bg-orange-500/10 text-orange-500' :
+                        'bg-green-500/10 text-green-500'
+                    }`}>
+                        <Lock size={14} />
+                    </div>
+                    <div className="overflow-hidden flex-1 min-w-0">
+                        <h3 className="font-bold truncate text-sm pr-2">{cert.domain}</h3>
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <span className={`text-[8px] font-black px-1 py-0.5 rounded uppercase ${
+                                isLetsEncrypt 
+                                    ? 'bg-blue-500/10 text-blue-500' 
+                                    : 'bg-purple-500/10 text-purple-500'
+                            }`}>
+                                {isLetsEncrypt ? 'LE' : 'Custom'}
+                            </span>
+                            {cert.id !== cert.domain && (
+                                <span className="text-[8px] text-on-surface-variant font-mono truncate max-w-[80px]">
+                                    {cert.id}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Status Badge */}
+            <div className="mb-2 relative z-10">
+                {isExpired ? (
+                    <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/20 rounded-lg px-2 py-1">
+                        <AlertTriangle size={10} className="text-red-500" />
+                        <span className="text-[9px] font-bold text-red-500">EXPIRED</span>
+                    </div>
+                ) : isExpiringSoon ? (
+                    <div className="flex items-center gap-1.5 bg-orange-500/10 border border-orange-500/20 rounded-lg px-2 py-1">
+                        <AlertTriangle size={10} className="text-orange-500" />
+                        <span className="text-[9px] font-bold text-orange-500">
+                            {daysUntilExpiry}d left
+                        </span>
+                    </div>
+                ) : expiresAt ? (
+                    <div className="flex items-center gap-1.5 bg-green-500/10 border border-green-500/20 rounded-lg px-2 py-1">
+                        <CheckCircle2 size={10} className="text-green-500" />
+                        <span className="text-[9px] font-bold text-green-500 truncate">
+                            {expiresAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </span>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-1.5 bg-surface-variant/10 border border-outline/10 rounded-lg px-2 py-1">
+                        <ShieldCheck size={10} className="text-on-surface-variant" />
+                        <span className="text-[9px] font-bold text-on-surface-variant">VALID</span>
+                    </div>
+                )}
+            </div>
+
+            {/* Issuer Info */}
+            {cert.issuer && (
+                <div className="mb-2 flex items-center gap-1.5 text-[9px] text-on-surface-variant relative z-10">
+                    <Building2 size={10} />
+                    <span className="font-medium truncate">{cert.issuer}</span>
+                </div>
+            )}
+
+            {/* Certificate Paths */}
+            <div className="space-y-1.5 mb-2 relative z-10">
+                <div className="flex flex-col gap-0.5">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[8px] text-on-surface-variant uppercase font-black tracking-wider">Cert</span>
+                        <button
+                            onClick={() => copyToClipboard(cert.certPath, 'cert')}
+                            className="p-0.5 hover:bg-white/5 rounded transition-all"
+                            title="Copy path"
+                        >
+                            {copiedPath === 'cert' ? (
+                                <CheckCircle2 size={10} className="text-green-500" />
+                            ) : (
+                                <Copy size={10} className="text-on-surface-variant" />
+                            )}
+                        </button>
+                    </div>
+                    <div className="text-[9px] bg-black/10 p-1.5 rounded font-mono truncate border border-outline/5 text-on-surface-variant group-hover:bg-black/20 transition-colors">
+                        {cert.certPath}
+                    </div>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[8px] text-on-surface-variant uppercase font-black tracking-wider">Key</span>
+                        <button
+                            onClick={() => copyToClipboard(cert.keyPath, 'key')}
+                            className="p-0.5 hover:bg-white/5 rounded transition-all"
+                            title="Copy path"
+                        >
+                            {copiedPath === 'key' ? (
+                                <CheckCircle2 size={10} className="text-green-500" />
+                            ) : (
+                                <Copy size={10} className="text-on-surface-variant" />
+                            )}
+                        </button>
+                    </div>
+                    <div className="text-[9px] bg-black/10 p-1.5 rounded font-mono truncate border border-outline/5 text-on-surface-variant group-hover:bg-black/20 transition-colors">
+                        {cert.keyPath}
+                    </div>
+                </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="pt-2 border-t border-outline/5 flex justify-between items-center relative z-10">
+                {expiresAt && (
+                    <div className="flex items-center gap-1 text-[8px] text-on-surface-variant">
+                        <Calendar size={8} />
+                        <span className="font-medium">
+                            {daysUntilExpiry !== null && daysUntilExpiry > 0 
+                                ? `${daysUntilExpiry}d`
+                                : 'Expired'
+                            }
+                        </span>
+                    </div>
+                )}
+                {isLetsEncrypt && (
+                    <button 
+                        className="text-[9px] font-bold text-primary hover:underline flex items-center gap-0.5"
+                        onClick={() => {
+                            // Find host using this certificate and request renewal
+                            const host = hosts.find(h => h.domain === cert.domain);
+                            if (host) {
+                                onRenew(host.id);
+                            } else {
+                                toast.info('No proxy host found for this domain');
+                            }
+                        }}
+                    >
+                        <RefreshCw size={8} />
+                        RENEW
+                    </button>
+                )}
             </div>
         </div>
     );
