@@ -7,6 +7,7 @@ import com.pty4j.PtyProcessBuilder
 import com.pty4j.WinSize
 import com.umeshsolanki.dockermanager.docker.DockerClientProvider
 import io.ktor.server.websocket.DefaultWebSocketServerSession
+import io.ktor.server.websocket.WebSocketServerSession
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.send
@@ -27,7 +28,7 @@ import com.github.dockerjava.api.model.Frame as DockerFrame
 object ShellService {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    suspend fun handleServerShell(session: DefaultWebSocketServerSession) {
+    suspend fun handleServerShell(session: WebSocketServerSession) {
         val os = System.getProperty("os.name").lowercase(Locale.ENGLISH)
         val shell = if (os.contains("win")) "cmd.exe" else {
             // Try to use a richer shell for better experience (colors, autocompletion)
@@ -55,7 +56,7 @@ object ShellService {
         handlePtySession(session, pty)
     }
 
-    suspend fun handleContainerShell(session: DefaultWebSocketServerSession, containerId: String) {
+    suspend fun handleContainerShell(session: WebSocketServerSession, containerId: String) {
         val dockerClient = DockerClientProvider.client
 
         // Ensure container is running
@@ -132,7 +133,7 @@ object ShellService {
         }
     }
 
-    private suspend fun handlePtySession(session: DefaultWebSocketServerSession, pty: PtyProcess) {
+    private suspend fun handlePtySession(session: WebSocketServerSession, pty: PtyProcess) {
         val inputStream = pty.inputStream
         val outputStream = pty.outputStream
 
