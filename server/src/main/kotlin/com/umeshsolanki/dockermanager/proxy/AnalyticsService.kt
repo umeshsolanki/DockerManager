@@ -15,6 +15,8 @@ import org.slf4j.LoggerFactory
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedDeque
 
 interface IAnalyticsService {
     fun getStats(): ProxyStats
@@ -45,17 +47,24 @@ class AnalyticsServiceImpl(
     // Incremental state
     private var lastProcessedOffset = 0L
     private val totalHitsCounter = java.util.concurrent.atomic.AtomicLong(0)
-    private val hitsByStatusMap = java.util.concurrent.ConcurrentHashMap<Int, Long>()
-    private val hitsByDomainMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
-    private val hitsByPathMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
-    private val hitsByIpMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
-    private val hitsByIpErrorMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
-    private val hitsByMethodMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
-    private val hitsByRefererMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
-    private val hitsByUserAgentMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
-    private val hitsByTimeMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
-    private val recentHitsList = java.util.concurrent.ConcurrentLinkedDeque<ProxyHit>()
+    private val hitsByStatusMap = ConcurrentHashMap<Int, Long>()
+    private val hitsByDomainMap = ConcurrentHashMap<String, Long>()
+    private val hitsByPathMap = ConcurrentHashMap<String, Long>()
+    private val hitsByIpMap = ConcurrentHashMap<String, Long>()
+    private val hitsByIpErrorMap = ConcurrentHashMap<String, Long>()
+    private val hitsByMethodMap = ConcurrentHashMap<String, Long>()
+    private val hitsByRefererMap = ConcurrentHashMap<String, Long>()
+    private val hitsByUserAgentMap = ConcurrentHashMap<String, Long>()
+    private val hitsByTimeMap = ConcurrentHashMap<String, Long>()
+    private val recentHitsList = ConcurrentLinkedDeque<ProxyHit>()
     private val MAX_RECENT_HITS = 100
+    
+    // WebSocket tracking
+    private val websocketConnectionsCounter = java.util.concurrent.atomic.AtomicLong(0)
+    private val websocketConnectionsByEndpointMap = ConcurrentHashMap<String, Long>()
+    private val websocketConnectionsByIpMap = ConcurrentHashMap<String, Long>()
+    private val recentWebSocketConnectionsList = ConcurrentLinkedDeque<WebSocketConnection>()
+    private val MAX_RECENT_WEBSOCKET_CONNECTIONS = 50
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var lastResetDate: String? = null
@@ -214,6 +223,12 @@ class AnalyticsServiceImpl(
         hitsByTimeMap.clear()
         recentHitsList.clear()
         lastProcessedOffset = 0L
+        
+        // Reset WebSocket stats
+        websocketConnectionsCounter.set(0)
+        websocketConnectionsByEndpointMap.clear()
+        websocketConnectionsByIpMap.clear()
+        recentWebSocketConnectionsList.clear()
 
         cachedStats = ProxyStats(
             totalHits = 0,
@@ -226,7 +241,11 @@ class AnalyticsServiceImpl(
             topIpsWithErrors = emptyList(),
             topUserAgents = emptyList(),
             topReferers = emptyList(),
-            topMethods = emptyList()
+            topMethods = emptyList(),
+            websocketConnections = 0,
+            websocketConnectionsByEndpoint = emptyMap(),
+            websocketConnectionsByIp = emptyMap(),
+            recentWebSocketConnections = emptyList()
         )
     }
 
@@ -349,6 +368,10 @@ class AnalyticsServiceImpl(
         }
 
         // Update cached stats for UI
+        updateCachedStats()
+    }
+    
+    private fun updateCachedStats() {
         cachedStats = ProxyStats(
             totalHits = totalHitsCounter.get(),
             hitsByStatus = hitsByStatusMap.toMap(),
@@ -366,7 +389,51 @@ class AnalyticsServiceImpl(
             topReferers = hitsByRefererMap.entries.sortedByDescending { it.value }
                 .map { GenericHitEntry(it.key, it.value) },
             topMethods = hitsByMethodMap.entries.sortedByDescending { it.value }
-                .map { GenericHitEntry(it.key, it.value) })
+                .map { GenericHitEntry(it.key, it.value) },
+            websocketConnections = websocketConnectionsCounter.get(),
+            websocketConnectionsByEndpoint = websocketConnectionsByEndpointMap.toMap(),
+            websocketConnectionsByIp = websocketConnectionsByIpMap.toMap(),
+            recentWebSocketConnections = recentWebSocketConnectionsList.toList()
+        )
+    }
+    
+    /**
+     * Track a WebSocket connection
+     */
+    fun trackWebSocketConnection(endpoint: String, ip: String, userAgent: String? = null, containerId: String? = null, authenticated: Boolean = true) {
+        websocketConnectionsCounter.incrementAndGet()
+        websocketConnectionsByEndpointMap.merge(endpoint, 1L, Long::plus)
+        websocketConnectionsByIpMap.merge(ip, 1L, Long::plus)
+        
+        val connection = WebSocketConnection(
+            timestamp = System.currentTimeMillis(),
+            endpoint = endpoint,
+            ip = ip,
+            userAgent = userAgent,
+            containerId = containerId,
+            authenticated = authenticated,
+            duration = null // Will be updated when connection closes
+        )
+        
+        recentWebSocketConnectionsList.addFirst(connection)
+        while (recentWebSocketConnectionsList.size > MAX_RECENT_WEBSOCKET_CONNECTIONS) {
+            recentWebSocketConnectionsList.removeLast()
+        }
+        
+        updateCachedStats()
+    }
+    
+    /**
+     * Update WebSocket connection duration when it closes
+     */
+    fun updateWebSocketConnectionDuration(endpoint: String, ip: String, startTime: Long) {
+        val duration = System.currentTimeMillis() - startTime
+        // Find and update the most recent matching connection
+        recentWebSocketConnectionsList.find { 
+            it.endpoint == endpoint && it.ip == ip && it.duration == null 
+        }?.let { connection ->
+            connection.duration = duration
+        }
     }
 
     override fun getStats(): ProxyStats = cachedStats
@@ -514,15 +581,15 @@ class AnalyticsServiceImpl(
 
         // Temporary maps for this date's stats
         val tempTotalHits = java.util.concurrent.atomic.AtomicLong(0)
-        val tempHitsByStatusMap = java.util.concurrent.ConcurrentHashMap<Int, Long>()
-        val tempHitsByDomainMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
-        val tempHitsByPathMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
-        val tempHitsByIpMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
-        val tempHitsByIpErrorMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
-        val tempHitsByMethodMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
-        val tempHitsByRefererMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
-        val tempHitsByUserAgentMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
-        val tempHitsByTimeMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        val tempHitsByStatusMap = ConcurrentHashMap<Int, Long>()
+        val tempHitsByDomainMap = ConcurrentHashMap<String, Long>()
+        val tempHitsByPathMap = ConcurrentHashMap<String, Long>()
+        val tempHitsByIpMap = ConcurrentHashMap<String, Long>()
+        val tempHitsByIpErrorMap = ConcurrentHashMap<String, Long>()
+        val tempHitsByMethodMap = ConcurrentHashMap<String, Long>()
+        val tempHitsByRefererMap = ConcurrentHashMap<String, Long>()
+        val tempHitsByUserAgentMap = ConcurrentHashMap<String, Long>()
+        val tempHitsByTimeMap = ConcurrentHashMap<String, Long>()
 
         return try {
             // Read entire log file (or check rotated logs) - use BufferedReader for better UTF-8 support
@@ -983,6 +1050,10 @@ object AnalyticsService {
     private val service: IAnalyticsService by lazy {
         AnalyticsServiceImpl(ServiceContainer.jailManagerService)
     }
+    
+    private val serviceImpl: AnalyticsServiceImpl by lazy {
+        service as AnalyticsServiceImpl
+    }
 
     fun getStats() = service.getStats()
     fun getHistoricalStats(date: String) = service.getHistoricalStats(date)
@@ -991,5 +1062,14 @@ object AnalyticsService {
     fun forceReprocessLogs(date: String) = service.forceReprocessLogs(date)
     fun updateStatsForAllDaysInCurrentLog() = service.updateStatsForAllDaysInCurrentLog()
     fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null) = service.updateStatsSettings(active, intervalMs, filterLocalIps)
+    
+    // WebSocket tracking
+    fun trackWebSocketConnection(endpoint: String, ip: String, userAgent: String? = null, containerId: String? = null, authenticated: Boolean = true) {
+        serviceImpl.trackWebSocketConnection(endpoint, ip, userAgent, containerId, authenticated)
+    }
+    
+    fun updateWebSocketConnectionDuration(endpoint: String, ip: String, startTime: Long) {
+        serviceImpl.updateWebSocketConnectionDuration(endpoint, ip, startTime)
+    }
 }
 

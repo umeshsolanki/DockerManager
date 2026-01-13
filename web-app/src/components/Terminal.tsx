@@ -4,6 +4,7 @@ import React, { useEffect, useRef } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { DockerClient } from '@/lib/api';
 
 interface TerminalProps {
     url: string;
@@ -36,8 +37,12 @@ export default function WebShell({ url, onClose }: TerminalProps) {
         term.open(terminalRef.current);
         fitAddon.fit();
 
+        // Build WebSocket URL with authentication token
         const wsUrl = url.replace('http', 'ws');
-        const socket = new WebSocket(wsUrl);
+        const token = DockerClient.getAuthToken();
+        const wsUrlWithAuth = token ? `${wsUrl}?token=${encodeURIComponent(token)}` : wsUrl;
+        
+        const socket = new WebSocket(wsUrlWithAuth);
         socket.binaryType = 'arraybuffer';
 
         socket.onopen = () => {

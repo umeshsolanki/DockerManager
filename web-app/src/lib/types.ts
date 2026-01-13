@@ -308,6 +308,16 @@ export interface ProxyJailRule {
   description?: string;
 }
 
+export interface WebSocketConnection {
+  timestamp: number;
+  endpoint: string;
+  ip: string;
+  userAgent?: string;
+  containerId?: string;
+  authenticated: boolean;
+  duration?: number; // Duration in milliseconds, null if still connected
+}
+
 export interface ProxyStats {
   totalHits: number;
   hitsByStatus: Record<number, number>;
@@ -320,6 +330,10 @@ export interface ProxyStats {
   topUserAgents: GenericHitEntry[];
   topReferers: GenericHitEntry[];
   topMethods: GenericHitEntry[];
+  websocketConnections: number;
+  websocketConnectionsByEndpoint: Record<string, number>;
+  websocketConnectionsByIp: Record<string, number>;
+  recentWebSocketConnections: WebSocketConnection[];
 }
 
 export interface DailyProxyStats {
@@ -334,6 +348,9 @@ export interface DailyProxyStats {
   topUserAgents: GenericHitEntry[];
   topReferers: GenericHitEntry[];
   topMethods: GenericHitEntry[];
+  websocketConnections: number;
+  websocketConnectionsByEndpoint: Record<string, number>;
+  websocketConnectionsByIp: Record<string, number>;
 }
 
 export interface BtmpEntry {

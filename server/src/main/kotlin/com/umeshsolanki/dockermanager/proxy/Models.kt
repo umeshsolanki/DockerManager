@@ -49,7 +49,11 @@ data class ProxyStats(
     val topIpsWithErrors: List<GenericHitEntry> = emptyList(),
     val topUserAgents: List<GenericHitEntry> = emptyList(),
     val topReferers: List<GenericHitEntry> = emptyList(),
-    val topMethods: List<GenericHitEntry> = emptyList()
+    val topMethods: List<GenericHitEntry> = emptyList(),
+    val websocketConnections: Long = 0,
+    val websocketConnectionsByEndpoint: Map<String, Long> = emptyMap(),
+    val websocketConnectionsByIp: Map<String, Long> = emptyMap(),
+    val recentWebSocketConnections: List<WebSocketConnection> = emptyList()
 )
 
 @Serializable
@@ -115,5 +119,16 @@ data class ProxyJailRule(
 data class GenericHitEntry(
     val label: String,
     val count: Long
+)
+
+@Serializable
+data class WebSocketConnection(
+    val timestamp: Long,
+    val endpoint: String, // e.g., "/shell/server", "/shell/container/{id}"
+    val ip: String,
+    val userAgent: String? = null,
+    val containerId: String? = null,
+    val authenticated: Boolean = true,
+    var duration: Long? = null // Duration in milliseconds, null if still connected
 )
 

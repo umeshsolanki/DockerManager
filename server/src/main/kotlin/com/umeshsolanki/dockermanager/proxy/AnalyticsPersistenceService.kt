@@ -21,7 +21,10 @@ data class DailyProxyStats(
     val topIpsWithErrors: List<GenericHitEntry> = emptyList(),
     val topUserAgents: List<GenericHitEntry> = emptyList(),
     val topReferers: List<GenericHitEntry> = emptyList(),
-    val topMethods: List<GenericHitEntry> = emptyList()
+    val topMethods: List<GenericHitEntry> = emptyList(),
+    val websocketConnections: Long = 0,
+    val websocketConnectionsByEndpoint: Map<String, Long> = emptyMap(),
+    val websocketConnectionsByIp: Map<String, Long> = emptyMap()
 )
 
 
@@ -50,7 +53,10 @@ class AnalyticsPersistenceService {
                 topIpsWithErrors = stats.topIpsWithErrors.map { GenericHitEntry(it.label, it.count) },
                 topUserAgents = stats.topUserAgents.map { GenericHitEntry(it.label, it.count) },
                 topReferers = stats.topReferers.map { GenericHitEntry(it.label, it.count) },
-                topMethods = stats.topMethods.map { GenericHitEntry(it.label, it.count) }
+                topMethods = stats.topMethods.map { GenericHitEntry(it.label, it.count) },
+                websocketConnections = stats.websocketConnections,
+                websocketConnectionsByEndpoint = stats.websocketConnectionsByEndpoint,
+                websocketConnectionsByIp = stats.websocketConnectionsByIp
             )
             
             val persistence = JsonPersistence.create<DailyProxyStats>(

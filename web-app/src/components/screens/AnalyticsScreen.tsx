@@ -124,7 +124,8 @@ export default function AnalyticsScreen() {
                 // Convert DailyProxyStats to ProxyStats format for display
                 const convertedStats: ProxyStats = {
                     ...data,
-                    recentHits: [] // Historical stats don't have recent hits
+                    recentHits: [], // Historical stats don't have recent hits
+                    recentWebSocketConnections: [] // Historical stats don't have recent WebSocket connections
                 };
                 setHistoricalStats(data);
                 setStats(convertedStats);
