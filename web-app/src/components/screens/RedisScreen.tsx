@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     Database, CheckCircle, XCircle, RefreshCw, Save, TestTube,
-    AlertCircle, Info, Server, Lock, Globe, Zap, Trash2
+    AlertCircle, Info, Server, Lock, Globe, Zap, Trash2, Search, Eye, EyeOff, Settings
 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { RedisConfig, RedisStatus } from '@/lib/types';
@@ -11,7 +11,12 @@ import { toast } from 'sonner';
 import { Button, ActionIconButton } from '../ui/Buttons';
 import { StatCard } from '../ui/StatCard';
 
+type RedisDatabase = { database: number; size: number };
+type RedisKey = { key: string; type: string; ttl: number };
+type RedisKeyValue = { key: string; value: string | null; type: string; ttl: number };
+
 export default function RedisScreen() {
+    const [activeTab, setActiveTab] = useState<'config' | 'databases'>('config');
     const [config, setConfig] = useState<RedisConfig>({
         enabled: false,
         host: 'localhost',
@@ -25,6 +30,18 @@ export default function RedisScreen() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isTesting, setIsTesting] = useState(false);
+    
+    // Database browsing state
+    const [databases, setDatabases] = useState<RedisDatabase[]>([]);
+    const [selectedDb, setSelectedDb] = useState<number>(0);
+    const [keys, setKeys] = useState<RedisKey[]>([]);
+    const [selectedKey, setSelectedKey] = useState<string | null>(null);
+    const [keyValue, setKeyValue] = useState<RedisKeyValue | null>(null);
+    const [keyPattern, setKeyPattern] = useState<string>('*');
+    const [isLoadingDatabases, setIsLoadingDatabases] = useState(false);
+    const [isLoadingKeys, setIsLoadingKeys] = useState(false);
+    const [isLoadingKeyValue, setIsLoadingKeyValue] = useState(false);
+    const [showValue, setShowValue] = useState(true);
 
     const fetchData = async () => {
         setIsLoading(true);
@@ -52,6 +69,83 @@ export default function RedisScreen() {
         }, 10000); // Refresh status every 10 seconds
         return () => clearInterval(interval);
     }, [config.enabled]);
+
+    const fetchDatabases = async () => {
+        if (!status?.connected) return;
+        setIsLoadingDatabases(true);
+        try {
+            const dbs = await DockerClient.getRedisDatabases();
+            setDatabases(dbs);
+        } catch (e) {
+            console.error('Failed to fetch databases', e);
+            toast.error('Failed to load databases');
+        } finally {
+            setIsLoadingDatabases(false);
+        }
+    };
+
+    const fetchKeys = async (db: number, pattern: string = '*') => {
+        if (!status?.connected) return;
+        setIsLoadingKeys(true);
+        try {
+            const keysData = await DockerClient.getRedisKeys(db, pattern);
+            setKeys(keysData);
+        } catch (e) {
+            console.error('Failed to fetch keys', e);
+            toast.error('Failed to load keys');
+        } finally {
+            setIsLoadingKeys(false);
+        }
+    };
+
+    const fetchKeyValue = async (db: number, key: string) => {
+        if (!status?.connected) return;
+        setIsLoadingKeyValue(true);
+        try {
+            const value = await DockerClient.getRedisKey(db, key);
+            setKeyValue(value);
+            setSelectedKey(key);
+        } catch (e) {
+            console.error('Failed to fetch key value', e);
+            toast.error('Failed to load key value');
+        } finally {
+            setIsLoadingKeyValue(false);
+        }
+    };
+
+    const handleDeleteKey = async (db: number, key: string) => {
+        if (!confirm(`Are you sure you want to delete key "${key}"?`)) {
+            return;
+        }
+        try {
+            const result = await DockerClient.deleteRedisKey(db, key);
+            if (result.success) {
+                toast.success('Key deleted successfully');
+                await fetchKeys(db, keyPattern);
+                if (selectedKey === key) {
+                    setSelectedKey(null);
+                    setKeyValue(null);
+                }
+            } else {
+                toast.error(result.message || 'Failed to delete key');
+            }
+        } catch (e) {
+            console.error('Failed to delete key', e);
+            toast.error('Failed to delete key');
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'databases' && status?.connected) {
+            fetchDatabases();
+        }
+    }, [activeTab, status?.connected]);
+
+    useEffect(() => {
+        if (activeTab === 'databases' && status?.connected && selectedDb !== null) {
+            fetchKeys(selectedDb, keyPattern);
+        }
+    }, [selectedDb, keyPattern, activeTab, status?.connected]);
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -144,6 +238,35 @@ export default function RedisScreen() {
                 <ActionIconButton onClick={fetchData} icon={<RefreshCw />} title="Refresh" />
             </header>
 
+            {/* Tabs */}
+            <div className="flex gap-2 border-b border-outline/10">
+                <button
+                    onClick={() => setActiveTab('config')}
+                    className={`px-4 py-2 font-bold text-sm transition-colors ${
+                        activeTab === 'config'
+                            ? 'text-primary border-b-2 border-primary'
+                            : 'text-on-surface-variant/60 hover:text-on-surface-variant'
+                    }`}
+                >
+                    <div className="flex items-center gap-2">
+                        <Settings size={16} />
+                        Configuration
+                    </div>
+                </button>
+                <button
+                    onClick={() => setActiveTab('databases')}
+                    disabled={!status?.connected}
+                    className={`px-4 py-2 font-bold text-sm transition-colors flex items-center gap-2 ${
+                        activeTab === 'databases'
+                            ? 'text-primary border-b-2 border-primary'
+                            : 'text-on-surface-variant/60 hover:text-on-surface-variant'
+                    } ${!status?.connected ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                    <Database size={16} />
+                    Databases
+                </button>
+            </div>
+
             {/* Status Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <StatCard
@@ -169,6 +292,8 @@ export default function RedisScreen() {
                 />
             </div>
 
+            {activeTab === 'config' && (
+                <>
             {/* Configuration Form */}
             <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] p-6">
                 <div className="flex items-center justify-between mb-6">
@@ -336,6 +461,190 @@ export default function RedisScreen() {
                     </div>
                 </div>
             </div>
+                </>
+            )}
+
+            {activeTab === 'databases' && status?.connected && (
+                <div className="flex flex-col gap-4">
+                    {/* Database Selector */}
+                    <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] p-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-xl font-bold">Databases</h2>
+                            <ActionIconButton
+                                onClick={fetchDatabases}
+                                icon={<RefreshCw />}
+                                title="Refresh Databases"
+                                disabled={isLoadingDatabases}
+                            />
+                        </div>
+                        <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+                            {databases.map((db) => (
+                                <button
+                                    key={db.database}
+                                    onClick={() => {
+                                        setSelectedDb(db.database);
+                                        setSelectedKey(null);
+                                        setKeyValue(null);
+                                    }}
+                                    className={`p-3 rounded-xl border transition-colors ${
+                                        selectedDb === db.database
+                                            ? 'bg-primary/20 border-primary text-primary'
+                                            : 'bg-black/40 border-white/10 hover:border-primary/50'
+                                    }`}
+                                >
+                                    <div className="text-xs font-bold">DB {db.database}</div>
+                                    <div className="text-xs text-on-surface-variant mt-1">{db.size} keys</div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Keys List */}
+                    <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] p-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-xl font-bold">Keys in Database {selectedDb}</h2>
+                            <div className="flex items-center gap-2">
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-on-surface-variant" size={16} />
+                                    <input
+                                        type="text"
+                                        value={keyPattern}
+                                        onChange={(e) => setKeyPattern(e.target.value)}
+                                        placeholder="Pattern (e.g., * or user:*)"
+                                        className="bg-black/40 border border-white/10 rounded-xl pl-10 pr-4 py-2 text-sm font-mono focus:outline-none focus:border-primary/50"
+                                    />
+                                </div>
+                                <ActionIconButton
+                                    onClick={() => fetchKeys(selectedDb, keyPattern)}
+                                    icon={<RefreshCw />}
+                                    title="Refresh Keys"
+                                    disabled={isLoadingKeys}
+                                />
+                            </div>
+                        </div>
+                        <div className="max-h-96 overflow-y-auto space-y-1">
+                            {isLoadingKeys ? (
+                                <div className="flex items-center justify-center py-8">
+                                    <RefreshCw className="animate-spin text-primary" size={24} />
+                                </div>
+                            ) : keys.length === 0 ? (
+                                <div className="text-center py-8 text-on-surface-variant">
+                                    No keys found
+                                </div>
+                            ) : (
+                                keys.map((key) => (
+                                    <div
+                                        key={key.key}
+                                        onClick={() => fetchKeyValue(selectedDb, key.key)}
+                                        className={`p-3 rounded-xl border cursor-pointer transition-colors ${
+                                            selectedKey === key.key
+                                                ? 'bg-primary/20 border-primary'
+                                                : 'bg-black/40 border-white/10 hover:border-primary/50'
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="font-mono text-sm font-bold truncate">{key.key}</div>
+                                                <div className="flex items-center gap-3 mt-1 text-xs text-on-surface-variant">
+                                                    <span className="px-2 py-0.5 bg-blue-500/20 text-blue-500 rounded">
+                                                        {key.type}
+                                                    </span>
+                                                    {key.ttl > 0 && (
+                                                        <span>TTL: {key.ttl}s</span>
+                                                    )}
+                                                    {key.ttl === -1 && (
+                                                        <span>No expiry</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDeleteKey(selectedDb, key.key);
+                                                }}
+                                                className="ml-2 p-1.5 text-red-500 hover:bg-red-500/20 rounded transition-colors"
+                                                title="Delete key"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Key Value Viewer */}
+                    {selectedKey && (
+                        <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-xl font-bold">Key: {selectedKey}</h2>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setShowValue(!showValue)}
+                                        className="p-2 hover:bg-black/40 rounded-xl transition-colors"
+                                        title={showValue ? 'Hide value' : 'Show value'}
+                                    >
+                                        {showValue ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                    <ActionIconButton
+                                        onClick={() => fetchKeyValue(selectedDb, selectedKey)}
+                                        icon={<RefreshCw />}
+                                        title="Refresh Value"
+                                        disabled={isLoadingKeyValue}
+                                    />
+                                </div>
+                            </div>
+                            {isLoadingKeyValue ? (
+                                <div className="flex items-center justify-center py-8">
+                                    <RefreshCw className="animate-spin text-primary" size={24} />
+                                </div>
+                            ) : keyValue ? (
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-3 text-sm">
+                                        <span className="px-2 py-1 bg-blue-500/20 text-blue-500 rounded font-bold">
+                                            Type: {keyValue.type}
+                                        </span>
+                                        {keyValue.ttl > 0 && (
+                                            <span className="text-on-surface-variant">
+                                                TTL: {keyValue.ttl} seconds
+                                            </span>
+                                        )}
+                                        {keyValue.ttl === -1 && (
+                                            <span className="text-on-surface-variant">No expiry</span>
+                                        )}
+                                    </div>
+                                    {showValue && (
+                                        <div className="bg-black/40 border border-white/10 rounded-xl p-4">
+                                            <pre className="text-sm font-mono whitespace-pre-wrap break-words text-on-surface-variant">
+                                                {keyValue.value || '(null)'}
+                                            </pre>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="text-center py-8 text-on-surface-variant">
+                                    Key not found or error loading value
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {activeTab === 'databases' && !status?.connected && (
+                <div className="bg-orange-500/10 border border-orange-500/20 rounded-[32px] p-6">
+                    <div className="flex items-start gap-4">
+                        <AlertCircle className="text-orange-500 shrink-0 mt-1" size={20} />
+                        <div>
+                            <h3 className="font-bold text-lg">Redis Not Connected</h3>
+                            <p className="text-sm text-on-surface-variant mt-1">
+                                Please connect to Redis first to browse databases and keys.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

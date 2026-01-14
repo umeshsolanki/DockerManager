@@ -9,7 +9,8 @@ import {
     EmailTestResult, AuthRequest, AuthResponse, UpdatePasswordRequest,
     UpdateUsernameRequest, TwoFactorSetupResponse, Enable2FARequest, EmailGroup, EmailUserDetail, JamesContainerStatus,
     FileItem, RedisConfig, RedisStatus, RedisTestResult, RedisConfigUpdateResult,
-    DockerStack, StackService, StackTask, DeployStackRequest, MigrateComposeToStackRequest, StopStackRequest
+    DockerStack, StackService, StackTask, DeployStackRequest, MigrateComposeToStackRequest, StopStackRequest,
+    RuleChain, RuleCondition, RuleAction, RuleOperator, RuleActionConfig
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -195,9 +196,20 @@ export const DockerClient = {
     getRedisStatus: () => req<RedisStatus>('/cache/redis/status', {}, { enabled: false, connected: false, host: 'localhost', port: 6379 }),
     clearCache: () => safeReq('/cache/clear', { method: 'POST' }),
     installRedis: () => safeReq('/cache/install', { method: 'POST' }),
+    // Redis Database Browsing
+    getRedisDatabases: () => req<Array<{ database: number; size: number }>>('/cache/redis/databases', {}, []),
+    getRedisKeys: (db: number, pattern?: string) => req<Array<{ key: string; type: string; ttl: number }>>(`/cache/redis/database/${db}/keys${pattern ? `?pattern=${encodeURIComponent(pattern)}` : ''}`, {}, []),
+    getRedisKey: (db: number, key: string) => req<{ key: string; value: string | null; type: string; ttl: number } | null>(`/cache/redis/database/${db}/key/${encodeURIComponent(key)}`, {}, null),
+    deleteRedisKey: (db: number, key: string) => safeReq<{ success: boolean; message: string }>(`/cache/redis/database/${db}/key/${encodeURIComponent(key)}`, { method: 'DELETE' }),
     
     getProxySecuritySettings: () => req<SystemConfig | null>('/proxy/security/settings', {}, null),
     updateProxySecuritySettings: (body: Partial<SystemConfig>) => safeReq('/proxy/security/settings', { method: 'POST', body: JSON.stringify(body) }),
+    // Rule Chains API
+    getRuleChains: () => req<RuleChain[]>('/proxy/security/rules', {}, []),
+    updateRuleChains: (chains: RuleChain[]) => safeReq('/proxy/security/rules', { method: 'POST', body: JSON.stringify(chains) }),
+    addRuleChain: (chain: RuleChain) => safeReq('/proxy/security/rules/add', { method: 'POST', body: JSON.stringify(chain) }),
+    updateRuleChain: (id: string, chain: RuleChain) => safeReq(`/proxy/security/rules/${id}`, { method: 'PUT', body: JSON.stringify(chain) }),
+    deleteRuleChain: (id: string) => safeReq(`/proxy/security/rules/${id}`, { method: 'DELETE' }),
     listProxyCertificates: () => req<SSLCertificate[]>('/proxy/certificates', {}, []),
     getProxyContainerStatus: () => safeReq('/proxy/container/status'),
     buildProxyImage: () => safeReq('/proxy/container/build', { method: 'POST' }),

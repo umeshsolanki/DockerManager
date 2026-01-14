@@ -1,6 +1,7 @@
 package com.umeshsolanki.dockermanager
 
 import com.umeshsolanki.dockermanager.proxy.ProxyJailRule
+import com.umeshsolanki.dockermanager.proxy.RuleChain
 import com.umeshsolanki.dockermanager.constants.*
 import com.umeshsolanki.dockermanager.proxy.IpFilterUtils
 import com.umeshsolanki.dockermanager.utils.JsonPersistence
@@ -39,8 +40,8 @@ data class AppSettings(
     
     // Proxy Specific Security
     val proxyJailEnabled: Boolean = true,
-    val proxyJailThresholdNon200: Int = 20,
     val proxyJailRules: List<ProxyJailRule> = emptyList(),
+    val ruleChains: List<RuleChain> = emptyList(), // New rule system with AND/OR logic
     
     // Redis Cache Configuration
     val redisConfig: RedisConfig = RedisConfig()
@@ -141,13 +142,35 @@ object AppConfig {
 
     fun updateProxySecuritySettings(
         enabled: Boolean,
-        thresholdNon200: Int,
         rules: List<ProxyJailRule>
     ) {
         _settings = _settings.copy(
             proxyJailEnabled = enabled,
-            proxyJailThresholdNon200 = thresholdNon200,
             proxyJailRules = rules
+        )
+        saveSettings()
+    }
+    
+    fun updateRuleChains(chains: List<RuleChain>) {
+        _settings = _settings.copy(ruleChains = chains)
+        saveSettings()
+    }
+    
+    fun addRuleChain(chain: RuleChain) {
+        _settings = _settings.copy(ruleChains = _settings.ruleChains + chain)
+        saveSettings()
+    }
+    
+    fun updateRuleChain(chainId: String, chain: RuleChain) {
+        _settings = _settings.copy(
+            ruleChains = _settings.ruleChains.map { if (it.id == chainId) chain else it }
+        )
+        saveSettings()
+    }
+    
+    fun deleteRuleChain(chainId: String) {
+        _settings = _settings.copy(
+            ruleChains = _settings.ruleChains.filter { it.id != chainId }
         )
         saveSettings()
     }

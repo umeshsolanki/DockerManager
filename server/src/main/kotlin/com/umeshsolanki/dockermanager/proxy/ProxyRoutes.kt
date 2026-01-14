@@ -173,11 +173,64 @@ fun Route.proxyRoutes() {
         post("/security/settings") {
             val request = call.receive<AppSettings>()
             ProxyService.updateSecuritySettings(
-                request.proxyJailEnabled, request.proxyJailThresholdNon200, request.proxyJailRules
+                request.proxyJailEnabled, request.proxyJailRules
             )
             call.respond(
                 HttpStatusCode.OK,
                 ProxyActionResult(true, "Proxy security settings updated")
+            )
+        }
+
+        // Rule Chains API
+        get("/security/rules") {
+            call.respond(AppConfig.proxySecuritySettings.ruleChains)
+        }
+
+        post("/security/rules") {
+            val chains = call.receive<List<RuleChain>>()
+            AppConfig.updateRuleChains(chains)
+            // Regenerate nginx configs to apply nginx blocking rules
+            ProxyService.regenerateAllConfigs()
+            call.respond(
+                HttpStatusCode.OK,
+                ProxyActionResult(true, "Rule chains updated and nginx configs regenerated")
+            )
+        }
+
+        post("/security/rules/add") {
+            val chain = call.receive<RuleChain>()
+            AppConfig.addRuleChain(chain)
+            ProxyService.regenerateAllConfigs()
+            call.respond(
+                HttpStatusCode.OK,
+                ProxyActionResult(true, "Rule chain added")
+            )
+        }
+
+        put("/security/rules/{id}") {
+            val id = call.parameters["id"] ?: return@put call.respond(
+                HttpStatusCode.BadRequest,
+                ProxyActionResult(false, "Rule chain ID required")
+            )
+            val chain = call.receive<RuleChain>()
+            AppConfig.updateRuleChain(id, chain)
+            ProxyService.regenerateAllConfigs()
+            call.respond(
+                HttpStatusCode.OK,
+                ProxyActionResult(true, "Rule chain updated")
+            )
+        }
+
+        delete("/security/rules/{id}") {
+            val id = call.parameters["id"] ?: return@delete call.respond(
+                HttpStatusCode.BadRequest,
+                ProxyActionResult(false, "Rule chain ID required")
+            )
+            AppConfig.deleteRuleChain(id)
+            ProxyService.regenerateAllConfigs()
+            call.respond(
+                HttpStatusCode.OK,
+                ProxyActionResult(true, "Rule chain deleted")
             )
         }
 

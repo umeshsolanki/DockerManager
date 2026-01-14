@@ -4,10 +4,11 @@ import React, { useEffect, useState } from 'react';
 import {
     Shield, ShieldAlert, ShieldCheck, Trash2, Plus, Search,
     RefreshCw, Globe, Lock, Activity, Terminal, ListFilter,
-    ShieldOff, AlertTriangle, UserMinus, History, Settings
+    ShieldOff, AlertTriangle, UserMinus, History, Settings,
+    Edit2, X, Save, Copy, GitBranch, AlertCircle, Ban, FileText, Server
 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { FirewallRule, BtmpStats, SystemConfig, ProxyJailRule, ProxyJailRuleType } from '@/lib/types';
+import { FirewallRule, BtmpStats, SystemConfig, ProxyJailRule, ProxyJailRuleType, RuleChain, RuleCondition, RuleAction, RuleOperator, RuleActionConfig } from '@/lib/types';
 import { toast } from 'sonner';
 import { StatCard } from '../ui/StatCard';
 import { TabButton, TabsList } from '../ui/Tabs';
@@ -20,24 +21,31 @@ export default function SecurityScreen() {
     const [firewallRules, setFirewallRules] = useState<FirewallRule[]>([]);
     const [btmpStats, setBtmpStats] = useState<BtmpStats | null>(null);
     const [proxyConfig, setProxyConfig] = useState<SystemConfig | null>(null);
+    const [ruleChains, setRuleChains] = useState<RuleChain[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'overview' | 'firewall' | 'jails' | 'rules'>('overview');
     const { trigger } = useActionTrigger();
 
     // Firewall Modal
     const [isFirewallModalOpen, setIsFirewallModalOpen] = useState(false);
+    
+    // Rule Chain Modal
+    const [isRuleChainModalOpen, setIsRuleChainModalOpen] = useState(false);
+    const [editingChain, setEditingChain] = useState<RuleChain | null>(null);
 
     const fetchData = async (manual = false) => {
         if (manual) setIsLoading(true);
         try {
-            const [firewall, btmp, proxy] = await Promise.all([
+            const [firewall, btmp, proxy, chains] = await Promise.all([
                 DockerClient.listFirewallRules(),
                 DockerClient.getBtmpStats(),
-                DockerClient.getProxySecuritySettings()
+                DockerClient.getProxySecuritySettings(),
+                DockerClient.getRuleChains()
             ]);
             setFirewallRules(firewall);
             setBtmpStats(btmp);
             setProxyConfig(proxy);
+            setRuleChains(chains);
         } catch (e) {
             console.error('Failed to fetch security data', e);
         } finally {
@@ -151,11 +159,11 @@ export default function SecurityScreen() {
                             icon={<UserMinus size={20} />}
                         />
                         <StatCard
-                            label="Proxy Rules"
-                            value={(proxyConfig?.proxyJailRules.length || 0).toString()}
-                            sub="Reverse Proxy Jails"
+                            label="Rule Chains"
+                            value={(ruleChains.length || 0).toString()}
+                            sub="Active Rule Chains"
                             color="primary"
-                            icon={<Globe size={20} />}
+                            icon={<GitBranch size={20} />}
                         />
                     </div>
 
@@ -370,196 +378,193 @@ export default function SecurityScreen() {
                                     </button>
                                 </div>
 
-                                <div className="h-10 w-[1px] bg-white/5" />
-
-                                {/* Proxy Threshold Slider */}
-                                <div className="flex flex-col gap-1.5">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-tighter">Proxy Sensitivity</span>
-                                        <span className="text-[10px] font-mono font-black text-primary bg-primary/10 px-2 py-0.5 rounded">{proxyConfig?.proxyJailThresholdNon200 || 20} Errors</span>
-                                    </div>
-                                    <input
-                                        type="range"
-                                        min="5"
-                                        max="100"
-                                        value={proxyConfig?.proxyJailThresholdNon200 || 20}
-                                        onChange={(e) => updateProxySecurity({ proxyJailThresholdNon200: parseInt(e.target.value) })}
-                                        className="w-32 accent-primary h-1 bg-white/5 rounded-full appearance-none cursor-pointer"
-                                    />
-                                </div>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 pt-4">
-                            {/* SSH Mitigation Settings */}
-                            <div className="lg:col-span-1 space-y-6">
-                                <div className="bg-white/[0.03] border border-white/5 rounded-[24px] p-5">
-                                    <h4 className="text-[10px] font-black uppercase mb-6 flex items-center gap-2 tracking-widest text-orange-500">
-                                        <Terminal size={14} />
-                                        SSH Mitigation
+                        {/* Rule Chains Section */}
+                        <div className="space-y-4 pt-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h4 className="text-lg font-bold flex items-center gap-2">
+                                        <GitBranch size={18} className="text-primary" />
+                                        Rule Chains
                                     </h4>
-
-                                    <div className="space-y-6">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex flex-col">
-                                                <span className="text-[10px] font-black uppercase text-on-surface">Auto-Jail</span>
-                                                <span className="text-[9px] text-on-surface-variant/60 font-medium whitespace-nowrap">Block SSH brute force</span>
-                                            </div>
-                                            <button
-                                                onClick={() => updateAutoJailSettings({ enabled: !btmpStats?.autoJailEnabled })}
-                                                className={`p-2 rounded-xl border transition-all ${btmpStats?.autoJailEnabled ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-400 border-red-500/10'}`}
-                                            >
-                                                {btmpStats?.autoJailEnabled ? <ShieldCheck size={18} /> : <ShieldOff size={18} />}
-                                            </button>
-                                        </div>
-
-                                        <div className="space-y-3">
-                                            <div className="flex justify-between items-center px-1">
-                                                <span className="text-[10px] font-black uppercase text-on-surface-variant">Max Failures</span>
-                                                <span className="text-[10px] font-mono font-black text-orange-500">{btmpStats?.jailThreshold || 5}</span>
-                                            </div>
-                                            <input
-                                                type="range"
-                                                min="1"
-                                                max="20"
-                                                value={btmpStats?.jailThreshold || 5}
-                                                onChange={(e) => updateAutoJailSettings({ threshold: parseInt(e.target.value) })}
-                                                className="w-full accent-orange-500 h-1 bg-white/5 rounded-full appearance-none cursor-pointer"
-                                            />
-                                        </div>
-
-                                        <div className="space-y-3">
-                                            <div className="flex justify-between items-center px-1">
-                                                <span className="text-[10px] font-black uppercase text-on-surface-variant">Jail Duration</span>
-                                            </div>
-                                            <select
-                                                value={btmpStats?.jailDurationMinutes || 30}
-                                                onChange={(e) => updateAutoJailSettings({ duration: parseInt(e.target.value) })}
-                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-xs font-bold focus:outline-none"
-                                            >
-                                                <option value="15">15 Minutes</option>
-                                                <option value="30">30 Minutes</option>
-                                                <option value="60">1 Hour</option>
-                                                <option value="1440">24 Hours</option>
-                                            </select>
-                                        </div>
-                                    </div>
+                                    <p className="text-xs text-on-surface-variant mt-1">Configure advanced rules with AND/OR logic and nginx-level blocking</p>
                                 </div>
+                                <Button
+                                    onClick={() => {
+                                        setEditingChain(null);
+                                        setIsRuleChainModalOpen(true);
+                                    }}
+                                    className="flex items-center gap-2 bg-primary text-on-primary"
+                                >
+                                    <Plus size={16} />
+                                    New Rule Chain
+                                </Button>
                             </div>
 
-                            {/* Proxy Jail Rules List */}
-                            <div className="lg:col-span-2">
-                                <div className="flex items-center justify-between mb-4 px-1">
-                                    <h4 className="text-[10px] font-black uppercase text-on-surface-variant tracking-widest flex items-center gap-2">
-                                        <Globe size={14} className="text-primary" />
-                                        Active Guard Rails
-                                    </h4>
-                                    <span className="text-[10px] font-bold text-primary bg-primary/10 px-3 py-1 rounded-full">{proxyConfig?.proxyJailRules?.length || 0} Rules Active</span>
-                                </div>
-                                <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 scrollbar-invisible">
-                                    {proxyConfig?.proxyJailRules?.map((rule) => (
-                                        <div key={rule.id} className="group bg-white/5 border border-white/5 p-4 rounded-2xl hover:border-primary/30 transition-all flex items-center justify-between">
-                                            <div className="flex items-center gap-4 min-w-0">
-                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${rule.type === 'USER_AGENT' ? 'bg-pink-500/10 text-pink-500' :
-                                                    rule.type === 'METHOD' ? 'bg-orange-500/10 text-orange-500' :
-                                                        rule.type === 'PATH' ? 'bg-indigo-500/10 text-indigo-500' :
-                                                            'bg-teal-500/10 text-teal-500'
-                                                    }`}>
-                                                    {rule.type === 'USER_AGENT' ? <History size={18} /> :
-                                                        rule.type === 'METHOD' ? <Terminal size={18} /> :
-                                                            rule.type === 'PATH' ? <Globe size={18} /> :
-                                                                <Shield size={18} />}
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant/70 font-mono">{rule.type}</span>
-                                                        {rule.description && <span className="text-[10px] font-bold text-primary truncate max-w-[200px]">{rule.description}</span>}
+                            <div className="space-y-3">
+                                {ruleChains
+                                    .sort((a, b) => a.order - b.order)
+                                    .map((chain) => (
+                                        <div
+                                            key={chain.id}
+                                            className={`group bg-surface/50 border rounded-2xl p-5 transition-all ${
+                                                chain.enabled
+                                                    ? 'border-outline/20 hover:border-primary/30'
+                                                    : 'border-outline/10 opacity-60'
+                                            }`}
+                                        >
+                                            <div className="flex items-start justify-between mb-4">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <button
+                                                                onClick={async () => {
+                                                                    const updated = chain.enabled
+                                                                        ? ruleChains.map((c) =>
+                                                                              c.id === chain.id ? { ...c, enabled: false } : c
+                                                                          )
+                                                                        : ruleChains.map((c) =>
+                                                                              c.id === chain.id ? { ...c, enabled: true } : c
+                                                                          );
+                                                                    await trigger(() => DockerClient.updateRuleChains(updated), {
+                                                                        onSuccess: () => fetchData(),
+                                                                        successMessage: 'Rule chain updated',
+                                                                        errorMessage: 'Failed to update rule chain',
+                                                                    });
+                                                                }}
+                                                                className={`p-1.5 rounded-lg transition-all ${
+                                                                    chain.enabled
+                                                                        ? 'bg-green-500/10 text-green-500'
+                                                                        : 'bg-gray-500/10 text-gray-500'
+                                                                }`}
+                                                            >
+                                                                {chain.enabled ? <ShieldCheck size={14} /> : <ShieldOff size={14} />}
+                                                            </button>
+                                                            <h5 className="text-base font-bold">{chain.name}</h5>
+                                                            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-primary/10 text-primary">
+                                                                Order: {chain.order}
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                    <div className="text-sm font-mono font-bold truncate text-on-surface break-all">{rule.pattern}</div>
+                                                    {chain.description && (
+                                                        <p className="text-xs text-on-surface-variant mb-3">{chain.description}</p>
+                                                    )}
+                                                    <div className="flex items-center gap-4 text-xs">
+                                                        <span className="flex items-center gap-1.5">
+                                                            <GitBranch size={12} className="text-on-surface-variant" />
+                                                            <span className="font-bold text-on-surface-variant">
+                                                                {chain.operator === RuleOperator.AND ? 'AND' : 'OR'}
+                                                            </span>
+                                                        </span>
+                                                        <span className="flex items-center gap-1.5">
+                                                            {chain.action === RuleAction.JAIL && <ShieldAlert size={12} className="text-orange-500" />}
+                                                            {chain.action === RuleAction.NGINX_BLOCK && <Ban size={12} className="text-red-500" />}
+                                                            {chain.action === RuleAction.NGINX_DENY && <X size={12} className="text-red-600" />}
+                                                            {chain.action === RuleAction.LOG_ONLY && <FileText size={12} className="text-blue-500" />}
+                                                            <span className="font-bold">
+                                                                {chain.action === RuleAction.JAIL && 'Jail IP'}
+                                                                {chain.action === RuleAction.NGINX_BLOCK && 'Block at Nginx'}
+                                                                {chain.action === RuleAction.NGINX_DENY && 'Deny at Nginx'}
+                                                                {chain.action === RuleAction.LOG_ONLY && 'Log Only'}
+                                                            </span>
+                                                        </span>
+                                                        <span className="text-on-surface-variant">
+                                                            {chain.conditions.length} condition{chain.conditions.length !== 1 ? 's' : ''}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingChain(chain);
+                                                            setIsRuleChainModalOpen(true);
+                                                        }}
+                                                        className="p-2 hover:bg-primary/10 text-primary rounded-xl transition-all"
+                                                        title="Edit rule chain"
+                                                    >
+                                                        <Edit2 size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={async () => {
+                                                            if (!confirm(`Delete rule chain "${chain.name}"?`)) return;
+                                                            await trigger(() => DockerClient.deleteRuleChain(chain.id), {
+                                                                onSuccess: () => fetchData(),
+                                                                successMessage: 'Rule chain deleted',
+                                                                errorMessage: 'Failed to delete rule chain',
+                                                            });
+                                                        }}
+                                                        className="p-2 hover:bg-red-500/10 text-red-500 rounded-xl transition-all"
+                                                        title="Delete rule chain"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
                                                 </div>
                                             </div>
-                                            <button
-                                                onClick={() => {
-                                                    const newRules = proxyConfig.proxyJailRules.filter(r => r.id !== rule.id);
-                                                    updateProxySecurity({ proxyJailRules: newRules });
-                                                }}
-                                                className="p-2 text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
+
+                                            {/* Conditions */}
+                                            <div className="space-y-2 mt-4 pt-4 border-t border-outline/10">
+                                                {chain.conditions.map((condition, idx) => (
+                                                    <div
+                                                        key={condition.id}
+                                                        className="flex items-center gap-3 p-3 bg-black/20 rounded-xl border border-outline/5"
+                                                    >
+                                                        {idx > 0 && (
+                                                            <span className="text-xs font-black text-primary px-2 py-0.5 rounded bg-primary/10">
+                                                                {chain.operator}
+                                                            </span>
+                                                        )}
+                                                        <div className="flex-1 flex items-center gap-2">
+                                                            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-blue-500/10 text-blue-500">
+                                                                {condition.type}
+                                                            </span>
+                                                            {condition.negate && (
+                                                                <span className="text-[10px] font-black text-red-500">NOT</span>
+                                                            )}
+                                                            <span className="text-xs font-mono font-bold text-on-surface">
+                                                                {condition.pattern}
+                                                            </span>
+                                                            {condition.description && (
+                                                                <span className="text-xs text-on-surface-variant italic">
+                                                                    ({condition.description})
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                {chain.conditions.length === 0 && (
+                                                    <div className="text-xs text-on-surface-variant italic text-center py-2">
+                                                        No conditions defined
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Action Config */}
+                                            {chain.actionConfig && (
+                                                <div className="mt-3 pt-3 border-t border-outline/5 text-xs text-on-surface-variant">
+                                                    {chain.action === RuleAction.JAIL && chain.actionConfig.jailDurationMinutes && (
+                                                        <span>Jail Duration: {chain.actionConfig.jailDurationMinutes} minutes</span>
+                                                    )}
+                                                    {(chain.action === RuleAction.NGINX_BLOCK || chain.action === RuleAction.NGINX_DENY) && (
+                                                        <span>
+                                                            Response Code: {chain.actionConfig.nginxResponseCode || 403}
+                                                            {chain.actionConfig.nginxResponseMessage && (
+                                                                <> - {chain.actionConfig.nginxResponseMessage}</>
+                                                            )}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
-                                    {(!proxyConfig?.proxyJailRules || proxyConfig.proxyJailRules.length === 0) && (
-                                        <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-white/5 rounded-3xl bg-white/[0.02]">
-                                            <Shield className="text-on-surface-variant/10 mb-4" size={48} />
-                                            <p className="text-sm font-bold text-on-surface-variant">No edge security rules defined.</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Add Rule Sidebar */}
-                            <div className="lg:col-span-1">
-                                <div className="bg-white/[0.03] border border-white/5 rounded-[24px] p-5 h-fit sticky top-6">
-                                    <h4 className="text-[10px] font-black uppercase mb-6 flex items-center gap-2 tracking-widest">
-                                        <Plus size={16} className="text-primary" />
-                                        Add Armor Rule
-                                    </h4>
-                                    <form className="space-y-4" onSubmit={(e) => {
-                                        e.preventDefault();
-                                        const form = e.target as HTMLFormElement;
-                                        const type = (form.elements.namedItem('rule-type') as HTMLSelectElement).value;
-                                        const pattern = (form.elements.namedItem('rule-pattern') as HTMLInputElement).value;
-                                        const description = (form.elements.namedItem('rule-description') as HTMLInputElement).value;
-
-                                        if (!pattern) return toast.error('Pattern is required');
-
-                                        const newRule: ProxyJailRule = {
-                                            id: Math.random().toString(36).substr(2, 9),
-                                            type: type as ProxyJailRuleType,
-                                            pattern,
-                                            description
-                                        };
-
-                                        updateProxySecurity({ proxyJailRules: [...(proxyConfig?.proxyJailRules || []), newRule] });
-                                        form.reset();
-                                    }}>
-                                        <div className="space-y-1.5">
-                                            <label className="text-[10px] font-black uppercase text-on-surface-variant px-1 tracking-widest">Target</label>
-                                            <select
-                                                name="rule-type"
-                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs font-bold focus:outline-none focus:border-primary/50 transition-all appearance-none"
-                                            >
-                                                <option value="USER_AGENT">User Agent (Regex)</option>
-                                                <option value="PATH">Path / URL (Regex)</option>
-                                                <option value="METHOD">HTTP Method</option>
-                                                <option value="STATUS_CODE">Status Code</option>
-                                            </select>
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-[10px] font-black uppercase text-on-surface-variant px-1 tracking-widest">Pattern</label>
-                                            <input
-                                                name="rule-pattern"
-                                                placeholder="e.g. ^sqlmap/.*"
-                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs font-mono font-bold focus:outline-none focus:border-primary/50"
-                                            />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-[10px] font-black uppercase text-on-surface-variant px-1 tracking-widest">Description</label>
-                                            <input
-                                                name="rule-description"
-                                                placeholder="e.g. Block SQL injection"
-                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs font-bold focus:outline-none focus:border-primary/50"
-                                            />
-                                        </div>
-                                        <button
-                                            type="submit"
-                                            className="w-full bg-primary text-on-primary py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
-                                        >
-                                            Shield Up
-                                        </button>
-                                    </form>
-                                </div>
+                                {ruleChains.length === 0 && (
+                                    <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-outline/10 rounded-3xl bg-surface/20">
+                                        <GitBranch className="text-on-surface-variant/20 mb-4" size={48} />
+                                        <p className="text-sm font-bold text-on-surface-variant mb-2">No rule chains defined</p>
+                                        <p className="text-xs text-on-surface-variant/60">Create a rule chain to start protecting your proxy</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -572,6 +577,455 @@ export default function SecurityScreen() {
                     onBlocked={() => { setIsFirewallModalOpen(false); fetchData(); }}
                 />
             )}
+
+            {isRuleChainModalOpen && (
+                <RuleChainModal
+                    chain={editingChain}
+                    onClose={() => {
+                        setIsRuleChainModalOpen(false);
+                        setEditingChain(null);
+                    }}
+                    onSave={async (chain) => {
+                        if (editingChain) {
+                            await trigger(() => DockerClient.updateRuleChain(chain.id, chain), {
+                                onSuccess: () => {
+                                    fetchData();
+                                    setIsRuleChainModalOpen(false);
+                                    setEditingChain(null);
+                                },
+                                successMessage: 'Rule chain updated',
+                                errorMessage: 'Failed to update rule chain',
+                            });
+                        } else {
+                            await trigger(() => DockerClient.addRuleChain(chain), {
+                                onSuccess: () => {
+                                    fetchData();
+                                    setIsRuleChainModalOpen(false);
+                                },
+                                successMessage: 'Rule chain added',
+                                errorMessage: 'Failed to add rule chain',
+                            });
+                        }
+                    }}
+                />
+            )}
+        </div>
+    );
+}
+
+function RuleChainModal({
+    chain,
+    onClose,
+    onSave,
+}: {
+    chain: RuleChain | null;
+    onClose: () => void;
+    onSave: (chain: RuleChain) => void;
+}) {
+    const [name, setName] = useState(chain?.name || '');
+    const [description, setDescription] = useState(chain?.description || '');
+    const [enabled, setEnabled] = useState(chain?.enabled ?? true);
+    const [operator, setOperator] = useState<RuleOperator>(chain?.operator || RuleOperator.OR);
+    const [action, setAction] = useState<RuleAction>(chain?.action || RuleAction.JAIL);
+    const [conditions, setConditions] = useState<RuleCondition[]>(chain?.conditions || []);
+    const [actionConfig, setActionConfig] = useState<RuleActionConfig>(chain?.actionConfig || {});
+    const [order, setOrder] = useState(chain?.order || 0);
+
+    const addCondition = () => {
+        setConditions([
+            ...conditions,
+            {
+                id: Math.random().toString(36).substring(2, 11),
+                type: ProxyJailRuleType.PATH,
+                pattern: '',
+                negate: false,
+            },
+        ]);
+    };
+
+    const updateCondition = (id: string, updates: Partial<RuleCondition>) => {
+        setConditions(conditions.map((c) => (c.id === id ? { ...c, ...updates } : c)));
+    };
+
+    const removeCondition = (id: string) => {
+        setConditions(conditions.filter((c) => c.id !== id));
+    };
+
+    const handleSave = () => {
+        if (!name.trim()) {
+            toast.error('Rule chain name is required');
+            return;
+        }
+        if (conditions.length === 0) {
+            toast.error('At least one condition is required');
+            return;
+        }
+        if (conditions.some((c) => !c.pattern.trim())) {
+            toast.error('All conditions must have a pattern');
+            return;
+        }
+
+        const newChain: RuleChain = {
+            id: chain?.id || Math.random().toString(36).substr(2, 9),
+            name: name.trim(),
+            description: description.trim() || undefined,
+            enabled,
+            operator,
+            conditions,
+            action,
+            actionConfig: Object.keys(actionConfig).length > 0 ? actionConfig : undefined,
+            order,
+        };
+
+        onSave(newChain);
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+            <div className="bg-surface border border-outline/20 rounded-[32px] w-full max-w-4xl shadow-2xl p-8 my-8">
+                <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+                            <GitBranch size={24} />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold">{chain ? 'Edit Rule Chain' : 'New Rule Chain'}</h2>
+                            <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-widest">
+                                Configure advanced security rules
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-2 hover:bg-white/5 rounded-xl transition-all"
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
+                    {/* Basic Info */}
+                    <div className="space-y-4">
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-black uppercase text-on-surface-variant px-1 tracking-widest">
+                                Rule Chain Name *
+                            </label>
+                            <input
+                                type="text"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                placeholder="e.g. Block SQL Injection Attempts"
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50"
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-black uppercase text-on-surface-variant px-1 tracking-widest">
+                                Description
+                            </label>
+                            <input
+                                type="text"
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
+                                placeholder="Optional description"
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50"
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-black uppercase text-on-surface-variant px-1 tracking-widest">
+                                    Evaluation Order
+                                </label>
+                                <input
+                                    type="number"
+                                    value={order}
+                                    onChange={(e) => setOrder(parseInt(e.target.value) || 0)}
+                                    min="0"
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-black uppercase text-on-surface-variant px-1 tracking-widest">
+                                    Status
+                                </label>
+                                <button
+                                    onClick={() => setEnabled(!enabled)}
+                                    className={`w-full py-3 rounded-xl border transition-all ${
+                                        enabled
+                                            ? 'bg-green-500/10 text-green-500 border-green-500/20'
+                                            : 'bg-red-500/10 text-red-500 border-red-500/20'
+                                    }`}
+                                >
+                                    {enabled ? 'Enabled' : 'Disabled'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Conditions */}
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <label className="text-xs font-black uppercase text-on-surface-variant px-1 tracking-widest">
+                                Conditions *
+                            </label>
+                            <div className="flex items-center gap-3">
+                                <span className="text-xs text-on-surface-variant">Logic:</span>
+                                <button
+                                    onClick={() => setOperator(RuleOperator.AND)}
+                                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                                        operator === RuleOperator.AND
+                                            ? 'bg-primary text-on-primary'
+                                            : 'bg-black/40 text-on-surface-variant'
+                                    }`}
+                                >
+                                    AND
+                                </button>
+                                <button
+                                    onClick={() => setOperator(RuleOperator.OR)}
+                                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                                        operator === RuleOperator.OR
+                                            ? 'bg-primary text-on-primary'
+                                            : 'bg-black/40 text-on-surface-variant'
+                                    }`}
+                                >
+                                    OR
+                                </button>
+                            </div>
+                        </div>
+                        <div className="space-y-3">
+                            {conditions.map((condition, idx) => (
+                                <div
+                                    key={condition.id}
+                                    className="bg-black/20 border border-outline/10 rounded-xl p-4 space-y-3"
+                                >
+                                    {idx > 0 && (
+                                        <div className="flex items-center justify-center mb-2">
+                                            <span className="text-xs font-black text-primary px-3 py-1 rounded-full bg-primary/10">
+                                                {operator}
+                                            </span>
+                                        </div>
+                                    )}
+                                    <div className="grid grid-cols-4 gap-3">
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-black uppercase text-on-surface-variant">
+                                                Type
+                                            </label>
+                                            <select
+                                                value={condition.type}
+                                                onChange={(e) =>
+                                                    updateCondition(condition.id, {
+                                                        type: e.target.value as ProxyJailRuleType,
+                                                    })
+                                                }
+                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none"
+                                            >
+                                                <option value={ProxyJailRuleType.IP}>IP Address</option>
+                                                <option value={ProxyJailRuleType.USER_AGENT}>User Agent</option>
+                                                <option value={ProxyJailRuleType.METHOD}>HTTP Method</option>
+                                                <option value={ProxyJailRuleType.PATH}>Path/URL</option>
+                                                <option value={ProxyJailRuleType.STATUS_CODE}>Status Code</option>
+                                                <option value={ProxyJailRuleType.REFERER}>Referer</option>
+                                                <option value={ProxyJailRuleType.DOMAIN}>Domain</option>
+                                            </select>
+                                        </div>
+                                        <div className="col-span-2 space-y-1.5">
+                                            <label className="text-[10px] font-black uppercase text-on-surface-variant">
+                                                Pattern (Regex) *
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={condition.pattern}
+                                                onChange={(e) =>
+                                                    updateCondition(condition.id, { pattern: e.target.value })
+                                                }
+                                                placeholder="e.g. ^sqlmap/.* or 192.168.1.0/24"
+                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono font-bold focus:outline-none"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-black uppercase text-on-surface-variant">
+                                                Negate
+                                            </label>
+                                            <button
+                                                onClick={() =>
+                                                    updateCondition(condition.id, { negate: !condition.negate })
+                                                }
+                                                className={`w-full py-2 rounded-xl border transition-all text-xs font-bold ${
+                                                    condition.negate
+                                                        ? 'bg-red-500/10 text-red-500 border-red-500/20'
+                                                        : 'bg-black/40 border-white/10 text-on-surface-variant'
+                                                }`}
+                                            >
+                                                {condition.negate ? 'NOT' : 'Match'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-black uppercase text-on-surface-variant">
+                                            Description (Optional)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={condition.description || ''}
+                                            onChange={(e) =>
+                                                updateCondition(condition.id, { description: e.target.value || undefined })
+                                            }
+                                            placeholder="e.g. SQL injection tool"
+                                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none"
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={() => removeCondition(condition.id)}
+                                        className="w-full py-2 text-red-500 hover:bg-red-500/10 rounded-xl border border-red-500/20 transition-all text-xs font-bold"
+                                    >
+                                        Remove Condition
+                                    </button>
+                                </div>
+                            ))}
+                            <button
+                                onClick={addCondition}
+                                className="w-full py-3 border-2 border-dashed border-outline/20 hover:border-primary/30 rounded-xl text-xs font-bold text-on-surface-variant hover:text-primary transition-all flex items-center justify-center gap-2"
+                            >
+                                <Plus size={16} />
+                                Add Condition
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Action */}
+                    <div className="space-y-4">
+                        <label className="text-xs font-black uppercase text-on-surface-variant px-1 tracking-widest">
+                            Action *
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button
+                                onClick={() => setAction(RuleAction.JAIL)}
+                                className={`p-4 rounded-xl border transition-all flex items-center gap-3 ${
+                                    action === RuleAction.JAIL
+                                        ? 'bg-orange-500/10 text-orange-500 border-orange-500/30'
+                                        : 'bg-black/40 border-white/10 text-on-surface-variant hover:border-primary/30'
+                                }`}
+                            >
+                                <ShieldAlert size={20} />
+                                <span className="text-sm font-bold">Jail IP</span>
+                            </button>
+                            <button
+                                onClick={() => setAction(RuleAction.NGINX_BLOCK)}
+                                className={`p-4 rounded-xl border transition-all flex items-center gap-3 ${
+                                    action === RuleAction.NGINX_BLOCK
+                                        ? 'bg-red-500/10 text-red-500 border-red-500/30'
+                                        : 'bg-black/40 border-white/10 text-on-surface-variant hover:border-primary/30'
+                                }`}
+                            >
+                                <Ban size={20} />
+                                <span className="text-sm font-bold">Block at Nginx</span>
+                            </button>
+                            <button
+                                onClick={() => setAction(RuleAction.NGINX_DENY)}
+                                className={`p-4 rounded-xl border transition-all flex items-center gap-3 ${
+                                    action === RuleAction.NGINX_DENY
+                                        ? 'bg-red-600/10 text-red-600 border-red-600/30'
+                                        : 'bg-black/40 border-white/10 text-on-surface-variant hover:border-primary/30'
+                                }`}
+                            >
+                                <X size={20} />
+                                <span className="text-sm font-bold">Deny at Nginx</span>
+                            </button>
+                            <button
+                                onClick={() => setAction(RuleAction.LOG_ONLY)}
+                                className={`p-4 rounded-xl border transition-all flex items-center gap-3 ${
+                                    action === RuleAction.LOG_ONLY
+                                        ? 'bg-blue-500/10 text-blue-500 border-blue-500/30'
+                                        : 'bg-black/40 border-white/10 text-on-surface-variant hover:border-primary/30'
+                                }`}
+                            >
+                                <FileText size={20} />
+                                <span className="text-sm font-bold">Log Only</span>
+                            </button>
+                        </div>
+
+                        {/* Action Config */}
+                        {action === RuleAction.JAIL && (
+                            <div className="space-y-1.5 bg-black/20 p-4 rounded-xl border border-outline/10">
+                                <label className="text-xs font-black uppercase text-on-surface-variant">
+                                    Jail Duration (minutes, optional - uses default if not set)
+                                </label>
+                                <input
+                                    type="number"
+                                    value={actionConfig.jailDurationMinutes || ''}
+                                    onChange={(e) =>
+                                        setActionConfig({
+                                            ...actionConfig,
+                                            jailDurationMinutes: e.target.value ? parseInt(e.target.value) : undefined,
+                                        })
+                                    }
+                                    placeholder="Leave empty for default"
+                                    min="1"
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none"
+                                />
+                            </div>
+                        )}
+
+                        {(action === RuleAction.NGINX_BLOCK || action === RuleAction.NGINX_DENY) && (
+                            <div className="space-y-3 bg-black/20 p-4 rounded-xl border border-outline/10">
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-black uppercase text-on-surface-variant">
+                                        Response Code
+                                    </label>
+                                    <select
+                                        value={actionConfig.nginxResponseCode || 403}
+                                        onChange={(e) =>
+                                            setActionConfig({
+                                                ...actionConfig,
+                                                nginxResponseCode: parseInt(e.target.value),
+                                            })
+                                        }
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none"
+                                    >
+                                        <option value={403}>403 Forbidden</option>
+                                        <option value={444}>444 Close Connection (NGINX_DENY only)</option>
+                                        <option value={429}>429 Too Many Requests</option>
+                                    </select>
+                                </div>
+                                {action === RuleAction.NGINX_BLOCK && (
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-black uppercase text-on-surface-variant">
+                                            Response Message (Optional)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={actionConfig.nginxResponseMessage || ''}
+                                            onChange={(e) =>
+                                                setActionConfig({
+                                                    ...actionConfig,
+                                                    nginxResponseMessage: e.target.value || undefined,
+                                                })
+                                            }
+                                            placeholder="e.g. Access Denied"
+                                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex gap-3 pt-6 mt-6 border-t border-outline/10">
+                    <button
+                        onClick={onClose}
+                        className="flex-1 py-3 rounded-xl text-sm font-bold hover:bg-white/5 transition-all text-on-surface-variant"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={handleSave}
+                        className="flex-1 py-3 rounded-xl bg-primary text-on-primary text-sm font-bold shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                    >
+                        <Save size={16} />
+                        {chain ? 'Update Rule Chain' : 'Create Rule Chain'}
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }

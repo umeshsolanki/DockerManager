@@ -46,8 +46,8 @@ interface IProxyService {
     fun getComposeConfig(): String
     fun updateComposeConfig(content: String): Pair<Boolean, String>
     fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null)
-    fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>)
-
+    fun updateSecuritySettings(enabled: Boolean, rules: List<ProxyJailRule>)
+    fun reloadNginx(): Pair<Boolean, String>
     // Analytics History
     fun getHistoricalStats(date: String): DailyProxyStats?
     fun listAvailableDates(): List<String>
@@ -87,10 +87,9 @@ class ProxyServiceImpl(
 
     override fun updateSecuritySettings(
         enabled: Boolean,
-        thresholdNon200: Int,
         rules: List<ProxyJailRule>,
     ) {
-        AppConfig.updateProxySecuritySettings(enabled, thresholdNon200, rules)
+        AppConfig.updateProxySecuritySettings(enabled, rules)
     }
 
     init {
@@ -684,6 +683,9 @@ class ProxyServiceImpl(
             host.allowedIps.joinToString("\n        ") { "allow $it;" } + "\n        deny all;"
         } else ""
 
+        // Generate nginx blocking rules from rule chains
+        val nginxBlockRules = generateNginxBlockRules()
+
         // Generate path-based location blocks
         val pathLocations = generatePathLocations(host.paths, wsConfig)
 
@@ -721,7 +723,8 @@ class ProxyServiceImpl(
                     "target" to host.target,
                     "websocketConfig" to wsConfig,
                     "ipRestrictions" to ipConfig,
-                    "pathLocations" to pathLocations
+                    "pathLocations" to pathLocations,
+                    "nginxBlockRules" to nginxBlockRules
                 )
             )
         } else ""
@@ -751,7 +754,8 @@ class ProxyServiceImpl(
                 "domain" to host.domain,
                 "httpRedirect" to httpRedirect,
                 "httpProxyConfig" to httpProxyConfig,
-                "pathLocations" to pathLocations
+                "pathLocations" to pathLocations,
+                "nginxBlockRules" to nginxBlockRules
             )
         )
 
@@ -764,6 +768,142 @@ class ProxyServiceImpl(
             logger.error("Failed to generate nginx config for ${host.domain}", e)
             return false to "Failed to write config: ${e.message}"
         }
+    }
+
+    /**
+     * Generates nginx blocking rules from rule chains with NGINX_BLOCK or NGINX_DENY actions
+     */
+    private fun generateNginxBlockRules(): String {
+        val secSettings = AppConfig.proxySecuritySettings
+        if (!secSettings.proxyJailEnabled) return ""
+        
+        val blockingChains = secSettings.ruleChains
+            .filter { it.enabled && (it.action == RuleAction.NGINX_BLOCK || it.action == RuleAction.NGINX_DENY) }
+            .sortedBy { it.order }
+        
+        if (blockingChains.isEmpty()) return ""
+        
+        val rules = mutableListOf<String>()
+        
+        for (chain in blockingChains) {
+            val conditions = chain.conditions.filter { 
+                // Only include conditions that can be evaluated at nginx level
+                it.type == ProxyJailRuleType.IP || 
+                it.type == ProxyJailRuleType.USER_AGENT || 
+                it.type == ProxyJailRuleType.METHOD || 
+                it.type == ProxyJailRuleType.PATH ||
+                it.type == ProxyJailRuleType.REFERER ||
+                it.type == ProxyJailRuleType.DOMAIN
+            }
+            
+            if (conditions.isEmpty()) continue
+            
+            // Generate nginx if block for this chain
+            val ifConditions = mutableListOf<String>()
+            
+            for (condition in conditions) {
+                val nginxCondition = when (condition.type) {
+                    ProxyJailRuleType.IP -> {
+                        if (condition.pattern.contains("/")) {
+                            // CIDR - nginx doesn't support CIDR directly, use regex
+                            val cidrParts = condition.pattern.split("/")
+                            if (cidrParts.size == 2) {
+                                val ipPattern = cidrParts[0].replace(".", "\\.")
+                                if (condition.negate) {
+                                    "\$remote_addr !~ \"^$ipPattern\""
+                                } else {
+                                    "\$remote_addr ~ \"^$ipPattern\""
+                                }
+                            } else {
+                                null
+                            }
+                        } else {
+                            // Exact IP or regex
+                            if (condition.negate) {
+                                "\$remote_addr !~ \"${condition.pattern}\""
+                            } else {
+                                "\$remote_addr ~ \"${condition.pattern}\""
+                            }
+                        }
+                    }
+                    ProxyJailRuleType.USER_AGENT -> {
+                        if (condition.negate) {
+                            "\$http_user_agent !~ \"${condition.pattern}\""
+                        } else {
+                            "\$http_user_agent ~ \"${condition.pattern}\""
+                        }
+                    }
+                    ProxyJailRuleType.METHOD -> {
+                        if (condition.negate) {
+                            "\$request_method !~ \"^${condition.pattern}\""
+                        } else {
+                            "\$request_method ~ \"^${condition.pattern}\""
+                        }
+                    }
+                    ProxyJailRuleType.PATH -> {
+                        if (condition.negate) {
+                            "\$request_uri !~ \"${condition.pattern}\""
+                        } else {
+                            "\$request_uri ~ \"${condition.pattern}\""
+                        }
+                    }
+                    ProxyJailRuleType.REFERER -> {
+                        if (condition.negate) {
+                            "\$http_referer !~ \"${condition.pattern}\""
+                        } else {
+                            "\$http_referer ~ \"${condition.pattern}\""
+                        }
+                    }
+                    ProxyJailRuleType.DOMAIN -> {
+                        if (condition.negate) {
+                            "\$host !~ \"${condition.pattern}\""
+                        } else {
+                            "\$host ~ \"${condition.pattern}\""
+                        }
+                    }
+                    else -> null
+                }
+                
+                if (nginxCondition != null) {
+                    ifConditions.add(nginxCondition)
+                }
+            }
+            
+            if (ifConditions.isEmpty()) continue
+            
+            // Combine conditions with AND/OR logic
+            val conditionString = if (chain.operator == RuleOperator.AND) {
+                ifConditions.joinToString(" && ")
+            } else {
+                ifConditions.joinToString(" || ")
+            }
+            
+            // Generate response based on action
+            val responseCode = chain.actionConfig?.nginxResponseCode ?: 403
+            val responseMessage = chain.actionConfig?.nginxResponseMessage ?: ""
+            
+            val blockAction = when (chain.action) {
+                RuleAction.NGINX_DENY -> {
+                    "return 444;" // Close connection without response
+                }
+                RuleAction.NGINX_BLOCK -> {
+                    if (responseMessage.isNotEmpty()) {
+                        "return $responseCode \"$responseMessage\";"
+                    } else {
+                        "return $responseCode;"
+                    }
+                }
+                else -> null
+            }
+            
+            if (blockAction != null) {
+                rules.add("if ($conditionString) {")
+                rules.add("    $blockAction")
+                rules.add("}")
+            }
+        }
+        
+        return rules.joinToString("\n        ")
     }
 
     private fun generatePathLocations(paths: List<PathRoute>, defaultWsConfig: String): String {
@@ -829,7 +969,7 @@ class ProxyServiceImpl(
         }
     }
 
-    private fun reloadNginx(): Pair<Boolean, String> {
+    override fun reloadNginx(): Pair<Boolean, String> {
         return try {
             logger.info("Reloading Nginx...")
             
@@ -1293,6 +1433,31 @@ class ProxyServiceImpl(
 
 // Service object for easy access
 object ProxyService {
+    fun regenerateAllConfigs(): Pair<Boolean, String> {
+        val hosts = service.listHosts()
+        var successCount = 0
+        var failCount = 0
+        val errors = mutableListOf<String>()
+        
+        for (host in hosts) {
+            val (success, message) = service.updateHost(host)
+            if (success) {
+                successCount++
+            } else {
+                failCount++
+                errors.add("${host.domain}: $message")
+            }
+        }
+        
+        val reloadResult = service.reloadNginx()
+        
+        return if (failCount == 0 && reloadResult.first) {
+            true to "Regenerated ${successCount} configs and reloaded nginx"
+        } else {
+            false to "Regenerated ${successCount} configs, ${failCount} failed. Errors: ${errors.joinToString("; ")}. Nginx reload: ${reloadResult.second}"
+        }
+    }
+    
     private val service: IProxyService by lazy {
         ProxyServiceImpl(ServiceContainer.jailManagerService)
     }
@@ -1317,8 +1482,8 @@ object ProxyService {
     fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null) =
         service.updateStatsSettings(active, intervalMs, filterLocalIps)
 
-    fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>) =
-        service.updateSecuritySettings(enabled, thresholdNon200, rules)
+    fun updateSecuritySettings(enabled: Boolean, rules: List<ProxyJailRule>) =
+        service.updateSecuritySettings(enabled, rules)
 
     fun getProxySecuritySettings() = AppConfig.proxySecuritySettings
 

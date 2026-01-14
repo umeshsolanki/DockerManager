@@ -9,6 +9,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
@@ -31,11 +32,48 @@ fun Route.cacheRoutes() {
         post("/redis/config") {
             val config = call.receive<RedisConfig>()
             AppConfig.updateRedisConfig(config)
-            val testResult = CacheService.testConnection()
+            val testResult = try {
+                if (!config.enabled) {
+                    call.respond(
+                        HttpStatusCode.OK, RedisConfigUpdateResult(
+                            success = true,
+                            message = "Redis configuration updated (disabled)",
+                            connected = false
+                        )
+                    )
+                    return@post
+                }
+                CacheService.testConnection()
+            } catch (e: Exception) {
+                val errorMessage = when {
+                    e.message?.contains("Connection refused", ignoreCase = true) == true -> 
+                        "Redis configuration updated but connection test failed: Connection refused to ${config.host}:${config.port}. Ensure Redis is running (e.g., 'sudo systemctl status redis' or 'docker ps' if using Docker)."
+                    e.message?.contains("timeout", ignoreCase = true) == true -> 
+                        "Redis configuration updated but connection test failed: Connection timeout. Check network connectivity and firewall settings."
+                    e.message?.contains("NOAUTH", ignoreCase = true) == true -> 
+                        "Redis configuration updated but connection test failed: Authentication required. Please provide a password."
+                    e.message?.contains("WRONGPASS", ignoreCase = true) == true -> 
+                        "Redis configuration updated but connection test failed: Wrong password. Please verify your Redis password."
+                    e.message?.contains("Connection reset", ignoreCase = true) == true -> 
+                        "Redis configuration updated but connection test failed: Connection reset. On Ubuntu, Redis might be bound to localhost only. Edit /etc/redis/redis.conf and set 'bind 0.0.0.0' or 'bind 127.0.0.1 ::1' then restart Redis."
+                    e.message?.contains("UnknownHostException", ignoreCase = true) == true -> 
+                        "Redis configuration updated but connection test failed: Cannot resolve hostname '${config.host}'. Check DNS configuration."
+                    else -> 
+                        "Redis configuration updated but connection test failed: ${e.message ?: e.javaClass.simpleName}"
+                }
+                call.respond(
+                    HttpStatusCode.OK, RedisConfigUpdateResult(
+                        success = true,
+                        message = errorMessage,
+                        connected = false
+                    )
+                )
+                return@post
+            }
             call.respond(
                 HttpStatusCode.OK, RedisConfigUpdateResult(
                     success = true,
-                    message = if (testResult) "Redis configuration updated and connection verified" else "Redis configuration updated but connection test failed",
+                    message = if (testResult) "Redis configuration updated and connection verified" else "Redis configuration updated but connection test failed - check Redis configuration and ensure Redis is running",
                     connected = testResult
                 )
             )
@@ -49,12 +87,33 @@ fun Route.cacheRoutes() {
                 tempService.close()
                 result
             } catch (e: Exception) {
-                false
+                val errorMessage = when {
+                    e.message?.contains("Connection refused", ignoreCase = true) == true -> 
+                        "Connection refused. Check if Redis is running and accessible at ${config.host}:${config.port}"
+                    e.message?.contains("timeout", ignoreCase = true) == true -> 
+                        "Connection timeout. Check network connectivity and firewall settings"
+                    e.message?.contains("NOAUTH", ignoreCase = true) == true -> 
+                        "Authentication failed. Check if password is correct"
+                    e.message?.contains("WRONGPASS", ignoreCase = true) == true -> 
+                        "Wrong password. Please verify your Redis password"
+                    e.message?.contains("Connection reset", ignoreCase = true) == true -> 
+                        "Connection reset. Redis might be bound to localhost only. Check Redis bind configuration"
+                    else -> 
+                        "Connection failed: ${e.message ?: e.javaClass.simpleName}"
+                }
+                call.respond(
+                    HttpStatusCode.OK, RedisTestResult(
+                        success = false,
+                        message = errorMessage,
+                        connected = false
+                    )
+                )
+                return@post
             }
             call.respond(
                 HttpStatusCode.OK, RedisTestResult(
                     success = testResult,
-                    message = if (testResult) "Connection successful" else "Connection failed",
+                    message = if (testResult) "Connection successful" else "Connection failed - check Redis configuration and ensure Redis is running",
                     connected = testResult
                 )
             )
@@ -195,6 +254,110 @@ fun Route.cacheRoutes() {
                     if (cleared) "Cache cleared successfully" else "Failed to clear cache"
                 )
             )
+        }
+
+        // Redis database browsing endpoints
+        get("/redis/databases") {
+            if (!AppConfig.redisConfig.enabled || !CacheService.testConnection()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Redis not connected"))
+                return@get
+            }
+            try {
+                val databases = (0..15).map { db ->
+                    val service = RedisServiceImpl(AppConfig.redisConfig.copy(database = db))
+                    val size = try {
+                        service.getDatabaseSize(db)
+                    } catch (e: Exception) {
+                        0L
+                    } finally {
+                        service.close()
+                    }
+                    mapOf("database" to db, "size" to size)
+                }
+                call.respond(databases)
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to e.message))
+            }
+        }
+
+        get("/redis/database/{db}/keys") {
+            if (!AppConfig.redisConfig.enabled || !CacheService.testConnection()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Redis not connected"))
+                return@get
+            }
+            try {
+                val db = call.parameters["db"]?.toIntOrNull() ?: 0
+                val pattern = call.request.queryParameters["pattern"] ?: "*"
+                val service = RedisServiceImpl(AppConfig.redisConfig.copy(database = db))
+                val keys = try {
+                    service.getKeys(pattern, db).map { key ->
+                        val ttl = service.getTtl(key, db)
+                        val type = service.getKeyType(key, db) ?: "unknown"
+                        mapOf(
+                            "key" to key,
+                            "type" to type,
+                            "ttl" to ttl
+                        )
+                    }
+                } finally {
+                    service.close()
+                }
+                call.respond(keys)
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to e.message))
+            }
+        }
+
+        get("/redis/database/{db}/key/{key}") {
+            if (!AppConfig.redisConfig.enabled || !CacheService.testConnection()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Redis not connected"))
+                return@get
+            }
+            try {
+                val db = call.parameters["db"]?.toIntOrNull() ?: 0
+                val key = call.parameters["key"] ?: return@get call.respond(
+                    HttpStatusCode.BadRequest, mapOf("error" to "Key parameter required")
+                )
+                val service = RedisServiceImpl(AppConfig.redisConfig.copy(database = db))
+                val result = try {
+                    val value = service.getRawValue(key, db)
+                    val type = service.getKeyType(key, db) ?: "unknown"
+                    val ttl = service.getTtl(key, db)
+                    mapOf(
+                        "key" to key,
+                        "value" to value,
+                        "type" to type,
+                        "ttl" to ttl
+                    )
+                } finally {
+                    service.close()
+                }
+                call.respond(result)
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to e.message))
+            }
+        }
+
+        delete("/redis/database/{db}/key/{key}") {
+            if (!AppConfig.redisConfig.enabled || !CacheService.testConnection()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Redis not connected"))
+                return@delete
+            }
+            try {
+                val db = call.parameters["db"]?.toIntOrNull() ?: 0
+                val key = call.parameters["key"] ?: return@delete call.respond(
+                    HttpStatusCode.BadRequest, mapOf("error" to "Key parameter required")
+                )
+                val service = RedisServiceImpl(AppConfig.redisConfig.copy(database = db))
+                val deleted = try {
+                    service.delete(key)
+                } finally {
+                    service.close()
+                }
+                call.respond(mapOf("success" to deleted, "message" to if (deleted) "Key deleted" else "Key not found"))
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to e.message))
+            }
         }
 
         post("/install") {

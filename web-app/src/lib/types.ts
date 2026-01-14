@@ -298,7 +298,10 @@ export enum ProxyJailRuleType {
   USER_AGENT = 'USER_AGENT',
   METHOD = 'METHOD',
   PATH = 'PATH',
-  STATUS_CODE = 'STATUS_CODE'
+  STATUS_CODE = 'STATUS_CODE',
+  IP = 'IP',
+  REFERER = 'REFERER',
+  DOMAIN = 'DOMAIN',
 }
 
 export interface ProxyJailRule {
@@ -306,6 +309,45 @@ export interface ProxyJailRule {
   type: ProxyJailRuleType;
   pattern: string;
   description?: string;
+}
+
+// New rule system with AND/OR logic
+export enum RuleOperator {
+  AND = 'AND',
+  OR = 'OR',
+}
+
+export enum RuleAction {
+  JAIL = 'JAIL',
+  NGINX_BLOCK = 'NGINX_BLOCK',
+  NGINX_DENY = 'NGINX_DENY',
+  LOG_ONLY = 'LOG_ONLY',
+}
+
+export interface RuleCondition {
+  id: string;
+  type: ProxyJailRuleType;
+  pattern: string;
+  negate?: boolean;
+  description?: string;
+}
+
+export interface RuleActionConfig {
+  jailDurationMinutes?: number;
+  nginxResponseCode?: number;
+  nginxResponseMessage?: string;
+}
+
+export interface RuleChain {
+  id: string;
+  name: string;
+  description?: string;
+  enabled: boolean;
+  operator: RuleOperator;
+  conditions: RuleCondition[];
+  action: RuleAction;
+  actionConfig?: RuleActionConfig;
+  order: number;
 }
 
 export interface WebSocketConnection {
@@ -427,8 +469,8 @@ export interface SystemConfig {
   proxyStatsActive: boolean;
   proxyStatsIntervalMs: number;
   proxyJailEnabled: boolean;
-  proxyJailThresholdNon200: number;
   proxyJailRules: ProxyJailRule[];
+  ruleChains: RuleChain[];
 }
 
 export interface UpdateSystemConfigRequest {

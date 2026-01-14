@@ -6,8 +6,11 @@ import com.umeshsolanki.dockermanager.FcmTokenDetail
 import com.umeshsolanki.dockermanager.constants.FileConstants
 import com.umeshsolanki.dockermanager.email.EmailService
 import io.lettuce.core.RedisClient
+import io.lettuce.core.ClientOptions
+import io.lettuce.core.TimeoutOptions
 import io.lettuce.core.api.StatefulRedisConnection
 import io.lettuce.core.api.sync.RedisCommands
+import java.time.Duration
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -127,20 +130,54 @@ class RedisServiceImpl(
                 }
 
                 val uri = buildRedisUri()
-                logger.info("Connecting to Redis: ${config.host}:${config.port}")
+                logger.info("Connecting to Redis: ${config.host}:${config.port} (timeout: ${config.timeout}ms)")
 
                 redisClient = RedisClient.create(uri)
+                
+                // Configure client options with timeout
+                val timeoutMs = config.timeout.toLong()
+                val clientOptions = ClientOptions.builder()
+                    .timeoutOptions(
+                        TimeoutOptions.builder()
+                            .fixedTimeout(Duration.ofMillis(timeoutMs))
+                            .build()
+                    )
+                    .build()
+                redisClient!!.setOptions(clientOptions)
+                
                 connection = redisClient!!.connect()
                 commands = connection!!.sync()
 
-                // Test connection
-                commands!!.ping()
-                logger.info("Successfully connected to Redis")
+                // Test connection with timeout
+                try {
+                    commands!!.ping()
+                    logger.info("Successfully connected to Redis")
+                } catch (pingException: Exception) {
+                    logger.error("Redis PING failed", pingException)
+                    disconnect()
+                    throw pingException
+                }
             }
         } catch (e: Exception) {
-            logger.error("Failed to connect to Redis", e)
+            val errorDetails = when {
+                e.message?.contains("Connection refused", ignoreCase = true) == true -> 
+                    "Connection refused to ${config.host}:${config.port}. Ensure Redis is running and accessible."
+                e.message?.contains("timeout", ignoreCase = true) == true -> 
+                    "Connection timeout after ${config.timeout}ms. Check network connectivity and firewall."
+                e.message?.contains("NOAUTH", ignoreCase = true) == true -> 
+                    "Authentication required but no password provided."
+                e.message?.contains("WRONGPASS", ignoreCase = true) == true -> 
+                    "Authentication failed: wrong password."
+                e.message?.contains("Connection reset", ignoreCase = true) == true -> 
+                    "Connection reset. Redis might be bound to localhost only. Check Redis bind configuration (bind 0.0.0.0 or bind 127.0.0.1)."
+                e.message?.contains("UnknownHostException", ignoreCase = true) == true -> 
+                    "Cannot resolve hostname: ${config.host}. Check DNS configuration."
+                else -> 
+                    "Connection failed: ${e.message ?: e.javaClass.simpleName}"
+            }
+            logger.error("Failed to connect to Redis: $errorDetails", e)
             disconnect()
-            throw e
+            throw RuntimeException(errorDetails, e)
         }
     }
 
@@ -258,19 +295,121 @@ class RedisServiceImpl(
 
         return try {
             lock.withLock {
-                if (commands == null) {
+                if (commands == null || !connection!!.isOpen) {
                     connect()
                 }
-                commands!!.ping() == "PONG"
+                val pingResult = commands!!.ping()
+                pingResult == "PONG"
             }
         } catch (e: Exception) {
             logger.error("Redis connection test failed", e)
-            false
+            // Re-throw with better context for API error messages
+            throw e
         }
     }
 
     override fun close() {
         disconnect()
+    }
+
+    /**
+     * Get a connection to a specific database
+     */
+    fun getConnectionForDatabase(db: Int): RedisCommands<String, String>? {
+        if (!config.enabled) return null
+        return try {
+            lock.withLock {
+                if (connection == null || !connection!!.isOpen) {
+                    connect()
+                }
+                // Switch to the requested database
+                commands!!.select(db)
+                commands
+            }
+        } catch (e: Exception) {
+            logger.error("Error connecting to database $db", e)
+            null
+        }
+    }
+
+    /**
+     * Get all keys matching a pattern (default: *)
+     */
+    fun getKeys(pattern: String = "*", db: Int = config.database): List<String> {
+        if (!config.enabled) return emptyList()
+        return try {
+            lock.withLock {
+                val cmd = getConnectionForDatabase(db) ?: return emptyList()
+                cmd.keys(pattern).toList()
+            }
+        } catch (e: Exception) {
+            logger.error("Error getting keys with pattern $pattern from database $db", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * Get raw string value of a key
+     */
+    fun getRawValue(key: String, db: Int = config.database): String? {
+        if (!config.enabled) return null
+        return try {
+            lock.withLock {
+                val cmd = getConnectionForDatabase(db) ?: return null
+                cmd.get(key)
+            }
+        } catch (e: Exception) {
+            logger.error("Error getting raw value for key $key from database $db", e)
+            null
+        }
+    }
+
+    /**
+     * Get TTL of a key in seconds (-1 if no expiry, -2 if key doesn't exist)
+     */
+    fun getTtl(key: String, db: Int = config.database): Long {
+        if (!config.enabled) return -2
+        return try {
+            lock.withLock {
+                val cmd = getConnectionForDatabase(db) ?: return -2
+                cmd.ttl(key)
+            }
+        } catch (e: Exception) {
+            logger.error("Error getting TTL for key $key from database $db", e)
+            -2
+        }
+    }
+
+    /**
+     * Get type of a key
+     */
+    fun getKeyType(key: String, db: Int = config.database): String? {
+        if (!config.enabled) return null
+        return try {
+            lock.withLock {
+                val cmd = getConnectionForDatabase(db) ?: return null
+                cmd.type(key)
+            }
+        } catch (e: Exception) {
+            logger.error("Error getting type for key $key from database $db", e)
+            null
+        }
+    }
+
+    /**
+     * Get database size (number of keys)
+     */
+    fun getDatabaseSize(db: Int = config.database): Long {
+        if (!config.enabled) return 0
+        return try {
+            lock.withLock {
+                val cmd = getConnectionForDatabase(db) ?: return 0
+                cmd.dbsize()
+            }
+        } catch (e: Exception) {
+            logger.error("Error getting database size for database $db", e)
+            0
+        }
     }
 }
 
@@ -521,7 +660,8 @@ object CacheService {
         if (!currentConfig.enabled) {
             return false
         }
-        return redisService?.testConnection() ?: false
+        val service = redisService ?: throw RuntimeException("Redis service not initialized. Please check Redis configuration.")
+        return service.testConnection()
     }
 
     fun close() {

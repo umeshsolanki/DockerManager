@@ -104,7 +104,7 @@ data class ProxyActionResult(
 
 @Serializable
 enum class ProxyJailRuleType {
-    USER_AGENT, METHOD, PATH, STATUS_CODE
+    USER_AGENT, METHOD, PATH, STATUS_CODE, IP, REFERER, DOMAIN
 }
 
 @Serializable
@@ -113,6 +113,49 @@ data class ProxyJailRule(
     val type: ProxyJailRuleType,
     val pattern: String,
     val description: String? = null
+)
+
+// New advanced rule system with AND/OR logic
+@Serializable
+enum class RuleOperator {
+    AND, OR
+}
+
+@Serializable
+enum class RuleAction {
+    JAIL, // Jail the IP (existing behavior)
+    NGINX_BLOCK, // Block at nginx gateway level (return 403 or 444)
+    NGINX_DENY, // Deny at nginx gateway level (return 444 - close connection)
+    LOG_ONLY // Just log, don't take action
+}
+
+@Serializable
+data class RuleCondition(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val type: ProxyJailRuleType,
+    val pattern: String, // Regex pattern or exact match
+    val negate: Boolean = false, // If true, match when condition is NOT met
+    val description: String? = null
+)
+
+@Serializable
+data class RuleChain(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String,
+    val description: String? = null,
+    val enabled: Boolean = true,
+    val operator: RuleOperator = RuleOperator.OR, // AND or OR logic between conditions
+    val conditions: List<RuleCondition> = emptyList(),
+    val action: RuleAction = RuleAction.JAIL,
+    val actionConfig: RuleActionConfig? = null, // Additional config for action
+    val order: Int = 0 // Evaluation order (lower = evaluated first)
+)
+
+@Serializable
+data class RuleActionConfig(
+    val jailDurationMinutes: Int? = null, // Override default jail duration
+    val nginxResponseCode: Int = 403, // HTTP response code for nginx block (403, 444, etc.)
+    val nginxResponseMessage: String? = null // Custom response message
 )
 
 @Serializable

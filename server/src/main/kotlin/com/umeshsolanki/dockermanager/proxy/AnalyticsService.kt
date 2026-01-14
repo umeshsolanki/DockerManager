@@ -329,7 +329,9 @@ class AnalyticsServiceImpl(
                                 method = method,
                                 path = path,
                                 status = status,
-                                errorCount = errCount
+                                errorCount = errCount,
+                                referer = referer,
+                                domain = domain
                             )
 
                             // Time-based aggregation (HH:00)
