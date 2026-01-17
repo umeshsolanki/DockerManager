@@ -15,7 +15,8 @@ data class SystemConfig(
     val twoFactorEnabled: Boolean,
     val username: String,
     val proxyStatsActive: Boolean,
-    val proxyStatsIntervalMs: Long
+    val proxyStatsIntervalMs: Long,
+    val storageBackend: String
 )
 
 @Serializable
@@ -29,7 +30,17 @@ data class BatteryStatus(
     val percentage: Int,
     val isCharging: Boolean,
     val source: String
+)@Serializable
+data class IpFetchRequest(
+    val provider: String,
+    val url: String? = null,
+    val customProvider: String? = null
 )
 
-
+@Serializable
+data class IpFetchResponse(
+    val status: String,
+    val imported: Int,
+    val error: String? = null
+)
 

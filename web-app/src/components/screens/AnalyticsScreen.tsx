@@ -33,7 +33,9 @@ export default function AnalyticsScreen() {
         userAgents: false,
         referers: false,
         methods: false,
-        domains: false
+        domains: false,
+        countries: false,
+        providers: false
     });
     const [itemsToShow, setItemsToShow] = useState<Record<string, number>>({
         paths: 10,
@@ -41,7 +43,9 @@ export default function AnalyticsScreen() {
         userAgents: 10,
         referers: 10,
         methods: 10,
-        domains: 10
+        domains: 10,
+        countries: 10,
+        providers: 10
     });
 
     // Theme-aware colors for charts
@@ -190,6 +194,24 @@ export default function AnalyticsScreen() {
             : [];
     }, [stats?.hitsByDomain, searchQuery]);
 
+    const filteredCountries = useMemo(() => {
+        return stats?.hitsByCountry
+            ? Object.entries(stats.hitsByCountry)
+                .filter(([country]) => !searchQuery || country.toLowerCase().includes(searchQuery.toLowerCase()))
+                .sort(([, a], [, b]) => (b as any) - (a as any))
+                .map(([country, count]) => ({ label: country, value: count, sub: 'Country' }))
+            : [];
+    }, [stats?.hitsByCountry, searchQuery]);
+
+    const filteredProviders = useMemo(() => {
+        return stats?.hitsByProvider
+            ? Object.entries(stats.hitsByProvider)
+                .filter(([provider]) => !searchQuery || provider.toLowerCase().includes(searchQuery.toLowerCase()))
+                .sort(([, a], [, b]) => (b as any) - (a as any))
+                .map(([provider, count]) => ({ label: provider.length > 40 ? provider.substring(0, 40) + '...' : provider, value: count, sub: 'Provider' }))
+            : [];
+    }, [stats?.hitsByProvider, searchQuery]);
+
     const chartData = useMemo(() => {
         return stats?.hitsOverTime ?
             Object.entries(stats.hitsOverTime).map(([time, hits]) => ({
@@ -215,9 +237,9 @@ export default function AnalyticsScreen() {
                         Analytics
                     </h1>
                     <p className="text-on-surface-variant/60 text-sm mt-1">
-                        {viewMode === 'today' 
+                        {viewMode === 'today'
                             ? 'Traffic patterns and infrastructure performance insights'
-                            : historicalStats 
+                            : historicalStats
                                 ? `Historical analytics for ${new Date(selectedDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`
                                 : 'Select a date to view historical analytics'}
                     </p>
@@ -233,11 +255,10 @@ export default function AnalyticsScreen() {
                                 setStats(null); // Clear stats to force refresh
                                 fetchData(true);
                             }}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                                viewMode === 'today'
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'today'
                                     ? 'bg-primary text-on-primary'
                                     : 'text-on-surface-variant hover:bg-white/5'
-                            }`}
+                                }`}
                         >
                             Today
                         </button>
@@ -246,11 +267,10 @@ export default function AnalyticsScreen() {
                                 setViewMode('historical');
                                 fetchAvailableDates();
                             }}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                                viewMode === 'historical'
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'historical'
                                     ? 'bg-primary text-on-primary'
                                     : 'text-on-surface-variant hover:bg-white/5'
-                            }`}
+                                }`}
                         >
                             Historical
                         </button>
@@ -286,10 +306,10 @@ export default function AnalyticsScreen() {
                             <option value="">Select Date</option>
                             {availableDates.map(date => (
                                 <option key={date} value={date}>
-                                    {new Date(date).toLocaleDateString('en-US', { 
-                                        year: 'numeric', 
-                                        month: 'short', 
-                                        day: 'numeric' 
+                                    {new Date(date).toLocaleDateString('en-US', {
+                                        year: 'numeric',
+                                        month: 'short',
+                                        day: 'numeric'
                                     })}
                                 </option>
                             ))}
@@ -452,10 +472,10 @@ export default function AnalyticsScreen() {
                             const percentage = stats.totalHits > 0 ? ((count / stats.totalHits) * 100).toFixed(1) : '0';
                             const colorClass = statusInt >= 500 ? 'bg-red-500/20 text-red-500 border-red-500/30' :
                                 statusInt >= 400 ? 'bg-orange-500/20 text-orange-500 border-orange-500/30' :
-                                statusInt >= 300 ? 'bg-blue-500/20 text-blue-500 border-blue-500/30' :
-                                statusInt >= 200 ? 'bg-green-500/20 text-green-500 border-green-500/30' :
-                                'bg-gray-500/20 text-gray-500 border-gray-500/30';
-                            
+                                    statusInt >= 300 ? 'bg-blue-500/20 text-blue-500 border-blue-500/30' :
+                                        statusInt >= 200 ? 'bg-green-500/20 text-green-500 border-green-500/30' :
+                                            'bg-gray-500/20 text-gray-500 border-gray-500/30';
+
                             return (
                                 <div key={status} className={`p-4 rounded-xl border ${colorClass}`}>
                                     <div className="text-2xl font-black">{status}</div>
@@ -588,6 +608,34 @@ export default function AnalyticsScreen() {
                     itemsToShow={itemsToShow.domains}
                     onShowMore={() => setItemsToShow(prev => ({ ...prev, domains: prev.domains + 20 }))}
                 />
+
+                {/* Countries */}
+                <ExpandableStatsCard
+                    title="Countries"
+                    icon={<Globe size={18} />}
+                    items={filteredCountries}
+                    color="teal"
+                    total={stats?.totalHits || 1}
+                    sectionKey="countries"
+                    expanded={expandedSections.countries}
+                    onToggle={() => setExpandedSections(prev => ({ ...prev, countries: !prev.countries }))}
+                    itemsToShow={itemsToShow.countries}
+                    onShowMore={() => setItemsToShow(prev => ({ ...prev, countries: prev.countries + 20 }))}
+                />
+
+                {/* Providers */}
+                <ExpandableStatsCard
+                    title="ISP / Providers"
+                    icon={<Activity size={18} />}
+                    items={filteredProviders}
+                    color="primary"
+                    total={stats?.totalHits || 1}
+                    sectionKey="providers"
+                    expanded={expandedSections.providers}
+                    onToggle={() => setExpandedSections(prev => ({ ...prev, providers: !prev.providers }))}
+                    itemsToShow={itemsToShow.providers}
+                    onShowMore={() => setItemsToShow(prev => ({ ...prev, providers: prev.providers + 20 }))}
+                />
             </div>
 
             {/* Advanced Analytics Table - Recent Hits Log (only for today) */}
@@ -659,22 +707,22 @@ export default function AnalyticsScreen() {
 
 
 
-function ExpandableStatsCard({ 
-    title, 
-    icon, 
-    items, 
-    color, 
-    total, 
+function ExpandableStatsCard({
+    title,
+    icon,
+    items,
+    color,
+    total,
     sectionKey,
     expanded,
     onToggle,
     itemsToShow,
     onShowMore
-}: { 
-    title: string, 
-    icon: React.ReactNode, 
-    items: any[], 
-    color: string, 
+}: {
+    title: string,
+    icon: React.ReactNode,
+    items: any[],
+    color: string,
     total: number,
     sectionKey: string,
     expanded: boolean,
@@ -730,15 +778,14 @@ function ExpandableStatsCard({
                             </div>
                             <div className={`h-1 ${theme === 'dark' ? 'bg-white/5' : 'bg-black/5'} rounded-full overflow-hidden border ${theme === 'dark' ? 'border-white/5' : 'border-black/5'}`}>
                                 <div
-                                    className={`h-full opacity-60 rounded-full transition-all duration-1000 ${
-                                        color === 'primary' ? 'bg-primary' :
-                                        color === 'indigo' ? 'bg-indigo-500' :
-                                        color === 'pink' ? 'bg-pink-500' :
-                                        color === 'teal' ? 'bg-teal-500' :
-                                        color === 'orange' ? 'bg-orange-500' :
-                                        color === 'green' ? 'bg-green-500' :
-                                        'bg-primary'
-                                    }`}
+                                    className={`h-full opacity-60 rounded-full transition-all duration-1000 ${color === 'primary' ? 'bg-primary' :
+                                            color === 'indigo' ? 'bg-indigo-500' :
+                                                color === 'pink' ? 'bg-pink-500' :
+                                                    color === 'teal' ? 'bg-teal-500' :
+                                                        color === 'orange' ? 'bg-orange-500' :
+                                                            color === 'green' ? 'bg-green-500' :
+                                                                'bg-primary'
+                                        }`}
                                     style={{ width: `${Math.min((item.value / total) * 100, 100)}%` }}
                                 />
                             </div>

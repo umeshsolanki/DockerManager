@@ -13,18 +13,20 @@ pipeline {
                 }
             }
         }
-//         stage('Test') {
-//             steps {
-//                 sh './gradlew test'
-//             }
-//         }
+        stage('Test') {
+            steps {
+                // Run unit tests for server module with build cache
+                sh './gradlew :server:test --build-cache'
+            }
+        }
 
         stage('Build Web UI') {
             steps {
                 script {
                     docker.image('node:20-alpine').inside {
                         dir('web-app') {
-                            sh 'npm install'
+                            // Use npm ci for faster, reliable builds and cache node_modules
+                            sh 'npm ci --prefer-offline --no-audit'
                             sh 'npm run build'
                         }
                     }
@@ -40,9 +42,8 @@ pipeline {
 
         stage('Build FatJar') {
             steps {
-                // Use shadowJar task to build the FatJar
-                sh './gradlew clean'
-                sh './gradlew :server:shadowJar'
+                // Use shadowJar task to build the FatJar with build cache
+                sh './gradlew :server:shadowJar --build-cache'
             }
         }
 

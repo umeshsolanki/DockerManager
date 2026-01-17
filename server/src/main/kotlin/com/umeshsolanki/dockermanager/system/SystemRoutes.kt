@@ -19,6 +19,7 @@ fun Route.systemRoutes() {
             SystemService.updateSystemConfig(request)
             call.respond(mapOf("success" to true))
         }
+        ipRangeRoutes()
     }
 }
 

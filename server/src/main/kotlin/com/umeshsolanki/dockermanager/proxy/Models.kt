@@ -50,6 +50,8 @@ data class ProxyStats(
     val topUserAgents: List<GenericHitEntry> = emptyList(),
     val topReferers: List<GenericHitEntry> = emptyList(),
     val topMethods: List<GenericHitEntry> = emptyList(),
+    val hitsByCountry: Map<String, Long> = emptyMap(),
+    val hitsByProvider: Map<String, Long> = emptyMap(),
     val websocketConnections: Long = 0,
     val websocketConnectionsByEndpoint: Map<String, Long> = emptyMap(),
     val websocketConnectionsByIp: Map<String, Long> = emptyMap(),

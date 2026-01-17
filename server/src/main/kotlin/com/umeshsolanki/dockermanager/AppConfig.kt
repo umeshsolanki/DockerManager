@@ -11,6 +11,9 @@ import com.umeshsolanki.dockermanager.database.SettingsTable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.intOrNull
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.upsert
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -95,36 +98,70 @@ object AppConfig {
     }
 
     // Initialize Settings from DB or File
+    private var isDbActive = false
     private var _settings: AppSettings = loadSettings()
+
+    val storageBackend: String get() = if (isDbActive) "database" else "file"
+
+    fun reloadSettings() {
+        logger.info("Reloading settings...")
+        _settings = loadSettings()
+    }
 
     private fun loadSettings(): AppSettings {
         logger.info("Initializing configuration...")
+        isDbActive = false
         
         // 1. Initialize Database
+        var shouldTryDb = false
         try {
-            DatabaseFactory.init()
+            val dbConfigFile = File(dataRoot, "db-config.json")
+            if (dbConfigFile.exists()) {
+                shouldTryDb = true
+                try {
+                    val content = dbConfigFile.readText()
+                    val jsonEl = json.parseToJsonElement(content).jsonObject
+                    val host = jsonEl["host"]?.jsonPrimitive?.content
+                    val port = jsonEl["port"]?.jsonPrimitive?.content 
+                        ?: jsonEl["port"]?.jsonPrimitive?.intOrNull?.toString()
+                    val name = jsonEl["name"]?.jsonPrimitive?.content
+                    val user = jsonEl["user"]?.jsonPrimitive?.content
+                    val password = jsonEl["password"]?.jsonPrimitive?.content
+                    
+                    DatabaseFactory.init(host, port, name, user, password)
+                } catch (e: Exception) {
+                    logger.error("Failed to read db-config.json", e)
+                    DatabaseFactory.init()
+                }
+            } else if (!System.getenv("DB_HOST").isNullOrBlank()) {
+                shouldTryDb = true
+                DatabaseFactory.init()
+            }
         } catch (e: Exception) {
             logger.error("Failed to initialize database: ${e.message}. Falling back to file-only mode if possible.", e)
-            // If DB fails, we might still be able to read from file
+            shouldTryDb = false
         }
 
         // 2. Try to load from Database (Main Source of Truth)
-        try {
-            val dbSettingsJson = transaction {
-                SettingsTable.selectAll().where { SettingsTable.key eq "MAIN_SETTINGS" }
-                    .singleOrNull()
-                    ?.get(SettingsTable.value)
-            }
+        if (shouldTryDb) {
+            try {
+                val dbSettingsJson = transaction {
+                    SettingsTable.selectAll().where { SettingsTable.key eq "MAIN_SETTINGS" }
+                        .singleOrNull()
+                        ?.get(SettingsTable.value)
+                }
 
-            if (dbSettingsJson != null) {
-                logger.info("Settings loaded from Database")
-                val loaded = json.decodeFromString<AppSettings>(dbSettingsJson)
-                // FORCE DISABLE REDIS FOR NOW
-                CacheService.initialize(loaded.redisConfig.copy(enabled = false))
-                return loaded
+                if (dbSettingsJson != null) {
+                    logger.info("Settings loaded from Database")
+                    isDbActive = true
+                    val loaded = json.decodeFromString<AppSettings>(dbSettingsJson)
+                    // FORCE DISABLE REDIS FOR NOW
+                    CacheService.initialize(loaded.redisConfig.copy(enabled = false))
+                    return loaded
+                }
+            } catch (e: Exception) {
+                logger.warn("Failed to load settings from DB: ${e.message}")
             }
-        } catch (e: Exception) {
-            logger.warn("Failed to load settings from DB: ${e.message}")
         }
 
         // 3. Fallback: Load from File (Legacy/Migration)
@@ -143,6 +180,7 @@ object AppConfig {
                     }
                 }
                 logger.info("Settings migrated to Database successfully.")
+                isDbActive = true
                 // Optionally rename file to .bak? 
                 // settingsFile.renameTo(File(settingsFile.parent, "${settingsFile.name}.bak"))
             } catch (e: Exception) {

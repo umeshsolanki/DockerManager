@@ -12,12 +12,18 @@ import org.slf4j.LoggerFactory
 object DatabaseFactory {
     private val logger = LoggerFactory.getLogger(DatabaseFactory::class.java)
 
-    fun init() {
-        val host = System.getenv("DB_HOST") ?: "localhost"
-        val port = System.getenv("DB_PORT") ?: "5432"
-        val dbName = System.getenv("DB_NAME") ?: "dockermanager"
-        val user = System.getenv("DB_USER") ?: "postgres"
-        val password = System.getenv("DB_PASSWORD") ?: "postgres"
+    fun init(
+        dbHost: String? = null,
+        dbPort: String? = null,
+        dbDatabaseName: String? = null,
+        dbUser: String? = null,
+        dbPassword: String? = null
+    ) {
+        val host = dbHost ?: System.getenv("DB_HOST") ?: "localhost"
+        val port = dbPort ?: System.getenv("DB_PORT") ?: "5432"
+        val dbName = dbDatabaseName ?: System.getenv("DB_NAME") ?: "dockermanager"
+        val user = dbUser ?: System.getenv("DB_USER") ?: "postgres"
+        val password = dbPassword ?: System.getenv("DB_PASSWORD") ?: "postgres"
 
         val jdbcUrl = "jdbc:postgresql://$host:$port/$dbName"
         
@@ -39,6 +45,8 @@ object DatabaseFactory {
 
         transaction {
             SchemaUtils.create(SettingsTable)
+            SchemaUtils.create(ProxyLogsTable)
+            SchemaUtils.create(IpRangesTable)
         }
     }
 

@@ -309,6 +309,11 @@ function RedisTab({ onInstalled }: { onInstalled: () => void }) {
 function PostgresTab({ onInstalled, status }: { onInstalled: () => void, status?: any }) {
     const [isLoading, setIsLoading] = useState(false);
     const [isInstalling, setIsInstalling] = useState(false);
+    const [config, setConfig] = useState<any>(null);
+
+    useEffect(() => {
+        DockerClient.getSystemConfig().then(setConfig);
+    }, []);
 
     const handleInstallPostgres = async () => {
         if (!confirm('This will install PostgreSQL. If it exists, it will be recreated. Continue?')) {
@@ -381,14 +386,68 @@ function PostgresTab({ onInstalled, status }: { onInstalled: () => void, status?
                     </Button>
 
                     {status?.isInstalled && (
-                        <Button
-                            onClick={handleResetPostgres}
-                            disabled={isInstalling}
-                            className="flex items-center gap-2 bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 px-6 py-3 rounded-2xl font-bold"
-                        >
-                            <RefreshCw size={20} />
-                            Reset Config
-                        </Button>
+                        <div className="flex gap-4">
+                            {config?.storageBackend === 'file' ? (
+                                <Button
+                                    onClick={async () => {
+                                        if (confirm("Switch to Database storage?")) {
+                                            setIsInstalling(true);
+                                            try {
+                                                const res = await DockerClient.switchToPostgresDbStorage();
+                                                if (res.success) {
+                                                    toast.success(res.message);
+                                                    const newConfig = await DockerClient.getSystemConfig();
+                                                    setConfig(newConfig);
+                                                } else {
+                                                    toast.error(res.message);
+                                                }
+                                            } finally {
+                                                setIsInstalling(false);
+                                            }
+                                        }
+                                    }}
+                                    disabled={isInstalling}
+                                    className="flex items-center gap-2 bg-indigo-500 text-white px-6 py-3 rounded-2xl font-bold"
+                                >
+                                    <Database size={20} />
+                                    Activate DB Storage
+                                </Button>
+                            ) : (
+                                <Button
+                                    onClick={async () => {
+                                        if (confirm("Switch to File storage?")) {
+                                            setIsInstalling(true);
+                                            try {
+                                                const res = await DockerClient.switchToPostgresFileStorage();
+                                                if (res.success) {
+                                                    toast.success(res.message);
+                                                    const newConfig = await DockerClient.getSystemConfig();
+                                                    setConfig(newConfig);
+                                                } else {
+                                                    toast.error(res.message);
+                                                }
+                                            } finally {
+                                                setIsInstalling(false);
+                                            }
+                                        }
+                                    }}
+                                    disabled={isInstalling}
+                                    className="flex items-center gap-2 bg-orange-500/10 text-orange-500 border border-orange-500/20 px-6 py-3 rounded-2xl font-bold"
+                                >
+                                    <RefreshCw size={20} />
+                                    Back to File
+                                </Button>
+                            )}
+
+                            <Button
+                                onClick={handleResetPostgres}
+                                disabled={isInstalling}
+                                className="flex items-center gap-2 bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 px-6 py-3 rounded-2xl font-bold"
+                            >
+                                <RefreshCw size={20} />
+                                Reset Config
+                            </Button>
+                        </div>
                     )}
                 </div>
             </div>

@@ -339,6 +339,8 @@ export interface ProxyStats {
   websocketConnections: number;
   websocketConnectionsByEndpoint: Record<string, number>;
   websocketConnectionsByIp: Record<string, number>;
+  hitsByCountry?: Record<string, number>;
+  hitsByProvider?: Record<string, number>;
   recentWebSocketConnections: WebSocketConnection[];
 }
 
@@ -357,6 +359,8 @@ export interface DailyProxyStats {
   websocketConnections: number;
   websocketConnectionsByEndpoint: Record<string, number>;
   websocketConnectionsByIp: Record<string, number>;
+  hitsByCountry?: Record<string, number>;
+  hitsByProvider?: Record<string, number>;
 }
 
 export interface BtmpEntry {
@@ -435,6 +439,7 @@ export interface SystemConfig {
   proxyJailEnabled: boolean;
   proxyJailThresholdNon200: number;
   proxyJailRules: ProxyJailRule[];
+  storageBackend: string;
 }
 
 export interface UpdateSystemConfigRequest {

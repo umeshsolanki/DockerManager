@@ -13,7 +13,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.booleanOrNull
@@ -22,6 +21,11 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.encodeToString
+import com.umeshsolanki.dockermanager.database.SettingsTable
+import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.upsert
+import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
 import java.util.UUID
 
@@ -101,7 +105,27 @@ class ProxyServiceImpl(
     override fun getStats(): ProxyStats = AnalyticsService.getStats()
 
     private fun loadHosts(): MutableList<ProxyHost> {
-        // Load from file first (source of truth)
+        // 1. Try to load from Database first if active
+        if (AppConfig.storageBackend == "database") {
+            try {
+                val dbHostsJson = transaction {
+                    SettingsTable.selectAll().where { SettingsTable.key eq "PROXY_HOSTS" }
+                        .singleOrNull()
+                        ?.get(SettingsTable.value)
+                }
+
+                if (dbHostsJson != null) {
+                    logger.debug("Proxy hosts loaded from Database")
+                    val hosts = AppConfig.json.decodeFromString<List<ProxyHost>>(dbHostsJson).toMutableList()
+                    syncToRedis(hosts)
+                    return hosts
+                }
+            } catch (e: Exception) {
+                logger.warn("Failed to load proxy hosts from DB: ${e.message}")
+            }
+        }
+
+        // 2. Fallback to file load (legacy/migration source)
         val hosts = try {
             // Try to load normally first
             if (hostsFile.exists()) {
@@ -137,24 +161,41 @@ class ProxyServiceImpl(
             }
         }
 
-        // If Redis is enabled, try to sync to Redis (in case Redis is empty or out of sync)
+        // 3. Migrate to DB if active and hosts were loaded from file
+        if (AppConfig.storageBackend == "database" && hosts.isNotEmpty()) {
+            try {
+                logger.info("Migrating proxy hosts from file to Database...")
+                val content = AppConfig.json.encodeToString(hosts)
+                transaction {
+                    SettingsTable.upsert {
+                        it[key] = "PROXY_HOSTS"
+                        it[value] = content
+                    }
+                }
+                logger.info("Proxy hosts migrated to Database successfully.")
+            } catch (e: Exception) {
+                logger.error("Failed to migrate proxy hosts to DB", e)
+            }
+        }
+
+        syncToRedis(hosts)
+        logger.debug("Loaded ${hosts.size} proxy hosts")
+        return hosts
+    }
+
+    private fun syncToRedis(hosts: List<ProxyHost>) {
+        // If Redis is enabled, sync data to Redis
         if (CacheService.currentConfig.enabled && hosts.isNotEmpty()) {
             try {
                 val cachedHosts = CacheService.get<List<ProxyHost>>("proxy:hosts")
-                // If Redis is empty or has different data, sync file data to Redis
                 if (cachedHosts == null || cachedHosts.isEmpty() || cachedHosts.size != hosts.size) {
                     CacheService.set("proxy:hosts", hosts, null)
-                    logger.debug("Synced ${hosts.size} proxy hosts from file to Redis")
-                } else {
-                    logger.debug("Loaded ${hosts.size} proxy hosts from file (Redis already in sync)")
+                    logger.debug("Synced ${hosts.size} proxy hosts to Redis")
                 }
             } catch (e: Exception) {
                 logger.warn("Failed to sync proxy hosts to Redis: ${e.message}", e)
             }
         }
-
-        logger.debug("Loaded ${hosts.size} proxy hosts from file")
-        return hosts
     }
 
     /**
@@ -258,16 +299,36 @@ class ProxyServiceImpl(
         // Ensure parent directory exists
         hostsFile.parentFile?.mkdirs()
 
-        // Save to file first
+        // 1. Save to Database first if active
+        if (AppConfig.storageBackend == "database") {
+            try {
+                val content = AppConfig.json.encodeToString(hosts)
+                transaction {
+                    SettingsTable.upsert {
+                        it[key] = "PROXY_HOSTS"
+                        it[value] = content
+                        it[updatedAt] = java.time.LocalDateTime.now()
+                    }
+                }
+                logger.info("Proxy hosts saved to Database")
+            } catch (e: Exception) {
+                logger.error("Failed to save proxy hosts to Database", e)
+            }
+        }
+
+        // 2. Save to file as backup/legacy storage
         val saved = jsonPersistence.save(hosts)
         if (!saved) {
             val errorMsg = "Failed to save proxy hosts to ${hostsFile.absolutePath}"
             logger.error(errorMsg)
-            throw IllegalStateException(errorMsg)
+            // Only throw if DB save also likely failed or isn't active
+            if (AppConfig.storageBackend != "database") {
+                throw IllegalStateException(errorMsg)
+            }
         }
-        logger.debug("Saved ${hosts.size} proxy hosts to ${hostsFile.absolutePath}")
+        logger.debug("Synced ${hosts.size} proxy hosts to file backup at ${hostsFile.absolutePath}")
 
-        // If Redis is enabled, also sync to Redis
+        // 3. If Redis is enabled, also sync to Redis
         if (CacheService.currentConfig.enabled) {
             try {
                 CacheService.set("proxy:hosts", hosts, null)

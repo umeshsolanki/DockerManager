@@ -154,6 +154,14 @@ export const DockerClient = {
     getBatteryStatus: () => req<BatteryStatus | null>('/system/battery', {}, null),
     getSystemConfig: () => req<SystemConfig | null>('/system/config', {}, null),
     updateSystemConfig: (body: UpdateSystemConfigRequest) => req<{ success: boolean }>('/system/config', { method: 'POST', body: JSON.stringify(body) }, { success: false }),
+    importIpRanges: (csv: string) => safeReq('/system/ip-ranges/import', { method: 'POST', body: csv, headers: { 'Content-Type': 'text/plain' } }),
+    fetchIpRanges: (provider: 'cloudflare' | 'aws' | 'google' | 'digitalocean' | 'custom', url?: string, customProvider?: string) => {
+        return safeReq('/system/ip-ranges/fetch', {
+            method: 'POST',
+            body: JSON.stringify({ provider, url, customProvider })
+        });
+    },
+    getIpRangeStats: () => req<{ totalRanges: number }>('/system/ip-ranges/stats', {}, { totalRanges: 0 }),
 
     listSystemLogs: (path?: string) => req<SystemLog[]>(`/logs/system${path ? `?path=${encodeURIComponent(path)}` : ''}`, {}, []),
     getSystemLogContent: (path: string, tail = 100, filter?: string, since?: string, until?: string) => {
@@ -206,6 +214,8 @@ export const DockerClient = {
     getDatabaseStatus: () => req<any[]>('/database/status', {}, []),
     installPostgres: () => safeReq<any>('/database/postgres/install', { method: 'POST' }),
     resetPostgresConfig: () => safeReq<any>('/database/postgres/reset', { method: 'POST' }),
+    switchToPostgresFileStorage: () => safeReq<any>('/database/postgres/switch-to-file', { method: 'POST' }),
+    switchToPostgresDbStorage: () => safeReq<any>('/database/postgres/switch-to-db', { method: 'POST' }),
 
     getProxySecuritySettings: () => req<SystemConfig | null>('/proxy/security/settings', {}, null),
     updateProxySecuritySettings: (body: Partial<SystemConfig>) => safeReq('/proxy/security/settings', { method: 'POST', body: JSON.stringify(body) }),

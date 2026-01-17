@@ -79,6 +79,17 @@ fun Route.databaseRoutes() {
                 val envFile = File(postgresDir, ".env")
                 envFile.writeText("POSTGRES_PASSWORD=$password\nPOSTGRES_USER=admin\nPOSTGRES_DB=mydatabase\nPOSTGRES_PORT=5432\n")
 
+                // Save credentials for the application
+                val dbConfig = mapOf(
+                    "host" to "localhost",
+                    "port" to 5432,
+                    "name" to "mydatabase",
+                    "user" to "admin",
+                    "password" to password
+                )
+                val dbConfigFile = File(AppConfig.dataRoot, "db-config.json")
+                dbConfigFile.writeText(AppConfig.json.encodeToString(dbConfig))
+
                 val composeFile = File(postgresDir, "docker-compose.yml")
                 composeFile.writeText(composeContent)
                 
@@ -112,6 +123,14 @@ fun Route.databaseRoutes() {
                         )
                     )
                     return@post
+                }
+                
+                try {
+                    // Wait for DB to be ready
+                    delay(5000)
+                    AppConfig.reloadSettings()
+                } catch (e: Exception) {
+                    println("Failed to reload settings after DB install: ${e.message}")
                 }
 
                 call.respond(
@@ -179,12 +198,39 @@ fun Route.databaseRoutes() {
              }
         }
 
-        post("/redis/install") {
-            // Forward to the existing cache install for now or duplicate the logic
-            // To keep it simple, I'll just duplicate the logic here or call the handler
-            // Actually, I'll just redirect to the existing endpoint from the frontend for now
-            // But let's add it here for consistency if needed.
-            call.respond(HttpStatusCode.NotImplemented, "Use /cache/install for now")
+        post("/postgres/switch-to-file") {
+            try {
+                val dbConfigFile = File(AppConfig.dataRoot, "db-config.json")
+                if (dbConfigFile.exists()) {
+                    val bakFile = File(AppConfig.dataRoot, "db-config.json.bak")
+                    if (bakFile.exists()) bakFile.delete()
+                    dbConfigFile.renameTo(bakFile)
+                    AppConfig.reloadSettings()
+                    call.respond(HttpStatusCode.OK, mapOf("success" to true, "message" to "Switched to file storage. Application settings reloaded."))
+                } else {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("success" to false, "message" to "Database configuration not found."))
+                }
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("success" to false, "message" to "Failed to switch: ${e.message}"))
+            }
+        }
+
+        post("/postgres/switch-to-db") {
+            try {
+                val dbConfigFile = File(AppConfig.dataRoot, "db-config.json")
+                val bakFile = File(AppConfig.dataRoot, "db-config.json.bak")
+                
+                if (bakFile.exists()) {
+                    if (dbConfigFile.exists()) dbConfigFile.delete()
+                    bakFile.renameTo(dbConfigFile)
+                    AppConfig.reloadSettings()
+                    call.respond(HttpStatusCode.OK, mapOf("success" to true, "message" to "Switched to database storage. Application settings reloaded."))
+                } else {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("success" to false, "message" to "Database configuration backup not found. Please re-install or point to a DB."))
+                }
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("success" to false, "message" to "Failed to switch: ${e.message}"))
+            }
         }
     }
 }

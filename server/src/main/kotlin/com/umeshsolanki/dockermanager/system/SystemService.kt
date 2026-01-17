@@ -86,7 +86,8 @@ object SystemService {
         twoFactorEnabled = AuthService.is2FAEnabled(),
         username = AuthService.getUsername(),
         proxyStatsActive = AppConfig.proxyStatsSettings.proxyStatsActive,
-        proxyStatsIntervalMs = AppConfig.proxyStatsSettings.proxyStatsIntervalMs
+        proxyStatsIntervalMs = AppConfig.proxyStatsSettings.proxyStatsIntervalMs,
+        storageBackend = AppConfig.storageBackend
     )
     
     fun updateSystemConfig(request: UpdateSystemConfigRequest) {

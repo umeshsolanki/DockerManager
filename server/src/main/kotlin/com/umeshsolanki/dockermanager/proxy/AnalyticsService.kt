@@ -11,6 +11,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import com.umeshsolanki.dockermanager.database.ProxyLogsTable
+import com.umeshsolanki.dockermanager.system.IpLookupService
+import org.jetbrains.exposed.sql.batchInsert
+import org.jetbrains.exposed.sql.transactions.transaction
+import java.time.ZoneId
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.text.SimpleDateFormat
@@ -55,6 +60,8 @@ class AnalyticsServiceImpl(
     private val hitsByMethodMap = ConcurrentHashMap<String, Long>()
     private val hitsByRefererMap = ConcurrentHashMap<String, Long>()
     private val hitsByUserAgentMap = ConcurrentHashMap<String, Long>()
+    private val hitsByCountryMap = ConcurrentHashMap<String, Long>()
+    private val hitsByProviderMap = ConcurrentHashMap<String, Long>()
     private val hitsByTimeMap = ConcurrentHashMap<String, Long>()
     private val recentHitsList = ConcurrentLinkedDeque<ProxyHit>()
     private val MAX_RECENT_HITS = 100
@@ -256,6 +263,8 @@ class AnalyticsServiceImpl(
         hitsByMethodMap.clear()
         hitsByRefererMap.clear()
         hitsByUserAgentMap.clear()
+        hitsByCountryMap.clear()
+        hitsByProviderMap.clear()
         hitsByTimeMap.clear()
         recentHitsList.clear()
         lastProcessedOffset = 0L
@@ -318,6 +327,7 @@ class AnalyticsServiceImpl(
         val shouldFilterLocalIps = settings.filterLocalIps
 
         try {
+            val hitsToInsert = mutableListOf<ProxyHit>()
             java.io.RandomAccessFile(logFile, "r").use { raf ->
                 raf.seek(lastProcessedOffset)
                 var line: String? = raf.readLine()
@@ -352,6 +362,11 @@ class AnalyticsServiceImpl(
                             if (ua != "-") hitsByUserAgentMap.merge(ua, 1L, Long::plus)
                             if (referer != "-") hitsByRefererMap.merge(referer, 1L, Long::plus)
                             if (domain != null) hitsByDomainMap.merge(domain, 1L, Long::plus)
+                            
+                            // IP Lookup for in-memory stats
+                            val ipInfo = IpLookupService.lookup(ip)
+                            ipInfo?.countryCode?.let { hitsByCountryMap.merge(it, 1L, Long::plus) }
+                            ipInfo?.provider?.let { hitsByProviderMap.merge(it, 1L, Long::plus) }
 
                             if (status >= 400 || status == 0) {
                                 hitsByIpErrorMap.merge(ip, 1L, Long::plus)
@@ -390,6 +405,8 @@ class AnalyticsServiceImpl(
                                 while (recentHitsList.size > MAX_RECENT_HITS) {
                                     recentHitsList.removeLast()
                                 }
+                                
+                                hitsToInsert.add(hit)
                             } catch (e: Exception) {
                                 // Ignore date parse errors
                             }
@@ -398,6 +415,34 @@ class AnalyticsServiceImpl(
                     line = raf.readLine()
                 }
                 lastProcessedOffset = raf.filePointer
+            }
+            
+            // Batch insert into Database if active
+            if (AppConfig.storageBackend == "database" && hitsToInsert.isNotEmpty()) {
+                try {
+                    transaction {
+                        ProxyLogsTable.batchInsert(hitsToInsert) { hit ->
+                            this[ProxyLogsTable.timestamp] = java.time.Instant.ofEpochMilli(hit.timestamp)
+                                .atZone(ZoneId.systemDefault()).toLocalDateTime()
+                            this[ProxyLogsTable.remoteIp] = hit.ip
+                            this[ProxyLogsTable.method] = hit.method
+                            this[ProxyLogsTable.path] = hit.path
+                            this[ProxyLogsTable.status] = hit.status
+                            this[ProxyLogsTable.responseTime] = hit.responseTime
+                            this[ProxyLogsTable.userAgent] = hit.userAgent
+                            this[ProxyLogsTable.referer] = hit.referer
+                            this[ProxyLogsTable.domain] = hit.domain
+                            
+                            // Enrich with IP info
+                            val ipInfo = IpLookupService.lookup(hit.ip)
+                            this[ProxyLogsTable.countryCode] = ipInfo?.countryCode
+                            this[ProxyLogsTable.provider] = ipInfo?.provider
+                        }
+                    }
+                    logger.debug("Inserted ${hitsToInsert.size} proxy logs into Database")
+                } catch (e: Exception) {
+                    logger.error("Failed to batch insert proxy logs to Database", e)
+                }
             }
         } catch (e: Exception) {
             logger.error("Error processing log file incrementally", e)
@@ -426,6 +471,8 @@ class AnalyticsServiceImpl(
                 .map { GenericHitEntry(it.key, it.value) },
             topMethods = hitsByMethodMap.entries.sortedByDescending { it.value }
                 .map { GenericHitEntry(it.key, it.value) },
+            hitsByCountry = hitsByCountryMap.toMap(),
+            hitsByProvider = hitsByProviderMap.toMap(),
             websocketConnections = websocketConnectionsCounter.get(),
             websocketConnectionsByEndpoint = websocketConnectionsByEndpointMap.toMap(),
             websocketConnectionsByIp = websocketConnectionsByIpMap.toMap(),
