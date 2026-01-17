@@ -1,4 +1,5 @@
 package com.umeshsolanki.dockermanager.system
+import com.umeshsolanki.dockermanager.AppConfig
 
 import com.umeshsolanki.dockermanager.database.IpRangesTable
 import com.umeshsolanki.dockermanager.utils.IpUtils
@@ -31,6 +32,8 @@ object IpLookupService {
         val bigDecimalIp = BigDecimal(numericIp)
 
         return try {
+            if (AppConfig.storageBackend != "database") return null
+            
             val info = transaction {
                 IpRangesTable.selectAll().where {
                     (IpRangesTable.startIp lessEq bigDecimalIp) and (IpRangesTable.endIp greaterEq bigDecimalIp)

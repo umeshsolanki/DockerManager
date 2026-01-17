@@ -17,6 +17,12 @@ import java.io.File
 import java.security.SecureRandom
 
 @Serializable
+data class SwitchStorageResponse(
+    val success: Boolean,
+    val message: String
+)
+
+@Serializable
 data class PostgresInstallResult(
     val success: Boolean,
     val message: String,
@@ -206,12 +212,12 @@ fun Route.databaseRoutes() {
                     if (bakFile.exists()) bakFile.delete()
                     dbConfigFile.renameTo(bakFile)
                     AppConfig.reloadSettings()
-                    call.respond(HttpStatusCode.OK, mapOf("success" to true, "message" to "Switched to file storage. Application settings reloaded."))
+                    call.respond(HttpStatusCode.OK, SwitchStorageResponse(success = true, message = "Switched to file storage. Application settings reloaded."))
                 } else {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("success" to false, "message" to "Database configuration not found."))
+                    call.respond(HttpStatusCode.BadRequest, SwitchStorageResponse(success = false, message = "Database configuration not found."))
                 }
             } catch (e: Exception) {
-                call.respond(HttpStatusCode.InternalServerError, mapOf("success" to false, "message" to "Failed to switch: ${e.message}"))
+                call.respond(HttpStatusCode.InternalServerError, SwitchStorageResponse(success = false, message = "Failed to switch: ${e.message}"))
             }
         }
 
@@ -224,12 +230,12 @@ fun Route.databaseRoutes() {
                     if (dbConfigFile.exists()) dbConfigFile.delete()
                     bakFile.renameTo(dbConfigFile)
                     AppConfig.reloadSettings()
-                    call.respond(HttpStatusCode.OK, mapOf("success" to true, "message" to "Switched to database storage. Application settings reloaded."))
+                    call.respond(HttpStatusCode.OK, SwitchStorageResponse(success = true, message = "Switched to database storage. Application settings reloaded."))
                 } else {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("success" to false, "message" to "Database configuration backup not found. Please re-install or point to a DB."))
+                    call.respond(HttpStatusCode.BadRequest, SwitchStorageResponse(success = false, message = "Database configuration backup not found. Please re-install or point to a DB."))
                 }
             } catch (e: Exception) {
-                call.respond(HttpStatusCode.InternalServerError, mapOf("success" to false, "message" to "Failed to switch: ${e.message}"))
+                call.respond(HttpStatusCode.InternalServerError, SwitchStorageResponse(success = false, message = "Failed to switch: ${e.message}"))
             }
         }
     }
