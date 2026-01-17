@@ -8,14 +8,14 @@ import com.umeshsolanki.dockermanager.cache.RedisConfig
 import com.umeshsolanki.dockermanager.cache.CacheService
 import com.umeshsolanki.dockermanager.database.DatabaseFactory
 import com.umeshsolanki.dockermanager.database.SettingsTable
+import com.umeshsolanki.dockermanager.email.AlertConfig
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.intOrNull
-import org.jetbrains.exposed.sql.selectAll
-import org.jetbrains.exposed.sql.upsert
+import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.LoggerFactory
 import java.io.File
@@ -52,7 +52,10 @@ data class AppSettings(
     val proxyJailRules: List<ProxyJailRule> = emptyList(),
     
     // Redis Cache Configuration
-    val redisConfig: RedisConfig = RedisConfig()
+    val redisConfig: RedisConfig = RedisConfig(),
+    
+    // Alert & SMTP Configuration
+    val alertConfig: AlertConfig = AlertConfig()
 )
 
 object AppConfig {
@@ -117,7 +120,6 @@ object AppConfig {
         try {
             val dbConfigFile = File(dataRoot, "db-config.json")
             if (dbConfigFile.exists()) {
-                shouldTryDb = true
                 try {
                     val content = dbConfigFile.readText()
                     val jsonEl = json.parseToJsonElement(content).jsonObject
@@ -129,16 +131,19 @@ object AppConfig {
                     val password = jsonEl["password"]?.jsonPrimitive?.content
                     
                     DatabaseFactory.init(host, port, name, user, password)
+                    shouldTryDb = true
                 } catch (e: Exception) {
-                    logger.error("Failed to read db-config.json", e)
+                    logger.error("Failed to read/init from db-config.json", e)
+                    // Try fallback default
                     DatabaseFactory.init()
+                    shouldTryDb = true
                 }
             } else if (!System.getenv("DB_HOST").isNullOrBlank()) {
-                shouldTryDb = true
                 DatabaseFactory.init()
+                shouldTryDb = true
             }
         } catch (e: Exception) {
-            logger.error("Failed to initialize database: ${e.message}. Falling back to file-only mode if possible.", e)
+            logger.error("Failed to initialize database: ${e.message}. Falling back to file-only mode.", e)
             shouldTryDb = false
         }
 
@@ -170,21 +175,30 @@ object AppConfig {
             val loadedFromFile = jsonPersistence.load()
             
             // 4. Migrate to DB
-            try {
-                logger.info("Migrating settings to Database...")
-                val content = json.encodeToString(loadedFromFile)
-                transaction {
-                    SettingsTable.upsert {
-                        it[key] = "MAIN_SETTINGS"
-                        it[value] = content
+            if (shouldTryDb) {
+                try {
+                    logger.info("Migrating settings to Database...")
+                    val content = json.encodeToString(loadedFromFile)
+                    transaction {
+                        val existing = SettingsTable.selectAll().where { SettingsTable.key eq "MAIN_SETTINGS" }.singleOrNull()
+                        if (existing != null) {
+                             SettingsTable.update({ SettingsTable.key eq "MAIN_SETTINGS" }) { stmt ->
+                                 stmt[SettingsTable.value] = content
+                             }
+                        } else {
+                             SettingsTable.insert { stmt ->
+                                 stmt[SettingsTable.key] = "MAIN_SETTINGS"
+                                 stmt[SettingsTable.value] = content
+                             }
+                        }
                     }
+                    logger.info("Settings migrated to Database successfully.")
+                    isDbActive = true
+                    // Optionally rename file to .bak? 
+                    // settingsFile.renameTo(File(settingsFile.parent, "${settingsFile.name}.bak"))
+                } catch (e: Exception) {
+                    logger.error("Failed to migrate settings to DB", e)
                 }
-                logger.info("Settings migrated to Database successfully.")
-                isDbActive = true
-                // Optionally rename file to .bak? 
-                // settingsFile.renameTo(File(settingsFile.parent, "${settingsFile.name}.bak"))
-            } catch (e: Exception) {
-                logger.error("Failed to migrate settings to DB", e)
             }
 
             logger.debug("Settings loaded successfully from file")
@@ -258,16 +272,31 @@ object AppConfig {
     }
     
     val redisConfig: RedisConfig get() = _settings.redisConfig
+    
+    fun updateAlertConfig(config: AlertConfig) {
+        _settings = _settings.copy(alertConfig = config)
+        saveSettings()
+    }
+    
+    val alertConfig: AlertConfig get() = _settings.alertConfig
 
     private fun saveSettings() {
         // Save to DB
         try {
             val content = json.encodeToString(_settings)
             transaction {
-                SettingsTable.upsert {
-                    it[key] = "MAIN_SETTINGS"
-                    it[value] = content
-                    it[updatedAt] = java.time.LocalDateTime.now()
+                val existing = SettingsTable.selectAll().where { SettingsTable.key eq "MAIN_SETTINGS" }.singleOrNull()
+                if (existing != null) {
+                    SettingsTable.update({ SettingsTable.key eq "MAIN_SETTINGS" }) { stmt ->
+                        stmt[SettingsTable.value] = content
+                        stmt[SettingsTable.updatedAt] = java.time.LocalDateTime.now()
+                    }
+                } else {
+                    SettingsTable.insert { stmt ->
+                        stmt[SettingsTable.key] = "MAIN_SETTINGS"
+                        stmt[SettingsTable.value] = content
+                        stmt[SettingsTable.updatedAt] = java.time.LocalDateTime.now()
+                    }
                 }
             }
             logger.info("Settings saved to Database")

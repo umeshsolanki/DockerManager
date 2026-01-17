@@ -47,6 +47,7 @@ object DatabaseFactory {
             SchemaUtils.create(SettingsTable)
             SchemaUtils.create(ProxyLogsTable)
             SchemaUtils.create(IpRangesTable)
+            SchemaUtils.create(FcmTokensTable)
         }
     }
 

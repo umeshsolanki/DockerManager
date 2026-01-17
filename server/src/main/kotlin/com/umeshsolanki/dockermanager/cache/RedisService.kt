@@ -369,60 +369,9 @@ object CacheService {
                 logger.warn("Failed to sync proxy hosts to Redis: ${e.message}", e)
             }
 
-            // 2. Sync Email Domains
-            try {
-                val domains = EmailService.listEmailDomains()
-                if (domains.isNotEmpty()) {
-                    redisService?.set(
-                        "email:domains",
-                        domains,
-                        kotlinx.serialization.serializer(),
-                        null
-                    )
-                    syncedCount += domains.size
-                    logger.info("Synced ${domains.size} email domains to Redis")
-                }
-            } catch (e: Exception) {
-                logger.warn("Failed to sync email domains to Redis: ${e.message}", e)
-            }
-
-            // 3. Sync Email Users
-            try {
-                val users = EmailService.listEmailUsers()
-                if (users.isNotEmpty()) {
-                    redisService?.set(
-                        "email:users",
-                        users,
-                        kotlinx.serialization.serializer(),
-                        null
-                    )
-                    syncedCount += users.size
-                    logger.info("Synced ${users.size} email users to Redis")
-                }
-            } catch (e: Exception) {
-                logger.warn("Failed to sync email users to Redis: ${e.message}", e)
-            }
-
-            // 4. Sync FCM Tokens (from fcm-tokens.json file)
-            try {
-                val tokensFile = AppConfig.fcmTokensFile
-                if (tokensFile.exists() && tokensFile.canRead()) {
-                    val tokensJson = tokensFile.readText()
-                    val tokens = AppConfig.json.decodeFromString<List<FcmTokenDetail>>(tokensJson)
-                    if (tokens.isNotEmpty()) {
-                        redisService?.set(
-                            "fcm:tokens",
-                            tokens,
-                            kotlinx.serialization.serializer(),
-                            null
-                        )
-                        syncedCount += tokens.size
-                        logger.info("Synced ${tokens.size} FCM tokens to Redis")
-                    }
-                }
-            } catch (e: Exception) {
-                logger.warn("Failed to sync FCM tokens to Redis: ${e.message}", e)
-            }
+            // 2. Sync Email Domains - Removed as local email management is deprecated
+            // 3. Sync Email Users - Removed as local email management is deprecated
+            // 4. Sync FCM Tokens - Removed as FCM tokens are now in DB
 
             // 5. Sync App Settings
             try {

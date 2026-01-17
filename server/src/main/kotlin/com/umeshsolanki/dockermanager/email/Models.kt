@@ -85,3 +85,23 @@ data class MailcowContainerStatus(
     val uptime: String? = null,
     val webmailUrl: String? = null
 )
+
+@Serializable
+data class SmtpConfig(
+    val host: String = "",
+    val port: Int = 587,
+    val username: String = "",
+    val password: String = "",
+    val fromAddress: String = "",
+    val useTls: Boolean = true,
+    val useSsl: Boolean = false
+)
+
+@Serializable
+data class AlertConfig(
+    val enabled: Boolean = false,
+    val adminEmail: String = "",
+    val smtpConfig: SmtpConfig = SmtpConfig(),
+    val alertOnSystemStartup: Boolean = true,
+    val alertOnContainerFailure: Boolean = true
+)

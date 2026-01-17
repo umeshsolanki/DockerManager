@@ -23,8 +23,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.encodeToString
 import com.umeshsolanki.dockermanager.database.SettingsTable
-import org.jetbrains.exposed.sql.selectAll
-import org.jetbrains.exposed.sql.upsert
+import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
 import java.util.UUID
@@ -167,9 +166,16 @@ class ProxyServiceImpl(
                 logger.info("Migrating proxy hosts from file to Database...")
                 val content = AppConfig.json.encodeToString(hosts)
                 transaction {
-                    SettingsTable.upsert {
-                        it[key] = "PROXY_HOSTS"
-                        it[value] = content
+                    val existing = SettingsTable.selectAll().where { SettingsTable.key eq "PROXY_HOSTS" }.singleOrNull()
+                    if (existing != null) {
+                         SettingsTable.update({ SettingsTable.key eq "PROXY_HOSTS" }) { stmt ->
+                             stmt[SettingsTable.value] = content
+                         }
+                    } else {
+                         SettingsTable.insert { stmt ->
+                             stmt[SettingsTable.key] = "PROXY_HOSTS"
+                             stmt[SettingsTable.value] = content
+                         }
                     }
                 }
                 logger.info("Proxy hosts migrated to Database successfully.")
@@ -304,10 +310,18 @@ class ProxyServiceImpl(
             try {
                 val content = AppConfig.json.encodeToString(hosts)
                 transaction {
-                    SettingsTable.upsert {
-                        it[key] = "PROXY_HOSTS"
-                        it[value] = content
-                        it[updatedAt] = java.time.LocalDateTime.now()
+                    val existing = SettingsTable.selectAll().where { SettingsTable.key eq "PROXY_HOSTS" }.singleOrNull()
+                    if (existing != null) {
+                         SettingsTable.update({ SettingsTable.key eq "PROXY_HOSTS" }) { stmt ->
+                             stmt[SettingsTable.value] = content
+                             stmt[SettingsTable.updatedAt] = java.time.LocalDateTime.now()
+                         }
+                    } else {
+                         SettingsTable.insert { stmt ->
+                             stmt[SettingsTable.key] = "PROXY_HOSTS"
+                             stmt[SettingsTable.value] = content
+                             stmt[SettingsTable.updatedAt] = java.time.LocalDateTime.now()
+                         }
                     }
                 }
                 logger.info("Proxy hosts saved to Database")
