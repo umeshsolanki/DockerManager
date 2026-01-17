@@ -57,6 +57,13 @@ dependencies {
     implementation(libs.ktor.clientContentNegotiation)
     implementation(libs.kotlinx.coroutines.core)
 
+    implementation(libs.exposed.core)
+    implementation(libs.exposed.jdbc)
+    implementation(libs.exposed.dao)
+    implementation(libs.exposed.java.time)
+    implementation(libs.postgresql)
+    implementation(libs.hikaricp)
+
     implementation(libs.docker.java)
     implementation(libs.docker.java.transport)
     implementation(libs.firebase.admin)

@@ -184,6 +184,12 @@ export interface SaveComposeRequest {
   content: string;
 }
 
+export interface SaveProjectFileRequest {
+  projectName: string;
+  fileName: string;
+  content: string;
+}
+
 export interface ComposeResult {
   success: boolean;
   message: string;
@@ -461,7 +467,7 @@ export interface EmailUserDetail {
   quotaCount?: EmailQuota;
 }
 
-export type Screen = 'Dashboard' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Files' | 'Settings' | 'Security' | 'Analytics' | 'Redis';
+export type Screen = 'Dashboard' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Files' | 'Settings' | 'Security' | 'Analytics' | 'DB';
 
 
 export interface AuthRequest {

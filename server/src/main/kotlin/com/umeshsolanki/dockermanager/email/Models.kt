@@ -85,4 +85,3 @@ data class MailcowContainerStatus(
     val uptime: String? = null,
     val webmailUrl: String? = null
 )
-

@@ -8,8 +8,11 @@ interface IComposeService {
     fun listComposeFiles(): List<ComposeFile>
     fun composeUp(filePath: String): ComposeResult
     fun composeDown(filePath: String): ComposeResult
+    fun composeBuild(filePath: String): ComposeResult
     fun saveComposeFile(name: String, content: String): Boolean
+    fun saveProjectFile(projectName: String, fileName: String, content: String): Boolean
     fun getComposeFileContent(filePath: String): String
+    fun getProjectFileContent(projectName: String, fileName: String): String
     fun backupCompose(name: String): BackupResult
     fun backupAllCompose(): BackupResult
     
@@ -234,6 +237,31 @@ class ComposeServiceImpl : IComposeService {
         }
     }
 
+    override fun composeBuild(filePath: String): ComposeResult {
+        val file = File(filePath)
+        if (!file.exists()) return ComposeResult(false, "File not found: $filePath")
+
+        return try {
+            val composeCmd = AppConfig.dockerComposeCommand
+            val process = if (composeCmd.contains("docker compose") || composeCmd == "docker compose") {
+                ProcessBuilder("docker", "compose", "-f", filePath, "build")
+            } else {
+                ProcessBuilder(composeCmd, "-f", filePath, "build")
+            }
+                .directory(file.parentFile)
+                .redirectErrorStream(true)
+                .start()
+            
+            val output = process.inputStream.bufferedReader().readText()
+            val success = process.waitFor(20, TimeUnit.MINUTES) && process.exitValue() == 0
+
+            ComposeResult(success, output.ifBlank { if (success) "Build Successful" else "Failed to build" })
+        } catch (e: Exception) {
+            e.printStackTrace()
+            ComposeResult(false, "Error: ${e.message ?: "Unknown error"}")
+        }
+    }
+
     override fun composeDown(filePath: String): ComposeResult {
         val file = File(filePath)
         if (!file.exists()) return ComposeResult(false, "File not found")
@@ -269,9 +297,51 @@ class ComposeServiceImpl : IComposeService {
         }
     }
 
+    override fun saveProjectFile(projectName: String, fileName: String, content: String): Boolean {
+        return try {
+            if (!composeDir.exists()) composeDir.mkdirs()
+            val projectDir = File(composeDir, projectName)
+            if (!projectDir.exists()) projectDir.mkdirs()
+
+            // Block directory traversal and sensitive files
+            if (fileName.contains("..") || fileName.startsWith("/") || fileName.contains("\\")) {
+                logger.warn("Attempt to write to invalid path: $fileName")
+                return false
+            }
+
+            val file = File(projectDir, fileName)
+            file.writeText(content)
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
     override fun getComposeFileContent(filePath: String): String {
         return try {
             val file = File(filePath)
+            if (file.exists()) {
+                file.readText()
+            } else {
+                ""
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            ""
+        }
+    }
+
+    override fun getProjectFileContent(projectName: String, fileName: String): String {
+        return try {
+            val projectDir = File(composeDir, projectName)
+            // Block directory traversal and sensitive files
+            if (fileName.contains("..") || fileName.startsWith("/") || fileName.contains("\\")) {
+                logger.warn("Attempt to read from invalid path: $fileName")
+                return ""
+            }
+            
+            val file = File(projectDir, fileName)
             if (file.exists()) {
                 file.readText()
             } else {

@@ -162,6 +162,13 @@ data class SaveComposeRequest(
 )
 
 @Serializable
+data class SaveProjectFileRequest(
+    val projectName: String,
+    val fileName: String,
+    val content: String
+)
+
+@Serializable
 data class ComposeFile(
     val path: String,
     val name: String,

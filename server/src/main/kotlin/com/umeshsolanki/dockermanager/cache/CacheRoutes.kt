@@ -261,6 +261,11 @@ fun Route.cacheRoutes() {
                 val composeFile = File(redisDir, "docker-compose.yml")
                 composeFile.writeText(composeContent)
 
+                // Load and save Dockerfile
+                val dockerfileContent = ResourceLoader.loadResourceOrThrow("templates/redis/Dockerfile")
+                val dockerFile = File(redisDir, "Dockerfile")
+                dockerFile.writeText(dockerfileContent)
+
                 // Start Redis container first
                 val result = DockerService.composeUp(composeFile.absolutePath)
 

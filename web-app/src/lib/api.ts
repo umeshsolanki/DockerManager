@@ -9,7 +9,8 @@ import {
     EmailTestResult, AuthRequest, AuthResponse, UpdatePasswordRequest,
     UpdateUsernameRequest, TwoFactorSetupResponse, Enable2FARequest, EmailGroup, EmailUserDetail, JamesContainerStatus,
     FileItem, RedisConfig, RedisStatus, RedisTestResult, RedisConfigUpdateResult,
-    DockerStack, StackService, StackTask, DeployStackRequest, MigrateComposeToStackRequest, StopStackRequest
+    DockerStack, StackService, StackTask, DeployStackRequest, MigrateComposeToStackRequest, StopStackRequest,
+    SaveProjectFileRequest
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -109,12 +110,15 @@ export const DockerClient = {
     // --- Compose ---
     listComposeFiles: () => req<ComposeFile[]>('/compose', {}, []),
     composeUp: (path: string) => req<ComposeResult | null>(`/compose/up?file=${encodeURIComponent(path)}`, { method: 'POST' }, null),
+    composeBuild: (path: string) => req<ComposeResult | null>(`/compose/build?file=${encodeURIComponent(path)}`, { method: 'POST' }, null),
     composeDown: (path: string) => req<ComposeResult | null>(`/compose/down?file=${encodeURIComponent(path)}`, { method: 'POST' }, null),
     saveComposeFile: (body: SaveComposeRequest) => apiFetch('/compose/save', { method: 'POST', body: JSON.stringify(body) }).then(r => r.ok),
+    saveProjectFile: (body: SaveProjectFileRequest) => apiFetch('/compose/save-file', { method: 'POST', body: JSON.stringify(body) }).then(r => r.ok),
     getComposeFileContent: (path: string) => textReq(`/compose/content?file=${encodeURIComponent(path)}`),
+    getProjectFileContent: (projectName: string, fileName: string) => textReq(`/compose/project-file?projectName=${encodeURIComponent(projectName)}&fileName=${encodeURIComponent(fileName)}`),
     backupCompose: (name: string) => req<BackupResult | null>(`/compose/${name}/backup`, { method: 'POST' }, null),
     backupAllCompose: () => req<BackupResult | null>('/compose/backup-all', { method: 'POST' }, null),
-    
+
     // --- Docker Stack (Swarm) ---
     listStacks: () => req<DockerStack[]>('/compose/stack', {}, []),
     deployStack: (body: DeployStackRequest) => safeReq<ComposeResult>('/compose/stack/deploy', { method: 'POST', body: JSON.stringify(body) }),
@@ -187,7 +191,7 @@ export const DockerClient = {
     getHistoricalStats: (date: string) => req<DailyProxyStats | null>(`/analytics/stats/history/${date}`, {}, null),
     getStatsForDateRange: (startDate: string, endDate: string) => req<DailyProxyStats[]>(`/analytics/stats/history/range?start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`, {}, []),
     updateStatsForAllDaysInCurrentLog: () => safeReq('/analytics/stats/history/update-all-days', { method: 'POST' }),
-    
+
     // Redis Cache
     getRedisConfig: () => req<RedisConfig>('/cache/redis/config', {}, { enabled: false, host: 'localhost', port: 6379, database: 0, ssl: false, timeout: 5000 }),
     updateRedisConfig: (config: RedisConfig) => safeReq<RedisConfigUpdateResult>('/cache/redis/config', { method: 'POST', body: JSON.stringify(config) }),
@@ -195,7 +199,11 @@ export const DockerClient = {
     getRedisStatus: () => req<RedisStatus>('/cache/redis/status', {}, { enabled: false, connected: false, host: 'localhost', port: 6379 }),
     clearCache: () => safeReq('/cache/clear', { method: 'POST' }),
     installRedis: () => safeReq('/cache/install', { method: 'POST' }),
-    
+
+    // Database Management
+    getDatabaseStatus: () => req<any[]>('/database/status', {}, []),
+    installPostgres: () => safeReq<any>('/database/postgres/install', { method: 'POST' }),
+
     getProxySecuritySettings: () => req<SystemConfig | null>('/proxy/security/settings', {}, null),
     updateProxySecuritySettings: (body: Partial<SystemConfig>) => safeReq('/proxy/security/settings', { method: 'POST', body: JSON.stringify(body) }),
     listProxyCertificates: () => req<SSLCertificate[]>('/proxy/certificates', {}, []),

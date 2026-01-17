@@ -24,7 +24,7 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
         { label: 'Proxy', icon: <Globe size={20} /> },
         { label: 'Emails', icon: <Mail size={20} /> },
         { label: 'Files', icon: <FileText size={20} /> },
-        { label: 'Redis', icon: <Zap size={20} /> },
+        { label: 'DB', icon: <Database size={20} /> },
     ];
 
 

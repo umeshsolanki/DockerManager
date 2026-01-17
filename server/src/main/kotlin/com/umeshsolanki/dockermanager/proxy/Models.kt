@@ -131,4 +131,3 @@ data class WebSocketConnection(
     val authenticated: Boolean = true,
     var duration: Long? = null // Duration in milliseconds, null if still connected
 )
-

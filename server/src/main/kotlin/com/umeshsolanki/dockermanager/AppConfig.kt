@@ -6,8 +6,14 @@ import com.umeshsolanki.dockermanager.proxy.IpFilterUtils
 import com.umeshsolanki.dockermanager.utils.JsonPersistence
 import com.umeshsolanki.dockermanager.cache.RedisConfig
 import com.umeshsolanki.dockermanager.cache.CacheService
+import com.umeshsolanki.dockermanager.database.DatabaseFactory
+import com.umeshsolanki.dockermanager.database.SettingsTable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.upsert
+import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.LoggerFactory
 import java.io.File
 
@@ -79,6 +85,7 @@ object AppConfig {
         File(dataRoot, FileConstants.SETTINGS_JSON)
     }
 
+    // Keep JsonPersistence for file fallback/legacy reading
     private val jsonPersistence: JsonPersistence<AppSettings> by lazy {
         JsonPersistence.create(
             file = settingsFile,
@@ -87,20 +94,69 @@ object AppConfig {
         )
     }
 
+    // Initialize Settings from DB or File
     private var _settings: AppSettings = loadSettings()
 
     private fun loadSettings(): AppSettings {
-        return try {
-            logger.info("Loading settings from ${settingsFile.absolutePath}")
-            val loaded = jsonPersistence.load()
-            logger.debug("Settings loaded successfully")
-            // Initialize cache service with loaded Redis config
-            CacheService.initialize(loaded.redisConfig)
-            loaded
+        logger.info("Initializing configuration...")
+        
+        // 1. Initialize Database
+        try {
+            DatabaseFactory.init()
         } catch (e: Exception) {
-            logger.error("Failed to load settings (corrupted?), using defaults", e)
+            logger.error("Failed to initialize database: ${e.message}. Falling back to file-only mode if possible.", e)
+            // If DB fails, we might still be able to read from file
+        }
+
+        // 2. Try to load from Database (Main Source of Truth)
+        try {
+            val dbSettingsJson = transaction {
+                SettingsTable.selectAll().where { SettingsTable.key eq "MAIN_SETTINGS" }
+                    .singleOrNull()
+                    ?.get(SettingsTable.value)
+            }
+
+            if (dbSettingsJson != null) {
+                logger.info("Settings loaded from Database")
+                val loaded = json.decodeFromString<AppSettings>(dbSettingsJson)
+                // FORCE DISABLE REDIS FOR NOW
+                CacheService.initialize(loaded.redisConfig.copy(enabled = false))
+                return loaded
+            }
+        } catch (e: Exception) {
+            logger.warn("Failed to load settings from DB: ${e.message}")
+        }
+
+        // 3. Fallback: Load from File (Legacy/Migration)
+        return try {
+            logger.info("Loading settings from file (migration/fallback): ${settingsFile.absolutePath}")
+            val loadedFromFile = jsonPersistence.load()
+            
+            // 4. Migrate to DB
+            try {
+                logger.info("Migrating settings to Database...")
+                val content = json.encodeToString(loadedFromFile)
+                transaction {
+                    SettingsTable.upsert {
+                        it[key] = "MAIN_SETTINGS"
+                        it[value] = content
+                    }
+                }
+                logger.info("Settings migrated to Database successfully.")
+                // Optionally rename file to .bak? 
+                // settingsFile.renameTo(File(settingsFile.parent, "${settingsFile.name}.bak"))
+            } catch (e: Exception) {
+                logger.error("Failed to migrate settings to DB", e)
+            }
+
+            logger.debug("Settings loaded successfully from file")
+            // FORCE DISABLE REDIS FOR NOW
+            CacheService.initialize(loadedFromFile.redisConfig.copy(enabled = false))
+            loadedFromFile
+        } catch (e: Exception) {
+            logger.error("Failed to load settings from file, using defaults", e)
             val defaults = AppSettings()
-            CacheService.initialize(defaults.redisConfig)
+            CacheService.initialize(defaults.redisConfig.copy(enabled = false))
             defaults
         }
     }
@@ -159,21 +215,36 @@ object AppConfig {
     fun updateRedisConfig(config: RedisConfig) {
         _settings = _settings.copy(redisConfig = config)
         saveSettings()
-        CacheService.updateConfig(config)
+        // FORCE DISABLE REDIS FOR NOW
+        CacheService.updateConfig(config.copy(enabled = false))
     }
     
     val redisConfig: RedisConfig get() = _settings.redisConfig
 
     private fun saveSettings() {
+        // Save to DB
+        try {
+            val content = json.encodeToString(_settings)
+            transaction {
+                SettingsTable.upsert {
+                    it[key] = "MAIN_SETTINGS"
+                    it[value] = content
+                    it[updatedAt] = java.time.LocalDateTime.now()
+                }
+            }
+            logger.info("Settings saved to Database")
+        } catch (e: Exception) {
+            logger.error("Failed to save settings to Database", e)
+        }
+
+        // Also save to file as backup for now
         try {
             val saved = jsonPersistence.save(_settings)
             if (saved) {
-                logger.info("Settings saved to ${settingsFile.absolutePath}")
-            } else {
-                logger.error("Failed to save settings to ${settingsFile.absolutePath}")
+                logger.debug("Settings synced to file backup at ${settingsFile.absolutePath}")
             }
         } catch (e: Exception) {
-            logger.error("Failed to save settings to ${settingsFile.absolutePath}", e)
+            logger.warn("Failed to sync settings to file backup", e)
         }
     }
 

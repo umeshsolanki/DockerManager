@@ -103,56 +103,92 @@ class AnalyticsServiceImpl(
 
     private fun startDailyResetWorker() {
         scope.launch {
+            // Initial check on startup
+            checkLogRotation()
+
             while (isActive) {
                 try {
-                    val today = java.time.LocalDate.now()
-                        .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
-
-                    // Check if we need to reset (new day)
-                    if (lastResetDate != null && lastResetDate != today) {
-                        // Only rotate logs once per day - check if we've already rotated for yesterday
-                        if (lastRotationDate != lastResetDate) {
-                            // Save yesterday's stats before resetting
-                            val yesterdayStats = cachedStats
-                            analyticsPersistence.saveDailyStats(yesterdayStats, lastResetDate)
-                            logger.info("Saved daily stats for $lastResetDate")
-
-                            // Rotate log file: copy access.log to access_YYYY-MM-DD.log and truncate
-                            // Only rotate if log file has substantial content (at least 1KB to avoid rotating empty files)
-                            if (logFile.exists() && logFile.length() > 1024) {
-                                rotateAccessLog(lastResetDate!!)
-                                lastRotationDate = lastResetDate
-                            } else {
-                                logger.info("Skipping log rotation for $lastResetDate - log file is too small or doesn't exist")
-                            }
-                        } else {
-                            logger.debug("Log rotation already completed for $lastResetDate, skipping")
-                        }
-
-                        // Reset counters
-                        resetDailyStats()
-                        logger.info("Reset daily stats for $today")
-                    }
-
-                    // Initialize lastResetDate if not set
-                    if (lastResetDate == null) {
-                        lastResetDate = today
-                    }
-
-                    // If date is today, persist current stats (update existing stats file)
-                    if (lastResetDate == today) {
-                        val currentStats = cachedStats
-                        analyticsPersistence.saveDailyStats(currentStats, today)
-                        logger.debug("Updated daily stats for $today")
-                    }
-
-                    // Check every hour
-                    delay(3600000) // 1 hour
+                   checkLogRotation()
+                   delay(60000) // Check every minute
                 } catch (e: Exception) {
                     logger.error("Error in daily reset worker", e)
-                    delay(3600000) // Fallback delay
+                    delay(60000) // Fallback delay
                 }
             }
+        }
+    }
+
+    private suspend fun checkLogRotation() {
+        val today = java.time.LocalDate.now()
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+
+        // 1. Standard Day Transition Logic
+        if (lastResetDate != null && lastResetDate != today) {
+            // Only rotate logs once per day - check if we've already rotated for yesterday
+            if (lastRotationDate != lastResetDate) {
+                // Save yesterday's stats before resetting
+                val yesterdayStats = cachedStats
+                analyticsPersistence.saveDailyStats(yesterdayStats, lastResetDate!!)
+                logger.info("Saved daily stats for $lastResetDate")
+
+                // Rotate log file
+                if (logFile.exists() && logFile.length() > 1024) {
+                    rotateAccessLog(lastResetDate!!)
+                    lastRotationDate = lastResetDate
+                } else {
+                    logger.info("Skipping log rotation for $lastResetDate - log file is too small or doesn't exist")
+                }
+            }
+
+            // Reset counters
+            resetDailyStats()
+            logger.info("Reset daily stats for $today")
+        }
+
+        // Initialize lastResetDate if not set (first run)
+        if (lastResetDate == null) {
+            lastResetDate = today
+        }
+        
+        // 2. Recovery Logic: Check if access.log belongs to a previous day (e.g. after restart)
+        // This handles cases where the app wasn't running during the midnight transition
+        if (logFile.exists() && logFile.length() > 0) {
+            try {
+                // Read first line to check date
+                val firstLine = logFile.bufferedReader(Charsets.UTF_8).use { it.readLine() }
+                if (firstLine != null) {
+                    val lineRegex = """^(\S+) \S+ \S+ \[([^\]]+)\]""".toRegex()
+                    val match = lineRegex.find(firstLine)
+                    if (match != null) {
+                       val (_, dateStr) = match.destructured
+                       val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
+                       val timestamp = dateFormat.parse(dateStr)
+                       val logDate = java.time.LocalDate.ofInstant(timestamp.toInstant(), java.time.ZoneId.systemDefault())
+                       val logDateStr = logDate.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                       
+                       if (logDateStr != today && logDateStr != lastRotationDate) {
+                           logger.info("Found log file starting on $logDateStr (older than today $today). Triggering recovery rotation.")
+                           rotateAccessLog(logDateStr)
+                           // We don't update lastRotationDate or reset stats here necessarily, 
+                           // just moving the file out of the way.
+                           
+                           // However, if we just rotated the active log, we should probably reset the counters 
+                           // if they were tracking that file.
+                           if (lastProcessedOffset > 0) {
+                               resetDailyStats()
+                           }
+                       }
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore read errors, just wait for next cycle
+            }
+        }
+
+        // If date is today, persist current stats
+        if (lastResetDate == today) {
+             val currentStats = cachedStats
+             analyticsPersistence.saveDailyStats(currentStats, today)
         }
     }
 

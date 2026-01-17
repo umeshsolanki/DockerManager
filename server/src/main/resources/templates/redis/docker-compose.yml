@@ -1,6 +1,7 @@
 services:
   redis:
-    image: redis:7-alpine
+    build: .
+    image: docker-manager-redis:latest
     container_name: docker-manager-redis
     restart: unless-stopped
     ports:

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Search, RefreshCw, Folder, Play, Square, Plus, Edit2, X, Save, FileCode, Wand2, Archive, Upload, Layers, Trash2, Server, Activity, CheckCircle, XCircle, AlertCircle, RotateCw, Power } from 'lucide-react';
+import { Search, RefreshCw, Folder, Play, Square, Plus, Edit2, X, Save, FileCode, Wand2, Archive, Upload, Layers, Trash2, Server, Activity, CheckCircle, XCircle, AlertCircle, RotateCw, Power, Hammer } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { ComposeFile, SaveComposeRequest, DockerStack, StackService, StackTask, DeployStackRequest } from '@/lib/types';
 import Editor from '@monaco-editor/react';
@@ -19,6 +19,7 @@ export default function ComposeScreen() {
     const [searchQuery, setSearchQuery] = useState('');
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [editingFile, setEditingFile] = useState<ComposeFile | null>(null);
+    const [editingFileName, setEditingFileName] = useState<string>('docker-compose.yml');
     const [editorContent, setEditorContent] = useState('');
     const [projectName, setProjectName] = useState('');
     const [activeTab, setActiveTab] = useState<'editor' | 'wizard'>('editor');
@@ -31,7 +32,7 @@ export default function ComposeScreen() {
         setIsLoading(true);
         const data = await DockerClient.listComposeFiles();
         setComposeFiles(data);
-        
+
         // Fetch statuses for all compose files
         const statusMap: Record<string, string> = {};
         for (const file of data) {
@@ -50,7 +51,7 @@ export default function ComposeScreen() {
         setIsLoading(true);
         const data = await DockerClient.listStacks();
         setStacks(data);
-        
+
         // Fetch statuses for all stacks
         const statusMap: Record<string, string> = {};
         for (const stack of data) {
@@ -88,7 +89,7 @@ export default function ComposeScreen() {
             // Refresh stack status when selected
             DockerClient.checkStackStatus(selectedStack.name).then(result => {
                 setStackStatuses(prev => ({ ...prev, [selectedStack.name]: result.status }));
-            }).catch(() => {});
+            }).catch(() => { });
         }
     }, [selectedStack]);
 
@@ -147,16 +148,24 @@ export default function ComposeScreen() {
 
     const handleCreate = () => {
         setEditingFile(null);
+        setEditingFileName('docker-compose.yml');
         setProjectName('');
         setEditorContent('services:\n  app:\n    image: nginx:latest\n    ports:\n      - "80:80"');
         setIsEditorOpen(true);
         setActiveTab('editor');
     };
 
-    const handleEdit = async (file: ComposeFile) => {
+    const handleEdit = async (file: ComposeFile, fileName: string = 'docker-compose.yml') => {
         setIsLoading(true);
-        const content = await DockerClient.getComposeFileContent(file.path);
+        let content = '';
+        if (fileName === 'docker-compose.yml') {
+            content = await DockerClient.getComposeFileContent(file.path);
+        } else {
+            content = await DockerClient.getProjectFileContent(file.name, fileName);
+        }
+
         setEditingFile(file);
+        setEditingFileName(fileName);
         setProjectName(file.name);
         setEditorContent(content);
         setIsEditorOpen(true);
@@ -214,16 +223,27 @@ export default function ComposeScreen() {
             return;
         }
         setIsLoading(true);
-        const success = await DockerClient.saveComposeFile({
-            name: projectName,
-            content: editorContent
-        });
+
+        let success = false;
+        if (editingFileName === 'docker-compose.yml') {
+            success = await DockerClient.saveComposeFile({
+                name: projectName,
+                content: editorContent
+            });
+        } else {
+            success = await DockerClient.saveProjectFile({
+                projectName: projectName,
+                fileName: editingFileName,
+                content: editorContent
+            });
+        }
+
         if (success) {
-            toast.success('Project saved successfully');
+            toast.success(`${editingFileName} saved successfully`);
             setIsEditorOpen(false);
             await fetchComposeFiles();
         } else {
-            toast.error('Failed to save project');
+            toast.error(`Failed to save ${editingFileName}`);
         }
         setIsLoading(false);
     };
@@ -334,22 +354,20 @@ export default function ComposeScreen() {
                 <div className="flex gap-1 bg-surface-variant/30 p-1 rounded-2xl w-fit">
                     <button
                         onClick={() => setViewMode('compose')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-                            viewMode === 'compose'
-                                ? 'bg-primary text-on-primary shadow-md'
-                                : 'hover:bg-primary/10 text-on-surface-variant'
-                        }`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'compose'
+                            ? 'bg-primary text-on-primary shadow-md'
+                            : 'hover:bg-primary/10 text-on-surface-variant'
+                            }`}
                     >
                         <FileCode size={18} />
                         <span>Compose</span>
                     </button>
                     <button
                         onClick={() => setViewMode('stacks')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-                            viewMode === 'stacks'
-                                ? 'bg-primary text-on-primary shadow-md'
-                                : 'hover:bg-primary/10 text-on-surface-variant'
-                        }`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'stacks'
+                            ? 'bg-primary text-on-primary shadow-md'
+                            : 'hover:bg-primary/10 text-on-surface-variant'
+                            }`}
                     >
                         <Layers size={18} />
                         <span>Stacks</span>
@@ -425,117 +443,131 @@ export default function ComposeScreen() {
                                     <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                                         <Folder size={16} className="text-primary" />
                                     </div>
-                                <div className="flex flex-col min-w-0">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm font-bold truncate text-on-surface" title={file.name}>
-                                            {file.name}
-                                        </span>
-                                        {(() => {
-                                            const status = composeStatuses[file.path] || file.status || 'unknown';
-                                            const statusConfigMap = {
-                                                active: { icon: <CheckCircle size={12} />, color: 'text-green-500', bg: 'bg-green-500/10', label: 'Running' },
-                                                stopped: { icon: <Square size={12} />, color: 'text-orange-500', bg: 'bg-orange-500/10', label: 'Stopped' },
-                                                partial: { icon: <AlertCircle size={12} />, color: 'text-yellow-500', bg: 'bg-yellow-500/10', label: 'Partial' },
-                                                inactive: { icon: <XCircle size={12} />, color: 'text-gray-500', bg: 'bg-gray-500/10', label: 'Inactive' },
-                                                unknown: { icon: <AlertCircle size={12} />, color: 'text-on-surface-variant', bg: 'bg-surface-variant/10', label: 'Unknown' }
-                                            };
-                                            const statusConfig = statusConfigMap[status as keyof typeof statusConfigMap] || statusConfigMap.unknown;
-                                            return (
-                                                <span className={`text-[9px] ${statusConfig.bg} ${statusConfig.color} px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1`}>
-                                                    {statusConfig.icon}
-                                                    {statusConfig.label}
-                                                </span>
-                                            );
-                                        })()}
+                                    <div className="flex flex-col min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-bold truncate text-on-surface" title={file.name}>
+                                                {file.name}
+                                            </span>
+                                            {(() => {
+                                                const status = composeStatuses[file.path] || file.status || 'unknown';
+                                                const statusConfigMap = {
+                                                    active: { icon: <CheckCircle size={12} />, color: 'text-green-500', bg: 'bg-green-500/10', label: 'Running' },
+                                                    stopped: { icon: <Square size={12} />, color: 'text-orange-500', bg: 'bg-orange-500/10', label: 'Stopped' },
+                                                    partial: { icon: <AlertCircle size={12} />, color: 'text-yellow-500', bg: 'bg-yellow-500/10', label: 'Partial' },
+                                                    inactive: { icon: <XCircle size={12} />, color: 'text-gray-500', bg: 'bg-gray-500/10', label: 'Inactive' },
+                                                    unknown: { icon: <AlertCircle size={12} />, color: 'text-on-surface-variant', bg: 'bg-surface-variant/10', label: 'Unknown' }
+                                                };
+                                                const statusConfig = statusConfigMap[status as keyof typeof statusConfigMap] || statusConfigMap.unknown;
+                                                return (
+                                                    <span className={`text-[9px] ${statusConfig.bg} ${statusConfig.color} px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1`}>
+                                                        {statusConfig.icon}
+                                                        {statusConfig.label}
+                                                    </span>
+                                                );
+                                            })()}
+                                        </div>
+                                        <div className="flex items-center gap-1.5 text-[10px] text-on-surface-variant font-mono truncate">
+                                            <span className="truncate">{file.path}</span>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-1.5 text-[10px] text-on-surface-variant font-mono truncate">
-                                        <span className="truncate">{file.path}</span>
-                                    </div>
-                                </div>
                                 </div>
 
-                            <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-opacity">
-                                <button
-                                    onClick={() => handleBackup(file)}
-                                    className="p-1.5 hover:bg-white/10 text-on-surface-variant hover:text-primary rounded-lg transition-colors"
-                                    title="Backup"
-                                >
-                                    <Archive size={14} />
-                                </button>
-                                <button
-                                    onClick={() => handleEdit(file)}
-                                    className="p-1.5 hover:bg-primary/10 text-primary rounded-lg transition-colors"
-                                    title="Edit"
-                                >
-                                    <Edit2 size={14} />
-                                </button>
-                                <div className="w-px h-6 bg-outline/10 mx-1" />
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-opacity">
                                     <button
-                                        onClick={() => handleAction(() => DockerClient.composeUp(file.path))}
-                                        className="p-1.5 hover:bg-green-500/10 text-green-500 rounded-lg transition-colors"
-                                        title="Start as Compose"
+                                        onClick={() => handleBackup(file)}
+                                        className="p-1.5 hover:bg-white/10 text-on-surface-variant hover:text-primary rounded-lg transition-colors"
+                                        title="Backup"
                                     >
-                                        <Play size={16} fill="currentColor" />
+                                        <Archive size={14} />
                                     </button>
                                     <button
-                                        onClick={() => {
-                                            const stackName = prompt('Enter stack name:', file.name);
-                                            if (stackName) {
-                                                handleAction(() => DockerClient.deployStack({
-                                                    stackName: stackName.trim(),
-                                                    composeFile: file.path
-                                                }));
-                                            }
-                                        }}
-                                        className="p-1.5 hover:bg-indigo-500/10 text-indigo-500 rounded-lg transition-colors"
-                                        title="Deploy as Stack"
+                                        onClick={() => handleEdit(file)}
+                                        className="p-1.5 hover:bg-primary/10 text-primary rounded-lg transition-colors"
+                                        title="Edit Compose"
                                     >
-                                        <Layers size={14} />
+                                        <Edit2 size={14} />
                                     </button>
                                     <button
-                                        onClick={async () => {
-                                            const stackName = prompt('Enter stack name for migration:', file.name);
-                                            if (!stackName) return;
-                                            
-                                            if (!confirm(`Migrate "${file.name}" from Compose to Stack "${stackName}"?\n\nThis will:\n1. Stop the current compose project\n2. Deploy it as a Docker stack`)) {
-                                                return;
-                                            }
-                                            
-                                            setIsLoading(true);
-                                            try {
-                                                const result = await DockerClient.migrateComposeToStack({
-                                                    composeFile: file.path,
-                                                    stackName: stackName.trim()
-                                                });
-                                                if (result.success) {
-                                                    toast.success(result.message || 'Successfully migrated to stack');
-                                                    await fetchComposeFiles();
-                                                    await fetchStacks();
-                                                } else {
-                                                    toast.error(result.message || 'Failed to migrate');
+                                        onClick={() => handleEdit(file, 'Dockerfile')}
+                                        className="p-1.5 hover:bg-cyan-500/10 text-cyan-500 rounded-lg transition-colors"
+                                        title="Edit Dockerfile"
+                                    >
+                                        <FileCode size={14} />
+                                    </button>
+                                    <div className="w-px h-6 bg-outline/10 mx-1" />
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            onClick={() => handleAction(() => DockerClient.composeUp(file.path))}
+                                            className="p-1.5 hover:bg-green-500/10 text-green-500 rounded-lg transition-colors"
+                                            title="Start as Compose"
+                                        >
+                                            <Play size={16} fill="currentColor" />
+                                        </button>
+                                        <button
+                                            onClick={() => handleAction(() => DockerClient.composeBuild(file.path))}
+                                            className="p-1.5 hover:bg-amber-500/10 text-amber-500 rounded-lg transition-colors"
+                                            title="Build Images"
+                                        >
+                                            <Hammer size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                const stackName = prompt('Enter stack name:', file.name);
+                                                if (stackName) {
+                                                    handleAction(() => DockerClient.deployStack({
+                                                        stackName: stackName.trim(),
+                                                        composeFile: file.path
+                                                    }));
                                                 }
-                                            } catch (e) {
-                                                toast.error('Failed to migrate compose to stack');
-                                            } finally {
-                                                setIsLoading(false);
-                                            }
-                                        }}
-                                        className="p-1.5 hover:bg-purple-500/10 text-purple-500 rounded-lg transition-colors"
-                                        title="Migrate to Stack"
+                                            }}
+                                            className="p-1.5 hover:bg-indigo-500/10 text-indigo-500 rounded-lg transition-colors"
+                                            title="Deploy as Stack"
+                                        >
+                                            <Layers size={14} />
+                                        </button>
+                                        <button
+                                            onClick={async () => {
+                                                const stackName = prompt('Enter stack name for migration:', file.name);
+                                                if (!stackName) return;
+
+                                                if (!confirm(`Migrate "${file.name}" from Compose to Stack "${stackName}"?\n\nThis will:\n1. Stop the current compose project\n2. Deploy it as a Docker stack`)) {
+                                                    return;
+                                                }
+
+                                                setIsLoading(true);
+                                                try {
+                                                    const result = await DockerClient.migrateComposeToStack({
+                                                        composeFile: file.path,
+                                                        stackName: stackName.trim()
+                                                    });
+                                                    if (result.success) {
+                                                        toast.success(result.message || 'Successfully migrated to stack');
+                                                        await fetchComposeFiles();
+                                                        await fetchStacks();
+                                                    } else {
+                                                        toast.error(result.message || 'Failed to migrate');
+                                                    }
+                                                } catch (e) {
+                                                    toast.error('Failed to migrate compose to stack');
+                                                } finally {
+                                                    setIsLoading(false);
+                                                }
+                                            }}
+                                            className="p-1.5 hover:bg-purple-500/10 text-purple-500 rounded-lg transition-colors"
+                                            title="Migrate to Stack"
+                                        >
+                                            <Activity size={14} />
+                                        </button>
+                                    </div>
+                                    <div className="w-px h-6 bg-outline/10 mx-1" />
+                                    <button
+                                        onClick={() => handleAction(() => DockerClient.composeDown(file.path))}
+                                        className="p-1.5 hover:bg-red-500/10 text-red-500 rounded-lg transition-colors"
+                                        title="Stop Compose"
                                     >
-                                        <Activity size={14} />
+                                        <Square size={14} fill="currentColor" />
                                     </button>
                                 </div>
-                                <div className="w-px h-6 bg-outline/10 mx-1" />
-                                <button
-                                    onClick={() => handleAction(() => DockerClient.composeDown(file.path))}
-                                    className="p-1.5 hover:bg-red-500/10 text-red-500 rounded-lg transition-colors"
-                                    title="Stop Compose"
-                                >
-                                    <Square size={14} fill="currentColor" />
-                                </button>
-                            </div>
                             </div>
                         ))}
                     </div>
@@ -554,11 +586,10 @@ export default function ComposeScreen() {
                                     <div
                                         key={stack.name}
                                         onClick={() => setSelectedStack(stack)}
-                                        className={`p-4 cursor-pointer transition-colors ${
-                                            selectedStack?.name === stack.name
-                                                ? 'bg-primary/10 border-l-4 border-primary'
-                                                : 'hover:bg-white/[0.02]'
-                                        }`}
+                                        className={`p-4 cursor-pointer transition-colors ${selectedStack?.name === stack.name
+                                            ? 'bg-primary/10 border-l-4 border-primary'
+                                            : 'hover:bg-white/[0.02]'
+                                            }`}
                                     >
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-3">
@@ -835,30 +866,27 @@ export default function ComposeScreen() {
                                             const desired = replicas.length === 2 ? parseInt(replicas[1]) : 0;
                                             const isRunning = running > 0;
                                             const isHealthy = running === desired && desired > 0;
-                                            
+
                                             return (
-                                                <div key={service.id} className={`bg-black/20 border rounded-lg p-3 ${
-                                                    isHealthy ? 'border-green-500/30' : isRunning ? 'border-yellow-500/30' : 'border-outline/10'
-                                                }`}>
+                                                <div key={service.id} className={`bg-black/20 border rounded-lg p-3 ${isHealthy ? 'border-green-500/30' : isRunning ? 'border-yellow-500/30' : 'border-outline/10'
+                                                    }`}>
                                                     <div className="flex items-center justify-between mb-2">
                                                         <div className="flex items-center gap-2">
                                                             <span className="font-bold text-on-surface">{service.name}</span>
                                                             {isRunning && (
-                                                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
-                                                                    isHealthy 
-                                                                        ? 'bg-green-500/20 text-green-500' 
-                                                                        : 'bg-yellow-500/20 text-yellow-500'
-                                                                }`}>
+                                                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${isHealthy
+                                                                    ? 'bg-green-500/20 text-green-500'
+                                                                    : 'bg-yellow-500/20 text-yellow-500'
+                                                                    }`}>
                                                                     {isHealthy ? '✓ Healthy' : '⚠ Partial'}
                                                                 </span>
                                                             )}
                                                         </div>
                                                         <div className="flex items-center gap-2">
-                                                            <span className={`text-xs px-2 py-1 rounded font-bold ${
-                                                                isRunning 
-                                                                    ? 'bg-green-500/20 text-green-500' 
-                                                                    : 'bg-gray-500/20 text-gray-500'
-                                                            }`}>
+                                                            <span className={`text-xs px-2 py-1 rounded font-bold ${isRunning
+                                                                ? 'bg-green-500/20 text-green-500'
+                                                                : 'bg-gray-500/20 text-gray-500'
+                                                                }`}>
                                                                 {service.replicas}
                                                             </span>
                                                         </div>
@@ -897,13 +925,12 @@ export default function ComposeScreen() {
                                             <div key={task.id} className="bg-black/20 border border-outline/10 rounded-lg p-3">
                                                 <div className="flex items-center justify-between mb-2">
                                                     <span className="font-bold text-on-surface text-sm">{task.name}</span>
-                                                    <span className={`text-xs px-2 py-1 rounded ${
-                                                        task.currentState === 'Running' 
-                                                            ? 'bg-green-500/10 text-green-500'
-                                                            : task.currentState === 'Failed'
+                                                    <span className={`text-xs px-2 py-1 rounded ${task.currentState === 'Running'
+                                                        ? 'bg-green-500/10 text-green-500'
+                                                        : task.currentState === 'Failed'
                                                             ? 'bg-red-500/10 text-red-500'
                                                             : 'bg-orange-500/10 text-orange-500'
-                                                    }`}>
+                                                        }`}>
                                                         {task.currentState}
                                                     </span>
                                                 </div>
@@ -934,7 +961,7 @@ export default function ComposeScreen() {
                                     <FileCode size={24} />
                                 </div>
                                 <h2 className="text-xl font-bold">
-                                    {editingFile ? `Edit ${editingFile.name}` : 'Create New Compose Project'}
+                                    {editingFile ? `Edit ${editingFile.name} / ${editingFileName}` : 'Create New Compose Project'}
                                 </h2>
                             </div>
                             <button onClick={() => setIsEditorOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
@@ -1074,7 +1101,7 @@ export default function ComposeScreen() {
                                             onClick={async () => {
                                                 const stackName = prompt('Enter stack name:', projectName || editingFile?.name);
                                                 if (!stackName) return;
-                                                
+
                                                 const filePath = editingFile?.path || `${composeFiles.find(f => f.name === projectName)?.path || ''}`;
                                                 if (!filePath && !editingFile) {
                                                     // Save first if new project

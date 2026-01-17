@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  db:
+    build: .
+    image: docker-manager-postgres:latest
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: ${POSTGRES_DB:-mydatabase}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    deploy:
+      restart_policy:
+        condition: on-failure
+    secrets:
+      - postgres_password
+
+secrets:
+  postgres_password:
+    external: true
+
+volumes:
+  postgres_data:

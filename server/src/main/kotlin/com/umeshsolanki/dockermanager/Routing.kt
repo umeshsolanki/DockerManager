@@ -2,6 +2,7 @@ package com.umeshsolanki.dockermanager
 
 import com.umeshsolanki.dockermanager.auth.authRoutes
 import com.umeshsolanki.dockermanager.cache.cacheRoutes
+import com.umeshsolanki.dockermanager.database.databaseRoutes
 import com.umeshsolanki.dockermanager.docker.composeRoutes
 import com.umeshsolanki.dockermanager.docker.containerRoutes
 import com.umeshsolanki.dockermanager.docker.imageRoutes
@@ -40,6 +41,7 @@ fun Application.configureRouting() {
             analyticsRoutes()
             emailRoutes()
             cacheRoutes()
+            databaseRoutes()
         }
 
         fileRoutes()

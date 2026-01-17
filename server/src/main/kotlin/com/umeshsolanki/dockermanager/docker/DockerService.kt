@@ -41,8 +41,11 @@ object DockerService {
     fun listComposeFiles() = composeService.listComposeFiles()
     fun composeUp(filePath: String) = composeService.composeUp(filePath)
     fun composeDown(filePath: String) = composeService.composeDown(filePath)
+    fun composeBuild(filePath: String) = composeService.composeBuild(filePath)
     fun saveComposeFile(name: String, content: String) = composeService.saveComposeFile(name, content)
+    fun saveProjectFile(projectName: String, fileName: String, content: String) = composeService.saveProjectFile(projectName, fileName, content)
     fun getComposeFileContent(filePath: String) = composeService.getComposeFileContent(filePath)
+    fun getProjectFileContent(projectName: String, fileName: String) = composeService.getProjectFileContent(projectName, fileName)
     fun backupCompose(name: String) = composeService.backupCompose(name)
     fun backupAllCompose() = composeService.backupAllCompose()
     

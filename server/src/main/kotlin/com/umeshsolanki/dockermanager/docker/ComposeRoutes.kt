@@ -25,9 +25,22 @@ fun Route.composeRoutes() {
             call.respond(result)
         }
 
+        post("/build") {
+            val file = call.request.queryParameters["file"] ?: return@post call.respondText("Missing File Path", status = HttpStatusCode.BadRequest)
+            val result = DockerService.composeBuild(file)
+            call.respond(result)
+        }
+
         post("/save") {
             val request = call.receive<SaveComposeRequest>()
             val success = DockerService.saveComposeFile(request.name, request.content)
+            if (success) call.respond(HttpStatusCode.OK)
+            else call.respond(HttpStatusCode.InternalServerError)
+        }
+        
+        post("/save-file") {
+            val request = call.receive<SaveProjectFileRequest>()
+            val success = DockerService.saveProjectFile(request.projectName, request.fileName, request.content)
             if (success) call.respond(HttpStatusCode.OK)
             else call.respond(HttpStatusCode.InternalServerError)
         }
@@ -35,6 +48,13 @@ fun Route.composeRoutes() {
         get("/content") {
             val file = call.request.queryParameters["file"] ?: return@get call.respondText("Missing File Path", status = HttpStatusCode.BadRequest)
             val content = DockerService.getComposeFileContent(file)
+            call.respondText(content)
+        }
+        
+        get("/project-file") {
+            val projectName = call.request.queryParameters["projectName"] ?: return@get call.respondText("Missing Project Name", status = HttpStatusCode.BadRequest)
+            val fileName = call.request.queryParameters["fileName"] ?: return@get call.respondText("Missing File Name", status = HttpStatusCode.BadRequest)
+            val content = DockerService.getProjectFileContent(projectName, fileName)
             call.respondText(content)
         }
 
