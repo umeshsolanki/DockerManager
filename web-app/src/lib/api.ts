@@ -203,6 +203,7 @@ export const DockerClient = {
     // Database Management
     getDatabaseStatus: () => req<any[]>('/database/status', {}, []),
     installPostgres: () => safeReq<any>('/database/postgres/install', { method: 'POST' }),
+    resetPostgresConfig: () => safeReq<any>('/database/postgres/reset', { method: 'POST' }),
 
     getProxySecuritySettings: () => req<SystemConfig | null>('/proxy/security/settings', {}, null),
     updateProxySecuritySettings: (body: Partial<SystemConfig>) => safeReq('/proxy/security/settings', { method: 'POST', body: JSON.stringify(body) }),
@@ -214,6 +215,7 @@ export const DockerClient = {
     stopProxyContainer: () => safeReq('/proxy/container/stop', { method: 'POST' }),
     restartProxyContainer: () => safeReq('/proxy/container/restart', { method: 'POST' }),
     updateProxyComposeConfig: (content: string) => safeReq('/proxy/container/compose', { method: 'POST', body: JSON.stringify({ content }) }),
+    resetProxyComposeConfig: () => safeReq('/proxy/container/compose/reset', { method: 'POST' }),
     getProxyComposeConfig: () => safeReq<{ content: string }>('/proxy/container/compose').then(r => r.content || ''),
     ensureProxyContainer: () => safeReq('/proxy/container/ensure', { method: 'POST' }),
 

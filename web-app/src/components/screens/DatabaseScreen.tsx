@@ -34,7 +34,11 @@ export default function DatabaseScreen() {
     const renderContent = () => {
         switch (activeTab) {
             case 'Redis': return <RedisTab onInstalled={fetchStatuses} />;
-            case 'Postgres': return <PostgresTab onInstalled={fetchStatuses} />;
+            case 'Postgres':
+                return <PostgresTab
+                    onInstalled={fetchStatuses}
+                    status={dbStatuses.find(s => s.type.toLowerCase() === 'postgres')}
+                />;
         }
     };
 
@@ -302,12 +306,12 @@ function RedisTab({ onInstalled }: { onInstalled: () => void }) {
     );
 }
 
-function PostgresTab({ onInstalled }: { onInstalled: () => void }) {
+function PostgresTab({ onInstalled, status }: { onInstalled: () => void, status?: any }) {
     const [isLoading, setIsLoading] = useState(false);
     const [isInstalling, setIsInstalling] = useState(false);
 
     const handleInstallPostgres = async () => {
-        if (!confirm('This will install PostgreSQL in a Docker container using Compose and a Dockerfile. Continue?')) {
+        if (!confirm('This will install PostgreSQL. If it exists, it will be recreated. Continue?')) {
             return;
         }
         setIsInstalling(true);
@@ -327,6 +331,27 @@ function PostgresTab({ onInstalled }: { onInstalled: () => void }) {
         }
     };
 
+    const handleResetPostgres = async () => {
+        if (!confirm('Are you sure you want to RESET PostgreSQL configuration? This will overwrite your docker-compose.yml and Dockerfile with defaults and generate a NEW password. EXISTING DATA will persist in the volume unless explicitly removed.')) {
+            return;
+        }
+        setIsInstalling(true);
+        try {
+            const result = await DockerClient.resetPostgresConfig();
+            if (result.success) {
+                toast.success(result.message || 'PostgreSQL configuration reset successfully');
+                onInstalled();
+            } else {
+                toast.error(result.message || 'Failed to reset PostgreSQL');
+            }
+        } catch (e) {
+            console.error('Failed to reset PostgreSQL', e);
+            toast.error('Failed to reset PostgreSQL');
+        } finally {
+            setIsInstalling(false);
+        }
+    };
+
     return (
         <div className="flex flex-col gap-6">
             <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] p-8 text-center">
@@ -334,6 +359,14 @@ function PostgresTab({ onInstalled }: { onInstalled: () => void }) {
                     <Database className="text-primary" size={40} />
                 </div>
                 <h2 className="text-2xl font-bold mb-2">PostgreSQL Management</h2>
+
+                {status && (
+                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full mb-4 font-bold text-xs ${status.isInstalled ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-surface border border-outline/10 text-on-surface-variant'}`}>
+                        <div className={`w-2 h-2 rounded-full ${status.status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
+                        {status.status ? status.status.toUpperCase() : 'UNKNOWN'}
+                    </div>
+                )}
+
                 <p className="text-on-surface-variant/60 max-w-md mx-auto mb-8">
                     Deploy and manage PostgreSQL instances using Docker Compose. Includes support for custom Dockerfiles and automated secret management.
                 </p>
@@ -344,8 +377,19 @@ function PostgresTab({ onInstalled }: { onInstalled: () => void }) {
                         className="flex items-center gap-2 bg-primary text-on-primary px-8 py-3 rounded-2xl font-bold"
                     >
                         {isInstalling ? <RefreshCw className="animate-spin" size={20} /> : <Plus size={20} />}
-                        Deploy Postgres (Compose + Dockerfile)
+                        {status?.isInstalled ? 'Re-Deploy / Update' : 'Deploy Postgres (Compose)'}
                     </Button>
+
+                    {status?.isInstalled && (
+                        <Button
+                            onClick={handleResetPostgres}
+                            disabled={isInstalling}
+                            className="flex items-center gap-2 bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 px-6 py-3 rounded-2xl font-bold"
+                        >
+                            <RefreshCw size={20} />
+                            Reset Config
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -359,7 +403,7 @@ function PostgresTab({ onInstalled }: { onInstalled: () => void }) {
                             <li>Data persists in "postgres_data" volume</li>
                             <li>Default port is 5432</li>
                             <li>Automated password generation and management</li>
-                            <li>Includes a base Dockerfile for future customization</li>
+                            <li><strong>Reset Config</strong> will regenerate the docker-compose.yml and .env features, but keeps data.</li>
                         </ul>
                     </div>
                 </div>

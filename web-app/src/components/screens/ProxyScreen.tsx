@@ -161,12 +161,11 @@ export default function ProxyScreen() {
                                                     {host.websocketEnabled && <span className="text-[8px] bg-blue-500/10 text-blue-500 px-1 py-0.5 rounded font-bold uppercase">WS</span>}
                                                     {host.allowedIps && host.allowedIps.length > 0 && <span className="text-[8px] bg-amber-500/10 text-amber-500 px-1 py-0.5 rounded font-bold uppercase flex items-center gap-0.5"><ShieldCheck size={8} /> IP RESTRICTED</span>}
                                                     {host.paths && host.paths.length > 0 && (
-                                                        <span className={`text-[8px] px-1 py-0.5 rounded font-bold uppercase flex items-center gap-0.5 ${
-                                                            host.paths.filter(p => p.enabled !== false).length === host.paths.length
+                                                        <span className={`text-[8px] px-1 py-0.5 rounded font-bold uppercase flex items-center gap-0.5 ${host.paths.filter(p => p.enabled !== false).length === host.paths.length
                                                                 ? 'bg-indigo-500/10 text-indigo-500'
                                                                 : 'bg-orange-500/10 text-orange-500'
-                                                        }`}>
-                                                            <Layers size={8} /> 
+                                                            }`}>
+                                                            <Layers size={8} />
                                                             {host.paths.filter(p => p.enabled !== false).length}/{host.paths.length} PATH{host.paths.length > 1 ? 'S' : ''}
                                                         </span>
                                                     )}
@@ -410,9 +409,9 @@ export default function ProxyScreen() {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                             {certs.map(cert => (
-                                <CertificateCard 
-                                    key={cert.id} 
-                                    cert={cert} 
+                                <CertificateCard
+                                    key={cert.id}
+                                    cert={cert}
                                     hosts={hosts}
                                     onRenew={handleRequestSSL}
                                 />
@@ -759,14 +758,14 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
     );
 }
 
-function PathRouteModal({ 
-    onClose, 
-    onSave, 
-    initialPath, 
-    hostId 
-}: { 
-    onClose: () => void, 
-    onSave: (path: PathRoute) => void, 
+function PathRouteModal({
+    onClose,
+    onSave,
+    initialPath,
+    hostId
+}: {
+    onClose: () => void,
+    onSave: (path: PathRoute) => void,
     initialPath?: PathRoute,
     hostId: string
 }) {
@@ -986,9 +985,9 @@ function CertificateCard({ cert, hosts, onRenew }: { cert: SSLCertificate, hosts
     const daysUntilExpiry = expiresAt ? Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
     const isExpiringSoon = daysUntilExpiry !== null && daysUntilExpiry <= 30;
     const isExpired = daysUntilExpiry !== null && daysUntilExpiry <= 0;
-    
+
     const [copiedPath, setCopiedPath] = useState<string | null>(null);
-    
+
     const copyToClipboard = async (text: string, pathType: 'cert' | 'key') => {
         await navigator.clipboard.writeText(text);
         setCopiedPath(pathType);
@@ -1000,25 +999,23 @@ function CertificateCard({ cert, hosts, onRenew }: { cert: SSLCertificate, hosts
             <div className="absolute top-0 right-0 p-3 opacity-5">
                 <FileKey size={32} />
             </div>
-            
+
             {/* Header */}
             <div className="flex items-start justify-between mb-2 relative z-10">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shadow-inner shrink-0 ${
-                        isExpired ? 'bg-red-500/10 text-red-500' :
-                        isExpiringSoon ? 'bg-orange-500/10 text-orange-500' :
-                        'bg-green-500/10 text-green-500'
-                    }`}>
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shadow-inner shrink-0 ${isExpired ? 'bg-red-500/10 text-red-500' :
+                            isExpiringSoon ? 'bg-orange-500/10 text-orange-500' :
+                                'bg-green-500/10 text-green-500'
+                        }`}>
                         <Lock size={14} />
                     </div>
                     <div className="overflow-hidden flex-1 min-w-0">
                         <h3 className="font-bold truncate text-sm pr-2">{cert.domain}</h3>
                         <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                            <span className={`text-[8px] font-black px-1 py-0.5 rounded uppercase ${
-                                isLetsEncrypt 
-                                    ? 'bg-blue-500/10 text-blue-500' 
+                            <span className={`text-[8px] font-black px-1 py-0.5 rounded uppercase ${isLetsEncrypt
+                                    ? 'bg-blue-500/10 text-blue-500'
                                     : 'bg-purple-500/10 text-purple-500'
-                            }`}>
+                                }`}>
                                 {isLetsEncrypt ? 'LE' : 'Custom'}
                             </span>
                             {cert.id !== cert.domain && (
@@ -1136,7 +1133,7 @@ function CertificateCard({ cert, hosts, onRenew }: { cert: SSLCertificate, hosts
                     <div className="flex items-center gap-1.5 text-[8px] text-on-surface-variant">
                         <Calendar size={8} />
                         <span className="font-medium">
-                            {daysUntilExpiry !== null && daysUntilExpiry > 0 
+                            {daysUntilExpiry !== null && daysUntilExpiry > 0
                                 ? `${daysUntilExpiry} days remaining`
                                 : 'Expired'
                             }
@@ -1144,7 +1141,7 @@ function CertificateCard({ cert, hosts, onRenew }: { cert: SSLCertificate, hosts
                     </div>
                 )}
                 {isLetsEncrypt && (
-                    <button 
+                    <button
                         className="text-[9px] font-bold text-primary hover:underline flex items-center gap-0.5"
                         onClick={() => {
                             // Find host using this certificate and request renewal
@@ -1236,6 +1233,27 @@ function ProxyComposeModal({ onClose }: { onClose: () => void }) {
                 </div>
 
                 <div className="p-4 border-t border-outline/10 flex gap-3 bg-surface">
+                    <button
+                        onClick={async () => {
+                            if (confirm('Are you sure you want to reset the proxy configuration to defaults? This will overwrite your current changes.')) {
+                                setIsLoading(true);
+                                const result = await DockerClient.resetProxyComposeConfig();
+                                if (result.success) {
+                                    toast.success('Configuration reset to defaults');
+                                    const data = await DockerClient.getProxyComposeConfig();
+                                    setContent(data);
+                                } else {
+                                    toast.error(result.message || 'Failed to reset configuration');
+                                }
+                                setIsLoading(false);
+                            }
+                        }}
+                        disabled={isSaving || isLoading}
+                        className="mr-auto px-4 py-2 rounded-xl border border-red-500/20 text-red-500 hover:bg-red-500/10 text-sm font-bold transition-all flex items-center gap-2"
+                    >
+                        <RefreshCw size={14} />
+                        Reset Defaults
+                    </button>
                     <button
                         onClick={onClose}
                         className="px-6 py-2 rounded-xl border border-outline/20 hover:bg-white/5 text-sm font-bold text-on-surface transition-all"
