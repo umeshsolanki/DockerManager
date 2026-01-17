@@ -108,5 +108,19 @@ fun Route.fileRoutes() {
                 "Failed to unzip file"
             )
         }
+
+        get("/content") {
+            val path = call.requireQueryParameter("path") ?: return@get
+            val maxBytes = call.request.queryParameters["maxBytes"]?.toLongOrNull() ?: (512 * 1024)
+            val mode = call.request.queryParameters["mode"] ?: "head"
+            val startFromEnd = mode.equals("tail", ignoreCase = true)
+            
+            val content = FileService.readFileContent(path, maxBytes, startFromEnd)
+            if (content != null) {
+                call.respond(mapOf("content" to content))
+            } else {
+                call.respond(HttpStatusCode.NotFound, "File not found or unreadable")
+            }
+        }
     }
 }

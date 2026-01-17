@@ -4,10 +4,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     File, Folder, Download, Upload, Trash2,
     ArrowLeft, Plus, Archive, ExternalLink,
-    MoreVertical, Search, RefreshCcw, Scissors
+    MoreVertical, Search, RefreshCcw, Scissors, Eye, Loader2
 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { FileItem } from '@/lib/types';
+import { Editor } from '@monaco-editor/react';
+import { Modal } from '../ui/Modal';
+import { Button } from '../ui/Buttons';
 
 export default function FileManagerScreen() {
     const [currentPath, setCurrentPath] = useState('');
@@ -15,6 +18,8 @@ export default function FileManagerScreen() {
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+    const [viewingFile, setViewingFile] = useState<{ path: string, content: string, mode: 'head' | 'tail' } | null>(null);
+    const [loadingFile, setLoadingFile] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const loadFiles = async () => {
@@ -93,6 +98,32 @@ export default function FileManagerScreen() {
         const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
+
+    const handleView = async (path: string, mode: 'head' | 'tail' = 'head') => {
+        setLoadingFile(path);
+        try {
+            const content = await DockerClient.getFileContent(path, mode);
+            setViewingFile({ path, content, mode });
+        } catch (e) {
+            console.error(e);
+            alert('Failed to read file');
+        } finally {
+            setLoadingFile(null);
+        }
+    };
+
+    const handleSwitchMode = async (mode: 'head' | 'tail') => {
+        if (!viewingFile) return;
+        setLoadingFile(viewingFile.path);
+        try {
+            const content = await DockerClient.getFileContent(viewingFile.path, mode);
+            setViewingFile({ ...viewingFile, content, mode });
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoadingFile(null);
+        }
     };
 
     const filteredFiles = files.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -255,6 +286,15 @@ export default function FileManagerScreen() {
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                             {!file.isDirectory && (
+                                                <button
+                                                    onClick={() => handleView(file.path)}
+                                                    className="p-2 hover:bg-emerald-500/20 text-emerald-400 rounded-lg transition-all"
+                                                    title="View"
+                                                >
+                                                    {loadingFile === file.path ? <Loader2 className="animate-spin" size={20} /> : <Eye />}
+                                                </button>
+                                            )}
+                                            {!file.isDirectory && (
                                                 <a
                                                     href={DockerClient.downloadFileUrl(file.path)}
                                                     className="p-2 hover:bg-blue-500/20 text-blue-400 rounded-lg transition-all"
@@ -301,6 +341,55 @@ export default function FileManagerScreen() {
                     </table>
                 </div>
             </div>
+            {viewingFile && (
+                <Modal
+                    onClose={() => setViewingFile(null)}
+                    title={viewingFile.path}
+                    description="File Viewer"
+                    icon={<Eye size={24} />}
+                    maxWidth="max-w-4xl"
+                    className="h-[80vh] flex flex-col"
+                >
+                    <div className="flex-1 flex flex-col min-h-0 mt-4 -mx-6 -mb-6 relative">
+                        <div className="absolute top-0 right-0 p-4 z-10 flex gap-2">
+                            <div className="bg-black/50 backdrop-blur rounded-lg p-1 flex gap-1 mr-2 border border-white/10">
+                                <button
+                                    onClick={() => handleSwitchMode('head')}
+                                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${viewingFile.mode === 'head' ? 'bg-blue-600 text-white' : 'hover:bg-white/10 text-gray-400'}`}
+                                >
+                                    HEAD
+                                </button>
+                                <button
+                                    onClick={() => handleSwitchMode('tail')}
+                                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${viewingFile.mode === 'tail' ? 'bg-blue-600 text-white' : 'hover:bg-white/10 text-gray-400'}`}
+                                >
+                                    TAIL
+                                </button>
+                            </div>
+                            <Button
+                                variant="primary"
+                                className="bg-black/50 backdrop-blur"
+                                onClick={() => setViewingFile(null)}
+                            >
+                                Close Viewer
+                            </Button>
+                        </div>
+                        <Editor
+                            height="100%"
+                            defaultLanguage={viewingFile.path.endsWith('.json') ? 'json' : viewingFile.path.endsWith('.yml') || viewingFile.path.endsWith('.yaml') ? 'yaml' : 'plaintext'}
+                            theme="vs-dark"
+                            value={viewingFile.content}
+                            options={{
+                                readOnly: true,
+                                minimap: { enabled: false },
+                                fontSize: 13,
+                                fontFamily: "'JetBrains Mono', monospace",
+                                scrollBeyondLastLine: false,
+                            }}
+                        />
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 }

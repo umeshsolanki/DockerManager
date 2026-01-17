@@ -147,6 +147,8 @@ export const DockerClient = {
     removeVolume: (name: string) => apiFetch(`/volumes/${name}`, { method: 'DELETE' }),
     pruneVolumes: () => apiFetch('/volumes/prune', { method: 'POST' }),
     backupVolume: (name: string) => req<BackupResult | null>(`/volumes/${name}/backup`, { method: 'POST' }, null),
+    listVolumeFiles: (name: string, path = "") => req<FileItem[]>(`/volumes/${name}/files?path=${encodeURIComponent(path)}`, {}, []),
+    readVolumeFile: (name: string, path: string) => req<{ content: string }>(`/volumes/${name}/files/content?path=${encodeURIComponent(path)}`, {}, { content: '' }).then(r => r.content),
 
     // --- System, Logs, Security ---
     getBatteryStatus: () => req<BatteryStatus | null>('/system/battery', {}, null),
@@ -253,6 +255,7 @@ export const DockerClient = {
     testJamesEmail: (b: EmailTestRequest) => req<EmailTestResult>('/emails/james/test', { method: 'POST', body: JSON.stringify(b) }, { success: false, message: 'Network error', logs: [] }),
 
     // --- File Manager ---
+    getFileContent: (path: string, mode: 'head' | 'tail' = 'head', maxBytes = 512 * 1024) => req<{ content: string }>(`/files/content?path=${encodeURIComponent(path)}&mode=${mode}&maxBytes=${maxBytes}`, {}, { content: '' }).then(r => r.content),
     listFiles: (path = "") => req<FileItem[]>(`/files/list?path=${encodeURIComponent(path)}`, {}, []),
     deleteFile: (path: string) => apiFetch(`/files/delete?path=${encodeURIComponent(path)}`, { method: 'DELETE' }).then(r => r.ok),
     createDirectory: (path: string) => apiFetch(`/files/mkdir?path=${encodeURIComponent(path)}`, { method: 'POST' }).then(r => r.ok),

@@ -1,6 +1,7 @@
 package com.umeshsolanki.dockermanager.docker
 
 import com.umeshsolanki.dockermanager.*
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.response.respond
 import io.ktor.server.routing.*
 
@@ -36,6 +37,23 @@ fun Route.volumeRoutes() {
                 "Volume removed",
                 "Failed to remove volume"
             )
+        }
+
+        get("/{name}/files") {
+            val name = call.requireParameter("name") ?: return@get
+            val path = call.request.queryParameters["path"] ?: ""
+            call.respond(DockerService.listVolumeFiles(name, path))
+        }
+
+        get("/{name}/files/content") {
+            val name = call.requireParameter("name") ?: return@get
+            val path = call.requireQueryParameter("path") ?: return@get
+            val content = DockerService.readVolumeFile(name, path)
+            if (content != null) {
+                call.respond(mapOf("content" to content))
+            } else {
+                call.respond(HttpStatusCode.NotFound, "File not found or unreadable")
+            }
         }
     }
 }

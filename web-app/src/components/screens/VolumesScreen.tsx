@@ -1,17 +1,19 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { RefreshCw, Trash, HardDrive, Download, Info, CheckCircle2 } from 'lucide-react';
+import { RefreshCw, Trash, HardDrive, Download, Info, CheckCircle2, Folder, FileText, ChevronLeft, ArrowUp, Loader2 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { DockerVolume, VolumeDetails, BackupResult } from '@/lib/types';
+import { DockerVolume, VolumeDetails, BackupResult, FileItem } from '@/lib/types';
 import { SearchInput } from '../ui/SearchInput';
 import { ActionIconButton, Button } from '../ui/Buttons';
 import { Modal } from '../ui/Modal';
 import { useActionTrigger } from '@/hooks/useActionTrigger';
+import { Editor } from '@monaco-editor/react';
 
 export default function VolumesScreen() {
     const [volumes, setVolumes] = useState<DockerVolume[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [inspectingVolume, setInspectingVolume] = useState<VolumeDetails | null>(null);
+    const [browsingVolume, setBrowsingVolume] = useState<string | null>(null);
     const [backupResult, setBackupResult] = useState<BackupResult | null>(null);
     const { trigger } = useActionTrigger();
 
@@ -118,6 +120,12 @@ export default function VolumesScreen() {
                                     title="Backup"
                                 />
                                 <ActionIconButton
+                                    onClick={() => setBrowsingVolume(volume.name)}
+                                    icon={<Folder />}
+                                    color="yellow"
+                                    title="Browse Files"
+                                />
+                                <ActionIconButton
                                     onClick={() => handleAction(() => DockerClient.removeVolume(volume.name))}
                                     icon={<Trash />}
                                     color="red"
@@ -140,6 +148,12 @@ export default function VolumesScreen() {
                 <BackupModal
                     result={backupResult}
                     onClose={() => setBackupResult(null)}
+                />
+            )}
+            {browsingVolume && (
+                <VolumeBrowserModal
+                    volumeName={browsingVolume}
+                    onClose={() => setBrowsingVolume(null)}
                 />
             )}
         </div>
@@ -219,4 +233,156 @@ function BackupModal({ result, onClose }: { result: BackupResult; onClose: () =>
             </div>
         </Modal>
     );
+}
+
+function VolumeBrowserModal({ volumeName, onClose }: { volumeName: string; onClose: () => void }) {
+    const [path, setPath] = useState('');
+    const [files, setFiles] = useState<FileItem[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [viewingFile, setViewingFile] = useState<{ path: string, content: string, mode: 'head' | 'tail' } | null>(null);
+    const [loadingFile, setLoadingFile] = useState<string | null>(null);
+
+    const fetchFiles = async (currentPath: string) => {
+        setIsLoading(true);
+        try {
+            const items = await DockerClient.listVolumeFiles(volumeName, currentPath);
+            setFiles(items.sort((a, b) => {
+                if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
+                return a.isDirectory ? -1 : 1;
+            }));
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchFiles(path);
+    }, [path]);
+
+    const handleUp = () => {
+        if (!path) return;
+        const parts = path.split('/');
+        parts.pop();
+        setPath(parts.join('/'));
+    };
+
+    const handleFileClick = async (file: FileItem) => {
+        if (file.isDirectory) {
+            setPath(file.path);
+        } else {
+            setLoadingFile(file.path);
+            try {
+                const content = await DockerClient.readVolumeFile(volumeName, file.path);
+                setViewingFile({ path: file.path, content: content || '', mode: 'head' });
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoadingFile(null);
+            }
+        }
+    };
+
+    return (
+        <Modal
+            onClose={onClose}
+            title={viewingFile ? viewingFile.path : (path ? `/${path}` : '/')}
+            description={`Browsing Volume: ${volumeName}`}
+            icon={<Folder size={24} />}
+            maxWidth="max-w-4xl"
+            className="h-[80vh] flex flex-col"
+        >
+            {viewingFile ? (
+                <div className="flex-1 flex flex-col min-h-0 mt-4 -mx-6 -mb-6 relative">
+                    <div className="absolute top-0 right-0 p-4 z-10 flex gap-2">
+                        <Button
+                            variant="primary"
+                            className="bg-black/50 backdrop-blur"
+                            onClick={() => setViewingFile(null)}
+                        >
+                            Close Viewer
+                        </Button>
+                    </div>
+                    <Editor
+                        height="100%"
+                        defaultLanguage={viewingFile.path.endsWith('.json') ? 'json' : viewingFile.path.endsWith('.yml') || viewingFile.path.endsWith('.yaml') ? 'yaml' : 'plaintext'}
+                        theme="vs-dark"
+                        value={viewingFile.content}
+                        options={{
+                            readOnly: true,
+                            minimap: { enabled: false },
+                            fontSize: 13,
+                            fontFamily: "'JetBrains Mono', monospace",
+                            scrollBeyondLastLine: false,
+                        }}
+                    />
+                </div>
+            ) : (
+                <div className="flex-1 flex flex-col min-h-0 mt-4">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Button
+                            variant="surface"
+                            onClick={handleUp}
+                            disabled={!path}
+                            className="h-9 w-9 p-0 flex items-center justify-center shrink-0"
+                        >
+                            <ArrowUp size={16} />
+                        </Button>
+                        <div className="flex-1 bg-black/20 rounded-lg px-3 py-2 font-mono text-xs text-on-surface-variant truncate border border-outline/5">
+                            /{path}
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar -mx-2 px-2">
+                        {isLoading ? (
+                            <div className="flex justify-center p-10">
+                                <Loader2 className="animate-spin text-primary" size={24} />
+                            </div>
+                        ) : files.length === 0 ? (
+                            <div className="text-center py-10 text-on-surface-variant opacity-50 italic text-sm">
+                                Empty directory
+                            </div>
+                        ) : (
+                            <div className="space-y-1">
+                                {files.map((file) => (
+                                    <button
+                                        key={file.path}
+                                        onClick={() => handleFileClick(file)}
+                                        className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-all text-left group"
+                                    >
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${file.isDirectory ? 'bg-primary/10 text-primary' : 'bg-surface-variant/20 text-on-surface-variant'}`}>
+                                            {file.isDirectory ? <Folder size={16} /> : <FileText size={16} />}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-sm font-bold text-on-surface truncate">{file.name}</div>
+                                            <div className="text-[10px] text-on-surface-variant font-mono">
+                                                {file.isDirectory ? 'Directory' : formatBytes(file.size)} • {new Date(file.lastModified).toLocaleString()}
+                                            </div>
+                                        </div>
+                                        {!file.isDirectory && (
+                                            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-1 rounded">
+                                                    {loadingFile === file.path ? 'LOADING...' : 'VIEW'}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </Modal>
+    );
+}
+
+function formatBytes(bytes: number, decimals = 2) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }

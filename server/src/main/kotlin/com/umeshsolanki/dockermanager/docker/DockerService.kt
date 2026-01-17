@@ -76,6 +76,8 @@ object DockerService {
     fun pruneVolumes() = volumeService.pruneVolumes()
     fun inspectVolume(name: String) = volumeService.inspectVolume(name)
     fun backupVolume(name: String) = volumeService.backupVolume(name)
+    fun listVolumeFiles(volumeName: String, subPath: String) = volumeService.listFiles(volumeName, subPath)
+    fun readVolumeFile(volumeName: String, path: String) = volumeService.readFile(volumeName, path)
 
     fun listSystemLogs(subPath: String = "") = logService.listSystemLogs(subPath)
     fun getSystemLogContent(path: String, tail: Int = 100, filter: String? = null, since: String? = null, until: String? = null) = 

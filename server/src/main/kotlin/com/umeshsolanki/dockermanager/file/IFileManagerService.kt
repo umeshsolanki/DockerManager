@@ -12,4 +12,5 @@ interface IFileManagerService {
     fun unzip(zipPath: String, targetPath: String): Boolean
     fun getFile(path: String): File?
     fun saveFile(path: String, inputStream: InputStream): Boolean
+    fun readFileContent(path: String, maxBytes: Long = 512 * 1024, startFromEnd: Boolean = false): String?
 }

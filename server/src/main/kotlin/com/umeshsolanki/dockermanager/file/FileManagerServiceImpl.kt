@@ -157,6 +157,31 @@ class FileManagerServiceImpl : IFileManagerService {
             false
         }
     }
+
+    override fun readFileContent(path: String, maxBytes: Long, startFromEnd: Boolean): String? {
+        return try {
+            val file = resolvePath(path)
+            if (!file.exists() || !file.isFile) return null
+            
+            val length = file.length()
+            if (length == 0L) return ""
+            
+            val bytesToRead = java.lang.Math.min(length, maxBytes).toInt()
+            val byteArray = ByteArray(bytesToRead)
+            
+            java.io.RandomAccessFile(file, "r").use { raf ->
+                if (startFromEnd && length > maxBytes) {
+                    raf.seek(length - maxBytes)
+                }
+                raf.readFully(byteArray)
+            }
+            
+            String(byteArray, Charsets.UTF_8)
+        } catch (e: Exception) {
+            logger.error("Error reading file content $path", e)
+            null
+        }
+    }
 }
 
 // Service object for easy access
@@ -170,4 +195,5 @@ object FileService {
     fun unzipFile(zipPath: String, targetPath: String) = service.unzip(zipPath, targetPath)
     fun getFile(path: String) = service.getFile(path)
     fun saveFile(path: String, inputStream: InputStream) = service.saveFile(path, inputStream)
+    fun readFileContent(path: String, maxBytes: Long = 512 * 1024, startFromEnd: Boolean = false) = service.readFileContent(path, maxBytes, startFromEnd)
 }
