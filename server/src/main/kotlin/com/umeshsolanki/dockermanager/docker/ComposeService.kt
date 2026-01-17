@@ -240,22 +240,39 @@ class ComposeServiceImpl : IComposeService {
     override fun composeBuild(filePath: String): ComposeResult {
         val file = File(filePath)
         if (!file.exists()) return ComposeResult(false, "File not found: $filePath")
+        val projectDir = file.parentFile
+        val projectName = projectDir.name.lowercase()
 
         return try {
-            val composeCmd = AppConfig.dockerComposeCommand
-            val process = if (composeCmd.contains("docker compose") || composeCmd == "docker compose") {
-                ProcessBuilder("docker", "compose", "-f", filePath, "build")
-            } else {
-                ProcessBuilder(composeCmd, "-f", filePath, "build")
-            }
-                .directory(file.parentFile)
-                .redirectErrorStream(true)
-                .start()
-            
-            val output = process.inputStream.bufferedReader().readText()
-            val success = process.waitFor(20, TimeUnit.MINUTES) && process.exitValue() == 0
+            val dockerfile = File(projectDir, "Dockerfile")
+            if (dockerfile.exists()) {
+                 // Build using Dockerfile with buildx
+                val process = ProcessBuilder("docker", "buildx", "build", "--load", "-t", "$projectName:latest", ".")
+                    .directory(projectDir)
+                    .redirectErrorStream(true)
+                    .start()
+                
+                val output = process.inputStream.bufferedReader().readText()
+                val success = process.waitFor(20, TimeUnit.MINUTES) && process.exitValue() == 0
 
-            ComposeResult(success, output.ifBlank { if (success) "Build Successful" else "Failed to build" })
+                ComposeResult(success, output.ifBlank { if (success) "Image Built Successfully: $projectName:latest" else "Failed to build image" })
+            } else {
+                // Build using docker-compose
+                val composeCmd = AppConfig.dockerComposeCommand
+                val process = if (composeCmd.contains("docker compose") || composeCmd == "docker compose") {
+                    ProcessBuilder("docker", "compose", "-f", filePath, "build")
+                } else {
+                    ProcessBuilder(composeCmd, "-f", filePath, "build")
+                }
+                    .directory(projectDir)
+                    .redirectErrorStream(true)
+                    .start()
+                
+                val output = process.inputStream.bufferedReader().readText()
+                val success = process.waitFor(20, TimeUnit.MINUTES) && process.exitValue() == 0
+
+                ComposeResult(success, output.ifBlank { if (success) "Build Successful" else "Failed to build" })
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             ComposeResult(false, "Error: ${e.message ?: "Unknown error"}")

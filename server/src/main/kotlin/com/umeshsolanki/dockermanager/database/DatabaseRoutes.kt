@@ -66,60 +66,38 @@ fun Route.databaseRoutes() {
         post("/postgres/install") {
             try {
                 val password = generateSecurePassword()
-                val isSwarmMode = try {
-                    val cmd = "${AppConfig.dockerCommand} info --format '{{.Swarm.LocalNodeState}}'"
-                    val result = executeCommand(cmd)
-                    val swarmState = result.output.trim()
-                    result.exitCode == 0 && swarmState == "active"
-                } catch (e: Exception) {
-                    false
-                }
-
-                val secretName = "postgres_password"
-                var passwordStored = false
-                var secretError: String? = null
-
-                if (isSwarmMode) {
-                    try {
-                        val existingSecrets = DockerService.listSecrets()
-                        val existingSecret = existingSecrets.find { it.name == secretName }
-                        if (existingSecret != null) {
-                            DockerService.removeSecret(existingSecret.id)
-                        }
-                        passwordStored = DockerService.createSecret(secretName, password)
-                        if (!passwordStored) {
-                            secretError = "Failed to create Docker secret"
-                        }
-                    } catch (e: Exception) {
-                        passwordStored = false
-                        secretError = e.message
-                    }
-                }
-
                 val postgresDir = File(AppConfig.composeProjDir, "postgres")
                 postgresDir.mkdirs()
 
-                // Load compose template
-                val composeContent = if (passwordStored) {
-                    ResourceLoader.loadResourceOrThrow("templates/postgres/docker-compose-swarm.yml")
-                } else {
-                    ResourceLoader.loadResourceOrThrow("templates/postgres/docker-compose.yml")
-                }
+                // Load compose template (Always use standard for initial Compose setup)
+                val composeContent = ResourceLoader.loadResourceOrThrow("templates/postgres/docker-compose.yml")
                 
                 // Load Dockerfile template
                 val dockerfileContent = ResourceLoader.loadResourceOrThrow("templates/postgres/Dockerfile")
 
-                // Create .env file if not using Docker secrets
-                if (!passwordStored) {
-                    val envFile = File(postgresDir, ".env")
-                    envFile.writeText("POSTGRES_PASSWORD=$password\nPOSTGRES_USER=admin\nPOSTGRES_DB=mydatabase\nPOSTGRES_PORT=5432\n")
-                }
+                // Create .env file
+                val envFile = File(postgresDir, ".env")
+                envFile.writeText("POSTGRES_PASSWORD=$password\nPOSTGRES_USER=admin\nPOSTGRES_DB=mydatabase\nPOSTGRES_PORT=5432\n")
 
                 val composeFile = File(postgresDir, "docker-compose.yml")
                 composeFile.writeText(composeContent)
                 
                 val dockerFile = File(postgresDir, "Dockerfile")
                 dockerFile.writeText(dockerfileContent)
+
+                // Build Postgres Image explicitly (to ensure local image is available and avoid pull errors)
+                val buildResult = DockerService.composeBuild(composeFile.absolutePath)
+                if (!buildResult.success) {
+                     call.respond(
+                        HttpStatusCode.InternalServerError, PostgresInstallResult(
+                            success = false,
+                            message = "Failed to build Postgres image: ${buildResult.message}",
+                            composeFile = composeFile.absolutePath,
+                            errorOutput = buildResult.message
+                        )
+                    )
+                    return@post
+                }
 
                 // Start Postgres
                 val result = DockerService.composeUp(composeFile.absolutePath)
@@ -142,7 +120,7 @@ fun Route.databaseRoutes() {
                         message = "Postgres installed and started successfully.",
                         composeFile = composeFile.absolutePath,
                         passwordSet = true,
-                        usingDockerSecret = passwordStored
+                        usingDockerSecret = false
                     )
                 )
             } catch (e: Exception) {
@@ -157,6 +135,50 @@ fun Route.databaseRoutes() {
             }
         }
         
+        post("/postgres/reset") {
+             // Reset is effectively a re-install
+             try {
+                val password = generateSecurePassword()
+                val postgresDir = File(AppConfig.composeProjDir, "postgres")
+                postgresDir.mkdirs()
+
+                // Load compose template
+                val composeContent = ResourceLoader.loadResourceOrThrow("templates/postgres/docker-compose.yml")
+                
+                // Load Dockerfile template
+                val dockerfileContent = ResourceLoader.loadResourceOrThrow("templates/postgres/Dockerfile")
+
+                // Create .env file
+                val envFile = File(postgresDir, ".env")
+                envFile.writeText("POSTGRES_PASSWORD=$password\nPOSTGRES_USER=admin\nPOSTGRES_DB=mydatabase\nPOSTGRES_PORT=5432\n")
+
+                val composeFile = File(postgresDir, "docker-compose.yml")
+                composeFile.writeText(composeContent)
+                
+                val dockerFile = File(postgresDir, "Dockerfile")
+                dockerFile.writeText(dockerfileContent)
+
+                call.respond(
+                    HttpStatusCode.OK, PostgresInstallResult(
+                        success = true,
+                        message = "Postgres configuration reset to defaults. You may need to restart the container.",
+                        composeFile = composeFile.absolutePath,
+                        passwordSet = true,
+                        usingDockerSecret = false
+                    )
+                )
+             } catch (e: Exception) {
+                 call.respond(
+                    HttpStatusCode.InternalServerError, PostgresInstallResult(
+                        success = false,
+                        message = "Failed to reset Postgres: ${e.message}",
+                        errorType = e.javaClass.simpleName,
+                        stackTrace = e.stackTraceToString()
+                    )
+                )
+             }
+        }
+
         post("/redis/install") {
             // Forward to the existing cache install for now or duplicate the logic
             // To keep it simple, I'll just duplicate the logic here or call the handler

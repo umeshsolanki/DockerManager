@@ -45,6 +45,7 @@ interface IProxyService {
     fun ensureProxyContainerExists(): Boolean
     fun getComposeConfig(): String
     fun updateComposeConfig(content: String): Pair<Boolean, String>
+    fun resetComposeConfig(): Pair<Boolean, String>
     fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null)
     fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>)
 
@@ -280,7 +281,7 @@ class ProxyServiceImpl(
     override fun listHosts(): List<ProxyHost> = loadHosts()
 
     private fun validatePathRoute(pathRoute: PathRoute): Pair<Boolean, String> {
-        if (pathRoute.path.isBlank()) {
+        if (pathRoute.path.isBlank ()) {
             return false to "Path cannot be empty"
         }
         if (pathRoute.target.isBlank()) {
@@ -322,9 +323,15 @@ class ProxyServiceImpl(
             if (!host.domain.matches(Regex("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"))) {
                 return false to "Invalid domain format"
             }
+            if (host.domain.any { it.isISOControl() }) {
+                return false to "Domain contains invalid characters"
+            }
 
             // Validate upstream/target URL format (upstream defaults to target if not provided)
             val effectiveUpstream = host.effectiveUpstream
+            if (effectiveUpstream.any { it.isISOControl() }) {
+                return false to "Upstream URL contains invalid characters"
+            }
             try {
                 val upstreamUri = java.net.URI(effectiveUpstream)
                 if (upstreamUri.scheme == null || upstreamUri.host == null) {
@@ -334,6 +341,9 @@ class ProxyServiceImpl(
                 return false to "Invalid upstream URL format: ${e.message}"
             }
 
+            if (host.target.any { it.isISOControl() }) {
+                 return false to "Target URL contains invalid characters"
+            }
             try {
                 val targetUri = java.net.URI(host.target)
                 if (targetUri.scheme == null || targetUri.host == null) {
@@ -410,13 +420,19 @@ class ProxyServiceImpl(
                 return false to "Target is required"
             }
 
-            // Validate domain format (basic check)
+            // Validate domain format (Strict check including avoiding control chars)
             if (!host.domain.matches(Regex("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"))) {
                 return false to "Invalid domain format"
             }
+            if (host.domain.any { it.isISOControl() }) {
+                return false to "Domain contains invalid characters"
+            }
 
-            // Validate upstream/target URL format (upstream defaults to target if not provided)
+            // Validate upstream/target URL format (Prevent CRLF Injection)
             val effectiveUpstream = host.effectiveUpstream
+            if (effectiveUpstream.any { it.isISOControl() }) {
+                return false to "Upstream URL contains invalid characters"
+            }
             try {
                 val upstreamUri = java.net.URI(effectiveUpstream)
                 if (upstreamUri.scheme == null || upstreamUri.host == null) {
@@ -426,6 +442,9 @@ class ProxyServiceImpl(
                 return false to "Invalid upstream URL format: ${e.message}"
             }
 
+            if (host.target.any { it.isISOControl() }) {
+                 return false to "Target URL contains invalid characters"
+            }
             try {
                 val targetUri = java.net.URI(host.target)
                 if (targetUri.scheme == null || targetUri.host == null) {
@@ -1092,6 +1111,24 @@ class ProxyServiceImpl(
         return ensureComposeFile().readText()
     }
 
+
+
+    override fun resetComposeConfig(): Pair<Boolean, String> {
+        return try {
+            val composeFile = File(proxyDockerComposeDir, "docker-compose.yml")
+            val dockerfile = File(proxyDockerComposeDir, "Dockerfile.proxy")
+            
+            logger.info("Resetting proxy compose configuration...")
+            composeFile.writeText(getDefaultComposeConfig())
+            dockerfile.writeText(getDefaultDockerfileConfig())
+            
+            true to "Reset compose configuration to defaults"
+        } catch (e: Exception) {
+            logger.error("Error resetting compose config", e)
+            false to (e.message ?: "Unknown error")
+        }
+    }
+
     private fun getDefaultComposeConfig(): String {
         val template = ResourceLoader.loadResourceOrThrow("templates/proxy/docker-compose.yml")
         return ResourceLoader.replacePlaceholders(
@@ -1314,6 +1351,7 @@ object ProxyService {
     fun ensureProxyContainerExists() = service.ensureProxyContainerExists()
     fun getComposeConfig() = service.getComposeConfig()
     fun updateComposeConfig(content: String) = service.updateComposeConfig(content)
+    fun resetComposeConfig() = service.resetComposeConfig()
     fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null) =
         service.updateStatsSettings(active, intervalMs, filterLocalIps)
 

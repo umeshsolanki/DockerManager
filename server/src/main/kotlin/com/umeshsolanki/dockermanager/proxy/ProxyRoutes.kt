@@ -242,6 +242,14 @@ fun Route.proxyRoutes() {
             call.respond(mapOf("content" to ProxyService.getComposeConfig()))
         }
 
+        post("/container/compose/reset") {
+            val result = ProxyService.resetComposeConfig()
+            call.respond(
+                 if (result.first) HttpStatusCode.OK else HttpStatusCode.InternalServerError,
+                 ProxyActionResult(result.first, result.second)
+            )
+        }
+        
         post("/container/compose") {
             val request = call.receive<Map<String, String>>()
             val content = request["content"] ?: return@post call.respond(HttpStatusCode.BadRequest)
