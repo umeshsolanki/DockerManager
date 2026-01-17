@@ -10,7 +10,7 @@ import { DockerClient } from '@/lib/api';
 import { FileItem } from '@/lib/types';
 import { Editor } from '@monaco-editor/react';
 import { Modal } from '../ui/Modal';
-import { Button } from '../ui/Buttons';
+import { ActionIconButton, Button } from '../ui/Buttons';
 
 export default function FileManagerScreen() {
     const [currentPath, setCurrentPath] = useState('');
@@ -129,209 +129,193 @@ export default function FileManagerScreen() {
     const filteredFiles = files.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
     return (
-        <div className="flex flex-col h-full gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Header Area */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight text-white">File Manager</h1>
-                    <p className="text-gray-400 mt-1">Manage, upload and download files on the server</p>
-                </div>
-
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all font-medium"
-                    >
-                        <Upload className="text-lg" />
-                        <span>Upload</span>
-                    </button>
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleUpload}
-                        className="hidden"
-                        multiple
-                    />
-
-                    <button
-                        onClick={handleMkdir}
-                        className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg transition-all font-medium border border-white/10"
-                    >
-                        <Plus className="text-lg" />
-                        <span>New Folder</span>
-                    </button>
-
-                    <button
-                        onClick={loadFiles}
-                        className="p-2.5 bg-white/5 hover:bg-white/10 text-gray-300 rounded-lg transition-all border border-white/10"
-                        title="Refresh"
-                    >
-                        <RefreshCcw className={loading ? 'animate-spin' : ''} />
-                    </button>
-                </div>
-            </div>
-
-            {/* Path & Search Bar */}
-            <div className="flex items-center gap-4 bg-white/5 p-2 rounded-xl border border-white/10 backdrop-blur-sm">
-                <div className="flex items-center gap-1 flex-1 px-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
+        <div className="flex flex-col h-full gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Toolbar & Breadcrumbs */}
+            <div className="flex items-center justify-between gap-4 bg-surface p-2 rounded-xl border border-outline/10 h-14 shrink-0">
+                {/* Breadcrumb Path */}
+                <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto whitespace-nowrap scrollbar-hide px-2">
                     <button
                         onClick={() => setCurrentPath('')}
-                        className="p-1.5 hover:bg-white/10 rounded text-blue-400 font-medium"
+                        className={`p-1.5 px-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${!currentPath ? 'bg-primary text-on-primary' : 'hover:bg-white/10 text-on-surface-variant'}`}
                     >
                         root
                     </button>
-                    {currentPath.split('/').filter(p => p.length > 0).map((part, idx, arr) => (
-                        <React.Fragment key={idx}>
-                            <span className="text-gray-600">/</span>
+                    {currentPath.split('/').filter(p => p).map((part, idx, arr) => (
+                        <div key={idx} className="flex items-center">
+                            <span className="text-outline/20 mx-1">/</span>
                             <button
                                 onClick={() => setCurrentPath(arr.slice(0, idx + 1).join('/'))}
-                                className="p-1.5 hover:bg-white/10 rounded text-blue-400 font-medium"
+                                className="p-1.5 px-3 hover:bg-white/10 rounded-lg text-sm font-medium text-on-surface transition-all flex items-center gap-2"
                             >
+                                <Folder size={14} className="opacity-50" />
                                 {part}
                             </button>
-                        </React.Fragment>
+                        </div>
                     ))}
-                    {currentPath && (
-                        <button
-                            onClick={handleBackClick}
-                            className="ml-2 p-1.5 hover:bg-white/10 rounded text-gray-400"
-                            title="Go Back"
-                        >
-                            <ArrowLeft />
-                        </button>
-                    )}
                 </div>
-                <div className="relative w-64 md:w-80">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input
-                        type="text"
-                        placeholder="Search files..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 bg-black/40 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+
+                {/* Actions & Search */}
+                <div className="flex items-center gap-2 shrink-0 px-2 border-l border-outline/10 pl-4">
+                    <div className="relative w-48 focus-within:w-64 transition-all mr-2">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant w-3.5 h-3.5" />
+                        <input
+                            type="text"
+                            placeholder="Search files..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-8 pr-3 py-1.5 bg-black/20 border border-outline/10 rounded-lg text-xs text-on-surface focus:outline-none focus:border-primary/50 transition-all font-medium placeholder:text-outline/30"
+                        />
+                    </div>
+
+                    <ActionIconButton
+                        onClick={() => fileInputRef.current?.click()}
+                        icon={<Upload size={16} />}
+                        title="Upload"
+                        color="blue"
+                    />
+                    <input type="file" ref={fileInputRef} onChange={handleUpload} className="hidden" multiple />
+
+                    <ActionIconButton
+                        onClick={handleMkdir}
+                        icon={<Plus size={16} />}
+                        title="New Folder"
+                        color="green"
+                    />
+
+                    <ActionIconButton
+                        onClick={loadFiles}
+                        icon={<RefreshCcw size={16} className={loading ? 'animate-spin' : ''} />}
+                        title="Refresh"
                     />
                 </div>
             </div>
 
             {/* File List */}
-            <div className="flex-1 bg-white/5 rounded-2xl border border-white/11 overflow-y-auto backdrop-blur-md custom-scrollbar">
+            <div className="flex-1 bg-surface border border-outline/10 rounded-xl overflow-hidden flex flex-col">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="bg-white/5 text-gray-400 text-xs font-semibold uppercase tracking-wider">
-                                <th className="px-6 py-4 w-12">
-                                    <input type="checkbox" className="rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-600 focus:ring-offset-gray-900" />
+                            <tr className="bg-surface-variant/50 border-b border-outline/10 text-on-surface-variant text-[10px] font-bold uppercase tracking-wider">
+                                <th className="px-4 py-3 w-10 text-center">
+                                    <input type="checkbox" className="rounded border-outline/20 bg-black/20 text-primary focus:ring-primary focus:ring-offset-0" />
                                 </th>
-                                <th className="px-6 py-4">Name</th>
-                                <th className="px-4 py-4 w-24">Size</th>
-                                <th className="px-4 py-4 w-40">Modified</th>
-                                <th className="px-6 py-4 w-24 text-right">Actions</th>
+                                <th className="px-3 py-3">Name</th>
+                                <th className="px-3 py-3 w-28">Size</th>
+                                <th className="px-3 py-3 w-40">Modified</th>
+                                <th className="px-4 py-3 w-32 text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-white/5">
+                        <tbody className="divide-y divide-outline/5">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                                        <div className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-blue-500 border-t-transparent mb-4"></div>
-                                        <p>Scanning files...</p>
+                                    <td colSpan={5} className="px-6 py-20 text-center text-on-surface-variant">
+                                        <div className="flex flex-col items-center gap-4">
+                                            <Loader2 className="animate-spin text-primary" size={32} />
+                                            <p className="text-sm font-medium opacity-50">Scanning directory...</p>
+                                        </div>
                                     </td>
                                 </tr>
                             ) : filteredFiles.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-20 text-center text-gray-500">
-                                        <div className="flex flex-col items-center">
-                                            <Folder className="text-5xl mb-4 opacity-20" />
-                                            <p className="text-lg font-medium text-gray-400">Empty directory</p>
-                                            <p className="text-sm">No files or folders found here.</p>
+                                    <td colSpan={5} className="px-6 py-32 text-center text-on-surface-variant">
+                                        <div className="flex flex-col items-center opacity-50">
+                                            <Folder className="text-6xl mb-4 opacity-20" />
+                                            <p className="text-lg font-medium">Empty directory</p>
+                                            <p className="text-xs mt-1">No files found in this location</p>
                                         </div>
                                     </td>
                                 </tr>
                             ) : filteredFiles.map((file) => (
                                 <tr
                                     key={file.path}
-                                    className="group hover:bg-white/5 transition-colors cursor-default"
+                                    className={`group hover:bg-white/[0.02] transition-colors cursor-default ${selectedFiles.has(file.path) ? 'bg-primary/5' : ''}`}
                                     onDoubleClick={() => file.isDirectory && handleFolderClick(file.path)}
                                 >
-                                    <td className="px-6 py-4">
-                                        <input type="checkbox" className="rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-600 focus:ring-offset-gray-900" />
+                                    <td className="px-4 py-2 text-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedFiles.has(file.path)}
+                                            onChange={(e) => {
+                                                const newSet = new Set(selectedFiles);
+                                                if (e.target.checked) newSet.add(file.path);
+                                                else newSet.delete(file.path);
+                                                setSelectedFiles(newSet);
+                                            }}
+                                            className="rounded border-outline/20 bg-black/20 text-primary focus:ring-primary focus:ring-offset-0 align-middle"
+                                        />
                                     </td>
-                                    <td className="px-6 py-4">
+                                    <td className="px-3 py-2">
                                         <div className="flex items-center gap-3">
-                                            {file.isDirectory ? (
-                                                <div className="p-2 bg-blue-500/20 text-blue-400 rounded-lg">
-                                                    <Folder className="text-xl" />
-                                                </div>
-                                            ) : (
-                                                <div className="p-2 bg-white/10 text-gray-300 rounded-lg">
-                                                    <File className="text-xl" />
-                                                </div>
-                                            )}
-                                            <div className="flex flex-col">
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${file.isDirectory ? 'bg-primary/10 text-primary' : 'bg-surface-variant/20 text-on-surface-variant'}`}>
+                                                {file.isDirectory ? <Folder size={16} /> : <File size={16} />}
+                                            </div>
+                                            <div className="flex flex-col min-w-0">
                                                 <button
                                                     onClick={() => file.isDirectory && handleFolderClick(file.path)}
-                                                    className={`hover:text-blue-400 transition-colors text-sm font-medium ${file.isDirectory ? 'text-blue-200' : 'text-gray-200'}`}
+                                                    className={`text-left text-sm font-bold truncate hover:underline underline-offset-2 ${file.isDirectory ? 'text-primary' : 'text-on-surface'}`}
                                                 >
                                                     {file.name}
                                                 </button>
-                                                <span className="text-[10px] text-gray-500 uppercase tracking-tight">{file.isDirectory ? 'Directory' : file.extension || 'File'}</span>
+                                                <span className="text-[9px] font-bold text-on-surface-variant/50 uppercase tracking-wider">{file.isDirectory ? 'DIR' : (file.extension || 'FILE')}</span>
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="px-4 py-4 text-xs text-gray-400 tabular-nums">
+                                    <td className="px-3 py-2 text-xs font-mono text-on-surface-variant tabular-nums opacity-70">
                                         {formatSize(file.size)}
                                     </td>
-                                    <td className="px-4 py-4 text-xs text-gray-400 italic">
+                                    <td className="px-3 py-2 text-xs font-mono text-on-surface-variant opacity-70">
                                         {new Date(file.lastModified).toLocaleString()}
                                     </td>
-                                    <td className="px-6 py-4 text-right">
+                                    <td className="px-4 py-2 text-right">
                                         <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                             {!file.isDirectory && (
                                                 <button
                                                     onClick={() => handleView(file.path)}
-                                                    className="p-2 hover:bg-emerald-500/20 text-emerald-400 rounded-lg transition-all"
-                                                    title="View"
+                                                    className="p-1.5 hover:bg-emerald-500/10 text-emerald-500 rounded-md transition-all"
+                                                    title="View Content"
                                                 >
-                                                    {loadingFile === file.path ? <Loader2 className="animate-spin" size={20} /> : <Eye />}
+                                                    {loadingFile === file.path ? <Loader2 className="animate-spin" size={16} /> : <Eye size={16} />}
                                                 </button>
                                             )}
+
                                             {!file.isDirectory && (
                                                 <a
                                                     href={DockerClient.downloadFileUrl(file.path)}
-                                                    className="p-2 hover:bg-blue-500/20 text-blue-400 rounded-lg transition-all"
+                                                    className="p-1.5 hover:bg-blue-500/10 text-blue-500 rounded-md transition-all"
                                                     title="Download"
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                 >
-                                                    <Download />
+                                                    <Download size={16} />
                                                 </a>
                                             )}
 
                                             {file.isDirectory ? (
                                                 <button
                                                     onClick={() => handleZip(file.path)}
-                                                    className="p-2 hover:bg-amber-500/20 text-amber-400 rounded-lg transition-all"
+                                                    className="p-1.5 hover:bg-amber-500/10 text-amber-500 rounded-md transition-all"
                                                     title="Zip Archive"
                                                 >
-                                                    <Archive />
+                                                    <Archive size={16} />
                                                 </button>
                                             ) : (
                                                 file.extension === 'zip' && (
                                                     <button
                                                         onClick={() => handleUnzip(file.path)}
-                                                        className="p-2 hover:bg-amber-500/20 text-amber-400 rounded-lg transition-all"
-                                                        title="Unzip Archive"
+                                                        className="p-1.5 hover:bg-amber-500/10 text-amber-500 rounded-md transition-all"
+                                                        title="Unzip"
                                                     >
-                                                        <ExternalLink />
+                                                        <ExternalLink size={16} />
                                                     </button>
                                                 )
                                             )}
 
                                             <button
                                                 onClick={() => handleDelete(file.path)}
-                                                className="p-2 hover:bg-red-500/20 text-red-400 rounded-lg transition-all"
+                                                className="p-1.5 hover:bg-red-500/10 text-red-500 rounded-md transition-all"
                                                 title="Delete"
                                             >
-                                                <Trash2 />
+                                                <Trash2 size={16} />
                                             </button>
                                         </div>
                                     </td>
