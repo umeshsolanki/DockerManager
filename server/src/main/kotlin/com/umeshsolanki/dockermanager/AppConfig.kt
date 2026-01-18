@@ -33,38 +33,17 @@ data class UpdateProxyStatsRequest(
 )
 
 val DEFAULT_PROXY_JAIL_RULES = listOf(
-    // Block common sensitive file access attempts
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.env", description = "Attempt to access .env file"),
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.git/", description = "Attempt to access .git directory"),
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "wp-login\\.php", description = "WordPress login attempt"),
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "phpmyadmin", description = "PhpMyAdmin access attempt"),
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "/etc/passwd", description = "Path traversal attempt"),
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "win\\.ini", description = "Path traversal attempt"),
+    // Block sensitive configuration and system files
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.(env|git/|ini)|/etc/passwd", description = "Sensitive file access attempt"),
+    
+    // Block common CMS/framework exploits
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "wp-login\\.php|phpmyadmin|/actuator/|/jolokia", description = "CMS/framework exploit attempt"),
+    
+    // Block dangerous file extensions (backend scripts, configs, backups, archives)
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.(php|asp|jsp|sql|bak|config|yml|yaml|swp|tar\\.gz|zip|rar|7z)$", description = "Dangerous file extension"),
     
     // Block suspicious User Agents
-    ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "sqlmap", description = "SQLMap scanner"),
-    ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "nikto", description = "Nikto scanner"),
-    ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "masscan", description = "Masscan bot"),
-    ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "gobuster", description = "Gobuster scanner"),
-    
-    // Block common file extensions that shouldn't be accessed directly in an SPA/Modern App
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.php", description = "PHP file access attempt"),
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.asp", description = "ASP file access attempt"),
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.jsp", description = "JSP file access attempt"),
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.sql", description = "SQL dump access attempt"),
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.bak", description = "Backup file access attempt"),
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.config", description = "Config file access attempt"),
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.yml", description = "YAML config access attempt"),
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.swp", description = "Vim swap file access attempt"),
-    
-    // Block common backup/compressed files
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.tar\\.gz", description = "Archive file access attempt"),
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.zip", description = "Archive file access attempt"),
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.rar", description = "Archive file access attempt"),
-    
-    // Block actuator/management endpoints often scanned
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "/actuator/", description = "Spring Actuator probe"),
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "/jolokia", description = "Jolokia probe"),
+    ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "sqlmap|nikto|masscan|gobuster", description = "Security scanner detected"),
     
     // Block any non-standard HTTP methods (allows only: GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD)
     ProxyJailRule(type = ProxyJailRuleType.METHOD, pattern = "^(?!GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD$).*", description = "Non-standard HTTP method")
