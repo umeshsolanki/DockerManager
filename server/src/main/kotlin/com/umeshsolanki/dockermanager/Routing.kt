@@ -89,6 +89,15 @@ fun Application.configureRouting() {
                 call.respond(HttpStatusCode.NotFound, "UI not found")
             }
         }
+
+        // Serve index.html as text for /index.txt
+        get("/index.txt") {
+            if (indexHtml != null) {
+                call.respondText(indexHtml, ContentType.Text.Plain)
+            } else {
+                call.respond(HttpStatusCode.NotFound, "UI not found")
+            }
+        }
     }
 }
 
