@@ -75,6 +75,16 @@ fun Route.analyticsRoutes() {
                 "results" to results
             ))
         }
+
+        // Truncate proxy logs table (DANGEROUS - requires confirmation)
+        post("/logs/truncate") {
+            val success = AnalyticsService.truncateProxyLogs()
+            if (success) {
+                call.respond(HttpStatusCode.OK, ProxyActionResult(true, "Successfully truncated proxy_logs table"))
+            } else {
+                call.respond(HttpStatusCode.InternalServerError, ProxyActionResult(false, "Failed to truncate proxy_logs table"))
+            }
+        }
     }
 }
 

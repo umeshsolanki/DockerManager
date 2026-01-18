@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import com.umeshsolanki.dockermanager.database.ProxyLogsTable
 import com.umeshsolanki.dockermanager.system.IpLookupService
 import org.jetbrains.exposed.sql.batchInsert
+import org.jetbrains.exposed.sql.deleteAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.time.ZoneId
 import org.slf4j.LoggerFactory
@@ -31,6 +32,7 @@ interface IAnalyticsService {
     fun forceReprocessLogs(date: String): DailyProxyStats?
     fun updateStatsForAllDaysInCurrentLog(): Map<String, Boolean>
     fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null)
+    fun truncateProxyLogs(): Boolean
 }
 
 class AnalyticsServiceImpl(
@@ -1166,6 +1168,24 @@ class AnalyticsServiceImpl(
     override fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean?) {
         AppConfig.updateProxyStatsSettings(active, intervalMs, filterLocalIps)
     }
+
+    override fun truncateProxyLogs(): Boolean {
+        return try {
+            if (AppConfig.storageBackend != "database") {
+                logger.warn("Cannot truncate proxy logs: storage backend is not database")
+                return false
+            }
+            
+            val deletedCount = transaction {
+                ProxyLogsTable.deleteAll()
+            }
+            logger.info("Successfully truncated proxy_logs table ($deletedCount rows deleted)")
+            true
+        } catch (e: Exception) {
+            logger.error("Failed to truncate proxy_logs table", e)
+            false
+        }
+    }
 }
 
 // Service object for easy access
@@ -1185,6 +1205,7 @@ object AnalyticsService {
     fun forceReprocessLogs(date: String) = service.forceReprocessLogs(date)
     fun updateStatsForAllDaysInCurrentLog() = service.updateStatsForAllDaysInCurrentLog()
     fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null) = service.updateStatsSettings(active, intervalMs, filterLocalIps)
+    fun truncateProxyLogs() = service.truncateProxyLogs()
     
     // WebSocket tracking
     fun trackWebSocketConnection(endpoint: String, ip: String, userAgent: String? = null, containerId: String? = null, authenticated: Boolean = true) {
