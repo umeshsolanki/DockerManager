@@ -45,7 +45,26 @@ val DEFAULT_PROXY_JAIL_RULES = listOf(
     ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "sqlmap", description = "SQLMap scanner"),
     ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "nikto", description = "Nikto scanner"),
     ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "masscan", description = "Masscan bot"),
-    ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "gobuster", description = "Gobuster scanner")
+    ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "gobuster", description = "Gobuster scanner"),
+    
+    // Block common file extensions that shouldn't be accessed directly in an SPA/Modern App
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.php", description = "PHP file access attempt"),
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.asp", description = "ASP file access attempt"),
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.jsp", description = "JSP file access attempt"),
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.sql", description = "SQL dump access attempt"),
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.bak", description = "Backup file access attempt"),
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.config", description = "Config file access attempt"),
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.yml", description = "YAML config access attempt"),
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.swp", description = "Vim swap file access attempt"),
+    
+    // Block common backup/compressed files
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.tar\\.gz", description = "Archive file access attempt"),
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.zip", description = "Archive file access attempt"),
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.rar", description = "Archive file access attempt"),
+    
+    // Block actuator/management endpoints often scanned
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "/actuator/", description = "Spring Actuator probe"),
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "/jolokia", description = "Jolokia probe")
 )
 
 @Serializable
