@@ -43,6 +43,7 @@ data class DatabaseStatus(
     val isInstalled: Boolean = false
 )
 
+private fun generateSecurePassword(length: Int = 32): String {
     val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
     val random = SecureRandom()
     return (1..length).map { chars[random.nextInt(chars.length)] }.joinToString("")
