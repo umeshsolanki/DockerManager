@@ -22,15 +22,18 @@ pipeline {
                         echo "Checking for changes in: ${patterns}"
                         
                         // Check all changed files
-                        outerLoop:
+                        // Check all changed files
                         for (def changeSet in currentBuild.changeSets) {
+                            if (relevantChanges) break
                             for (def entry in changeSet.items) {
+                                if (relevantChanges) break
                                 for (def path in entry.affectedPaths) {
+                                    if (relevantChanges) break
                                     for (def pattern in patterns) {
                                         if (path.contains(pattern)) {
                                             echo "Relevant change detected: ${path}"
                                             relevantChanges = true
-                                            break outerLoop
+                                            break
                                         }
                                     }
                                 }
