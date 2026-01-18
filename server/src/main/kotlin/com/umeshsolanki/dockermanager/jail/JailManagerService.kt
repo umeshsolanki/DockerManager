@@ -163,6 +163,44 @@ class JailManagerServiceImpl(
     
     // Proxy security violation checking
     private val proxyViolationsInWindow = ConcurrentHashMap<String, Int>()
+    
+    // Cached Rules Optimization
+    private data class CachedRule(
+        val rule: com.umeshsolanki.dockermanager.proxy.ProxyJailRule,
+        val regex: Regex?
+    )
+    
+    private var cachedRulesVersion: List<com.umeshsolanki.dockermanager.proxy.ProxyJailRule>? = null
+    private var cachedUserAgentRules: List<CachedRule> = emptyList()
+    private var cachedPathRules: List<CachedRule> = emptyList()
+    private var cachedMethodRules: List<CachedRule> = emptyList()
+    private var cachedStatusRules: List<CachedRule> = emptyList()
+
+    private fun updateRuleCache(currentRules: List<com.umeshsolanki.dockermanager.proxy.ProxyJailRule>) {
+        if (cachedRulesVersion === currentRules) return // Same object, no update needed
+        
+        // Rebuild cache
+        val uaRules = mutableListOf<CachedRule>()
+        val pathRules = mutableListOf<CachedRule>()
+        val methodRules = mutableListOf<CachedRule>()
+        val statusRules = mutableListOf<CachedRule>()
+        
+        for (rule in currentRules) {
+            when (rule.type) {
+                ProxyJailRuleType.USER_AGENT -> uaRules.add(CachedRule(rule, rule.pattern.toRegex(RegexOption.IGNORE_CASE)))
+                ProxyJailRuleType.PATH -> pathRules.add(CachedRule(rule, rule.pattern.toRegex(RegexOption.IGNORE_CASE)))
+                ProxyJailRuleType.METHOD -> methodRules.add(CachedRule(rule, null)) // Method is exact match
+                ProxyJailRuleType.STATUS_CODE -> statusRules.add(CachedRule(rule, null)) // Status is exact match
+            }
+        }
+        
+        cachedUserAgentRules = uaRules
+        cachedPathRules = pathRules
+        cachedMethodRules = methodRules
+        cachedStatusRules = statusRules
+        cachedRulesVersion = currentRules
+        logger.debug("Proxy Jail Rules cache updated. UA: ${uaRules.size}, Path: ${pathRules.size}")
+    }
 
     private fun startViolationCleanupWorker() {
         scope.launch {
@@ -195,21 +233,53 @@ class JailManagerServiceImpl(
         // Check if already jailed
         if (isIPJailed(ip)) return
         
+        // Update cache if needed
+        updateRuleCache(secSettings.proxyJailRules)
+        
         var shouldJail = false
         var reason = ""
         
-        // Rule check (always check rules first)
-        for (rule in secSettings.proxyJailRules) {
-            val match = when (rule.type) {
-                ProxyJailRuleType.USER_AGENT -> rule.pattern.toRegex().containsMatchIn(userAgent)
-                ProxyJailRuleType.METHOD -> rule.pattern.equals(method, ignoreCase = true)
-                ProxyJailRuleType.PATH -> rule.pattern.toRegex().containsMatchIn(path)
-                ProxyJailRuleType.STATUS_CODE -> rule.pattern == status.toString()
+        // 1. Check Path Rules (Most common violation)
+        if (!shouldJail) {
+            for (cached in cachedPathRules) {
+                if (cached.regex?.containsMatchIn(path) == true) {
+                    shouldJail = true
+                    reason = "Matched PATH rule: ${cached.rule.description ?: cached.rule.pattern}"
+                    break
+                }
             }
-            if (match) {
-                shouldJail = true
-                reason = "Matched rule: ${rule.description ?: rule.pattern}"
-                break
+        }
+
+        // 2. Check User Agent Rules
+        if (!shouldJail) {
+             for (cached in cachedUserAgentRules) {
+                if (cached.regex?.containsMatchIn(userAgent) == true) {
+                    shouldJail = true
+                    reason = "Matched UA rule: ${cached.rule.description ?: cached.rule.pattern}"
+                    break
+                }
+            }
+        }
+        
+        // 3. Check Method Rules
+        if (!shouldJail) {
+             for (cached in cachedMethodRules) {
+                if (cached.rule.pattern.equals(method, ignoreCase = true)) {
+                    shouldJail = true
+                    reason = "Matched METHOD rule: ${cached.rule.description ?: cached.rule.pattern}"
+                    break
+                }
+            }
+        }
+        
+        // 4. Check Status Rules
+        if (!shouldJail) {
+             for (cached in cachedStatusRules) {
+                if (cached.rule.pattern == status.toString()) {
+                    shouldJail = true
+                    reason = "Matched STATUS rule: ${cached.rule.description ?: cached.rule.pattern}"
+                    break
+                }
             }
         }
         
