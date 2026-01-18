@@ -452,6 +452,8 @@ function PostgresTab({ onInstalled, status }: { onInstalled: () => void, status?
                 </div>
             </div>
 
+            {status?.isInstalled && <PostgresLogsViewer />}
+
             <div className="bg-blue-500/10 border border-blue-500/20 rounded-[32px] p-6">
                 <div className="flex items-start gap-4 text-foreground">
                     <Info className="text-blue-500 shrink-0 mt-1" size={20} />
@@ -467,6 +469,86 @@ function PostgresTab({ onInstalled, status }: { onInstalled: () => void, status?
                     </div>
                 </div>
             </div>
+        </div>
+    );
+}
+
+function PostgresLogsViewer() {
+    const [logs, setLogs] = useState<string>('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [isOpen, setIsOpen] = useState(false);
+
+    const fetchLogs = async () => {
+        setIsLoading(true);
+        try {
+            const logsData = await DockerClient.getPostgresLogs();
+            setLogs(logsData);
+        } catch (e) {
+            console.error('Failed to fetch logs', e);
+            toast.error('Failed to fetch logs');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (isOpen) {
+            fetchLogs();
+        }
+    }, [isOpen]);
+
+    return (
+        <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] overflow-hidden">
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full flex items-center justify-between p-6 hover:bg-white/5 transition-colors"
+            >
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-surface-variant/20 flex items-center justify-center">
+                        <RefreshCw size={18} className="text-on-surface" />
+                    </div>
+                    <div className="text-left">
+                        <h3 className="font-bold text-lg">System Logs</h3>
+                        <p className="text-sm text-on-surface-variant">View container logs for troubleshooting</p>
+                    </div>
+                </div>
+                <div className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>
+                    <Plus className="rotate-45" size={24} />
+                </div>
+            </button>
+
+            {isOpen && (
+                <div className="px-6 pb-6 animate-in slide-in-from-top-2 duration-200">
+                    <div className="bg-[#1e1e1e] rounded-2xl p-4 font-mono text-xs overflow-x-auto max-h-[400px] overflow-y-auto border border-white/5 relative">
+                        {isLoading ? (
+                            <div className="flex items-center justify-center py-10 text-on-surface-variant gap-2">
+                                <RefreshCw className="animate-spin" size={16} />
+                                <span>Fetching logs...</span>
+                            </div>
+                        ) : logs ? (
+                            <pre className="whitespace-pre-wrap text-emerald-400 leading-relaxed">
+                                {logs}
+                            </pre>
+                        ) : (
+                            <div className="text-center py-10 text-on-surface-variant italic">
+                                No logs available
+                            </div>
+                        )}
+                        <div className="absolute top-2 right-2">
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    fetchLogs();
+                                }}
+                                className="p-2 hover:bg-white/10 rounded-lg text-on-surface-variant hover:text-white transition-colors"
+                                title="Refresh Logs"
+                            >
+                                <RefreshCw size={14} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

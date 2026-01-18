@@ -439,6 +439,7 @@ export interface SystemConfig {
   proxyJailEnabled: boolean;
   proxyJailThresholdNon200: number;
   proxyJailRules: ProxyJailRule[];
+  proxyDefaultReturn404: boolean;
   storageBackend: string;
 }
 

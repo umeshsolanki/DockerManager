@@ -52,6 +52,7 @@ interface IProxyService {
     fun resetComposeConfig(): Pair<Boolean, String>
     fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null)
     fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>)
+    fun updateDefaultBehavior(return404: Boolean): Pair<Boolean, String>
 
     // Analytics History
     fun getHistoricalStats(date: String): DailyProxyStats?
@@ -96,6 +97,24 @@ class ProxyServiceImpl(
         rules: List<ProxyJailRule>,
     ) {
         AppConfig.updateProxySecuritySettings(enabled, thresholdNon200, rules)
+    }
+
+    override fun updateDefaultBehavior(return404: Boolean): Pair<Boolean, String> {
+        return try {
+            AppConfig.updateProxyDefaultBehavior(return404)
+            ensureDefaultServer() // Regenerates config
+            
+            // Reload nginx
+            val reloadResult = reloadNginx()
+            if (!reloadResult.first) {
+                return false to "Settings saved but failed to reload Nginx: ${reloadResult.second}"
+            }
+            
+            true to "Default behavior updated successfully"
+        } catch (e: Exception) {
+            logger.error("Failed to update default behavior", e)
+            false to "Failed to update: ${e.message}"
+        }
     }
 
     init {
@@ -1318,15 +1337,20 @@ class ProxyServiceImpl(
      */
     private fun ensureDefaultServer() {
         val defaultServerFile = File(configDir, "zz-default-server.conf")
-        if (!defaultServerFile.exists()) {
-            try {
-                val defaultServerTemplate =
-                    ResourceLoader.loadResourceOrThrow("templates/proxy/default-server.conf")
-                defaultServerFile.writeText(defaultServerTemplate)
-                logger.info("Created default nginx server block: ${defaultServerFile.absolutePath}")
-            } catch (e: Exception) {
-                logger.error("Failed to create default server block", e)
+        try {
+            val templateName = if (AppConfig.jailSettings.proxyDefaultReturn404) {
+                "templates/proxy/default-server-404.conf"
+            } else {
+                "templates/proxy/default-server.conf"
             }
+            
+            val defaultServerTemplate = ResourceLoader.loadResourceOrThrow(templateName)
+            
+            // Allow overwriting if content changed (simple check: always write)
+            defaultServerFile.writeText(defaultServerTemplate)
+            logger.info("Updated default nginx server block: ${defaultServerFile.absolutePath} (Return 404: ${AppConfig.jailSettings.proxyDefaultReturn404})")
+        } catch (e: Exception) {
+            logger.error("Failed to create/update default server block", e)
         }
     }
 
@@ -1433,6 +1457,8 @@ object ProxyService {
 
     fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>) =
         service.updateSecuritySettings(enabled, thresholdNon200, rules)
+
+    fun updateDefaultBehavior(return404: Boolean) = service.updateDefaultBehavior(return404)
 
     fun getProxySecuritySettings() = AppConfig.proxySecuritySettings
 

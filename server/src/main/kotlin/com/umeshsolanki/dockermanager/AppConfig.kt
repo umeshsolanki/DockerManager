@@ -74,6 +74,7 @@ data class AppSettings(
     val proxyJailEnabled: Boolean = true,
     val proxyJailThresholdNon200: Int = 20,
     val proxyJailRules: List<ProxyJailRule> = DEFAULT_PROXY_JAIL_RULES,
+    val proxyDefaultReturn404: Boolean = false,
     
     // Redis Cache Configuration
     val redisConfig: RedisConfig = RedisConfig(),
@@ -291,6 +292,13 @@ object AppConfig {
             proxyJailEnabled = enabled,
             proxyJailThresholdNon200 = thresholdNon200,
             proxyJailRules = rules
+        )
+        saveSettings()
+    }
+
+    fun updateProxyDefaultBehavior(return404: Boolean) {
+        _settings = _settings.copy(
+            proxyDefaultReturn404 = return404
         )
         saveSettings()
     }

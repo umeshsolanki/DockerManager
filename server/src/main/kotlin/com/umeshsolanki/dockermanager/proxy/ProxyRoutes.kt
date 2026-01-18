@@ -181,6 +181,13 @@ fun Route.proxyRoutes() {
             )
         }
 
+        post("/settings/default-behavior") {
+            val request = call.receive<Map<String, Boolean>>()
+            val return404 = request["return404"] ?: false
+            val result = ProxyService.updateDefaultBehavior(return404)
+            call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.InternalServerError)
+        }
+
         get("/certificates") {
             call.respond(ProxyService.listCertificates())
         }

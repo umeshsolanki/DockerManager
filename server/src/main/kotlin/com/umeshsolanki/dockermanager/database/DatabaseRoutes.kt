@@ -262,5 +262,16 @@ fun Route.databaseRoutes() {
                 call.respond(HttpStatusCode.InternalServerError, SwitchStorageResponse(success = false, message = "Failed to switch: ${e.message}\n${e.stackTraceToString()}"))
             }
         }
+        
+        get("/postgres/logs") {
+            try {
+                // Find container if running
+                val tail = call.request.queryParameters["tail"]?.toIntOrNull() ?: 100
+                val logs = DockerService.getContainerLogs("postgres-db", tail)
+                call.respond(mapOf("logs" to logs))
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Unknown error")))
+            }
+        }
     }
 }

@@ -217,9 +217,17 @@ export const DockerClient = {
     resetPostgresConfig: () => safeReq<any>('/database/postgres/reset', { method: 'POST' }),
     switchToPostgresFileStorage: () => safeReq<any>('/database/postgres/switch-to-file', { method: 'POST' }),
     switchToPostgresDbStorage: () => safeReq<any>('/database/postgres/switch-to-db', { method: 'POST' }),
+    getPostgresLogs: (tail = 100) => textReq(`/database/postgres/logs?tail=${tail}`).then(text => {
+        try {
+            return JSON.parse(text).logs || text;
+        } catch {
+            return text;
+        }
+    }),
 
     getProxySecuritySettings: () => req<SystemConfig | null>('/proxy/security/settings', {}, null),
     updateProxySecuritySettings: (body: Partial<SystemConfig>) => safeReq('/proxy/security/settings', { method: 'POST', body: JSON.stringify(body) }),
+    updateProxyDefaultBehavior: (return404: boolean) => safeReq('/proxy/settings/default-behavior', { method: 'POST', body: JSON.stringify({ return404 }) }),
     listProxyCertificates: () => req<SSLCertificate[]>('/proxy/certificates', {}, []),
     getProxyContainerStatus: () => safeReq('/proxy/container/status'),
     buildProxyImage: () => safeReq('/proxy/container/build', { method: 'POST' }),

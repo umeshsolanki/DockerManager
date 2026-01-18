@@ -162,8 +162,8 @@ export default function ProxyScreen() {
                                                     {host.allowedIps && host.allowedIps.length > 0 && <span className="text-[8px] bg-amber-500/10 text-amber-500 px-1 py-0.5 rounded font-bold uppercase flex items-center gap-0.5"><ShieldCheck size={8} /> IP RESTRICTED</span>}
                                                     {host.paths && host.paths.length > 0 && (
                                                         <span className={`text-[8px] px-1 py-0.5 rounded font-bold uppercase flex items-center gap-0.5 ${host.paths.filter(p => p.enabled !== false).length === host.paths.length
-                                                                ? 'bg-indigo-500/10 text-indigo-500'
-                                                                : 'bg-orange-500/10 text-orange-500'
+                                                            ? 'bg-indigo-500/10 text-indigo-500'
+                                                            : 'bg-orange-500/10 text-orange-500'
                                                             }`}>
                                                             <Layers size={8} />
                                                             {host.paths.filter(p => p.enabled !== false).length}/{host.paths.length} PATH{host.paths.length > 1 ? 'S' : ''}
@@ -222,6 +222,8 @@ export default function ProxyScreen() {
                     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         {/* Container Management Card */}
                         <div className="bg-gradient-to-br from-primary/10 to-secondary/10 border border-primary/20 rounded-2xl p-6 shadow-lg overflow-hidden relative">
+                            {/* ... (existing content) ... */}
+                            {/* Keep existing container management content here. I will just insert the section at the bottom of THIS card or a new card */}
                             <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
                                 <Server size={120} />
                             </div>
@@ -332,34 +334,20 @@ export default function ProxyScreen() {
                             </div>
                         </div>
 
-                        {/* Information Guide */}
+                        {/* Configuration & Behavior */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg">
                                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                                     <ShieldCheck className="text-green-500" size={20} />
-                                    <span>Security & Compliance</span>
+                                    <span>Default Behavior</span>
                                 </h3>
-                                <ul className="space-y-3 text-sm text-on-surface-variant">
-                                    <li className="flex gap-3">
-                                        <div className="w-5 h-5 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                                        </div>
-                                        <p>Automatic SSL certificate renewal every 60 days via Let's Encrypt.</p>
-                                    </li>
-                                    <li className="flex gap-3">
-                                        <div className="w-5 h-5 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                                        </div>
-                                        <p>Enhanced OpenResty build with custom security headers and HSTS support.</p>
-                                    </li>
-                                    <li className="flex gap-3">
-                                        <div className="w-5 h-5 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                                        </div>
-                                        <p>Isolated network mode ensures maximum performance and compatibility.</p>
-                                    </li>
-                                </ul>
+                                <p className="text-sm text-on-surface-variant mb-4">
+                                    Configure how the proxy handles requests that don't match any defined host.
+                                </p>
+                                <DefaultBehaviorToggle />
                             </div>
+
+                            {/* Information Guide */}
                             <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg">
                                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                                     <Network className="text-primary" size={20} />
@@ -798,11 +786,11 @@ function PathRouteModal({
             order: parseInt(order) || 0
         };
 
-        // Save path route - it will be included when the host is saved
-        onSave(pathData);
-        onClose();
+        await onSave(pathData);
         setIsSubmitting(false);
     };
+
+
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -978,6 +966,71 @@ function PathRouteModal({
     );
 }
 
+function DefaultBehaviorToggle() {
+    const [config, setConfig] = useState<any>(null);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        DockerClient.getProxySecuritySettings().then(setConfig);
+    }, []);
+
+    const handleToggle = async (return404: boolean) => {
+        setLoading(true);
+        try {
+            const result = await DockerClient.updateProxyDefaultBehavior(return404);
+            if (result.success) {
+                toast.success('Default behavior updated');
+                const newConfig = await DockerClient.getProxySecuritySettings();
+                setConfig(newConfig);
+            } else {
+                toast.error(result.message || 'Failed to update behavior');
+            }
+        } catch (e) {
+            toast.error('Failed to update behavior');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!config) return <div className="animate-pulse h-10 bg-surface/50 rounded-xl" />;
+
+    return (
+        <div className="flex flex-col gap-3">
+            <div
+                className={`p-4 rounded-xl border border-outline/10 transition-all cursor-pointer ${!config.proxyDefaultReturn404 ? 'bg-primary/10 border-primary/30 ring-1 ring-primary/30' : 'bg-surface/50 hover:bg-surface/80'}`}
+                onClick={() => !loading && handleToggle(false)}
+            >
+                <div className="flex items-center gap-3">
+                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${!config.proxyDefaultReturn404 ? 'border-primary bg-primary text-white' : 'border-outline/30'}`}>
+                        {!config.proxyDefaultReturn404 && <div className="w-2 h-2 rounded-full bg-white" />}
+                    </div>
+                    <div>
+                        <p className="font-semibold text-sm text-on-surface">Show Default Page</p>
+                        <p className="text-xs text-on-surface-variant">Serve the "Welcome to Docker Manager" landing page</p>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                className={`p-4 rounded-xl border border-outline/10 transition-all cursor-pointer ${config.proxyDefaultReturn404 ? 'bg-primary/10 border-primary/30 ring-1 ring-primary/30' : 'bg-surface/50 hover:bg-surface/80'}`}
+                onClick={() => !loading && handleToggle(true)}
+            >
+                <div className="flex items-center gap-3">
+                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${config.proxyDefaultReturn404 ? 'border-primary bg-primary text-white' : 'border-outline/30'}`}>
+                        {config.proxyDefaultReturn404 && <div className="w-2 h-2 rounded-full bg-white" />}
+                    </div>
+                    <div>
+                        <p className="font-semibold text-sm text-on-surface">Return 404 Not Found</p>
+                        <p className="text-xs text-on-surface-variant">Return a generic 404 error code for unmatched requests</p>
+                    </div>
+                </div>
+            </div>
+
+            {loading && <div className="text-xs text-center text-primary animate-pulse">Updating Nginx configuration...</div>}
+        </div>
+    );
+}
+
 function CertificateCard({ cert, hosts, onRenew }: { cert: SSLCertificate, hosts: ProxyHost[], onRenew: (id: string) => void }) {
     const isLetsEncrypt = cert.type === 'letsencrypt' || !cert.type;
     const expiresAt = cert.expiresAt ? new Date(cert.expiresAt * 1000) : null;
@@ -1004,8 +1057,8 @@ function CertificateCard({ cert, hosts, onRenew }: { cert: SSLCertificate, hosts
             <div className="flex items-start justify-between mb-2 relative z-10">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                     <div className={`w-8 h-8 rounded-xl flex items-center justify-center shadow-inner shrink-0 ${isExpired ? 'bg-red-500/10 text-red-500' :
-                            isExpiringSoon ? 'bg-orange-500/10 text-orange-500' :
-                                'bg-green-500/10 text-green-500'
+                        isExpiringSoon ? 'bg-orange-500/10 text-orange-500' :
+                            'bg-green-500/10 text-green-500'
                         }`}>
                         <Lock size={14} />
                     </div>
@@ -1013,8 +1066,8 @@ function CertificateCard({ cert, hosts, onRenew }: { cert: SSLCertificate, hosts
                         <h3 className="font-bold truncate text-sm pr-2">{cert.domain}</h3>
                         <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                             <span className={`text-[8px] font-black px-1 py-0.5 rounded uppercase ${isLetsEncrypt
-                                    ? 'bg-blue-500/10 text-blue-500'
-                                    : 'bg-purple-500/10 text-purple-500'
+                                ? 'bg-blue-500/10 text-blue-500'
+                                : 'bg-purple-500/10 text-purple-500'
                                 }`}>
                                 {isLetsEncrypt ? 'LE' : 'Custom'}
                             </span>
