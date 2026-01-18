@@ -1001,6 +1001,8 @@ class ProxyServiceImpl(
     override fun buildProxyImage(): Pair<Boolean, String> {
         return try {
             logger.info("Building proxy Docker image using compose...")
+            // Ensure we have the latest nginx.conf before building, as it's mounted
+            ensureNginxMainConfig(forceOverwrite = true)
             val composeFile = ensureComposeFile()
             val buildCmd =
                 "${AppConfig.dockerComposeCommand} -f ${composeFile.absolutePath} build proxy"
@@ -1329,9 +1331,9 @@ class ProxyServiceImpl(
         return matches?.firstOrNull() ?: exact
     }
 
-    private fun ensureNginxMainConfig() {
+    private fun ensureNginxMainConfig(forceOverwrite: Boolean = false) {
         val nginxConf = File(AppConfig.proxyDir, "nginx.conf")
-        var shouldUpdate = !nginxConf.exists()
+        var shouldUpdate = forceOverwrite || !nginxConf.exists()
 
         if (!shouldUpdate) {
             val content = nginxConf.readText()
