@@ -6,6 +6,7 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
+import com.umeshsolanki.dockermanager.proxy.ProxyActionResult
 
 /**
  * Extension function to safely get a required route parameter.
@@ -71,9 +72,9 @@ suspend fun ApplicationCall.respondPairResult(
     errorStatus: HttpStatusCode = HttpStatusCode.BadRequest
 ) {
     if (result.first) {
-        respond(successStatus, result.second)
+        respond(successStatus, ProxyActionResult(true, result.second))
     } else {
-        respond(errorStatus, result.second)
+        respond(errorStatus, ProxyActionResult(false, result.second))
     }
 }
 

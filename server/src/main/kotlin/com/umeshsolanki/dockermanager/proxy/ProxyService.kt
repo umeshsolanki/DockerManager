@@ -1331,8 +1331,19 @@ class ProxyServiceImpl(
 
     private fun ensureNginxMainConfig() {
         val nginxConf = File(AppConfig.proxyDir, "nginx.conf")
-        if (!nginxConf.exists()) {
-            logger.info("Creating default nginx.conf in ${nginxConf.absolutePath}")
+        var shouldUpdate = !nginxConf.exists()
+
+        if (!shouldUpdate) {
+            val content = nginxConf.readText()
+            // Check for critical new definitions that might be missing in old configs
+            if (!content.contains("\$is_allowed")) {
+                logger.info("Access control variable missing in nginx.conf (migration needed)")
+                shouldUpdate = true
+            }
+        }
+
+        if (shouldUpdate) {
+            logger.info("Creating/Updating default nginx.conf in ${nginxConf.absolutePath}")
             nginxConf.writeText(getDefaultNginxConfig())
         }
     }
