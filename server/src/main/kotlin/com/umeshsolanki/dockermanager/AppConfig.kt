@@ -9,6 +9,7 @@ import com.umeshsolanki.dockermanager.cache.CacheService
 import com.umeshsolanki.dockermanager.database.DatabaseFactory
 import com.umeshsolanki.dockermanager.database.SettingsTable
 import com.umeshsolanki.dockermanager.email.AlertConfig
+import com.umeshsolanki.dockermanager.proxy.ProxyJailRuleType
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -31,6 +32,22 @@ data class UpdateProxyStatsRequest(
     val filterLocalIps: Boolean? = null
 )
 
+val DEFAULT_PROXY_JAIL_RULES = listOf(
+    // Block common sensitive file access attempts
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.env", description = "Attempt to access .env file"),
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.git/", description = "Attempt to access .git directory"),
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "wp-login\\.php", description = "WordPress login attempt"),
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "phpmyadmin", description = "PhpMyAdmin access attempt"),
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "/etc/passwd", description = "Path traversal attempt"),
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "win\\.ini", description = "Path traversal attempt"),
+    
+    // Block suspicious User Agents
+    ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "sqlmap", description = "SQLMap scanner"),
+    ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "nikto", description = "Nikto scanner"),
+    ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "masscan", description = "Masscan bot"),
+    ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "gobuster", description = "Gobuster scanner")
+)
+
 @Serializable
 data class AppSettings(
     val dockerSocket: String = SystemConstants.DOCKER_SOCKET_DEFAULT,
@@ -49,7 +66,7 @@ data class AppSettings(
     // Proxy Specific Security
     val proxyJailEnabled: Boolean = true,
     val proxyJailThresholdNon200: Int = 20,
-    val proxyJailRules: List<ProxyJailRule> = emptyList(),
+    val proxyJailRules: List<ProxyJailRule> = DEFAULT_PROXY_JAIL_RULES,
     
     // Redis Cache Configuration
     val redisConfig: RedisConfig = RedisConfig(),
@@ -159,7 +176,13 @@ object AppConfig {
                 if (dbSettingsJson != null) {
                     logger.info("Settings loaded from Database")
                     isDbActive = true
-                    val loaded = json.decodeFromString<AppSettings>(dbSettingsJson)
+                    var loaded = json.decodeFromString<AppSettings>(dbSettingsJson)
+                    
+                    // Inject defaults if empty
+                    if (loaded.proxyJailEnabled && loaded.proxyJailRules.isEmpty()) {
+                        loaded = loaded.copy(proxyJailRules = DEFAULT_PROXY_JAIL_RULES)
+                    }
+
                     // FORCE DISABLE REDIS FOR NOW
                     CacheService.initialize(loaded.redisConfig.copy(enabled = false))
                     return loaded
@@ -172,7 +195,12 @@ object AppConfig {
         // 3. Fallback: Load from File (Legacy/Migration)
         return try {
             logger.info("Loading settings from file (migration/fallback): ${settingsFile.absolutePath}")
-            val loadedFromFile = jsonPersistence.load()
+            var loadedFromFile = jsonPersistence.load()
+            
+            // Inject defaults if empty
+            if (loadedFromFile.proxyJailEnabled && loadedFromFile.proxyJailRules.isEmpty()) {
+                loadedFromFile = loadedFromFile.copy(proxyJailRules = DEFAULT_PROXY_JAIL_RULES)
+            }
             
             // 4. Migrate to DB
             if (shouldTryDb) {
