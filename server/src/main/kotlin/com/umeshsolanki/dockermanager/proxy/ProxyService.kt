@@ -107,6 +107,9 @@ class ProxyServiceImpl(
             // Reload nginx
             val reloadResult = reloadNginx()
             if (!reloadResult.first) {
+                if (reloadResult.second.contains("Proxy container is not running", ignoreCase = true)) {
+                    return true to "Settings saved (Proxy not running)"
+                }
                 return false to "Settings saved but failed to reload Nginx: ${reloadResult.second}"
             }
             
@@ -495,6 +498,10 @@ class ProxyServiceImpl(
             }
             val reloadResult = reloadNginx()
             if (!reloadResult.first) {
+                if (reloadResult.second.contains("Proxy container is not running", ignoreCase = true)) {
+                    logger.warn("Host deleted but proxy was not running (Nginx reload skipped)")
+                    return true
+                }
                 logger.error("Failed to reload nginx when deleting host: ${reloadResult.second}")
                 return false
             }
@@ -658,6 +665,10 @@ class ProxyServiceImpl(
                 }
                 val reloadResult = reloadNginx()
                 if (!reloadResult.first) {
+                    if (reloadResult.second.contains("Proxy container is not running", ignoreCase = true)) {
+                        logger.warn("Host disabled but proxy was not running (Nginx reload skipped)")
+                        return true
+                    }
                     logger.error("Failed to reload nginx when toggling host: ${reloadResult.second}")
                     return false
                 }
