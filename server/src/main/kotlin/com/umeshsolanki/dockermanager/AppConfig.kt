@@ -42,6 +42,26 @@ val DEFAULT_PROXY_JAIL_RULES = listOf(
     // Block dangerous file extensions (backend scripts, configs, backups, archives)
     ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.(php|asp|jsp|sql|bak|config|yml|yaml|swp|tar\\.gz|zip|rar|7z)$", description = "Dangerous file extension"),
     
+    // Composite rules: Detect scanning by combining PATH + STATUS CODE
+    ProxyJailRule(
+        type = ProxyJailRuleType.COMPOSITE, 
+        pattern = "\\.(env|git/|ini|php|asp|jsp|sql|bak|config|yml|xml|log|old|backup|db|sqlite)", 
+        statusCodePattern = "404|403",
+        description = "Scanning for sensitive files (404/403)"
+    ),
+    ProxyJailRule(
+        type = ProxyJailRuleType.COMPOSITE,
+        pattern = "/admin|/wp-admin|/administrator|/phpmy admin|/manager|/console|/dashboard",
+        statusCodePattern = "404|403|401",
+        description = "Scanning for admin panels (404/403/401)"
+    ),
+    ProxyJailRule(
+        type = ProxyJailRuleType.COMPOSITE,
+        pattern = "\\.\\./|\\.\\.\\\\|/etc/|/proc/|/sys/|/usr/bin|/windows/",
+        statusCodePattern = "404|403|400",
+        description = "Path traversal attempt (404/403/400)"
+    ),
+    
     // Block suspicious User Agents
     ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "sqlmap|nikto|masscan|gobuster", description = "Security scanner detected"),
     

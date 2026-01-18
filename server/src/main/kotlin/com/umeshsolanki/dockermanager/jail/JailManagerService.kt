@@ -175,6 +175,7 @@ class JailManagerServiceImpl(
     private var cachedPathRules: List<CachedRule> = emptyList()
     private var cachedMethodRules: List<CachedRule> = emptyList()
     private var cachedStatusRules: List<CachedRule> = emptyList()
+    private var cachedCompositeRules: List<CachedRule> = emptyList()
 
     private fun updateRuleCache(currentRules: List<com.umeshsolanki.dockermanager.proxy.ProxyJailRule>) {
         if (cachedRulesVersion === currentRules) return // Same object, no update needed
@@ -184,6 +185,7 @@ class JailManagerServiceImpl(
         val pathRules = mutableListOf<CachedRule>()
         val methodRules = mutableListOf<CachedRule>()
         val statusRules = mutableListOf<CachedRule>()
+        val compositeRules = mutableListOf<CachedRule>()
         
         for (rule in currentRules) {
             when (rule.type) {
@@ -191,6 +193,7 @@ class JailManagerServiceImpl(
                 ProxyJailRuleType.PATH -> pathRules.add(CachedRule(rule, rule.pattern.toRegex(RegexOption.IGNORE_CASE)))
                 ProxyJailRuleType.METHOD -> methodRules.add(CachedRule(rule, null)) // Method is exact match
                 ProxyJailRuleType.STATUS_CODE -> statusRules.add(CachedRule(rule, null)) // Status is exact match
+                ProxyJailRuleType.COMPOSITE -> compositeRules.add(CachedRule(rule, rule.pattern.toRegex(RegexOption.IGNORE_CASE)))
             }
         }
         
@@ -198,8 +201,9 @@ class JailManagerServiceImpl(
         cachedPathRules = pathRules
         cachedMethodRules = methodRules
         cachedStatusRules = statusRules
+        cachedCompositeRules = compositeRules
         cachedRulesVersion = currentRules
-        logger.debug("Proxy Jail Rules cache updated. UA: ${uaRules.size}, Path: ${pathRules.size}")
+        logger.debug("Proxy Jail Rules cache updated. UA: ${uaRules.size}, Path: ${pathRules.size}, Composite: ${compositeRules.size}")
     }
 
     private fun startViolationCleanupWorker() {
@@ -239,7 +243,23 @@ class JailManagerServiceImpl(
         var shouldJail = false
         var reason = ""
         
-        // 1. Check Path Rules (Most common violation)
+        // 1. Check Composite Rules (PATH + STATUS) - Most specific, check first
+        if (!shouldJail) {
+            for (cached in cachedCompositeRules) {
+                val pathMatches = cached.regex?.containsMatchIn(path) == true
+                val statusMatches = cached.rule.statusCodePattern?.let { 
+                    it.toRegex().containsMatchIn(status.toString())
+                } ?: true // If no status pattern, just check path
+                
+                if (pathMatches && statusMatches) {
+                    shouldJail = true
+                    reason = "Matched COMPOSITE rule: ${cached.rule.description ?: cached.rule.pattern}"
+                    break
+                }
+            }
+        }
+
+        // 2. Check Path Rules (Common violations)
         if (!shouldJail) {
             for (cached in cachedPathRules) {
                 if (cached.regex?.containsMatchIn(path) == true) {
@@ -250,7 +270,7 @@ class JailManagerServiceImpl(
             }
         }
 
-        // 2. Check User Agent Rules
+        // 3. Check User Agent Rules
         if (!shouldJail) {
              for (cached in cachedUserAgentRules) {
                 if (cached.regex?.containsMatchIn(userAgent) == true) {
@@ -261,7 +281,7 @@ class JailManagerServiceImpl(
             }
         }
         
-        // 3. Check Method Rules
+        // 4. Check Method Rules
         if (!shouldJail) {
              for (cached in cachedMethodRules) {
                 if (cached.rule.pattern.equals(method, ignoreCase = true)) {
@@ -272,7 +292,7 @@ class JailManagerServiceImpl(
             }
         }
         
-        // 4. Check Status Rules
+        // 5. Check Status Rules
         if (!shouldJail) {
              for (cached in cachedStatusRules) {
                 if (cached.rule.pattern == status.toString()) {

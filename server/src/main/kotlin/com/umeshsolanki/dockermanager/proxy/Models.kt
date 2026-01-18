@@ -106,7 +106,7 @@ data class ProxyActionResult(
 
 @Serializable
 enum class ProxyJailRuleType {
-    USER_AGENT, METHOD, PATH, STATUS_CODE
+    USER_AGENT, METHOD, PATH, STATUS_CODE, COMPOSITE
 }
 
 @Serializable
@@ -114,7 +114,8 @@ data class ProxyJailRule(
     val id: String = java.util.UUID.randomUUID().toString(),
     val type: ProxyJailRuleType,
     val pattern: String,
-    val description: String? = null
+    val description: String? = null,
+    val statusCodePattern: String? = null // For COMPOSITE rules: regex pattern to match status codes (e.g., "404|403")
 )
 
 @Serializable
