@@ -88,7 +88,7 @@ fun Route.databaseRoutes() {
                 // Save credentials for the application
                 val dbConfig = mapOf(
                     "host" to "localhost",
-                    "port" to 5432,
+                    "port" to "5432",
                     "name" to "mydatabase",
                     "user" to "admin",
                     "password" to password
@@ -227,15 +227,37 @@ fun Route.databaseRoutes() {
                 val bakFile = File(AppConfig.dataRoot, "db-config.json.bak")
                 
                 if (bakFile.exists()) {
-                    if (dbConfigFile.exists()) dbConfigFile.delete()
-                    bakFile.renameTo(dbConfigFile)
+                    if (dbConfigFile.exists()) {
+                         if (!dbConfigFile.delete()) {
+                             throw IllegalStateException("Failed to delete existing db-config.json")
+                         }
+                    }
+                    if (!bakFile.renameTo(dbConfigFile)) {
+                        throw IllegalStateException("Failed to rename db-config.json.bak to db-config.json")
+                    }
+                    
                     AppConfig.reloadSettings()
-                    call.respond(HttpStatusCode.OK, SwitchStorageResponse(success = true, message = "Switched to database storage. Application settings reloaded."))
+                    
+                    if (AppConfig.storageBackend == "database") {
+                         call.respond(HttpStatusCode.OK, SwitchStorageResponse(success = true, message = "Switched to database storage. Application settings reloaded."))
+                    } else {
+                         call.respond(HttpStatusCode.InternalServerError, SwitchStorageResponse(success = false, message = "Restored config but failed to connect/load from DB. Still using file storage. Check logs for connection errors."))
+                    }
+                } else if (dbConfigFile.exists()) {
+                    // Config file exists, just not active (or we are already on DB, but reloading doesn't hurt)
+                    AppConfig.reloadSettings()
+                    
+                    if (AppConfig.storageBackend == "database") {
+                         call.respond(HttpStatusCode.OK, SwitchStorageResponse(success = true, message = "Switched to database storage (config already existed)."))
+                    } else {
+                         call.respond(HttpStatusCode.InternalServerError, SwitchStorageResponse(success = false, message = "Database configuration file exists but failed to connect/load. Check logs for connection errors."))
+                    }
                 } else {
-                    call.respond(HttpStatusCode.BadRequest, SwitchStorageResponse(success = false, message = "Database configuration backup not found. Please re-install or point to a DB."))
+                    call.respond(HttpStatusCode.BadRequest, SwitchStorageResponse(success = false, message = "Database configuration not found (neither active nor backup). Please re-install or point to a DB."))
                 }
-            } catch (e: Exception) {
-                call.respond(HttpStatusCode.InternalServerError, SwitchStorageResponse(success = false, message = "Failed to switch: ${e.message}"))
+            } catch (e: Throwable) {
+                e.printStackTrace()
+                call.respond(HttpStatusCode.InternalServerError, SwitchStorageResponse(success = false, message = "Failed to switch: ${e.message}\n${e.stackTraceToString()}"))
             }
         }
     }

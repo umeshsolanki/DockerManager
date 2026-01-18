@@ -10,10 +10,50 @@ pipeline {
                     // Extract version from server's build.gradle.kts
                     VERSION = sh(script: "./gradlew :server:properties -q | grep '^version:' | awk '{print \$2}'", returnStdout: true).trim()
                     echo "Building Version: ${VERSION}"
+
+                    // Change Detection Logic
+                    def relevantChanges = false
+                    // If changeset is empty, it might be a manual run or first run -> Force Build
+                    if (currentBuild.changeSets.isEmpty()) {
+                        echo "No changesets detected (manual run or first run). Forcing build."
+                        relevantChanges = true
+                    } else {
+                        def patterns = ["server/", "web-app/", ".gradle.kts", "Jenkinsfile-server"]
+                        echo "Checking for changes in: ${patterns}"
+                        
+                        // Check all changed files
+                        outerLoop:
+                        for (def changeSet in currentBuild.changeSets) {
+                            for (def entry in changeSet.items) {
+                                for (def path in entry.affectedPaths) {
+                                    for (def pattern in patterns) {
+                                        if (path.contains(pattern)) {
+                                            echo "Relevant change detected: ${path}"
+                                            relevantChanges = true
+                                            break outerLoop
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (relevantChanges) {
+                        env.SHOULD_BUILD = "true"
+                        echo "Proceeding with build."
+                    } else {
+                        env.SHOULD_BUILD = "false"
+                        echo "No relevant changes found. Skipping subsequent build stages."
+                        currentBuild.result = 'SUCCESS'
+                    }
                 }
             }
         }
+
         stage('Test') {
+            when {
+                expression { return env.SHOULD_BUILD == 'true' }
+            }
             steps {
                 // Run unit tests for server module with build cache
                 sh './gradlew :server:test --build-cache'
@@ -21,6 +61,9 @@ pipeline {
         }
 
         stage('Build Web UI') {
+            when {
+                expression { return env.SHOULD_BUILD == 'true' }
+            }
             steps {
                 script {
                     docker.image('node:20-alpine').inside {
@@ -41,6 +84,9 @@ pipeline {
         }
 
         stage('Build FatJar') {
+            when {
+                expression { return env.SHOULD_BUILD == 'true' }
+            }
             steps {
                 // Use shadowJar task to build the FatJar with build cache
                 sh './gradlew :server:shadowJar --build-cache'
@@ -48,6 +94,9 @@ pipeline {
         }
 
         stage('Deploy Server (Systemd)') {
+            when {
+                expression { return env.SHOULD_BUILD == 'true' }
+            }
             environment {
                 BUILD_NUMBER = "${VERSION}"
             }

@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory
 
 object DatabaseFactory {
     private val logger = LoggerFactory.getLogger(DatabaseFactory::class.java)
+    private var dataSource: HikariDataSource? = null
 
     fun init(
         dbHost: String? = null,
@@ -40,8 +41,11 @@ object DatabaseFactory {
             validate()
         }
 
-        val dataSource = HikariDataSource(config)
-        Database.connect(dataSource)
+        
+        dataSource?.close()
+        val newDataSource = HikariDataSource(config)
+        dataSource = newDataSource
+        Database.connect(newDataSource)
 
         transaction {
             SchemaUtils.create(SettingsTable)
