@@ -172,11 +172,16 @@ fun Route.databaseRoutes() {
                 // Load Dockerfile template
                 val dockerfileContent = ResourceLoader.loadResourceOrThrow("templates/postgres/Dockerfile")
 
+                // Stop existing container if it exists, to ensure we can wipe volumes/reset properly
+                val composeFile = File(postgresDir, "docker-compose.yml")
+                if (composeFile.exists()) {
+                     DockerService.composeDown(composeFile.absolutePath)
+                }
+
                 // Create .env file
                 val envFile = File(postgresDir, ".env")
                 envFile.writeText("POSTGRES_PASSWORD=$password\nPOSTGRES_USER=admin\nPOSTGRES_DB=mydatabase\nPOSTGRES_PORT=5432\n")
 
-                val composeFile = File(postgresDir, "docker-compose.yml")
                 composeFile.writeText(composeContent)
                 
                 val dockerFile = File(postgresDir, "Dockerfile")

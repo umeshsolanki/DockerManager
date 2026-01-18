@@ -284,7 +284,7 @@ class ComposeServiceImpl : IComposeService {
         if (!file.exists()) return ComposeResult(false, "File not found")
 
         return try {
-            val process = ProcessBuilder("docker", "compose", "-f", filePath, "down")
+            val process = ProcessBuilder("docker", "compose", "-f", filePath, "down", "-v")
                 .directory(file.parentFile)
                 .redirectErrorStream(true)
                 .start()
