@@ -383,10 +383,10 @@ class AnalyticsServiceImpl(
                                 errorCount = errCount
                             )
 
-                            // Time-based aggregation (HH:00)
+                            // Time-based aggregation (ISO 8601 hour bucket)
                             try {
                                 val timestamp = dateFormat.parse(dateStr)
-                                val hourKey = SimpleDateFormat("HH:00", Locale.US).format(timestamp)
+                                val hourKey = SimpleDateFormat("yyyy-MM-dd'T'HH:00:00XXX", Locale.US).format(timestamp)
                                 hitsByTimeMap.merge(hourKey, 1L, Long::plus)
 
                                 // Update recent hits
@@ -741,16 +741,15 @@ class AnalyticsServiceImpl(
                                         tempHitsByIpErrorMap.merge(ip, 1L, Long::plus)
                                     }
 
-                                    // Time-based aggregation (HH:00)
-                                    val hourKey =
-                                        SimpleDateFormat("HH:00", Locale.US).format(timestamp)
-                                    tempHitsByTimeMap.merge(hourKey, 1L, Long::plus)
+                            // Time-based aggregation (ISO 8601 hour bucket)
+                                val hourKey = SimpleDateFormat("yyyy-MM-dd'T'HH:00:00XXX", Locale.US).format(timestamp)
+                                tempHitsByTimeMap.merge(hourKey, 1L, Long::plus)
 
-                                    processedCount++
-                                } catch (e: Exception) {
-                                    // Log parse errors for debugging but continue processing
-                                    logger.debug("Error parsing date from log entry: $dateStr", e)
-                                }
+                                processedCount++
+                            } catch (e: Exception) {
+                                // Log parse errors for debugging but continue processing
+                                logger.debug("Error parsing date from log entry: $dateStr", e)
+                            }
                             }
                         }
                     } catch (e: Exception) {

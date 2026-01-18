@@ -39,6 +39,7 @@ class JailManagerServiceImpl(
 
     init {
         startUnjailWorker()
+        startViolationCleanupWorker()
     }
 
     private fun startUnjailWorker() {
@@ -160,6 +161,31 @@ class JailManagerServiceImpl(
         failedAttemptsInWindow.remove(ip)
     }
     
+    // Proxy security violation checking
+    private val proxyViolationsInWindow = ConcurrentHashMap<String, Int>()
+
+    private fun startViolationCleanupWorker() {
+        scope.launch {
+            while (isActive) {
+                try {
+                    // Reset violation counts every monitoring interval (default 5 mins)
+                    // This implements a simple "errors per interval" rate limit.
+                    // A proper sliding window is more complex but this should suffice to prevent
+                    // long-term accumulation of errors.
+                    val interval = AppConfig.jailSettings.monitoringIntervalMinutes * 60_000L
+                    delay(interval)
+                    if (proxyViolationsInWindow.isNotEmpty()) {
+                        logger.debug("Clearing ${proxyViolationsInWindow.size} proxy violation records (window reset)")
+                        proxyViolationsInWindow.clear()
+                    }
+                } catch (e: Exception) {
+                    logger.error("Error in ViolationCleanup worker", e)
+                    delay(60_000)
+                }
+            }
+        }
+    }
+
     override fun checkProxySecurityViolation(ip: String, userAgent: String, method: String, path: String, status: Int, errorCount: Long) {
         if (ip.isBlank() || AppConfig.isLocalIP(ip)) return
         
@@ -172,7 +198,7 @@ class JailManagerServiceImpl(
         var shouldJail = false
         var reason = ""
         
-        // Rule check
+        // Rule check (always check rules first)
         for (rule in secSettings.proxyJailRules) {
             val match = when (rule.type) {
                 ProxyJailRuleType.USER_AGENT -> rule.pattern.toRegex().containsMatchIn(userAgent)
@@ -187,18 +213,36 @@ class JailManagerServiceImpl(
             }
         }
         
-        // Threshold check
+        // Threshold check (Windowed)
         if (!shouldJail) {
-            if (errorCount >= secSettings.proxyJailThresholdNon200) {
-                shouldJail = true
-                reason = "Too many non-200 responses ($errorCount)"
+            // Only count non-200, non-300 status codes as errors
+            if (status >= 400 || status == 0) {
+                val currentViolations = proxyViolationsInWindow.merge(ip, 1, Int::plus) ?: 1
+                if (currentViolations >= secSettings.proxyJailThresholdNon200) {
+                    shouldJail = true
+                    reason = "Too many non-200 responses ($currentViolations in window)"
+                    // Reset counter after jailing
+                    proxyViolationsInWindow.remove(ip)
+                }
             }
         }
         
         if (shouldJail) {
             logger.warn("Jailing IP $ip for proxy violation: $reason")
             val duration = AppConfig.jailSettings.jailDurationMinutes
-            jailIP(ip, duration, "Proxy: $reason")
+            val success = jailIP(ip, duration, "Proxy: $reason")
+            
+            if (success) {
+                 try {
+                    FcmService.sendNotification(
+                        title = "Security Alert: IP Jailed (Proxy)",
+                        body = "IP $ip jailed. Reason: $reason",
+                        data = mapOf("type" to "security", "ip" to ip, "action" to "jail", "reason" to reason)
+                    )
+                } catch (e: Exception) {
+                    logger.warn("Failed to send FCM notification", e)
+                }
+            }
         }
     }
 }
