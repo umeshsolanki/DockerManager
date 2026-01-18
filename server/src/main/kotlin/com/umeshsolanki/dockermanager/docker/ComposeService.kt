@@ -7,7 +7,7 @@ import java.util.concurrent.TimeUnit
 interface IComposeService {
     fun listComposeFiles(): List<ComposeFile>
     fun composeUp(filePath: String): ComposeResult
-    fun composeDown(filePath: String): ComposeResult
+    fun composeDown(filePath: String, removeVolumes: Boolean = false): ComposeResult
     fun composeBuild(filePath: String): ComposeResult
     fun saveComposeFile(name: String, content: String): Boolean
     fun saveProjectFile(projectName: String, fileName: String, content: String): Boolean
@@ -279,12 +279,17 @@ class ComposeServiceImpl : IComposeService {
         }
     }
 
-    override fun composeDown(filePath: String): ComposeResult {
+    override fun composeDown(filePath: String, removeVolumes: Boolean): ComposeResult {
         val file = File(filePath)
         if (!file.exists()) return ComposeResult(false, "File not found")
 
         return try {
-            val process = ProcessBuilder("docker", "compose", "-f", filePath, "down", "-v")
+            val commandList = mutableListOf("docker", "compose", "-f", filePath, "down")
+            if (removeVolumes) {
+                commandList.add("-v")
+            }
+            
+            val process = ProcessBuilder(commandList)
                 .directory(file.parentFile)
                 .redirectErrorStream(true)
                 .start()

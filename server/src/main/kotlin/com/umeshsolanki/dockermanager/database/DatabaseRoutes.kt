@@ -173,7 +173,7 @@ fun Route.databaseRoutes() {
                 // Stop existing container if it exists, to ensure we can wipe volumes/reset properly
                 val composeFile = File(postgresDir, "docker-compose.yml")
                 if (composeFile.exists()) {
-                     DockerService.composeDown(composeFile.absolutePath)
+                     DockerService.composeDown(composeFile.absolutePath, removeVolumes = true)
                 }
 
                 // Create .env file
