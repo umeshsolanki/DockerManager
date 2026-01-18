@@ -1003,6 +1003,21 @@ class ProxyServiceImpl(
             logger.info("Building proxy Docker image using compose...")
             // Ensure we have the latest nginx.conf before building, as it's mounted
             ensureNginxMainConfig(forceOverwrite = true)
+            
+            // Re-generate config files for all enabled hosts
+            logger.info("Regenerating config files for all enabled hosts...")
+            val hosts = loadHosts()
+            for (host in hosts) {
+                if (host.enabled) {
+                    val configResult = generateNginxConfig(host)
+                    if (!configResult.first) {
+                        logger.warn("Failed to generate config for ${host.domain} during build: ${configResult.second}")
+                    } else {
+                        logger.debug("Regenerated config for ${host.domain}")
+                    }
+                }
+            }
+            
             val composeFile = ensureComposeFile()
             val buildCmd =
                 "${AppConfig.dockerComposeCommand} -f ${composeFile.absolutePath} build proxy"
