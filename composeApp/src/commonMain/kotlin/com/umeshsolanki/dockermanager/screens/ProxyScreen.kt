@@ -27,7 +27,7 @@ import androidx.compose.foundation.lazy.items
 import com.umeshsolanki.dockermanager.ProxyActionResult
 import com.umeshsolanki.dockermanager.ProxyContainerStatus
 import androidx.compose.ui.unit.sp
-import com.umeshsolanki.dockermanager.DockerClient as DC
+import com.umeshsolanki.dockermanager.DockerClient 
 import androidx.compose.ui.text.font.FontFamily
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,9 +48,9 @@ fun ProxyScreen() {
     LaunchedEffect(activeTab) {
         while (true) {
             if (activeTab == 1) {
-                containerStatus = DC.getProxyContainerStatus()
+                containerStatus = DockerClient.getProxyContainerStatus()
             } else {
-                hosts = DC.listProxyHosts()
+                hosts = DockerClient.listProxyHosts()
             }
             delay(5000) // Refresh every 5 seconds
         }
@@ -461,14 +461,14 @@ fun ProxyScreen() {
                 },
                 onToggle = { host ->
                     scope.launch {
-                        DC.toggleProxyHost(host.id)
-                        hosts = DC.listProxyHosts()
+                        DockerClient.toggleProxyHost(host.id)
+                        hosts = DockerClient.listProxyHosts()
                     }
                 },
                 onDelete = { host ->
                     scope.launch {
-                        DC.deleteProxyHost(host.id)
-                        hosts = DC.listProxyHosts()
+                        DockerClient.deleteProxyHost(host.id)
+                        hosts = DockerClient.listProxyHosts()
                     }
                 }
             )
@@ -485,10 +485,10 @@ fun ProxyScreen() {
             onClose = { isHostDialogOpen = false },
             onSave = { 
                 scope.launch {
-                    val success = if (editingHost != null) DC.updateProxyHost(it) else DC.createProxyHost(it)
+                    val success = if (editingHost != null) DockerClient.updateProxyHost(it) else DockerClient.createProxyHost(it)
                     if (success) {
                         isHostDialogOpen = false
-                        hosts = DC.listProxyHosts()
+                        hosts = DockerClient.listProxyHosts()
                     }
                 }
             }
@@ -596,10 +596,10 @@ fun InfrastructureTab(
                                 onLoadingChange(true)
                                 onShowError(null)
                                 onShowSuccess(null)
-                                val success = DC.buildProxyImage()
+                                val success = DockerClient.buildProxyImage()
                                 if (success) {
                                     onShowSuccess("Image built successfully")
-                                    onStatusChange(DC.getProxyContainerStatus())
+                                    onStatusChange(DockerClient.getProxyContainerStatus())
                                 } else {
                                     onShowError("Failed to build image")
                                 }
@@ -618,10 +618,10 @@ fun InfrastructureTab(
                                 onLoadingChange(true)
                                 onShowError(null)
                                 onShowSuccess(null)
-                                val success = DC.createProxyContainer()
+                                val success = DockerClient.createProxyContainer()
                                 if (success) {
                                     onShowSuccess("Container created successfully")
-                                    onStatusChange(DC.getProxyContainerStatus())
+                                    onStatusChange(DockerClient.getProxyContainerStatus())
                                 } else {
                                     onShowError("Failed to create container")
                                 }
@@ -646,11 +646,11 @@ fun InfrastructureTab(
                                 onLoadingChange(true)
                                 onShowError(null)
                                 onShowSuccess(null)
-                                val success = DC.startProxyContainer()
+                                val success = DockerClient.startProxyContainer()
                                 if (success) {
                                     onShowSuccess("Container started successfully")
                                     delay(1000)
-                                    onStatusChange(DC.getProxyContainerStatus())
+                                    onStatusChange(DockerClient.getProxyContainerStatus())
                                 } else {
                                     onShowError("Failed to start container")
                                 }
@@ -670,11 +670,11 @@ fun InfrastructureTab(
                                 onLoadingChange(true)
                                 onShowError(null)
                                 onShowSuccess(null)
-                                val success = DC.stopProxyContainer()
+                                val success = DockerClient.stopProxyContainer()
                                 if (success) {
                                     onShowSuccess("Container stopped successfully")
                                     delay(1000)
-                                    onStatusChange(DC.getProxyContainerStatus())
+                                    onStatusChange(DockerClient.getProxyContainerStatus())
                                 } else {
                                     onShowError("Failed to stop container")
                                 }
@@ -694,11 +694,11 @@ fun InfrastructureTab(
                                 onLoadingChange(true)
                                 onShowError(null)
                                 onShowSuccess(null)
-                                val success = DC.restartProxyContainer()
+                                val success = DockerClient.restartProxyContainer()
                                 if (success) {
                                     onShowSuccess("Container restarted successfully")
                                     delay(2000)
-                                    onStatusChange(DC.getProxyContainerStatus())
+                                    onStatusChange(DockerClient.getProxyContainerStatus())
                                 } else {
                                     onShowError("Failed to restart container")
                                 }
@@ -717,11 +717,11 @@ fun InfrastructureTab(
                             onLoadingChange(true)
                             onShowError(null)
                             onShowSuccess(null)
-                            val success = DC.ensureProxyContainer()
+                            val success = DockerClient.ensureProxyContainer()
                             if (success) {
                                 onShowSuccess("Proxy container is ready! (built, created, and started)")
                                 delay(2000)
-                                onStatusChange(DC.getProxyContainerStatus())
+                                onStatusChange(DockerClient.getProxyContainerStatus())
                             } else {
                                 onShowError("Failed to ensure proxy container")
                             }
@@ -821,7 +821,7 @@ fun HostsTab(
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(host.domain, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             if (!host.enabled) {
-                                Badge(containerColor = MaterialTheme.colorScheme.errorContainer) { Text("OFF", size = 8.sp) }
+                                Badge(containerColor = MaterialTheme.colorScheme.errorContainer) { Text("OFF", fontSize = 8.sp) }
                             }
                             if (host.ssl) {
                                 Badge(containerColor = Color(0xFF4CAF50).copy(alpha = 0.2f)) { 

@@ -1,0 +1,60 @@
+Reusing configuration cache.
+> Task :composeApp:copyNonXmlValueResourcesForWebMain NO-SOURCE
+> Task :composeApp:convertXmlValueResourcesForWasmJsMain NO-SOURCE
+> Task :composeApp:generateExpectResourceCollectorsForCommonMain UP-TO-DATE
+> Task :composeApp:copyNonXmlValueResourcesForWasmJsMain NO-SOURCE
+> Task :composeApp:convertXmlValueResourcesForCommonMain NO-SOURCE
+> Task :composeApp:generateComposeResClass UP-TO-DATE
+> Task :composeApp:convertXmlValueResourcesForWebMain NO-SOURCE
+> Task :composeApp:prepareComposeResourcesTaskForWasmJsMain NO-SOURCE
+> Task :composeApp:prepareComposeResourcesTaskForWebMain NO-SOURCE
+> Task :composeApp:generateResourceAccessorsForWasmJsMain NO-SOURCE
+> Task :composeApp:generateResourceAccessorsForWebMain NO-SOURCE
+> Task :composeApp:kmpPartiallyResolvedDependenciesChecker
+> Task :shared:kmpPartiallyResolvedDependenciesChecker
+> Task :shared:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :composeApp:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :composeApp:copyNonXmlValueResourcesForCommonMain UP-TO-DATE
+> Task :composeApp:prepareComposeResourcesTaskForCommonMain UP-TO-DATE
+> Task :composeApp:generateResourceAccessorsForCommonMain UP-TO-DATE
+> Task :composeApp:generateActualResourceCollectorsForWasmJsMain UP-TO-DATE
+> Task :shared:compileKotlinWasmJs UP-TO-DATE
+
+> Task :composeApp:compileKotlinWasmJs FAILED
+e: file:///Users/mmt10298/Documents/GitHub/DockerManager/composeApp/src/commonMain/kotlin/com/umeshsolanki/dockermanager/screens/ProxyScreen.kt:265:47 Unresolved reference 'DockerClient'.
+e: file:///Users/mmt10298/Documents/GitHub/DockerManager/composeApp/src/commonMain/kotlin/com/umeshsolanki/dockermanager/screens/ProxyScreen.kt:268:55 Unresolved reference 'DockerClient'.
+e: file:///Users/mmt10298/Documents/GitHub/DockerManager/composeApp/src/commonMain/kotlin/com/umeshsolanki/dockermanager/screens/ProxyScreen.kt:287:47 Unresolved reference 'DockerClient'.
+e: file:///Users/mmt10298/Documents/GitHub/DockerManager/composeApp/src/commonMain/kotlin/com/umeshsolanki/dockermanager/screens/ProxyScreen.kt:290:55 Unresolved reference 'DockerClient'.
+e: file:///Users/mmt10298/Documents/GitHub/DockerManager/composeApp/src/commonMain/kotlin/com/umeshsolanki/dockermanager/screens/ProxyScreen.kt:315:47 Unresolved reference 'DockerClient'.
+e: file:///Users/mmt10298/Documents/GitHub/DockerManager/composeApp/src/commonMain/kotlin/com/umeshsolanki/dockermanager/screens/ProxyScreen.kt:319:55 Unresolved reference 'DockerClient'.
+e: file:///Users/mmt10298/Documents/GitHub/DockerManager/composeApp/src/commonMain/kotlin/com/umeshsolanki/dockermanager/screens/ProxyScreen.kt:339:47 Unresolved reference 'DockerClient'.
+e: file:///Users/mmt10298/Documents/GitHub/DockerManager/composeApp/src/commonMain/kotlin/com/umeshsolanki/dockermanager/screens/ProxyScreen.kt:343:55 Unresolved reference 'DockerClient'.
+e: file:///Users/mmt10298/Documents/GitHub/DockerManager/composeApp/src/commonMain/kotlin/com/umeshsolanki/dockermanager/screens/ProxyScreen.kt:363:47 Unresolved reference 'DockerClient'.
+e: file:///Users/mmt10298/Documents/GitHub/DockerManager/composeApp/src/commonMain/kotlin/com/umeshsolanki/dockermanager/screens/ProxyScreen.kt:367:55 Unresolved reference 'DockerClient'.
+e: file:///Users/mmt10298/Documents/GitHub/DockerManager/composeApp/src/commonMain/kotlin/com/umeshsolanki/dockermanager/screens/ProxyScreen.kt:386:43 Unresolved reference 'DockerClient'.
+e: file:///Users/mmt10298/Documents/GitHub/DockerManager/composeApp/src/commonMain/kotlin/com/umeshsolanki/dockermanager/screens/ProxyScreen.kt:390:51 Unresolved reference 'DockerClient'.
+e: file:///Users/mmt10298/Documents/GitHub/DockerManager/composeApp/src/commonMain/kotlin/com/umeshsolanki/dockermanager/screens/ProxyScreen.kt:824:100 None of the following candidates is applicable:
+
+fun Text(text: String, modifier: Modifier = ..., color: Color = ..., autoSize: TextAutoSize? = ..., fontSize: TextUnit = ..., fontStyle: FontStyle? = ..., fontWeight: FontWeight? = ..., fontFamily: FontFamily? = ..., letterSpacing: TextUnit = ..., textDecoration: TextDecoration? = ..., textAlign: TextAlign? = ..., lineHeight: TextUnit = ..., overflow: TextOverflow = ..., softWrap: Boolean = ..., maxLines: Int = ..., minLines: Int = ..., onTextLayout: ((TextLayoutResult) -> Unit)? = ..., style: TextStyle = ...): Unit:
+  No parameter with name 'size' found.
+
+fun Text(text: AnnotatedString, modifier: Modifier = ..., color: Color = ..., autoSize: TextAutoSize? = ..., fontSize: TextUnit = ..., fontStyle: FontStyle? = ..., fontWeight: FontWeight? = ..., fontFamily: FontFamily? = ..., letterSpacing: TextUnit = ..., textDecoration: TextDecoration? = ..., textAlign: TextAlign? = ..., lineHeight: TextUnit = ..., overflow: TextOverflow = ..., softWrap: Boolean = ..., maxLines: Int = ..., minLines: Int = ..., inlineContent: Map<String, InlineTextContent> = ..., onTextLayout: (TextLayoutResult) -> Unit = ..., style: TextStyle = ...): Unit:
+  No parameter with name 'size' found.
+  Argument type mismatch: actual type is 'String', but 'AnnotatedString' was expected.
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':composeApp:compileKotlinWasmJs'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 3s
+10 actionable tasks: 3 executed, 7 up-to-date
+Configuration cache entry reused.
