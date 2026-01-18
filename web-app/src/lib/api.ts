@@ -201,6 +201,7 @@ export const DockerClient = {
     getHistoricalStats: (date: string) => req<DailyProxyStats | null>(`/analytics/stats/history/${date}`, {}, null),
     getStatsForDateRange: (startDate: string, endDate: string) => req<DailyProxyStats[]>(`/analytics/stats/history/range?start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`, {}, []),
     updateStatsForAllDaysInCurrentLog: () => safeReq('/analytics/stats/history/update-all-days', { method: 'POST' }),
+    truncateProxyLogs: () => safeReq('/analytics/logs/truncate', { method: 'POST' }),
 
     // Redis Cache
     getRedisConfig: () => req<RedisConfig>('/cache/redis/config', {}, { enabled: false, host: 'localhost', port: 6379, database: 0, ssl: false, timeout: 5000 }),

@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
+  basePath: '/ui',
 };
 
 export default nextConfig;

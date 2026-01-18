@@ -20,9 +20,16 @@ import io.ktor.server.application.Application
 import io.ktor.server.auth.authenticate
 import io.ktor.server.http.content.react
 import io.ktor.server.http.content.singlePageApplication
-import io.ktor.server.routing.routing
+import io.ktor.server.routing.*
+import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 
 fun Application.configureRouting() {
+    // Cache index.html content
+    val indexHtml = Application::class.java.classLoader.getResource("ui/index.html")?.readText()
+
     routing {
         // API Routes
         authRoutes()
@@ -50,11 +57,21 @@ fun Application.configureRouting() {
         webSocketRoutes()
 
         // Serve UI (React App)
-        singlePageApplication {
-            this.react("ui")
-            useResources = true
-//            filesPath = "ui"
-            defaultPage = "index.html"
+        route("/ui") {
+            singlePageApplication {
+                this.react("ui")
+                useResources = true
+                defaultPage = "index.html"
+            }
+        }
+
+        // Serve index.html for root /
+        get("/") {
+            if (indexHtml != null) {
+                call.respondText(indexHtml, ContentType.Text.Html)
+            } else {
+                call.respond(HttpStatusCode.NotFound, "UI not found")
+            }
         }
     }
 }
