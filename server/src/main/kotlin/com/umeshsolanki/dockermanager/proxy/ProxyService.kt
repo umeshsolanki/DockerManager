@@ -9,6 +9,7 @@ import com.umeshsolanki.dockermanager.jail.IJailManagerService
 import com.umeshsolanki.dockermanager.utils.CommandExecutor
 import com.umeshsolanki.dockermanager.utils.JsonPersistence
 import com.umeshsolanki.dockermanager.utils.ResourceLoader
+import com.umeshsolanki.dockermanager.utils.ExecuteResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -1047,7 +1048,7 @@ class ProxyServiceImpl(
     private fun executeComposeCommand(
         command: String,
         truncateOutput: Boolean = false,
-    ): com.umeshsolanki.dockermanager.utils.ExecuteResult {
+    ): ExecuteResult {
         val processBuilder = ProcessBuilder("sh", "-c", command).directory(proxyDockerComposeDir)
             .redirectErrorStream(true)
 
@@ -1061,7 +1062,7 @@ class ProxyServiceImpl(
             outputFull
         }
 
-        return com.umeshsolanki.dockermanager.utils.ExecuteResult(output, "", exitCode)
+        return ExecuteResult(output, "", exitCode)
     }
 
     private fun ensureProxyDirectories() {

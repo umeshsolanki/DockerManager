@@ -2,6 +2,8 @@ package com.umeshsolanki.dockermanager.system
 
 import com.umeshsolanki.dockermanager.*
 import com.umeshsolanki.dockermanager.auth.AuthService
+import com.umeshsolanki.dockermanager.docker.DockerClientProvider
+import com.umeshsolanki.dockermanager.docker.DockerService
 import java.util.concurrent.TimeUnit
 
 object SystemService {
@@ -96,7 +98,7 @@ object SystemService {
             jamesWebAdminUrl = request.jamesWebAdminUrl ?: AppConfig.jamesWebAdminUrl
         )
         // Refresh Docker client to use new settings
-        com.umeshsolanki.dockermanager.docker.DockerClientProvider.refreshClient()
-        com.umeshsolanki.dockermanager.docker.DockerService.refreshServices()
+        DockerClientProvider.refreshClient()
+        DockerService.refreshServices()
     }
 }

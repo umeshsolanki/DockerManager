@@ -5,6 +5,7 @@ import com.umeshsolanki.dockermanager.AppSettings
 import com.umeshsolanki.dockermanager.FcmTokenDetail
 import com.umeshsolanki.dockermanager.constants.FileConstants
 import com.umeshsolanki.dockermanager.email.EmailService
+import com.umeshsolanki.dockermanager.proxy.ProxyService
 import io.lettuce.core.RedisClient
 import io.lettuce.core.api.StatefulRedisConnection
 import io.lettuce.core.api.sync.RedisCommands
@@ -354,7 +355,7 @@ object CacheService {
 
             // 1. Sync Proxy Hosts (from hosts.json)
             try {
-                val hosts = com.umeshsolanki.dockermanager.proxy.ProxyService.listHosts()
+                val hosts = ProxyService.listHosts()
                 if (hosts.isNotEmpty()) {
                     redisService?.set(
                         "proxy:hosts",
