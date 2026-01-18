@@ -33,37 +33,23 @@ data class UpdateProxyStatsRequest(
 )
 
 val DEFAULT_PROXY_JAIL_RULES = listOf(
-    // Block sensitive configuration and system files
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.(env|git/|ini)|/etc/passwd", description = "Sensitive file access attempt"),
+    // Block sensitive configuration and system files (immediate jail, no status check needed)
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.(env|git|ini|xml|log|old|backup|db|sqlite)$|/\\.git/", description = "Sensitive file access"),
     
-    // Block common CMS/framework exploits
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "wp-login\\.php|phpmyadmin|/actuator/|/jolokia", description = "CMS/framework exploit attempt"),
+    // Block path traversal attempts (immediate jail)
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.\\./|/etc/|/proc/|/sys/|/usr/bin|/windows/|/boot/", description = "Path traversal attempt"),
     
-    // Block dangerous file extensions (backend scripts, configs, backups, archives)
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.(php|asp|jsp|sql|bak|config|yml|yaml|swp|tar\\.gz|zip|rar|7z)$", description = "Dangerous file extension"),
+    // Block common CMS/framework admin panels (SPA doesn't have these)
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "/admin|/wp-admin|/administrator|phpmyadmin|/manager|/console|/actuator/|/jolokia", description = "Admin panel/framework probe"),
     
-    // Composite rules: Detect scanning by combining PATH + STATUS CODE
-    ProxyJailRule(
-        type = ProxyJailRuleType.COMPOSITE, 
-        pattern = "\\.(env|git/|ini|php|asp|jsp|sql|bak|config|yml|xml|log|old|backup|db|sqlite)", 
-        statusCodePattern = "404|403",
-        description = "Scanning for sensitive files (404/403)"
-    ),
-    ProxyJailRule(
-        type = ProxyJailRuleType.COMPOSITE,
-        pattern = "/admin|/wp-admin|/administrator|/phpmy admin|/manager|/console|/dashboard",
-        statusCodePattern = "404|403|401",
-        description = "Scanning for admin panels (404/403/401)"
-    ),
-    ProxyJailRule(
-        type = ProxyJailRuleType.COMPOSITE,
-        pattern = "\\.\\./|\\.\\.\\\\|/etc/|/proc/|/sys/|/usr/bin|/windows/",
-        statusCodePattern = "404|403|400",
-        description = "Path traversal attempt (404/403/400)"
-    ),
+    // Block dangerous backend file extensions (SPA uses only JS/CSS/HTML assets)
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.(php|asp|aspx|jsp|cgi|pl|py|rb|sh|bat|cmd|exe)$", description = "Backend script execution attempt"),
+    
+    // Block database and backup files
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.(sql|bak|backup|old|config|conf|yml|yaml|swp|tar\\.gz|zip|rar|7z)$", description = "Database/backup file access"),
     
     // Block suspicious User Agents
-    ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "sqlmap|nikto|masscan|gobuster", description = "Security scanner detected"),
+    ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "sqlmap|nikto|masscan|gobuster|nmap|metasploit", description = "Security scanner detected"),
     
     // Block any non-standard HTTP methods (allows only: GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD)
     ProxyJailRule(type = ProxyJailRuleType.METHOD, pattern = "^(?!GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD$).*", description = "Non-standard HTTP method")
