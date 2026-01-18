@@ -64,7 +64,21 @@ val DEFAULT_PROXY_JAIL_RULES = listOf(
     
     // Block actuator/management endpoints often scanned
     ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "/actuator/", description = "Spring Actuator probe"),
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "/jolokia", description = "Jolokia probe")
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "/jolokia", description = "Jolokia probe"),
+    
+    // Block invalid/suspicious HTTP methods
+    ProxyJailRule(type = ProxyJailRuleType.METHOD, pattern = "TRACE", description = "TRACE method (XST attack vector)"),
+    ProxyJailRule(type = ProxyJailRuleType.METHOD, pattern = "TRACK", description = "TRACK method (proprietary)"),
+    ProxyJailRule(type = ProxyJailRuleType.METHOD, pattern = "DEBUG", description = "DEBUG method (non-standard)"),
+    ProxyJailRule(type = ProxyJailRuleType.METHOD, pattern = "PROPFIND", description = "WebDAV PROPFIND method"),
+    ProxyJailRule(type = ProxyJailRuleType.METHOD, pattern = "PROPPATCH", description = "WebDAV PROPPATCH method"),
+    ProxyJailRule(type = ProxyJailRuleType.METHOD, pattern = "MKCOL", description = "WebDAV MKCOL method"),
+    ProxyJailRule(type = ProxyJailRuleType.METHOD, pattern = "COPY", description = "WebDAV COPY method"),
+    ProxyJailRule(type = ProxyJailRuleType.METHOD, pattern = "MOVE", description = "WebDAV MOVE method"),
+    ProxyJailRule(type = ProxyJailRuleType.METHOD, pattern = "LOCK", description = "WebDAV LOCK method"),
+    ProxyJailRule(type = ProxyJailRuleType.METHOD, pattern = "UNLOCK", description = "WebDAV UNLOCK method"),
+    ProxyJailRule(type = ProxyJailRuleType.METHOD, pattern = "SEARCH", description = "WebDAV SEARCH method"),
+    ProxyJailRule(type = ProxyJailRuleType.METHOD, pattern = "CONNECT", description = "CONNECT method (proxy abuse)")
 )
 
 @Serializable
