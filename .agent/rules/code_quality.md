@@ -20,3 +20,8 @@
 5. **Function/Class Organization**
    - **Rule**: Keep files focused. If a file grows beyond 300-400 lines, consider refactoring or splitting it.
    - **Rule**: Group related extension functions or utility classes in appropriate packages rather than large "Utils" files.
+
+6. **Don't Repeat Yourself (DRY)**
+   - **Rule**: Avoid duplicating logic or methods across multiple files.
+   - **Action**: Extract duplicated logic (e.g., helper functions like password generation, string manipulation) into a shared utility object or helper class in the `utils` package.
+   - **Example**: Instead of defining `generateSecurePassword` in multiple route files, create a `StringUtils` object and define it once there.

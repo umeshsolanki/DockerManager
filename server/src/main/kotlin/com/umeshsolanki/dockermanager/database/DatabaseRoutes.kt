@@ -3,6 +3,7 @@ package com.umeshsolanki.dockermanager.database
 import com.umeshsolanki.dockermanager.AppConfig
 import com.umeshsolanki.dockermanager.docker.DockerService
 import com.umeshsolanki.dockermanager.utils.ResourceLoader
+import com.umeshsolanki.dockermanager.utils.StringUtils
 import com.umeshsolanki.dockermanager.utils.executeCommand
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
@@ -43,11 +44,7 @@ data class DatabaseStatus(
     val isInstalled: Boolean = false
 )
 
-private fun generateSecurePassword(length: Int = 32): String {
-    val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-    val random = SecureRandom()
-    return (1..length).map { chars[random.nextInt(chars.length)] }.joinToString("")
-}
+
 
 fun Route.databaseRoutes() {
     route("/database") {
@@ -71,7 +68,7 @@ fun Route.databaseRoutes() {
 
         post("/postgres/install") {
             try {
-                val password = generateSecurePassword()
+                val password = StringUtils.generateSecurePassword()
                 val postgresDir = File(AppConfig.composeProjDir, "postgres")
                 postgresDir.mkdirs()
 
@@ -163,7 +160,7 @@ fun Route.databaseRoutes() {
         post("/postgres/reset") {
              // Reset is effectively a re-install
              try {
-                val password = generateSecurePassword()
+                val password = StringUtils.generateSecurePassword()
                 val postgresDir = File(AppConfig.composeProjDir, "postgres")
                 postgresDir.mkdirs()
 

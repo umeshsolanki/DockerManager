@@ -4,6 +4,7 @@ import com.umeshsolanki.dockermanager.AppConfig
 import com.umeshsolanki.dockermanager.docker.DockerService
 import com.umeshsolanki.dockermanager.proxy.ProxyActionResult
 import com.umeshsolanki.dockermanager.utils.ResourceLoader
+import com.umeshsolanki.dockermanager.utils.StringUtils
 import com.umeshsolanki.dockermanager.utils.executeCommand
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
@@ -16,11 +17,7 @@ import kotlinx.coroutines.delay
 import java.io.File
 import java.security.SecureRandom
 
-private fun generateSecurePassword(length: Int = 32): String {
-    val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*"
-    val random = SecureRandom()
-    return (1..length).map { chars[random.nextInt(chars.length)] }.joinToString("")
-}
+
 
 fun Route.cacheRoutes() {
     route("/cache") {
@@ -200,7 +197,7 @@ fun Route.cacheRoutes() {
         post("/install") {
             try {
                 // Generate secure random password
-                val password = generateSecurePassword()
+                val password = StringUtils.generateSecurePassword()
 
                 // Check if Docker is in Swarm mode
                 val isSwarmMode = try {
