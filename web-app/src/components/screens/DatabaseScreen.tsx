@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Database, Zap, RefreshCw, CheckCircle, XCircle, Server, Globe, Lock, Trash2, Save, TestTube, Info, Plus } from 'lucide-react';
+import { Database, Zap, RefreshCw, CheckCircle, XCircle, Server, Globe, Lock, Trash2, Save, TestTube, Info, Plus, Table } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { RedisConfig, RedisStatus } from '@/lib/types';
 import { toast } from 'sonner';
@@ -452,7 +452,7 @@ function PostgresTab({ onInstalled, status }: { onInstalled: () => void, status?
                 </div>
             </div>
 
-            {status?.isInstalled && <PostgresLogsViewer />}
+            {status?.isInstalled && <PostgresDataBrowser />}
 
             <div className="bg-blue-500/10 border border-blue-500/20 rounded-[32px] p-6">
                 <div className="flex items-start gap-4 text-foreground">
@@ -473,19 +473,37 @@ function PostgresTab({ onInstalled, status }: { onInstalled: () => void, status?
     );
 }
 
-function PostgresLogsViewer() {
-    const [logs, setLogs] = useState<string>('');
+function PostgresDataBrowser() {
+    const [tables, setTables] = useState<string[]>([]);
+    const [selectedTable, setSelectedTable] = useState<string | null>(null);
+    const [tableData, setTableData] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    const fetchLogs = async () => {
+    const fetchTables = async () => {
         setIsLoading(true);
+        setError(null);
         try {
-            const logsData = await DockerClient.getPostgresLogs();
-            setLogs(logsData);
+            const tabs = await DockerClient.getPostgresTables();
+            setTables(tabs.sort());
         } catch (e) {
-            console.error('Failed to fetch logs', e);
-            toast.error('Failed to fetch logs');
+            console.error(e);
+            setError('Failed to fetch tables');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const fetchTableData = async (table: string) => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const data = await DockerClient.queryPostgresTable(table);
+            setTableData(data);
+        } catch (e) {
+            console.error(e);
+            setError(`Failed to fetch data for ${table}`);
         } finally {
             setIsLoading(false);
         }
@@ -493,9 +511,17 @@ function PostgresLogsViewer() {
 
     useEffect(() => {
         if (isOpen) {
-            fetchLogs();
+            fetchTables();
         }
     }, [isOpen]);
+
+    useEffect(() => {
+        if (selectedTable) {
+            fetchTableData(selectedTable);
+        } else {
+            setTableData([]);
+        }
+    }, [selectedTable]);
 
     return (
         <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] overflow-hidden">
@@ -505,11 +531,11 @@ function PostgresLogsViewer() {
             >
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-surface-variant/20 flex items-center justify-center">
-                        <RefreshCw size={18} className="text-on-surface" />
+                        <Table size={18} className="text-on-surface" />
                     </div>
                     <div className="text-left">
-                        <h3 className="font-bold text-lg">System Logs</h3>
-                        <p className="text-sm text-on-surface-variant">View container logs for troubleshooting</p>
+                        <h3 className="font-bold text-lg">Database Browser</h3>
+                        <p className="text-sm text-on-surface-variant">View tables and data</p>
                     </div>
                 </div>
                 <div className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>
@@ -519,32 +545,76 @@ function PostgresLogsViewer() {
 
             {isOpen && (
                 <div className="px-6 pb-6 animate-in slide-in-from-top-2 duration-200">
-                    <div className="bg-[#1e1e1e] rounded-2xl p-4 font-mono text-xs overflow-x-auto max-h-[400px] overflow-y-auto border border-white/5 relative">
-                        {isLoading ? (
-                            <div className="flex items-center justify-center py-10 text-on-surface-variant gap-2">
-                                <RefreshCw className="animate-spin" size={16} />
-                                <span>Fetching logs...</span>
+                    <div className="flex flex-col md:flex-row gap-6">
+                        {/* Sidebar: Table List */}
+                        <div className="w-full md:w-1/4 bg-[#1e1e1e] rounded-2xl p-4 border border-white/5 h-[500px] overflow-y-auto">
+                            <h4 className="font-bold text-sm text-on-surface mb-4 flex items-center justify-between">
+                                <span>Tables ({tables.length})</span>
+                                <button onClick={fetchTables} title="Refresh Tables" className="hover:text-primary transition-colors"><RefreshCw size={14} /></button>
+                            </h4>
+                            <div className="space-y-1">
+                                {tables.map(t => (
+                                    <button
+                                        key={t}
+                                        onClick={() => setSelectedTable(t)}
+                                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${selectedTable === t ? 'bg-primary/20 text-primary font-bold' : 'hover:bg-white/5 text-on-surface-variant'}`}
+                                    >
+                                        {t}
+                                    </button>
+                                ))}
+                                {tables.length === 0 && !isLoading && <p className="text-xs text-on-surface-variant/50 italic px-2">No tables found</p>}
                             </div>
-                        ) : logs ? (
-                            <pre className="whitespace-pre-wrap text-emerald-400 leading-relaxed">
-                                {logs}
-                            </pre>
-                        ) : (
-                            <div className="text-center py-10 text-on-surface-variant italic">
-                                No logs available
-                            </div>
-                        )}
-                        <div className="absolute top-2 right-2">
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    fetchLogs();
-                                }}
-                                className="p-2 hover:bg-white/10 rounded-lg text-on-surface-variant hover:text-white transition-colors"
-                                title="Refresh Logs"
-                            >
-                                <RefreshCw size={14} />
-                            </button>
+                        </div>
+
+                        {/* Main Content: Data View */}
+                        <div className="w-full md:w-3/4 bg-[#1e1e1e] rounded-2xl p-4 border border-white/5 h-[500px] overflow-hidden flex flex-col">
+                            {selectedTable ? (
+                                <>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h4 className="font-bold text-sm text-on-surface">Data: <span className="text-primary">{selectedTable}</span></h4>
+                                        <button onClick={() => fetchTableData(selectedTable)} title="Refresh Data" className="hover:text-primary transition-colors"><RefreshCw size={14} /></button>
+                                    </div>
+                                    <div className="flex-1 overflow-auto">
+                                        {isLoading ? (
+                                            <div className="flex items-center justify-center h-full text-on-surface-variant gap-2">
+                                                <RefreshCw className="animate-spin" size={16} /> Loading data...
+                                            </div>
+                                        ) : tableData.length > 0 ? (
+                                            <table className="w-full text-left text-xs border-collapse">
+                                                <thead className="sticky top-0 bg-[#252525] z-10">
+                                                    <tr>
+                                                        {Object.keys(tableData[0]).map(k => (
+                                                            <th key={k} className="p-3 border-b border-white/10 font-bold text-on-surface whitespace-nowrap">{k}</th>
+                                                        ))}
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {tableData.map((row, i) => (
+                                                        <tr key={i} className="hover:bg-white/5 font-mono text-on-surface-variant">
+                                                            {Object.values(row).map((v: any, j) => (
+                                                                <td key={j} className="p-2 border-b border-white/5 max-w-[200px] truncate" title={String(v)}>
+                                                                    {v === null ? <span className="text-white/20">NULL</span> : String(v)}
+                                                                </td>
+                                                            ))}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        ) : (
+                                            <div className="flex items-center justify-center h-full text-on-surface-variant/50 italic">
+                                                No data or table empty
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex items-center justify-center h-full text-on-surface-variant/50">
+                                    <div className="text-center">
+                                        <Database size={48} className="mx-auto mb-2 opacity-20" />
+                                        <p>Select a table to view data</p>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

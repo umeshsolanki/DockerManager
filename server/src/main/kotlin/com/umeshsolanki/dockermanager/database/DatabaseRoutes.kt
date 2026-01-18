@@ -273,5 +273,55 @@ fun Route.databaseRoutes() {
                 call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Unknown error")))
             }
         }
+        
+        get("/postgres/tables") {
+            try {
+                val tables = mutableListOf<String>()
+                org.jetbrains.exposed.sql.transactions.transaction {
+                    exec("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public'") { rs ->
+                        while (rs.next()) {
+                            tables.add(rs.getString("tablename"))
+                        }
+                    }
+                }
+                call.respond(mapOf("tables" to tables))
+            } catch (e: Exception) {
+                 call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Failed to list tables")))
+            }
+        }
+
+        get("/postgres/query") {
+             val table = call.request.queryParameters["table"]
+             if (table == null) {
+                 call.respond(HttpStatusCode.BadRequest, "Missing table parameter")
+                 return@get
+             }
+             // Simple SQL injection protection for table name
+             if (!table.matches(Regex("^[a-zA-Z0-9_]+$"))) {
+                 call.respond(HttpStatusCode.BadRequest, "Invalid table name")
+                 return@get
+             }
+             
+             try {
+                 val rows = mutableListOf<Map<String, Any?>>()
+                 org.jetbrains.exposed.sql.transactions.transaction {
+                     // Limit 100
+                     exec("SELECT * FROM $table LIMIT 100") { rs ->
+                         val meta = rs.metaData
+                         val colCount = meta.columnCount
+                         while (rs.next()) {
+                             val row = mutableMapOf<String, Any?>()
+                             for (i in 1..colCount) {
+                                 row[meta.getColumnName(i)] = rs.getObject(i)?.toString()
+                             }
+                             rows.add(row)
+                         }
+                     }
+                 }
+                 call.respond(mapOf("rows" to rows))
+             } catch (e: Exception) {
+                 call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Failed to query table")))
+             }
+        }
     }
 }

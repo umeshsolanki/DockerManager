@@ -224,6 +224,8 @@ export const DockerClient = {
             return text;
         }
     }),
+    getPostgresTables: () => req<{ tables: string[] }>('/database/postgres/tables', {}, { tables: [] }).then(r => r.tables),
+    queryPostgresTable: (table: string) => req<{ rows: any[] }>(`/database/postgres/query?table=${encodeURIComponent(table)}`, {}, { rows: [] }).then(r => r.rows),
 
     getProxySecuritySettings: () => req<SystemConfig | null>('/proxy/security/settings', {}, null),
     updateProxySecuritySettings: (body: Partial<SystemConfig>) => safeReq('/proxy/security/settings', { method: 'POST', body: JSON.stringify(body) }),
