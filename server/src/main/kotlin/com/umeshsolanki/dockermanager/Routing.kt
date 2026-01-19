@@ -58,28 +58,10 @@ fun Application.configureRouting() {
         webSocketRoutes()
 
         // Serve UI (React App)
-        route("/ui") {
-            // Explicitly serve index for root of this route
-            get {
-                if (indexHtml != null) {
-                    call.respondText(indexHtml, ContentType.Text.Html)
-                } else {
-                    call.respond(HttpStatusCode.NotFound, "UI not found")
-                }
-            }
-            get("/") {
-                if (indexHtml != null) {
-                    call.respondText(indexHtml, ContentType.Text.Html)
-                } else {
-                    call.respond(HttpStatusCode.NotFound, "UI not found")
-                }
-            }
-            
-            singlePageApplication {
-                this.react("ui")
-                useResources = true
-                defaultPage = "index.html"
-            }
+        singlePageApplication {
+            useResources = true
+            react("ui")
+            applicationRoute = "ui"
         }
 
         // Redirect root / to /ui/
