@@ -31,15 +31,8 @@ function HomeContent() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
 
-  // Initialize from URL and check auth on mount
+  // Check auth on mount
   useEffect(() => {
-    const screenParam = searchParams.get('screen') as Screen;
-    const validScreens: Screen[] = ['Dashboard', 'Containers', 'Images', 'Compose', 'Networks', 'Resources', 'Volumes', 'Secrets', 'Logs', 'Firewall', 'Proxy', 'Emails', 'Files', 'Settings', 'Security', 'Analytics', 'DB'];
-
-    if (screenParam && validScreens.includes(screenParam)) {
-      setSelectedScreen(screenParam);
-    }
-
     const token = DockerClient.getAuthToken();
     if (token) {
       setAuthToken(token);
@@ -48,6 +41,16 @@ function HomeContent() {
       setIsAuthenticated(false);
     }
   }, []);
+
+  // Sync screen from URL
+  useEffect(() => {
+    const screenParam = searchParams.get('screen') as Screen;
+    const validScreens: Screen[] = ['Dashboard', 'Containers', 'Images', 'Compose', 'Networks', 'Resources', 'Volumes', 'Secrets', 'Logs', 'Firewall', 'Proxy', 'Emails', 'Files', 'Settings', 'Security', 'Analytics', 'DB'];
+
+    if (screenParam && validScreens.includes(screenParam)) {
+      setSelectedScreen(screenParam);
+    }
+  }, [searchParams]);
 
   const checkAuthStatus = async () => {
     const valid = await DockerClient.checkAuth();
@@ -64,8 +67,7 @@ function HomeContent() {
   }, [selectedScreen]);
 
   const handleScreenChange = (screen: Screen) => {
-    setSelectedScreen(screen);
-    // Update URL without refreshing the page
+    // Update URL, effect will update state
     const params = new URLSearchParams(searchParams.toString());
     params.set('screen', screen);
     router.push(`?${params.toString()}`);
