@@ -292,6 +292,11 @@ fun Route.databaseRoutes() {
 
         get("/postgres/query") {
              val table = call.request.queryParameters["table"]
+             val orderBy = call.request.queryParameters["orderBy"]
+             val orderDir = call.request.queryParameters["orderDir"]?.uppercase() ?: "ASC"
+             val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 100
+             val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+             
              if (table == null) {
                  call.respond(HttpStatusCode.BadRequest, "Missing table parameter")
                  return@get
@@ -302,11 +307,26 @@ fun Route.databaseRoutes() {
                  return@get
              }
              
+             // Validate orderBy if present
+             if (orderBy != null && !orderBy.matches(Regex("^[a-zA-Z0-9_]+$"))) {
+                 call.respond(HttpStatusCode.BadRequest, "Invalid orderBy column")
+                 return@get
+             }
+             if (orderDir != "ASC" && orderDir != "DESC") {
+                 call.respond(HttpStatusCode.BadRequest, "Invalid orderDir")
+                 return@get
+             }
+             
              try {
                  val rows = mutableListOf<Map<String, Any?>>()
                  org.jetbrains.exposed.sql.transactions.transaction {
-                     // Limit 100
-                     exec("SELECT * FROM $table LIMIT 100") { rs ->
+                     val query = StringBuffer("SELECT * FROM $table")
+                     if (orderBy != null) {
+                         query.append(" ORDER BY $orderBy $orderDir")
+                     }
+                     query.append(" LIMIT $limit OFFSET $offset")
+                     
+                     exec(query.toString()) { rs ->
                          val meta = rs.metaData
                          val colCount = meta.columnCount
                          while (rs.next()) {

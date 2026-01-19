@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Database, Zap, RefreshCw, CheckCircle, XCircle, Server, Globe, Lock, Trash2, Save, TestTube, Info, Plus, Table } from 'lucide-react';
+import { Database, Zap, RefreshCw, CheckCircle, XCircle, Server, Globe, Lock, Trash2, Save, TestTube, Info, Plus, Table, ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { RedisConfig, RedisStatus } from '@/lib/types';
 import { toast } from 'sonner';
@@ -481,6 +481,12 @@ function PostgresDataBrowser() {
     const [isOpen, setIsOpen] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // Sorting & Pagination
+    const [sortBy, setSortBy] = useState<string | undefined>(undefined);
+    const [sortDir, setSortDir] = useState<'ASC' | 'DESC'>('ASC');
+    const [page, setPage] = useState(0);
+    const pageSize = 50;
+
     const fetchTables = async () => {
         setIsLoading(true);
         setError(null);
@@ -495,11 +501,12 @@ function PostgresDataBrowser() {
         }
     };
 
-    const fetchTableData = async (table: string) => {
+    const fetchTableData = async (table: string, p = page, sort = sortBy, dir = sortDir) => {
         setIsLoading(true);
         setError(null);
         try {
-            const data = await DockerClient.queryPostgresTable(table);
+            const offset = p * pageSize;
+            const data = await DockerClient.queryPostgresTable(table, sort, dir, pageSize, offset);
             setTableData(data);
         } catch (e) {
             console.error(e);
@@ -517,11 +524,36 @@ function PostgresDataBrowser() {
 
     useEffect(() => {
         if (selectedTable) {
-            fetchTableData(selectedTable);
+            // Reset state on table change
+            setPage(0);
+            setSortBy(undefined);
+            setSortDir('ASC');
+            fetchTableData(selectedTable, 0, undefined, 'ASC');
         } else {
             setTableData([]);
         }
     }, [selectedTable]);
+
+    const handleSort = (column: string) => {
+        let newDir: 'ASC' | 'DESC' = 'ASC';
+        if (sortBy === column) {
+            newDir = sortDir === 'ASC' ? 'DESC' : 'ASC';
+        }
+        setSortBy(column);
+        setSortDir(newDir);
+        setPage(0); // Reset to first page on sort
+        if (selectedTable) {
+            fetchTableData(selectedTable, 0, column, newDir);
+        }
+    };
+
+    const handlePageChange = (newPage: number) => {
+        if (newPage < 0) return;
+        setPage(newPage);
+        if (selectedTable) {
+            fetchTableData(selectedTable, newPage, sortBy, sortDir);
+        }
+    };
 
     return (
         <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] overflow-hidden">
@@ -547,7 +579,7 @@ function PostgresDataBrowser() {
                 <div className="px-6 pb-6 animate-in slide-in-from-top-2 duration-200">
                     <div className="flex flex-col md:flex-row gap-6">
                         {/* Sidebar: Table List */}
-                        <div className="w-full md:w-1/4 bg-[#1e1e1e] rounded-2xl p-4 border border-white/5 h-[500px] overflow-y-auto">
+                        <div className="w-full md:w-1/4 bg-[#1e1e1e] rounded-2xl p-4 border border-white/5 h-[600px] overflow-y-auto">
                             <h4 className="font-bold text-sm text-on-surface mb-4 flex items-center justify-between">
                                 <span>Tables ({tables.length})</span>
                                 <button onClick={fetchTables} title="Refresh Tables" className="hover:text-primary transition-colors"><RefreshCw size={14} /></button>
@@ -567,32 +599,74 @@ function PostgresDataBrowser() {
                         </div>
 
                         {/* Main Content: Data View */}
-                        <div className="w-full md:w-3/4 bg-[#1e1e1e] rounded-2xl p-4 border border-white/5 h-[500px] overflow-hidden flex flex-col">
+                        <div className="w-full md:w-3/4 bg-[#1e1e1e] rounded-2xl p-4 border border-white/5 h-[600px] overflow-hidden flex flex-col">
                             {selectedTable ? (
                                 <>
-                                    <div className="flex items-center justify-between mb-4">
-                                        <h4 className="font-bold text-sm text-on-surface">Data: <span className="text-primary">{selectedTable}</span></h4>
-                                        <button onClick={() => fetchTableData(selectedTable)} title="Refresh Data" className="hover:text-primary transition-colors"><RefreshCw size={14} /></button>
-                                    </div>
-                                    <div className="flex-1 overflow-auto">
-                                        {isLoading ? (
-                                            <div className="flex items-center justify-center h-full text-on-surface-variant gap-2">
-                                                <RefreshCw className="animate-spin" size={16} /> Loading data...
+                                    <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-4">
+                                        <div className="flex items-center gap-4">
+                                            <h4 className="font-bold text-sm text-on-surface">Data: <span className="text-primary">{selectedTable}</span></h4>
+                                            {sortBy && (
+                                                <span className="text-xs text-on-surface-variant bg-white/5 px-2 py-1 rounded">
+                                                    Sorted by: {sortBy} ({sortDir})
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex items-center bg-black/40 rounded-lg p-1 mr-2">
+                                                <button
+                                                    onClick={() => handlePageChange(page - 1)}
+                                                    disabled={page === 0 || isLoading}
+                                                    className="p-1 hover:bg-white/10 rounded disabled:opacity-30 disabled:hover:bg-transparent"
+                                                >
+                                                    <ChevronLeft size={16} />
+                                                </button>
+                                                <span className="text-xs font-mono px-3 text-on-surface-variant">Page {page + 1}</span>
+                                                <button
+                                                    onClick={() => handlePageChange(page + 1)}
+                                                    disabled={tableData.length < pageSize || isLoading}
+                                                    className="p-1 hover:bg-white/10 rounded disabled:opacity-30 disabled:hover:bg-transparent"
+                                                >
+                                                    <ChevronRight size={16} />
+                                                </button>
                                             </div>
-                                        ) : tableData.length > 0 ? (
+                                            <button onClick={() => fetchTableData(selectedTable)} title="Refresh Data" className="hover:text-primary transition-colors p-1"><RefreshCw size={16} /></button>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex-1 overflow-auto relative">
+                                        {isLoading && (
+                                            <div className="absolute inset-0 bg-black/50 z-20 flex items-center justify-center backdrop-blur-sm">
+                                                <div className="flex items-center gap-2 text-primary font-bold">
+                                                    <RefreshCw className="animate-spin" size={20} /> Loading...
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {tableData.length > 0 ? (
                                             <table className="w-full text-left text-xs border-collapse">
-                                                <thead className="sticky top-0 bg-[#252525] z-10">
+                                                <thead className="sticky top-0 bg-[#252525] z-10 shadow-lg">
                                                     <tr>
                                                         {Object.keys(tableData[0]).map(k => (
-                                                            <th key={k} className="p-3 border-b border-white/10 font-bold text-on-surface whitespace-nowrap">{k}</th>
+                                                            <th
+                                                                key={k}
+                                                                onClick={() => handleSort(k)}
+                                                                className="p-3 border-b border-white/10 font-bold text-on-surface whitespace-nowrap cursor-pointer hover:bg-white/5 transition-colors select-none group"
+                                                            >
+                                                                <div className="flex items-center gap-2">
+                                                                    {k}
+                                                                    <span className={`transition-opacity ${sortBy === k ? 'opacity-100 text-primary' : 'opacity-0 group-hover:opacity-30'}`}>
+                                                                        {sortBy === k && sortDir === 'DESC' ? <ArrowDown size={12} /> : <ArrowUp size={12} />}
+                                                                    </span>
+                                                                </div>
+                                                            </th>
                                                         ))}
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {tableData.map((row, i) => (
-                                                        <tr key={i} className="hover:bg-white/5 font-mono text-on-surface-variant">
+                                                        <tr key={i} className="hover:bg-white/5 font-mono text-on-surface-variant border-b border-white/5 last:border-0">
                                                             {Object.values(row).map((v: any, j) => (
-                                                                <td key={j} className="p-2 border-b border-white/5 max-w-[200px] truncate" title={String(v)}>
+                                                                <td key={j} className="p-2 max-w-[200px] truncate" title={String(v)}>
                                                                     {v === null ? <span className="text-white/20">NULL</span> : String(v)}
                                                                 </td>
                                                             ))}
@@ -601,10 +675,15 @@ function PostgresDataBrowser() {
                                                 </tbody>
                                             </table>
                                         ) : (
-                                            <div className="flex items-center justify-center h-full text-on-surface-variant/50 italic">
-                                                No data or table empty
-                                            </div>
+                                            !isLoading && (
+                                                <div className="flex items-center justify-center h-full text-on-surface-variant/50 italic">
+                                                    No data found or table empty
+                                                </div>
+                                            )
                                         )}
+                                    </div>
+                                    <div className="pt-2 text-[10px] text-on-surface-variant/40 text-right">
+                                        Showing {tableData.length} rows (Limit: {pageSize})
                                     </div>
                                 </>
                             ) : (

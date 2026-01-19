@@ -225,7 +225,11 @@ export const DockerClient = {
         }
     }),
     getPostgresTables: () => req<{ tables: string[] }>('/database/postgres/tables', {}, { tables: [] }).then(r => r.tables),
-    queryPostgresTable: (table: string) => req<{ rows: any[] }>(`/database/postgres/query?table=${encodeURIComponent(table)}`, {}, { rows: [] }).then(r => r.rows),
+    queryPostgresTable: (table: string, orderBy?: string, orderDir: 'ASC' | 'DESC' = 'ASC', limit = 100, offset = 0) => {
+        let url = `/database/postgres/query?table=${encodeURIComponent(table)}&limit=${limit}&offset=${offset}`;
+        if (orderBy) url += `&orderBy=${encodeURIComponent(orderBy)}&orderDir=${orderDir}`;
+        return req<{ rows: any[] }>(url, {}, { rows: [] }).then(r => r.rows);
+    },
 
     getProxySecuritySettings: () => req<SystemConfig | null>('/proxy/security/settings', {}, null),
     updateProxySecuritySettings: (body: Partial<SystemConfig>) => safeReq('/proxy/security/settings', { method: 'POST', body: JSON.stringify(body) }),
