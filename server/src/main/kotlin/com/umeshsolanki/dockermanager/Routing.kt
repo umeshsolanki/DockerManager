@@ -25,6 +25,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
+import io.ktor.server.response.respondRedirect
 
 fun Application.configureRouting() {
     // Cache index.html content
@@ -81,13 +82,9 @@ fun Application.configureRouting() {
             }
         }
 
-        // Serve index.html for root /
+        // Redirect root / to /ui/
         get("/") {
-            if (indexHtml != null) {
-                call.respondText(indexHtml, ContentType.Text.Html)
-            } else {
-                call.respond(HttpStatusCode.NotFound, "UI not found")
-            }
+            call.respondRedirect("/ui/")
         }
 
         // Serve index.html as text for /index.txt
