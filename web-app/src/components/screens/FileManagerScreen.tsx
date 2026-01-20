@@ -263,7 +263,6 @@ export default function FileManagerScreen() {
                                     onClick={() => setCurrentPath(arr.slice(0, idx + 1).join('/'))}
                                     className={`p-1.5 px-2.5 sm:px-3 hover:bg-white/10 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 sm:gap-2 ${idx === arr.length - 1 ? 'text-primary' : 'text-on-surface'}`}
                                 >
-                                    <Folder size={14} className="opacity-40" />
                                     <span className="max-w-[80px] sm:max-w-[150px] truncate">{part}</span>
                                 </button>
                             </div>
