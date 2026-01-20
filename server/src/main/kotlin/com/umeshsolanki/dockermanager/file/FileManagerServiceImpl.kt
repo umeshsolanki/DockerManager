@@ -70,33 +70,42 @@ class FileManagerServiceImpl : IFileManagerService {
     }
 
     override fun zip(sourcePath: String, targetName: String): File? {
+        return zipMultiple(listOf(sourcePath), targetName)
+    }
+
+    override fun zipMultiple(paths: List<String>, targetName: String): File? {
         return try {
-            val sourceFile = resolvePath(sourcePath)
             val zipFile = resolvePath(targetName.let { if (it.endsWith(".zip")) it else "$it.zip" })
             
             ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
-                sourceFile.walkTopDown().forEach { file ->
-                    val zipEntryName = if (file == sourceFile) {
-                         file.name
-                    } else {
-                         file.absolutePath.removePrefix(sourceFile.parentFile.absolutePath).removePrefix(File.separator)
-                    }
-                    
-                    if (file.isDirectory) {
-                        zos.putNextEntry(ZipEntry("$zipEntryName/"))
-                        zos.closeEntry()
-                    } else {
-                        zos.putNextEntry(ZipEntry(zipEntryName))
-                        FileInputStream(file).use { fis ->
-                            fis.copyTo(zos)
+                paths.forEach { sourcePath ->
+                    val sourceFile = resolvePath(sourcePath)
+                    sourceFile.walkTopDown().forEach { file ->
+                        val zipEntryName = if (file == sourceFile) {
+                             file.name
+                        } else {
+                             file.absolutePath.removePrefix(sourceFile.parentFile.absolutePath).removePrefix(File.separator)
                         }
-                        zos.closeEntry()
+                        
+                        if (file.isDirectory) {
+                            // Only add directory entries if they are empty or we want the structure
+                            // walkTopDown will visit children anyway
+                            val entryPath = if (zipEntryName.endsWith("/")) zipEntryName else "$zipEntryName/"
+                            zos.putNextEntry(ZipEntry(entryPath))
+                            zos.closeEntry()
+                        } else {
+                            zos.putNextEntry(ZipEntry(zipEntryName))
+                            FileInputStream(file).use { fis ->
+                                fis.copyTo(zos)
+                            }
+                            zos.closeEntry()
+                        }
                     }
                 }
             }
             zipFile
         } catch (e: Exception) {
-            logger.error("Error zipping $sourcePath to $targetName", e)
+            logger.error("Error zipping multiple files to $targetName", e)
             null
         }
     }
@@ -192,6 +201,7 @@ object FileService {
     fun deleteFile(path: String) = service.deleteFile(path)
     fun createDirectory(path: String) = service.createDirectory(path)
     fun zipFile(sourcePath: String, targetName: String) = service.zip(sourcePath, targetName)
+    fun zipMultipleFiles(paths: List<String>, targetName: String) = service.zipMultiple(paths, targetName)
     fun unzipFile(zipPath: String, targetPath: String) = service.unzip(zipPath, targetPath)
     fun getFile(path: String) = service.getFile(path)
     fun saveFile(path: String, inputStream: InputStream) = service.saveFile(path, inputStream)

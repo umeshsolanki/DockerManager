@@ -285,6 +285,7 @@ export const DockerClient = {
     deleteFile: (path: string) => apiFetch(`/files/delete?path=${encodeURIComponent(path)}`, { method: 'DELETE' }).then(r => r.ok),
     createDirectory: (path: string) => apiFetch(`/files/mkdir?path=${encodeURIComponent(path)}`, { method: 'POST' }).then(r => r.ok),
     zipFile: (path: string, target: string) => apiFetch(`/files/zip?path=${encodeURIComponent(path)}&target=${encodeURIComponent(target)}`, { method: 'POST' }).then(r => r.ok),
+    zipBulk: (paths: string[], target: string) => apiFetch(`/files/zip-bulk`, { method: 'POST', body: JSON.stringify({ paths, target }) }).then(r => r.ok),
     unzipFile: (path: string, target: string) => apiFetch(`/files/unzip?path=${encodeURIComponent(path)}&target=${encodeURIComponent(target)}`, { method: 'POST' }).then(r => r.ok),
     uploadFile: (path: string, file: File) => {
         const formData = new FormData();

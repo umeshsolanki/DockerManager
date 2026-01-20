@@ -99,6 +99,18 @@ fun Route.fileRoutes() {
             }
         }
 
+        post("/zip-bulk") {
+            val body = call.receive<Map<String, Any>>()
+            val paths = body["paths"] as? List<String> ?: return@post call.respond(HttpStatusCode.BadRequest, "Missing paths")
+            val target = body["target"] as? String ?: "archive.zip"
+            val zipFile = FileService.zipMultipleFiles(paths, target)
+            if (zipFile != null) {
+                call.respond(HttpStatusCode.OK, "Files zipped successfully: ${zipFile.name}")
+            } else {
+                call.respond(HttpStatusCode.InternalServerError, "Failed to zip files")
+            }
+        }
+
         post("/unzip") {
             val path = call.requireQueryParameter("path") ?: return@post
             val target = call.request.queryParameters["target"] ?: "."

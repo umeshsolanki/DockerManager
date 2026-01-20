@@ -313,12 +313,12 @@ export default function ComposeScreen() {
 
     return (
         <div className="flex flex-col h-full relative">
-            <div className="flex items-center justify-between mb-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
                 <div className="flex items-center gap-4">
-                    <h1 className="text-3xl font-bold">Compose & Stacks</h1>
+                    <h1 className="text-2xl sm:text-3xl font-bold">Compose & Stacks</h1>
                     {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                     {viewMode === 'compose' && (
                         <>
                             <button
@@ -350,8 +350,8 @@ export default function ComposeScreen() {
             </div>
 
             {/* View Mode Tabs */}
-            <div className="flex items-center justify-between mb-6">
-                <div className="flex gap-1 bg-surface-variant/30 p-1 rounded-2xl w-fit">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                <div className="flex gap-1 bg-surface-variant/30 p-1 rounded-2xl w-fit shrink-0">
                     <button
                         onClick={() => setViewMode('compose')}
                         className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'compose'
@@ -386,20 +386,20 @@ export default function ComposeScreen() {
                                 return replicas.length === 2 && parseInt(replicas[0]) > 0;
                             }).length : 0;
                             return (
-                                <div className="flex items-center gap-4 text-sm">
+                                <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm">
                                     <div className="flex items-center gap-2 bg-green-500/10 text-green-500 px-3 py-1.5 rounded-lg border border-green-500/20">
                                         <CheckCircle size={16} />
-                                        <span className="font-bold">{runningStacks.length} Running Stack{runningStacks.length !== 1 ? 's' : ''}</span>
+                                        <span className="font-bold whitespace-nowrap">{runningStacks.length} Running Stack{runningStacks.length !== 1 ? 's' : ''}</span>
                                     </div>
                                     <div className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-lg border border-primary/20">
                                         <Server size={16} />
-                                        <span className="font-bold">{totalServices} Total Service{totalServices !== 1 ? 's' : ''}</span>
+                                        <span className="font-bold whitespace-nowrap">{totalServices} Total Service{totalServices !== 1 ? 's' : ''}</span>
                                     </div>
                                     {selectedStack && stackServices.length > 0 && (
                                         <div className="flex items-center gap-2 bg-blue-500/10 text-blue-500 px-3 py-1.5 rounded-lg border border-blue-500/20">
                                             <Activity size={16} />
-                                            <span className="font-bold">
-                                                {runningServicesInSelected}/{stackServices.length} Running in {selectedStack.name}
+                                            <span className="font-bold whitespace-nowrap">
+                                                {runningServicesInSelected}/{stackServices.length} Running
                                             </span>
                                         </div>
                                     )}
@@ -410,7 +410,7 @@ export default function ComposeScreen() {
                 )}
             </div>
 
-            <div className="flex items-center gap-4 mb-5">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 mb-5">
                 <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={20} />
                     <input
@@ -423,7 +423,7 @@ export default function ComposeScreen() {
                 </div>
                 <button
                     onClick={fetchComposeFiles}
-                    className="p-2.5 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors"
+                    className="p-2.5 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors self-end sm:self-auto"
                     title="Refresh"
                 >
                     <RefreshCw size={18} />
@@ -438,28 +438,28 @@ export default function ComposeScreen() {
                 ) : (
                     <div className="bg-surface/30 border border-outline/10 rounded-xl overflow-hidden divide-y divide-outline/5">
                         {filteredFiles.map(file => (
-                            <div key={file.path} className="p-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors group">
+                            <div key={file.path} className="p-3 flex flex-col md:flex-row md:items-center justify-between hover:bg-white/[0.02] transition-colors group gap-4">
                                 <div className="flex items-center gap-3 min-w-0">
                                     <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                                         <Folder size={16} className="text-primary" />
                                     </div>
                                     <div className="flex flex-col min-w-0">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-sm font-bold truncate text-on-surface" title={file.name}>
+                                            <span className="text-sm font-bold truncate text-on-surface shrink-0 max-w-[150px] sm:max-w-none" title={file.name}>
                                                 {file.name}
                                             </span>
                                             {(() => {
                                                 const status = composeStatuses[file.path] || file.status || 'unknown';
                                                 const statusConfigMap = {
-                                                    active: { icon: <CheckCircle size={12} />, color: 'text-green-500', bg: 'bg-green-500/10', label: 'Running' },
-                                                    stopped: { icon: <Square size={12} />, color: 'text-orange-500', bg: 'bg-orange-500/10', label: 'Stopped' },
-                                                    partial: { icon: <AlertCircle size={12} />, color: 'text-yellow-500', bg: 'bg-yellow-500/10', label: 'Partial' },
-                                                    inactive: { icon: <XCircle size={12} />, color: 'text-gray-500', bg: 'bg-gray-500/10', label: 'Inactive' },
-                                                    unknown: { icon: <AlertCircle size={12} />, color: 'text-on-surface-variant', bg: 'bg-surface-variant/10', label: 'Unknown' }
+                                                    active: { icon: <CheckCircle size={10} />, color: 'text-green-500', bg: 'bg-green-500/10', label: 'Running' },
+                                                    stopped: { icon: <Square size={10} />, color: 'text-orange-500', bg: 'bg-orange-500/10', label: 'Stopped' },
+                                                    partial: { icon: <AlertCircle size={10} />, color: 'text-yellow-500', bg: 'bg-yellow-500/10', label: 'Partial' },
+                                                    inactive: { icon: <XCircle size={10} />, color: 'text-gray-500', bg: 'bg-gray-500/10', label: 'Inactive' },
+                                                    unknown: { icon: <AlertCircle size={10} />, color: 'text-on-surface-variant', bg: 'bg-surface-variant/10', label: 'Unknown' }
                                                 };
                                                 const statusConfig = statusConfigMap[status as keyof typeof statusConfigMap] || statusConfigMap.unknown;
                                                 return (
-                                                    <span className={`text-[9px] ${statusConfig.bg} ${statusConfig.color} px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1`}>
+                                                    <span className={`text-[8px] sm:text-[9px] ${statusConfig.bg} ${statusConfig.color} px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1 shrink-0`}>
                                                         {statusConfig.icon}
                                                         {statusConfig.label}
                                                     </span>
@@ -471,8 +471,7 @@ export default function ComposeScreen() {
                                         </div>
                                     </div>
                                 </div>
-
-                                <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-opacity">
+                                <div className="flex flex-wrap items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                                     <button
                                         onClick={() => handleBackup(file)}
                                         className="p-1.5 hover:bg-white/10 text-on-surface-variant hover:text-primary rounded-lg transition-colors"
@@ -573,9 +572,9 @@ export default function ComposeScreen() {
                     </div>
                 )
             ) : (
-                <div className="flex gap-6 h-full">
+                <div className="flex flex-col lg:flex-row gap-6 h-full pb-10 sm:pb-0 overflow-visible">
                     {/* Stacks List */}
-                    <div className="flex-1 bg-surface/30 border border-outline/10 rounded-xl overflow-hidden">
+                    <div className="lg:w-1/2 flex flex-col bg-surface/30 border border-outline/10 rounded-xl overflow-hidden min-h-[400px]">
                         {filteredStacks.length === 0 ? (
                             <div className="flex-1 flex items-center justify-center text-on-surface-variant p-8">
                                 No stacks found
@@ -712,7 +711,7 @@ export default function ComposeScreen() {
 
                     {/* Stack Details */}
                     {selectedStack && (
-                        <div className="flex-1 bg-surface/30 border border-outline/10 rounded-xl p-6 overflow-y-auto">
+                        <div className="lg:w-1/2 flex flex-col bg-surface/30 border border-outline/10 rounded-xl p-4 sm:p-6 overflow-y-auto min-h-[400px]">
                             <div className="flex items-center justify-between mb-6">
                                 <h2 className="text-xl font-bold">{selectedStack.name}</h2>
                                 <div className="flex items-center gap-2">
@@ -1048,8 +1047,8 @@ export default function ComposeScreen() {
                             </div>
                         </div>
 
-                        <div className="p-6 border-t border-outline/10 bg-surface/50 flex justify-between items-center gap-3">
-                            <div className="flex gap-2">
+                        <div className="p-4 sm:p-6 border-t border-outline/10 bg-surface/50 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
+                            <div className="flex flex-wrap gap-2">
                                 {projectName && (
                                     <>
                                         <button
@@ -1092,9 +1091,9 @@ export default function ComposeScreen() {
                                                     }
                                                 }
                                             }}
-                                            className="px-4 py-2 bg-green-500/10 text-green-500 border border-green-500/20 rounded-xl hover:bg-green-500/20 transition-colors text-sm font-bold flex items-center gap-2"
+                                            className="px-3 py-1.5 sm:px-4 sm:py-2 bg-green-500/10 text-green-500 border border-green-500/20 rounded-xl hover:bg-green-500/20 transition-colors text-xs sm:text-sm font-bold flex items-center gap-2"
                                         >
-                                            <Play size={16} fill="currentColor" />
+                                            <Play size={14} fill="currentColor" />
                                             Start Compose
                                         </button>
                                         <button
@@ -1148,9 +1147,9 @@ export default function ComposeScreen() {
                                                     }
                                                 }
                                             }}
-                                            className="px-4 py-2 bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 rounded-xl hover:bg-indigo-500/20 transition-colors text-sm font-bold flex items-center gap-2"
+                                            className="px-3 py-1.5 sm:px-4 sm:py-2 bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 rounded-xl hover:bg-indigo-500/20 transition-colors text-xs sm:text-sm font-bold flex items-center gap-2"
                                         >
-                                            <Layers size={16} />
+                                            <Layers size={14} />
                                             Deploy Stack
                                         </button>
                                     </>
@@ -1159,16 +1158,16 @@ export default function ComposeScreen() {
                             <div className="flex gap-3">
                                 <button
                                     onClick={() => setIsEditorOpen(false)}
-                                    className="px-6 py-2.5 rounded-xl hover:bg-white/5 transition-colors text-sm font-bold border border-outline/20"
+                                    className="flex-1 sm:flex-none px-4 sm:px-6 py-2 sm:py-2.5 rounded-xl hover:bg-white/5 transition-colors text-xs sm:text-sm font-bold border border-outline/20"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={handleSave}
-                                    className="px-6 py-2.5 bg-primary text-on-primary rounded-xl hover:bg-primary/90 transition-all text-sm font-bold flex items-center gap-2 shadow-lg shadow-primary/20"
+                                    className="flex-1 sm:flex-none px-4 sm:px-6 py-2 sm:py-2.5 bg-primary text-on-primary rounded-xl hover:bg-primary/90 transition-all text-xs sm:text-sm font-bold flex items-center gap-2 shadow-lg shadow-primary/20"
                                 >
-                                    <Save size={20} />
-                                    {editingFile ? 'Update' : 'Create'} Project
+                                    <Save size={18} />
+                                    {editingFile ? 'Update' : 'Create'}
                                 </button>
                             </div>
                         </div>

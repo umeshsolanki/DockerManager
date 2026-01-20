@@ -30,32 +30,35 @@ function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // 1. Sync screen from URL on initial mount synchronously
-  const [selectedScreen, setSelectedScreen] = useState<Screen>(() => {
-    if (typeof window === 'undefined') return 'Dashboard';
-    const s = new URLSearchParams(window.location.search).get('screen') as Screen;
-    return (s && VALID_SCREENS.includes(s)) ? s : 'Dashboard';
-  });
+  // 1. Initial Screen State (Stable for SSR)
+  const [selectedScreen, setSelectedScreen] = useState<Screen>('Dashboard');
 
-  // 2. Immediate Auth State Check
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return DockerClient.getAuthToken() ? null : false;
-  });
+  // 2. Initial Auth State (Stable for SSR)
+  // We keep it null initially on both server and client to ensure matching first render.
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   const [authToken, setAuthToken] = useState<string | null>(null);
 
+  // 3. Hydration and Initial State Sync
   useEffect(() => {
+    // Sync Screen from URL
+    const s = searchParams.get('screen') as Screen;
+    if (s && VALID_SCREENS.includes(s)) {
+      setSelectedScreen(s);
+    }
+
+    // Sync Auth Status
     const token = DockerClient.getAuthToken();
     if (token) {
       setAuthToken(token);
       checkAuthStatus();
     } else {
+      // Short delay to allow hydration to settle if needed, but usually immediate is fine
       setIsAuthenticated(false);
     }
   }, []);
 
-  // 3. Listen for external URL changes (e.g., back button)
+  // 4. Listen for external URL changes (e.g., back button)
   useEffect(() => {
     const screenParam = searchParams.get('screen') as Screen;
     if (screenParam && VALID_SCREENS.includes(screenParam) && screenParam !== selectedScreen) {
@@ -64,11 +67,15 @@ function HomeContent() {
   }, [searchParams, selectedScreen]);
 
   const checkAuthStatus = async () => {
-    const valid = await DockerClient.checkAuth();
-    setIsAuthenticated(valid);
-    if (!valid) {
-      DockerClient.setAuthToken(null);
-      setAuthToken(null);
+    try {
+      const valid = await DockerClient.checkAuth();
+      setIsAuthenticated(valid);
+      if (!valid) {
+        DockerClient.setAuthToken(null);
+        setAuthToken(null);
+      }
+    } catch (e) {
+      setIsAuthenticated(false);
     }
   };
 
@@ -79,11 +86,7 @@ function HomeContent() {
 
   const handleScreenChange = (screen: Screen) => {
     if (screen === selectedScreen) return;
-
-    // Immediate state update for zero-latency
     setSelectedScreen(screen);
-
-    // Update URL
     const params = new URLSearchParams(searchParams.toString());
     params.set('screen', screen);
     router.push(`?${params.toString()}`, { scroll: false });
@@ -101,12 +104,14 @@ function HomeContent() {
   };
 
   if (isAuthenticated === null) {
-    return <div className="flex h-screen items-center justify-center bg-background text-foreground">
-      <div className="flex flex-col items-center gap-4">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-        <p className="text-sm font-medium tracking-wide text-on-surface-variant">Securing Session...</p>
+    return (
+      <div className="flex h-screen items-center justify-center bg-background text-foreground">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+          <p className="text-sm font-medium tracking-wide text-on-surface-variant">Securing Session...</p>
+        </div>
       </div>
-    </div>;
+    );
   }
 
   if (!isAuthenticated) {

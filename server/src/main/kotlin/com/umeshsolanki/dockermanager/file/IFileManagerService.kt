@@ -9,6 +9,7 @@ interface IFileManagerService {
     fun deleteFile(path: String): Boolean
     fun createDirectory(path: String): Boolean
     fun zip(sourcePath: String, targetName: String): File?
+    fun zipMultiple(paths: List<String>, targetName: String): File?
     fun unzip(zipPath: String, targetPath: String): Boolean
     fun getFile(path: String): File?
     fun saveFile(path: String, inputStream: InputStream): Boolean
