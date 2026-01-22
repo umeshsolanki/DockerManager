@@ -89,34 +89,36 @@ export default function ProxyScreen() {
 
     return (
         <div className="flex flex-col h-full relative overflow-hidden">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-4">
                 <div className="flex items-center gap-4">
-                    <h1 className="text-3xl font-bold">Reverse Proxy</h1>
-                    {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
+                    <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-on-surface to-on-surface-variant bg-clip-text text-transparent">Reverse Proxy</h1>
+                    {isLoading && <RefreshCw className="animate-spin text-primary shrink-0" size={20} />}
                 </div>
                 {activeTab === 'domains' && (
                     <button
                         onClick={() => setIsAddModalOpen(true)}
-                        className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl hover:opacity-90 transition-all shadow-lg"
+                        className="flex items-center justify-center gap-2 bg-primary text-on-primary px-5 py-2.5 rounded-2xl hover:opacity-90 transition-all shadow-lg active:scale-95 text-sm font-bold"
                     >
-                        <Plus size={20} />
+                        <Plus size={18} />
                         <span>Add Host</span>
                     </button>
                 )}
             </div>
 
-            {/* Tab Selector */}
-            <div className="flex gap-1 bg-surface-variant/30 p-1 rounded-2xl mb-6 w-fit self-center md:self-start">
+            {/* Tab Selector - Scrollable on Mobile */}
+            <div className="flex overflow-x-auto no-scrollbar gap-1 bg-surface-variant/30 p-1.5 rounded-[22px] mb-6 w-full md:w-fit">
                 {tabs.map(tab => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === tab.id
-                            ? 'bg-primary text-on-primary shadow-md'
-                            : 'hover:bg-primary/10 text-on-surface-variant'
+                        className={`flex items-center justify-center gap-2 px-5 py-2.5 rounded-[18px] text-sm font-bold transition-all whitespace-nowrap flex-1 md:flex-initial ${activeTab === tab.id
+                            ? 'bg-primary text-on-primary shadow-lg shadow-primary/20 scale-100'
+                            : 'hover:bg-primary/5 text-on-surface-variant hover:text-on-surface'
                             }`}
                     >
-                        {tab.icon}
+                        <span className="flex-shrink-0">
+                            {tab.icon}
+                        </span>
                         <span>{tab.label}</span>
                     </button>
                 ))}
@@ -136,72 +138,88 @@ export default function ProxyScreen() {
                             />
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             {filteredHosts.map(host => (
-                                <div key={host.id} className="bg-surface/50 border border-outline/10 rounded-2xl p-4 hover:border-primary/20 transition-all group hover:shadow-md">
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex gap-3">
-                                            <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-colors ${host.enabled ? 'bg-primary/20 text-primary' : 'bg-white/5 text-on-surface-variant'}`}>
-                                                <Globe size={22} />
-                                            </div>
-                                            <div className="overflow-hidden">
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                    <h3 className="text-base font-bold truncate max-w-[150px]">{host.domain}</h3>
-                                                    <div className="flex gap-1">
-                                                        {!host.enabled && <span className="text-[9px] bg-red-500/10 text-red-500 px-1 py-0.5 rounded font-bold uppercase">OFF</span>}
-                                                        {host.ssl && <span className="text-[9px] bg-green-500/10 text-green-500 px-1 py-0.5 rounded font-bold uppercase flex items-center gap-1"><Lock size={9} /> SSL</span>}
+                                <div key={host.id} className="bg-surface/40 backdrop-blur-md border border-outline/10 rounded-[28px] p-5 hover:border-primary/30 transition-all group relative overflow-hidden">
+                                    <div className="flex flex-col gap-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="flex gap-4 min-w-0">
+                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 duration-500 ${host.enabled ? 'bg-primary/15 text-primary shadow-inner' : 'bg-on-surface/5 text-on-surface-variant'}`}>
+                                                    <Globe size={24} />
+                                                </div>
+                                                <div className="min-w-0 pt-0.5">
+                                                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                                                        <h3 className="text-base font-bold truncate tracking-tight">{host.domain}</h3>
+                                                        <div className="flex gap-1 shrink-0">
+                                                            {!host.enabled && <span className="text-[9px] bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded-md font-black uppercase tracking-wider">Offline</span>}
+                                                            {host.ssl && <span className="text-[9px] bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded-md font-black uppercase tracking-wider flex items-center gap-1"><Lock size={9} /> SSL</span>}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-on-surface-variant/70 text-xs font-mono truncate">
+                                                        <ExternalLink size={12} className="shrink-0 opacity-50" />
+                                                        <span className="truncate">{host.target}</span>
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-2 text-on-surface-variant text-xs mt-0.5">
-                                                    <ExternalLink size={12} className="shrink-0" />
-                                                    <span className="font-mono truncate">{host.target}</span>
-                                                </div>
-                                                <div className="flex gap-1.5 mt-1.5 flex-wrap">
-                                                    {host.hstsEnabled && <span className="text-[8px] bg-purple-500/10 text-purple-500 px-1 py-0.5 rounded font-bold uppercase">HSTS</span>}
-                                                    {host.websocketEnabled && <span className="text-[8px] bg-blue-500/10 text-blue-500 px-1 py-0.5 rounded font-bold uppercase">WS</span>}
-                                                    {host.allowedIps && host.allowedIps.length > 0 && <span className="text-[8px] bg-amber-500/10 text-amber-500 px-1 py-0.5 rounded font-bold uppercase flex items-center gap-0.5"><ShieldCheck size={8} /> IP RESTRICTED</span>}
-                                                    {host.paths && host.paths.length > 0 && (
-                                                        <span className={`text-[8px] px-1 py-0.5 rounded font-bold uppercase flex items-center gap-0.5 ${host.paths.filter(p => p.enabled !== false).length === host.paths.length
-                                                            ? 'bg-indigo-500/10 text-indigo-500'
-                                                            : 'bg-orange-500/10 text-orange-500'
-                                                            }`}>
-                                                            <Layers size={8} />
-                                                            {host.paths.filter(p => p.enabled !== false).length}/{host.paths.length} PATH{host.paths.length > 1 ? 'S' : ''}
-                                                        </span>
-                                                    )}
-                                                </div>
                                             </div>
+
+                                            {/* Status Dot for mobile quick reference */}
+                                            <div className={`w-2 h-2 rounded-full absolute top-5 right-5 ${host.enabled ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500'}`} />
                                         </div>
-                                        <div className="flex gap-0.5 self-start">
-                                            {!host.ssl && host.enabled && (
-                                                <button
-                                                    onClick={() => handleRequestSSL(host.id)}
-                                                    className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-all"
-                                                    title="Request SSL"
-                                                >
-                                                    <ShieldCheck size={16} />
-                                                </button>
+
+                                        <div className="flex flex-wrap gap-1.5 items-center">
+                                            {host.hstsEnabled && <span className="text-[9px] bg-purple-500/10 text-purple-500 px-2 py-0.5 rounded-lg font-bold uppercase tracking-tight">HSTS</span>}
+                                            {host.websocketEnabled && <span className="text-[9px] bg-blue-500/10 text-blue-500 px-2 py-0.5 rounded-lg font-bold uppercase tracking-tight">WS</span>}
+                                            {host.allowedIps && host.allowedIps.length > 0 && (
+                                                <span className="text-[9px] bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded-lg font-bold uppercase tracking-tight flex items-center gap-1">
+                                                    <ShieldCheck size={10} /> {host.allowedIps.length} IPS
+                                                </span>
                                             )}
-                                            <button
-                                                onClick={() => setEditingHost(host)}
-                                                className="p-1.5 text-on-surface-variant hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-all"
-                                                title="Edit"
-                                            >
-                                                <Pencil size={16} />
-                                            </button>
+                                            {host.paths && host.paths.length > 0 && (
+                                                <span className={`text-[9px] px-2 py-0.5 rounded-lg font-bold uppercase tracking-tight flex items-center gap-1 ${host.paths.filter(p => p.enabled !== false).length === host.paths.length
+                                                    ? 'bg-indigo-500/10 text-indigo-500'
+                                                    : 'bg-orange-500/10 text-orange-500'
+                                                    }`}>
+                                                    <Layers size={10} />
+                                                    {host.paths.filter(p => p.enabled !== false).length}/{host.paths.length} PATHS
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-center justify-between pt-3 border-t border-outline/5 mt-auto">
+                                            <div className="flex gap-1">
+                                                <button
+                                                    onClick={() => setEditingHost(host)}
+                                                    className="p-2.5 text-on-surface-variant hover:text-blue-500 hover:bg-blue-500/10 rounded-xl transition-all active:scale-90"
+                                                    title="Edit"
+                                                >
+                                                    <Pencil size={18} />
+                                                </button>
+                                                {!host.ssl && host.enabled && (
+                                                    <button
+                                                        onClick={() => handleRequestSSL(host.id)}
+                                                        className="p-2.5 text-primary hover:bg-primary/10 rounded-xl transition-all active:scale-90"
+                                                        title="Request SSL"
+                                                    >
+                                                        <ShieldCheck size={18} />
+                                                    </button>
+                                                )}
+                                                <button
+                                                    onClick={() => handleDelete(host.id)}
+                                                    className="p-2.5 text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all active:scale-90"
+                                                    title="Delete"
+                                                >
+                                                    <Trash2 size={18} />
+                                                </button>
+                                            </div>
+
                                             <button
                                                 onClick={() => handleToggle(host.id)}
-                                                className={`p-1.5 rounded-lg transition-all ${host.enabled ? 'text-green-500 hover:bg-green-500/10' : 'text-on-surface-variant hover:bg-white/10'}`}
-                                                title={host.enabled ? "Disable" : "Enable"}
+                                                className={`flex items-center gap-2 pr-4 pl-3 py-1.5 rounded-2xl transition-all font-bold text-xs active:scale-95 ${host.enabled
+                                                    ? 'bg-green-500/10 text-green-500 border border-green-500/20'
+                                                    : 'bg-on-surface/5 text-on-surface-variant border border-on-surface/10'}`}
                                             >
-                                                <Power size={16} />
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(host.id)}
-                                                className="p-1.5 text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
-                                                title="Delete"
-                                            >
-                                                <Trash2 size={16} />
+                                                <Power size={14} className={host.enabled ? 'animate-pulse' : ''} />
+                                                <span>{host.enabled ? 'Enabled' : 'Disabled'}</span>
                                             </button>
                                         </div>
                                     </div>
@@ -228,26 +246,33 @@ export default function ProxyScreen() {
                                 <Server size={120} />
                             </div>
 
-                            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6 relative z-10">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-14 h-14 rounded-xl bg-primary/20 flex items-center justify-center shadow-lg backdrop-blur-md border border-white/10">
-                                        <Server size={26} className="text-primary" />
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 mb-8 relative z-10">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center shadow-xl backdrop-blur-md border border-white/20 relative">
+                                        <Server size={30} className="text-primary" />
+                                        {containerStatus?.running && (
+                                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-surface animate-pulse" />
+                                        )}
                                     </div>
                                     <div>
-                                        <h2 className="text-xl font-bold">Proxy Engine</h2>
-                                        <p className="text-xs text-on-surface-variant mt-0.5">OpenResty & Certbot Management</p>
+                                        <h2 className="text-2xl font-black tracking-tight">Proxy Engine</h2>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/60">OpenResty Gateway</span>
+                                            <span className="w-1 h-1 rounded-full bg-on-surface-variant/30" />
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-primary">v1.21.x</span>
+                                        </div>
                                     </div>
                                 </div>
                                 {containerStatus && (
-                                    <div className={`px-4 py-2 rounded-xl font-semibold text-sm flex items-center gap-2 shadow-md backdrop-blur-md border ${containerStatus.running
-                                        ? 'bg-green-500/20 text-green-500 border-green-500/30'
+                                    <div className={`px-5 py-2.5 rounded-2xl font-black text-xs flex items-center gap-3 shadow-lg backdrop-blur-xl border transition-all ${containerStatus.running
+                                        ? 'bg-green-500/15 text-green-500 border-green-500/30'
                                         : containerStatus.exists
-                                            ? 'bg-orange-500/20 text-orange-500 border-orange-500/30'
-                                            : 'bg-red-500/20 text-red-500 border-red-500/30'
+                                            ? 'bg-orange-500/15 text-orange-500 border-orange-500/30'
+                                            : 'bg-red-500/15 text-red-500 border-red-500/30'
                                         }`}>
-                                        <div className={`w-2 h-2 rounded-full ${containerStatus.running ? 'bg-green-500 animate-pulse' : 'bg-current'
+                                        <div className={`w-2.5 h-2.5 rounded-full ${containerStatus.running ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.6)] animate-pulse' : 'bg-current'
                                             }`} />
-                                        {containerStatus.running ? 'RUNNING' : containerStatus.exists ? 'STOPPED' : 'NOT CREATED'}
+                                        <span className="tracking-widest">{containerStatus.running ? 'SYSTEM RUNNING' : containerStatus.exists ? 'SYSTEM STOPPED' : 'NOT INITIALIZED'}</span>
                                     </div>
                                 )}
                             </div>
@@ -260,24 +285,24 @@ export default function ProxyScreen() {
                                         { label: 'Lifecycle', value: containerStatus.status, color: 'text-primary', icon: <Activity size={14} /> },
                                         { label: 'System ID', value: containerStatus.containerId?.substring(0, 12) || 'N/A', color: 'text-on-surface', icon: <FileKey size={14} /> }
                                     ].map((stat, i) => (
-                                        <div key={i} className="bg-surface/50 backdrop-blur-sm rounded-xl p-3.5 border border-outline/10 shadow-sm">
-                                            <div className="flex items-center gap-1.5 text-[10px] text-on-surface-variant uppercase font-semibold mb-1.5 tracking-wider">
+                                        <div key={i} className="bg-surface/40 backdrop-blur-md rounded-2xl p-4 border border-white/5 shadow-sm group hover:border-primary/30 transition-all">
+                                            <div className="flex items-center gap-2 text-[10px] text-on-surface-variant/70 uppercase font-black mb-2 tracking-widest">
                                                 {stat.icon}
                                                 <span>{stat.label}</span>
                                             </div>
-                                            <div className={`text-sm font-bold font-mono ${stat.color}`}>{stat.value}</div>
+                                            <div className={`text-sm font-black font-mono tracking-tight ${stat.color}`}>{stat.value}</div>
                                         </div>
                                     ))}
                                 </div>
                             )}
 
-                            <div className="flex flex-wrap gap-2 mb-4">
+                            <div className="flex flex-wrap gap-3 mb-6">
                                 {[
-                                    { label: 'Build', icon: <Activity className="rotate-90" />, action: () => DockerClient.buildProxyImage(), color: 'bg-surface hover:bg-surface-variant border-outline/20 text-on-surface' },
-                                    { label: 'Create', icon: <Plus />, action: () => DockerClient.createProxyContainer(), color: 'bg-surface hover:bg-surface-variant border-outline/20 text-on-surface', disabled: !containerStatus?.imageExists },
-                                    { label: 'Start', icon: <Activity />, action: () => DockerClient.startProxyContainer(), color: 'bg-green-500 hover:bg-green-600 text-white', disabled: !containerStatus?.exists || containerStatus?.running },
-                                    { label: 'Stop', icon: <Power />, action: () => DockerClient.stopProxyContainer(), color: 'bg-red-500 hover:bg-red-600 text-white', disabled: !containerStatus?.running },
-                                    { label: 'Restart', icon: <RefreshCw />, action: () => DockerClient.restartProxyContainer(), color: 'bg-orange-500 hover:bg-orange-600 text-white', disabled: !containerStatus?.running },
+                                    { label: 'Build', icon: <Activity className="rotate-90" />, action: () => DockerClient.buildProxyImage(), color: 'bg-surface/50 hover:bg-surface-variant border-outline/20 text-on-surface' },
+                                    { label: 'Create', icon: <Plus />, action: () => DockerClient.createProxyContainer(), color: 'bg-surface/50 hover:bg-surface-variant border-outline/20 text-on-surface', disabled: !containerStatus?.imageExists },
+                                    { label: 'Start', icon: <Activity />, action: () => DockerClient.startProxyContainer(), color: 'bg-green-500 hover:bg-green-600 text-white shadow-green-500/20', disabled: !containerStatus?.exists || containerStatus?.running },
+                                    { label: 'Stop', icon: <Power />, action: () => DockerClient.stopProxyContainer(), color: 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/20', disabled: !containerStatus?.running },
+                                    { label: 'Restart', icon: <RefreshCw />, action: () => DockerClient.restartProxyContainer(), color: 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/20', disabled: !containerStatus?.running },
                                 ].map((btn, i) => (
                                     <button
                                         key={i}
@@ -293,9 +318,9 @@ export default function ProxyScreen() {
                                             setIsContainerActionLoading(false);
                                         }}
                                         disabled={isContainerActionLoading || btn.disabled}
-                                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl transition-all shadow-md active:scale-[0.98] border font-semibold text-xs disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed ${btn.color}`}
+                                        className={`inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl transition-all shadow-lg active:scale-95 border font-black text-[10px] uppercase tracking-widest disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed flex-1 sm:flex-initial ${btn.color}`}
                                     >
-                                        {React.cloneElement(btn.icon as React.ReactElement<any>, { size: 16 })}
+                                        <span className="shrink-0">{btn.icon}</span>
                                         <span>{btn.label}</span>
                                     </button>
                                 ))}
@@ -494,71 +519,94 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-surface border border-outline/20 rounded-2xl w-full max-w-sm shadow-2xl p-5">
-                <h2 className="text-lg font-bold mb-4">{initialHost ? 'Edit Proxy Host' : 'Add Proxy Host'}</h2>
-                <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md transition-all">
+            <div className="bg-surface border border-outline/20 rounded-[32px] w-full max-w-lg shadow-2xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto no-scrollbar relative">
+                <div className="flex items-center justify-between mb-8">
                     <div>
-                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1 ml-1">Domain Name</label>
-                        <input
-                            required
-                            type="text"
-                            placeholder="e.g. app.example.com"
-                            value={domain}
-                            onChange={(e) => setDomain(e.target.value)}
-                            className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2 focus:outline-none focus:border-primary"
-                        />
+                        <h2 className="text-2xl font-black tracking-tight">{initialHost ? 'Edit Proxy Host' : 'Add Proxy Host'}</h2>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/60 mt-1">Configure Routing & Security</p>
                     </div>
-                    <div>
-                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1 ml-1">Target URL</label>
-                        <input
-                            required
-                            type="text"
-                            placeholder="e.g. http://localhost:8080"
-                            value={target}
-                            onChange={(e) => setTarget(e.target.value)}
-                            className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2 focus:outline-none focus:border-primary"
-                        />
-                    </div>
-
-                    <div className="flex flex-col gap-2 pt-2 border-t border-outline/10">
-                        {/* WebSocket Toggle */}
-                        <div className="flex items-center gap-3 py-1">
+                    <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-all opacity-50 hover:opacity-100">
+                        <Plus size={24} className="rotate-45" />
+                    </button>
+                </div>
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Domain Name</label>
                             <input
-                                type="checkbox"
-                                id="ws-toggle"
-                                checked={websocketEnabled}
-                                onChange={(e) => setWebsocketEnabled(e.target.checked)}
-                                className="w-5 h-5 rounded border-outline/20 bg-white/5 checked:bg-primary accent-primary"
+                                required
+                                type="text"
+                                placeholder="e.g. app.example.com"
+                                value={domain}
+                                onChange={(e) => setDomain(e.target.value)}
+                                className="w-full bg-white/5 border border-outline/20 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary transition-all font-bold placeholder:font-normal"
                             />
-                            <label htmlFor="ws-toggle" className="text-sm font-medium cursor-pointer text-on-surface">Enable Websockets Support</label>
                         </div>
-
-                        {/* SSL Toggle */}
-                        <div className="flex items-center gap-3 py-1">
+                        <div className="space-y-1.5">
+                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Target URL</label>
                             <input
-                                type="checkbox"
-                                id="ssl-toggle"
-                                checked={sslEnabled}
-                                onChange={(e) => setSslEnabled(e.target.checked)}
-                                className="w-5 h-5 rounded border-outline/20 bg-white/5 checked:bg-green-500 accent-green-500"
+                                required
+                                type="text"
+                                placeholder="e.g. http://localhost:8080"
+                                value={target}
+                                onChange={(e) => setTarget(e.target.value)}
+                                className="w-full bg-white/5 border border-outline/20 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary transition-all font-mono font-bold placeholder:font-normal"
                             />
-                            <label htmlFor="ssl-toggle" className="text-sm font-medium cursor-pointer text-on-surface flex items-center gap-2">
-                                Enable SSL (HTTPS)
-                                <Lock size={12} className="text-green-500" />
+                        </div>
+                    </div>
+
+                    <div className="space-y-4 pt-4 border-t border-outline/5">
+                        <h3 className="text-[10px] font-black text-primary uppercase tracking-widest ml-1">Security & Protocol</h3>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {/* WebSocket Toggle */}
+                            <label className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-outline/10 cursor-pointer hover:border-primary/30 transition-all group">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${websocketEnabled ? 'bg-primary/20 text-primary' : 'bg-white/5 text-on-surface-variant'}`}>
+                                    <Activity size={18} className={websocketEnabled ? 'animate-pulse' : ''} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-bold text-on-surface">Websockets</div>
+                                    <div className="text-[10px] text-on-surface-variant font-medium">Full duplex proxying</div>
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    checked={websocketEnabled}
+                                    onChange={(e) => setWebsocketEnabled(e.target.checked)}
+                                    className="w-5 h-5 rounded-lg border-outline/20 bg-white/5 checked:bg-primary accent-primary"
+                                />
+                            </label>
+
+                            {/* SSL Toggle */}
+                            <label className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-outline/10 cursor-pointer hover:border-green-500/30 transition-all group">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${sslEnabled ? 'bg-green-500/20 text-green-500' : 'bg-white/5 text-on-surface-variant'}`}>
+                                    <Lock size={18} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-bold text-on-surface">SSL (HTTPS)</div>
+                                    <div className="text-[10px] text-on-surface-variant font-medium">Secure traffic only</div>
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    checked={sslEnabled}
+                                    onChange={(e) => setSslEnabled(e.target.checked)}
+                                    className="w-5 h-5 rounded-lg border-outline/20 bg-white/5 checked:bg-green-500 accent-green-500"
+                                />
                             </label>
                         </div>
 
                         {/* SSL Options - Only visible when SSL is enabled */}
                         {sslEnabled && (
-                            <div className="pl-4 ml-2 border-l-2 border-green-500/20 space-y-3 mt-1 animate-in slide-in-from-left-2 duration-200">
-                                <div>
-                                    <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">SSL Certificate Source</label>
+                            <div className="p-5 rounded-3xl bg-green-500/5 border border-green-500/10 space-y-5 animate-in slide-in-from-top-4 duration-300">
+                                <div className="space-y-2">
+                                    <label className="block text-[10px] font-black text-green-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                                        <FileKey size={12} /> SSL Certificate Source
+                                    </label>
                                     <div className="relative">
                                         <select
                                             value={selectedCert}
                                             onChange={(e) => setSelectedCert(e.target.value)}
-                                            className="w-full bg-white/5 border border-outline/20 rounded-xl px-3 py-2 appearance-none focus:outline-none focus:border-green-500 text-sm"
+                                            className="w-full bg-white/5 border border-green-500/20 rounded-2xl px-4 py-3 appearance-none focus:outline-none focus:border-green-500 text-sm font-bold"
                                         >
                                             <option value="">Auto-generate (Let's Encrypt)</option>
                                             {certs.map(cert => (
@@ -567,23 +615,27 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
                                                 </option>
                                             ))}
                                         </select>
-                                        <FileKey size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" />
+                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-50">
+                                            <Plus size={14} className="rotate-45" />
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-3">
+                                <label className="flex items-center gap-3 cursor-pointer group">
                                     <input
                                         type="checkbox"
-                                        id="hsts-toggle"
                                         checked={hstsEnabled}
                                         onChange={(e) => setHstsEnabled(e.target.checked)}
-                                        className="w-4 h-4 rounded border-outline/20 bg-white/5 checked:bg-purple-500 accent-purple-500"
+                                        className="w-4 h-4 rounded-md border-outline/20 bg-white/5 checked:bg-purple-500 accent-purple-500"
                                     />
-                                    <label htmlFor="hsts-toggle" className="text-xs font-medium cursor-pointer flex items-center gap-2 text-on-surface-variant">
-                                        Enable HSTS
-                                        <span className="text-[9px] bg-purple-500/10 text-purple-500 px-1 py-0.5 rounded font-bold uppercase">Strict Security</span>
-                                    </label>
-                                </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-xs font-bold flex items-center gap-2">
+                                            Enable HSTS
+                                            <span className="text-[9px] bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-full font-black uppercase tracking-tighter">Strict Security</span>
+                                        </span>
+                                        <span className="text-[10px] text-on-surface-variant/60">Enforce HTTPS on browsers</span>
+                                    </div>
+                                </label>
                             </div>
                         )}
                     </div>
@@ -793,107 +845,100 @@ function PathRouteModal({
 
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-surface border border-outline/20 rounded-2xl w-full max-w-md shadow-2xl p-5 max-h-[90vh] overflow-y-auto">
-                <h2 className="text-lg font-bold mb-4">{initialPath ? 'Edit Path Route' : 'Add Path Route'}</h2>
-                <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md transition-all">
+            <div className="bg-surface border border-outline/20 rounded-[32px] w-full max-w-lg shadow-2xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto no-scrollbar relative animate-in zoom-in-95 duration-200">
+                <div className="flex items-center justify-between mb-8">
                     <div>
-                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1 ml-1">Name (Optional)</label>
-                        <input
-                            type="text"
-                            placeholder="e.g. API Backend, Static Files"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2 focus:outline-none focus:border-primary text-sm"
-                        />
-                        <p className="text-[10px] text-on-surface-variant mt-1 ml-1">Display name for this path route</p>
+                        <h2 className="text-2xl font-black tracking-tight">{initialPath ? 'Edit Path Route' : 'Add Path Route'}</h2>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/60 mt-1">Specific Endpoints Management</p>
                     </div>
-                    <div>
-                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1 ml-1">Path</label>
-                        <input
-                            required
-                            type="text"
-                            placeholder="e.g. /api, /static, /admin"
-                            value={path}
-                            onChange={(e) => setPath(e.target.value)}
-                            className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2 focus:outline-none focus:border-primary font-mono text-sm"
-                        />
-                        <p className="text-[10px] text-on-surface-variant mt-1 ml-1">Must start with /</p>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1 ml-1">Target URL</label>
-                        <input
-                            required
-                            type="text"
-                            placeholder="e.g. http://backend:8080"
-                            value={target}
-                            onChange={(e) => setTarget(e.target.value)}
-                            className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2 focus:outline-none focus:border-primary font-mono text-sm"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1 ml-1">Order/Priority</label>
-                        <input
-                            type="number"
-                            placeholder="0"
-                            value={order}
-                            onChange={(e) => setOrder(e.target.value)}
-                            className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2 focus:outline-none focus:border-primary font-mono text-sm"
-                        />
-                        <p className="text-[10px] text-on-surface-variant mt-1 ml-1">Higher numbers = higher priority (matched first)</p>
+                    <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-all opacity-50 hover:opacity-100">
+                        <Plus size={24} className="rotate-45" />
+                    </button>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Display Name</label>
+                            <input
+                                type="text"
+                                placeholder="e.g. API Gateway"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                className="w-full bg-white/5 border border-outline/20 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary transition-all font-bold placeholder:font-normal"
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Path / Prefix</label>
+                            <input
+                                required
+                                type="text"
+                                placeholder="e.g. /api"
+                                value={path}
+                                onChange={(e) => setPath(e.target.value)}
+                                className="w-full bg-white/5 border border-outline/20 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary transition-all font-mono font-bold placeholder:font-normal text-primary"
+                            />
+                        </div>
                     </div>
 
-                    <div className="flex flex-col gap-2 pt-2 border-t border-outline/10">
-                        <div className="flex items-center gap-3 py-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="sm:col-span-2 space-y-1.5">
+                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Forwarding Target</label>
                             <input
-                                type="checkbox"
-                                id="path-enabled-toggle"
-                                checked={enabled}
-                                onChange={(e) => setEnabled(e.target.checked)}
-                                className="w-5 h-5 rounded border-outline/20 bg-white/5 checked:bg-green-500 accent-green-500"
+                                required
+                                type="text"
+                                placeholder="http://service:8080"
+                                value={target}
+                                onChange={(e) => setTarget(e.target.value)}
+                                className="w-full bg-white/5 border border-outline/20 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary transition-all font-mono font-bold placeholder:font-normal"
                             />
-                            <label htmlFor="path-enabled-toggle" className="text-sm font-medium cursor-pointer text-on-surface flex items-center gap-2">
-                                Enable Path Route
-                                <span className="text-[9px] bg-green-500/10 text-green-500 px-1 py-0.5 rounded font-bold uppercase">Active</span>
-                            </label>
                         </div>
+                        <div className="space-y-1.5">
+                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Priority</label>
+                            <input
+                                type="number"
+                                value={order}
+                                onChange={(e) => setOrder(e.target.value)}
+                                className="w-full bg-white/5 border border-outline/20 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary transition-all font-mono font-bold"
+                            />
+                        </div>
+                    </div>
 
-                        <div className="flex items-center gap-3 py-1">
-                            <input
-                                type="checkbox"
-                                id="path-ws-toggle"
-                                checked={websocketEnabled}
-                                onChange={(e) => setWebsocketEnabled(e.target.checked)}
-                                className="w-5 h-5 rounded border-outline/20 bg-white/5 checked:bg-primary accent-primary"
-                            />
-                            <label htmlFor="path-ws-toggle" className="text-sm font-medium cursor-pointer text-on-surface">Enable Websockets</label>
-                        </div>
-
-                        <div className="flex items-center gap-3 py-1">
-                            <input
-                                type="checkbox"
-                                id="strip-prefix-toggle"
-                                checked={stripPrefix}
-                                onChange={(e) => setStripPrefix(e.target.checked)}
-                                className="w-5 h-5 rounded border-outline/20 bg-white/5 checked:bg-orange-500 accent-orange-500"
-                            />
-                            <label htmlFor="strip-prefix-toggle" className="text-sm font-medium cursor-pointer text-on-surface flex items-center gap-2">
-                                Strip Path Prefix
-                                <span className="text-[9px] bg-orange-500/10 text-orange-500 px-1 py-0.5 rounded font-bold uppercase">Remove /path before forwarding</span>
-                            </label>
-                        </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4 border-t border-outline/5">
+                        <label className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/5 border border-outline/10 cursor-pointer hover:border-primary/30 transition-all">
+                            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="w-4 h-4 rounded-md border-outline/20 bg-white/5 checked:bg-green-500 accent-green-500" />
+                            <div className="flex flex-col">
+                                <span className="text-xs font-bold">Route Enabled</span>
+                                <span className="text-[9px] text-on-surface-variant/60 font-black uppercase tracking-tighter">Active Traffic</span>
+                            </div>
+                        </label>
+                        <label className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/5 border border-outline/10 cursor-pointer hover:border-primary/30 transition-all">
+                            <input type="checkbox" checked={websocketEnabled} onChange={(e) => setWebsocketEnabled(e.target.checked)} className="w-4 h-4 rounded-md border-outline/20 bg-white/5 checked:bg-primary accent-primary" />
+                            <div className="flex flex-col">
+                                <span className="text-xs font-bold">Websockets</span>
+                                <span className="text-[9px] text-on-surface-variant/60 font-black uppercase tracking-tighter">Upgrade Headers</span>
+                            </div>
+                        </label>
+                        <label className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/5 border border-outline/10 cursor-pointer hover:border-primary/30 transition-all sm:col-span-2">
+                            <input type="checkbox" checked={stripPrefix} onChange={(e) => setStripPrefix(e.target.checked)} className="w-4 h-4 rounded-md border-outline/20 bg-white/5 checked:bg-orange-500 accent-orange-500" />
+                            <div className="flex flex-col">
+                                <span className="text-xs font-bold">Strip Path Prefix</span>
+                                <span className="text-[9px] text-on-surface-variant/60 font-black uppercase tracking-tighter">Forwarded request will not include the path prefix</span>
+                            </div>
+                        </label>
                     </div>
 
                     {/* IP Restrictions */}
-                    <div className="pt-2 border-t border-outline/10">
-                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-2 ml-1">IP Restrictions (Optional)</label>
-                        <div className="flex gap-2 mb-2">
+                    <div className="space-y-2 pt-4 border-t border-outline/5">
+                        <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">IP Restrict (Optional)</label>
+                        <div className="flex gap-2">
                             <input
                                 type="text"
-                                placeholder="IP or CIDR"
+                                placeholder="192.168.1.0/24"
                                 value={newIp}
                                 onChange={(e) => setNewIp(e.target.value)}
-                                className="flex-1 bg-white/5 border border-outline/20 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:border-primary"
+                                className="flex-1 bg-white/5 border border-outline/20 rounded-2xl px-4 py-2 text-xs font-mono focus:outline-none focus:border-primary transition-all font-bold"
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                         e.preventDefault();
@@ -912,58 +957,55 @@ function PathRouteModal({
                                         setNewIp('');
                                     }
                                 }}
-                                className="bg-primary/20 text-primary p-2 rounded-xl hover:bg-primary/30 transition-all"
+                                className="bg-primary/20 text-primary p-2.5 rounded-2xl hover:bg-primary/30 transition-all active:scale-90"
                             >
-                                <Plus size={16} />
+                                <Plus size={20} />
                             </button>
                         </div>
-                        <div className="flex flex-wrap gap-2 max-h-20 overflow-y-auto no-scrollbar p-1">
+                        <div className="flex flex-wrap gap-2 pt-1">
                             {allowedIps.map(ip => (
-                                <div key={ip} className="flex items-center gap-2 bg-surface border border-outline/20 px-2 py-1 rounded-lg text-[10px] font-mono">
+                                <div key={ip} className="flex items-center gap-2 bg-on-surface/5 border border-outline/10 px-3 py-1.5 rounded-xl text-[10px] font-mono font-bold">
                                     <span>{ip}</span>
-                                    <button
-                                        type="button"
-                                        onClick={() => setAllowedIps(allowedIps.filter(i => i !== ip))}
-                                        className="text-on-surface-variant hover:text-red-500 transition-colors"
-                                    >
-                                        <Plus size={10} className="rotate-45" />
+                                    <button type="button" onClick={() => setAllowedIps(allowedIps.filter(i => i !== ip))} className="text-on-surface-variant hover:text-red-500 transition-colors">
+                                        <Plus size={12} className="rotate-45" />
                                     </button>
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    {/* Custom Config */}
-                    <div className="pt-2 border-t border-outline/10">
-                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-2 ml-1">Custom Nginx Config (Optional)</label>
+                    {/* Custom Config using Monaco-style textarea */}
+                    <div className="space-y-2 pt-4 border-t border-outline/5 font-mono">
+                        <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Custom Nginx Directives</label>
                         <textarea
                             value={customConfig}
                             onChange={(e) => setCustomConfig(e.target.value)}
-                            placeholder="e.g. proxy_read_timeout 300s;&#10;proxy_connect_timeout 60s;"
-                            className="w-full bg-white/5 border border-outline/20 rounded-xl px-3 py-2 text-xs font-mono focus:outline-none focus:border-primary h-20 resize-none"
+                            placeholder="# e.g. proxy_set_header X-Custom yes;"
+                            className="w-full bg-[#1e1e1e] border border-outline/20 rounded-2xl px-4 py-4 text-xs font-mono focus:outline-none focus:border-primary h-32 resize-none shadow-inner"
                         />
                     </div>
 
-                    <div className="flex gap-2 pt-2">
+                    <div className="flex gap-3 pt-6 sticky bottom-0 bg-surface sm:bg-transparent -mx-6 px-6 sm:mx-0 sm:px-0">
                         <button
                             type="button"
                             onClick={onClose}
-                            className="flex-1 px-4 py-2 rounded-xl border border-outline/20 hover:bg-white/5 text-sm font-bold"
+                            className="flex-1 py-4 rounded-[22px] border border-outline/20 hover:bg-white/5 text-xs font-black uppercase tracking-widest transition-all"
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
                             disabled={isSubmitting}
-                            className="flex-1 bg-primary text-on-primary px-4 py-2 rounded-xl font-bold text-sm shadow-lg shadow-primary/20"
+                            className="flex-1 bg-primary text-on-primary py-4 rounded-[22px] font-black text-xs uppercase tracking-widest shadow-xl shadow-primary/20 disabled:opacity-50 active:scale-95 transition-all"
                         >
-                            {initialPath ? 'Save Changes' : 'Create Path'}
+                            {initialPath ? 'Confirm Update' : 'Initialize Path'}
                         </button>
                     </div>
                 </form>
             </div>
         </div>
     );
+
 }
 
 function DefaultBehaviorToggle() {

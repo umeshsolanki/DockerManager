@@ -322,7 +322,9 @@ export default function SecurityScreen() {
                                         </div>
                                         <div className="flex flex-col items-end">
                                             <span className="text-[9px] font-black text-red-500 uppercase">JAILED</span>
-                                            <span className="text-[8px] text-on-surface-variant font-bold mt-0.5">Expires in 30m</span>
+                                            <span className="text-[8px] text-on-surface-variant font-bold mt-0.5">
+                                                {jail.expiresAt ? `Expires in ${Math.max(0, Math.round((jail.expiresAt - Date.now()) / 60000))}m` : 'Permanent'}
+                                            </span>
                                         </div>
                                     </div>
                                     <div className="text-[10px] bg-black/20 p-2.5 rounded-xl border border-outline/5 text-on-surface-variant min-h-[3rem] italic">

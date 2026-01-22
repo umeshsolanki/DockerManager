@@ -2,6 +2,9 @@ package com.umeshsolanki.dockermanager.docker
 
 import com.github.dockerjava.api.DockerClient
 import com.github.dockerjava.api.async.ResultCallback
+import com.umeshsolanki.dockermanager.AppConfig
+import kotlinx.serialization.json.*
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 interface IContainerService {
@@ -100,7 +103,9 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
                 image = details.config.image ?: "unknown",
                 state = details.state.status ?: "unknown",
                 status = details.state.toString(),
-                createdAt = details.created?.toLongOrNull()?.let { it * 1000L } ?: 0L, // Convert seconds to milliseconds
+                createdAt = details.created?.let { 
+                    try { Instant.parse(it).toEpochMilli() } catch(e: Exception) { 0L }
+                } ?: 0L,
                 platform = details.platform ?: "unknown",
                 env = details.config.env?.toList() ?: emptyList(),
                 labels = details.config.labels ?: emptyMap(),
@@ -123,6 +128,71 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
                     } ?: emptyList()
                 })
         } catch (e: Exception) {
+            // Check if it's the Jackson deserialization error (e.g. for Capability CAP_MKNOD)
+            // or any other issue that makes library fails to parse the response
+            System.err.println("Docker library inspection failed for $id, falling back to CLI: ${e.message}")
+            inspectContainerFallback(id)
+        }
+    }
+
+    private fun inspectContainerFallback(id: String): ContainerDetails? {
+        return try {
+            val process = Runtime.getRuntime().exec(arrayOf(AppConfig.dockerCommand, "inspect", id))
+            val output = process.inputStream.readBytes().decodeToString()
+            if (output.isBlank() || output == "[]") return null
+            
+            val jsonArray = AppConfig.json.parseToJsonElement(output).jsonArray
+            if (jsonArray.isEmpty()) return null
+            val details = jsonArray[0].jsonObject
+            
+            val config = details["Config"]?.jsonObject
+            val state = details["State"]?.jsonObject
+            val networkSettings = details["NetworkSettings"]?.jsonObject
+            val mounts = details["Mounts"]?.jsonArray
+            
+            ContainerDetails(
+                id = details["Id"]?.jsonPrimitive?.content ?: id,
+                name = details["Name"]?.jsonPrimitive?.content?.removePrefix("/") ?: "unknown",
+                image = config?.get("Image")?.jsonPrimitive?.content ?: "unknown",
+                state = state?.get("Status")?.jsonPrimitive?.content ?: "unknown",
+                status = state?.get("Status")?.jsonPrimitive?.content ?: "unknown",
+                createdAt = state?.get("StartedAt")?.jsonPrimitive?.content?.let { 
+                    try { Instant.parse(it).toEpochMilli() } catch(e: Exception) { 0L }
+                } ?: 0L,
+                platform = details["Platform"]?.jsonPrimitive?.content ?: "unknown",
+                env = config?.get("Env")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
+                labels = config?.get("Labels")?.jsonObject?.mapValues { it.value.jsonPrimitive.content } ?: emptyMap(),
+                mounts = mounts?.map { m ->
+                    val mo = m.jsonObject
+                    DockerMount(
+                        type = mo["Type"]?.jsonPrimitive?.content ?: "bind",
+                        source = mo["Source"]?.jsonPrimitive?.content ?: "",
+                        destination = mo["Destination"]?.jsonPrimitive?.content,
+                        mode = mo["Mode"]?.jsonPrimitive?.content,
+                        rw = mo["RW"]?.jsonPrimitive?.boolean ?: false
+                    )
+                } ?: emptyList(),
+                ports = networkSettings?.get("Ports")?.jsonObject?.flatMap { (portSpec, bindings) ->
+                    val specParts = portSpec.split("/")
+                    val port = specParts[0].toIntOrNull() ?: 0
+                    val proto = if (specParts.size > 1) specParts[1] else "tcp"
+                    
+                    if (bindings is JsonNull || bindings == null) {
+                        listOf(PortMapping(port, 0, proto))
+                    } else {
+                        bindings.jsonArray.map { b ->
+                            val bo = b.jsonObject
+                            PortMapping(
+                                containerPort = port,
+                                hostPort = bo["HostPort"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
+                                protocol = proto
+                            )
+                        }
+                    }
+                } ?: emptyList()
+            )
+        } catch (e: Exception) {
+            System.err.println("Fallback inspection also failed for $id")
             e.printStackTrace()
             null
         }
