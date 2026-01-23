@@ -716,21 +716,26 @@ class ProxyServiceImpl(
                             val confDir = File(AppConfig.certbotDir, "conf")
                             if (!confDir.exists()) confDir.mkdirs()
                             
+                            // Load DNS hook template
+                            val hookTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/dns-hook.sh")
+
                             // Create auth script
                             val authScript = File(confDir, "dns-auth.sh")
-                            authScript.writeText("#!/bin/sh\n" +
-                                "curl -X POST \"${host.dnsAuthUrl}\" " +
-                                "-H \"Content-Type: application/json\" " +
-                                "-d \"{\\\"domain\\\":\\\"\$CERTBOT_DOMAIN\\\", \\\"validation\\\":\\\"\$CERTBOT_VALIDATION\\\", \\\"token\\\":\\\"${host.dnsApiToken ?: ""}\\\"}\"")
+                            val authContent = ResourceLoader.replacePlaceholders(hookTemplate, mapOf(
+                                "url" to host.dnsAuthUrl,
+                                "token" to (host.dnsApiToken ?: "")
+                            ))
+                            authScript.writeText(authContent)
                             
                             // Create cleanup script if provided
                             var cleanupArg = ""
                             if (!host.dnsCleanupUrl.isNullOrBlank()) {
                                 val cleanupScript = File(confDir, "dns-cleanup.sh")
-                                cleanupScript.writeText("#!/bin/sh\n" +
-                                    "curl -X POST \"${host.dnsCleanupUrl}\" " +
-                                    "-H \"Content-Type: application/json\" " +
-                                    "-d \"{\\\"domain\\\":\\\"\$CERTBOT_DOMAIN\\\", \\\"validation\\\":\\\"\$CERTBOT_VALIDATION\\\", \\\"token\\\":\\\"${host.dnsApiToken ?: ""}\\\"}\"")
+                                val cleanupContent = ResourceLoader.replacePlaceholders(hookTemplate, mapOf(
+                                    "url" to host.dnsCleanupUrl,
+                                    "token" to (host.dnsApiToken ?: "")
+                                ))
+                                cleanupScript.writeText(cleanupContent)
                                 executeCommand("${AppConfig.dockerCommand} exec docker-manager-proxy chmod +x /etc/letsencrypt/dns-cleanup.sh")
                                 cleanupArg = "--manual-cleanup-hook /etc/letsencrypt/dns-cleanup.sh"
                             }
