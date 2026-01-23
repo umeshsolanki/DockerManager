@@ -7,7 +7,9 @@ RUN apk add --no-cache \
     bash \
     curl \
     ca-certificates \
-    tzdata
+    tzdata \
+    py3-certbot-dns-cloudflare \
+    py3-certbot-dns-digitalocean
 
 # Create standard directories
 RUN mkdir -p /var/www/certbot /etc/letsencrypt /usr/local/openresty/nginx/logs

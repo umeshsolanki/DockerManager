@@ -31,7 +31,10 @@ data class ProxyHost(
     val allowedIps: List<String> = emptyList(),
     val customSslPath: String? = null,
     val hstsEnabled: Boolean = false,
-    val paths: List<PathRoute> = emptyList() // Custom path-based routes
+    val paths: List<PathRoute> = emptyList(), // Custom path-based routes
+    val sslChallengeType: String = "http", // "http" or "dns"
+    val dnsProvider: String? = null, // e.g., "cloudflare", "manual"
+    val dnsApiToken: String? = null // API token for DNS provider
 ) {
     // Computed property to get upstream, defaulting to target if not provided
     val effectiveUpstream: String get() = upstream ?: target
@@ -84,6 +87,7 @@ data class SSLCertificate(
     val certPath: String,
     val keyPath: String,
     val type: String = "letsencrypt", // "letsencrypt" or "custom"
+    val isWildcard: Boolean = false,
     val expiresAt: Long? = null,
     val issuer: String? = null
 )

@@ -704,8 +704,47 @@ class ProxyServiceImpl(
             try {
                 // Run certbot via docker using absolute paths map to the certbot volume
                 // Updated to run in proxy container with standard paths
-                val certCmd =
-                    "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --webroot -w /var/www/certbot -d ${host.domain} --non-interactive --agree-tos --email admin@${host.domain}"
+                val certCmd = if (host.sslChallengeType == "dns") {
+                    val dnsPlugin = when (host.dnsProvider) {
+                        "cloudflare" -> "dns-cloudflare"
+                        "digitalocean" -> "dns-digitalocean"
+                        else -> "manual"
+                    }
+
+                    if (dnsPlugin == "manual") {
+                        "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --manual --preferred-challenges dns -d \"${host.domain}\" --non-interactive --agree-tos --email admin@${host.domain}"
+                    } else {
+                        // Create credentials file in certbot/conf dir
+                        val confDir = File(AppConfig.certbotDir, "conf")
+                        if (!confDir.exists()) confDir.mkdirs()
+                        
+                        val credsFile = File(confDir, "dns-${host.dnsProvider}.ini")
+                        val credsContent = when (host.dnsProvider) {
+                            "cloudflare" -> "dns_cloudflare_api_token = ${host.dnsApiToken}"
+                            "digitalocean" -> "dns_digitalocean_token = ${host.dnsApiToken}"
+                            else -> ""
+                        }
+                        credsFile.writeText(credsContent)
+                        
+                        // Set permissions for the file (must be 600 or certbot warns/fails)
+                        // Note: This is on the host, but certbot runs in container
+                        try {
+                            java.nio.file.Files.setPosixFilePermissions(
+                                credsFile.toPath(),
+                                java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")
+                            )
+                        } catch (e: Exception) {
+                            logger.warn("Failed to set credentials file permissions on host, trying via container")
+                            executeCommand("${AppConfig.dockerCommand} exec docker-manager-proxy chmod 600 /etc/letsencrypt/dns-${host.dnsProvider}.ini")
+                        }
+
+                        val containerCredsPath = "/etc/letsencrypt/dns-${host.dnsProvider}.ini"
+                        "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --${dnsPlugin} --${dnsPlugin}-credentials ${containerCredsPath} -d \"${host.domain}\" --non-interactive --agree-tos --email admin@${host.domain}"
+                    }
+                } else {
+                    "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --webroot -w /var/www/certbot -d \"${host.domain}\" --non-interactive --agree-tos --email admin@${host.domain}"
+                }
+                
                 val result = executeCommand(certCmd)
 
                 if (result.contains("Successfully received certificate") || result.contains("Certificate not yet due for renewal")) {

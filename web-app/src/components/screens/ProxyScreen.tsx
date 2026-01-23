@@ -152,7 +152,7 @@ export default function ProxyScreen() {
                                                         <h3 className="text-base font-bold truncate tracking-tight">{host.domain}</h3>
                                                         <div className="flex gap-1 shrink-0">
                                                             {!host.enabled && <span className="text-[9px] bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded-md font-black uppercase tracking-wider">Offline</span>}
-                                                            {host.ssl && <span className="text-[9px] bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded-md font-black uppercase tracking-wider flex items-center gap-1"><Lock size={9} /> SSL</span>}
+                                                            {host.ssl && <span className="text-[9px] bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded-md font-black uppercase tracking-wider flex items-center gap-1"><Lock size={9} /> SSL {host.sslChallengeType === 'dns' && 'DNS'}</span>}
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-2 text-on-surface-variant/70 text-xs font-mono truncate">
@@ -474,6 +474,9 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
     const [hstsEnabled, setHstsEnabled] = useState(initialHost?.hstsEnabled || false);
     const [sslEnabled, setSslEnabled] = useState(initialHost?.ssl || false);
     const [selectedCert, setSelectedCert] = useState<string>(initialHost?.customSslPath || '');
+    const [sslChallengeType, setSslChallengeType] = useState<'http' | 'dns'>(initialHost?.sslChallengeType || 'http');
+    const [dnsProvider, setDnsProvider] = useState(initialHost?.dnsProvider || 'cloudflare');
+    const [dnsApiToken, setDnsApiToken] = useState(initialHost?.dnsApiToken || '');
     const [certs, setCerts] = useState<SSLCertificate[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [allowedIps, setAllowedIps] = useState<string[]>(initialHost?.allowedIps || []);
@@ -501,7 +504,10 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
             customSslPath: (sslEnabled && selectedCert) ? selectedCert : undefined,
             allowedIps,
             paths: paths.length > 0 ? paths : undefined,
-            createdAt: initialHost?.createdAt || Date.now()
+            createdAt: initialHost?.createdAt || Date.now(),
+            sslChallengeType,
+            dnsProvider: sslChallengeType === 'dns' ? dnsProvider : undefined,
+            dnsApiToken: sslChallengeType === 'dns' ? dnsApiToken : undefined
         };
 
         const result = initialHost
@@ -620,6 +626,62 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
                                         </div>
                                     </div>
                                 </div>
+
+                                {!selectedCert && (
+                                    <div className="space-y-4 animate-in fade-in duration-300">
+                                        <div className="flex items-center justify-between p-3 bg-white/5 rounded-2xl border border-white/5">
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] font-black uppercase text-on-surface">Challenge Type</span>
+                                                <span className="text-[9px] text-on-surface-variant font-medium">Use DNS for Wildcards</span>
+                                            </div>
+                                            <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSslChallengeType('http')}
+                                                    className={`px-3 py-1 text-[10px] font-black uppercase rounded-lg transition-all ${sslChallengeType === 'http' ? 'bg-primary text-on-primary' : 'text-on-surface-variant'}`}
+                                                >
+                                                    HTTP-01
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSslChallengeType('dns')}
+                                                    className={`px-3 py-1 text-[10px] font-black uppercase rounded-lg transition-all ${sslChallengeType === 'dns' ? 'bg-primary text-on-primary' : 'text-on-surface-variant'}`}
+                                                >
+                                                    DNS-01
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {sslChallengeType === 'dns' && (
+                                            <div className="space-y-4 pt-1 animate-in slide-in-from-top-2">
+                                                <div className="space-y-1.5">
+                                                    <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">DNS Provider</label>
+                                                    <select
+                                                        value={dnsProvider}
+                                                        onChange={(e) => setDnsProvider(e.target.value)}
+                                                        className="w-full bg-black/20 border border-outline/20 rounded-2xl px-4 py-2.5 text-sm font-bold focus:outline-none"
+                                                    >
+                                                        <option value="cloudflare">Cloudflare</option>
+                                                        <option value="digitalocean">DigitalOcean</option>
+                                                        <option value="manual">Manual (DNS TXT)</option>
+                                                    </select>
+                                                </div>
+                                                {dnsProvider !== 'manual' && (
+                                                    <div className="space-y-1.5">
+                                                        <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">API Token / Secret</label>
+                                                        <input
+                                                            type="password"
+                                                            placeholder={dnsProvider === 'cloudflare' ? 'Cloudflare API Token' : 'DigitalOcean Personal Access Token'}
+                                                            value={dnsApiToken}
+                                                            onChange={(e) => setDnsApiToken(e.target.value)}
+                                                            className="w-full bg-black/20 border border-outline/20 rounded-2xl px-4 py-2.5 text-sm font-mono focus:outline-none"
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 <label className="flex items-center gap-3 cursor-pointer group">
                                     <input

@@ -266,6 +266,9 @@ export interface ProxyHost {
   allowedIps?: string[];
   paths?: PathRoute[];
   createdAt: number;
+  sslChallengeType?: 'http' | 'dns';
+  dnsProvider?: string;
+  dnsApiToken?: string;
 }
 
 export interface SSLCertificate {
@@ -274,6 +277,7 @@ export interface SSLCertificate {
   certPath: string;
   keyPath: string;
   type?: string; // "letsencrypt" or "custom"
+  isWildcard?: boolean;
   expiresAt?: number; // Unix timestamp
   issuer?: string;
 }
