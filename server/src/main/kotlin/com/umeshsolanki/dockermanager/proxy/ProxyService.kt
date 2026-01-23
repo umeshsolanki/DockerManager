@@ -714,19 +714,30 @@ class ProxyServiceImpl(
                     if (dnsPlugin == "manual") {
                         val hasScripts = !host.dnsAuthScript.isNullOrBlank()
                         val hasUrls = !host.dnsAuthUrl.isNullOrBlank()
+                        val hasHost = !host.dnsHost.isNullOrBlank()
 
-                        if (hasScripts || hasUrls) {
+                        if (hasScripts || hasUrls || hasHost) {
                             val confDir = File(AppConfig.certbotDir, "conf")
                             if (!confDir.exists()) confDir.mkdirs()
                             
-                            // Load DNS hook template if using URLs
-                            val hookTemplate = if (!hasScripts) ResourceLoader.loadResourceOrThrow("templates/proxy/dns-hook.sh") else ""
+                            // Load DNS hook template if using URLs (POST JSON)
+                            // If hasHost and no custom URL, we will use GET template instead of loading dns-hook.sh
+                            val useJsonHook = hasUrls && !hasHost && !hasScripts
 
                             // Create auth script
                             val authScript = File(confDir, "dns-auth.sh")
                             val authContent = if (hasScripts) {
                                 host.dnsAuthScript ?: ""
+                            } else if (hasHost && host.dnsAuthUrl == null) {
+                                // Default GET template
+                                "#!/bin/sh\n" +
+                                "curl -G \"${host.dnsHost}/api/zones/records/add\" " +
+                                "--data-urlencode \"token=${host.dnsApiToken ?: ""}\" " +
+                                "--data-urlencode \"domain=${host.domain}\" " +
+                                "--data-urlencode \"type=txt\" " +
+                                "--data-urlencode \"text=\$CERTBOT_VALIDATION\""
                             } else {
+                                val hookTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/dns-hook.sh")
                                 ResourceLoader.replacePlaceholders(hookTemplate, mapOf(
                                     "url" to (host.dnsAuthUrl ?: ""),
                                     "token" to (host.dnsApiToken ?: "")
@@ -739,11 +750,20 @@ class ProxyServiceImpl(
                             val hasCleanupScript = !host.dnsCleanupScript.isNullOrBlank()
                             val hasCleanupUrl = !host.dnsCleanupUrl.isNullOrBlank()
                             
-                            if (hasCleanupScript || hasCleanupUrl) {
+                            if (hasCleanupScript || hasCleanupUrl || hasHost) {
                                 val cleanupScript = File(confDir, "dns-cleanup.sh")
                                 val cleanupContent = if (hasCleanupScript) {
                                     host.dnsCleanupScript ?: ""
+                                } else if (hasHost && host.dnsCleanupUrl == null) {
+                                    // Default GET template for delete
+                                    "#!/bin/sh\n" +
+                                    "curl -G \"${host.dnsHost}/api/zones/records/delete\" " +
+                                    "--data-urlencode \"token=${host.dnsApiToken ?: ""}\" " +
+                                    "--data-urlencode \"domain=${host.domain}\" " +
+                                    "--data-urlencode \"type=txt\" " +
+                                    "--data-urlencode \"text=\$CERTBOT_VALIDATION\""
                                 } else {
+                                    val hookTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/dns-hook.sh")
                                     ResourceLoader.replacePlaceholders(hookTemplate, mapOf(
                                         "url" to (host.dnsCleanupUrl ?: ""),
                                         "token" to (host.dnsApiToken ?: "")

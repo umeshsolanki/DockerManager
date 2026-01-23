@@ -479,7 +479,8 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
     const [dnsApiToken, setDnsApiToken] = useState(initialHost?.dnsApiToken || '');
     const [dnsAuthUrl, setDnsAuthUrl] = useState(initialHost?.dnsAuthUrl || '');
     const [dnsCleanupUrl, setDnsCleanupUrl] = useState(initialHost?.dnsCleanupUrl || '');
-    const [dnsManualMode, setDnsManualMode] = useState<'api' | 'script'>(initialHost?.dnsAuthScript ? 'script' : 'api');
+    const [dnsHost, setDnsHost] = useState(initialHost?.dnsHost || '');
+    const [dnsManualMode, setDnsManualMode] = useState<'api' | 'script' | 'default'>(initialHost?.dnsHost ? 'default' : initialHost?.dnsAuthScript ? 'script' : 'api');
     const [dnsAuthScript, setDnsAuthScript] = useState(initialHost?.dnsAuthScript || '#!/bin/sh\n# Use $CERTBOT_DOMAIN and $CERTBOT_VALIDATION\n');
     const [dnsCleanupScript, setDnsCleanupScript] = useState(initialHost?.dnsCleanupScript || '#!/bin/sh\n');
     const [certs, setCerts] = useState<SSLCertificate[]>([]);
@@ -513,10 +514,11 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
             sslChallengeType,
             dnsProvider: sslChallengeType === 'dns' ? dnsProvider : undefined,
             dnsApiToken: sslChallengeType === 'dns' ? dnsApiToken : undefined,
-            dnsAuthUrl: (sslChallengeType === 'dns' && dnsProvider === 'manual') ? dnsAuthUrl : undefined,
-            dnsCleanupUrl: (sslChallengeType === 'dns' && dnsProvider === 'manual') ? dnsCleanupUrl : undefined,
-            dnsAuthScript: (sslChallengeType === 'dns' && dnsProvider === 'manual' && dnsAuthScript.trim() !== '#!/bin/sh\n# Use $CERTBOT_DOMAIN and $CERTBOT_VALIDATION\n') ? dnsAuthScript : undefined,
-            dnsCleanupScript: (sslChallengeType === 'dns' && dnsProvider === 'manual' && dnsCleanupScript.trim() !== '#!/bin/sh\n') ? dnsCleanupScript : undefined
+            dnsHost: (sslChallengeType === 'dns' && dnsProvider === 'manual' && dnsManualMode === 'default') ? dnsHost : undefined,
+            dnsAuthUrl: (sslChallengeType === 'dns' && dnsProvider === 'manual' && dnsManualMode === 'api') ? dnsAuthUrl : undefined,
+            dnsCleanupUrl: (sslChallengeType === 'dns' && dnsProvider === 'manual' && dnsManualMode === 'api') ? dnsCleanupUrl : undefined,
+            dnsAuthScript: (sslChallengeType === 'dns' && dnsProvider === 'manual' && dnsManualMode === 'script' && dnsAuthScript.trim() !== '#!/bin/sh\n# Use $CERTBOT_DOMAIN and $CERTBOT_VALIDATION\n') ? dnsAuthScript : undefined,
+            dnsCleanupScript: (sslChallengeType === 'dns' && dnsProvider === 'manual' && dnsManualMode === 'script' && dnsCleanupScript.trim() !== '#!/bin/sh\n') ? dnsCleanupScript : undefined
         };
 
         const result = initialHost
@@ -680,19 +682,58 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
                                                         <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
                                                             <button
                                                                 type="button"
+                                                                onClick={() => setDnsManualMode('default')}
+                                                                className={`flex-1 py-1.5 text-[10px] font-black uppercase rounded-lg transition-all ${dnsManualMode === 'default' ? 'bg-primary/20 text-primary' : 'text-on-surface-variant'}`}
+                                                            >
+                                                                Default
+                                                            </button>
+                                                            <button
+                                                                type="button"
                                                                 onClick={() => setDnsManualMode('api')}
                                                                 className={`flex-1 py-1.5 text-[10px] font-black uppercase rounded-lg transition-all ${dnsManualMode === 'api' ? 'bg-primary/20 text-primary' : 'text-on-surface-variant'}`}
                                                             >
-                                                                API Hook
+                                                                Custom Hook
                                                             </button>
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setDnsManualMode('script')}
                                                                 className={`flex-1 py-1.5 text-[10px] font-black uppercase rounded-lg transition-all ${dnsManualMode === 'script' ? 'bg-primary/20 text-primary' : 'text-on-surface-variant'}`}
                                                             >
-                                                                Custom Script
+                                                                Script
                                                             </button>
                                                         </div>
+
+                                                        {dnsManualMode === 'default' && (
+                                                            <div className="space-y-4 animate-in slide-in-from-top-2">
+                                                                <div className="p-3 bg-primary/10 border border-primary/20 rounded-xl mb-2">
+                                                                    <p className="text-[10px] text-primary/80 font-medium leading-relaxed">
+                                                                        Uses default GET templates for
+                                                                        <code className="bg-black/40 px-1 rounded mx-1">/add</code> and
+                                                                        <code className="bg-black/40 px-1 rounded mx-1">/delete</code>.
+                                                                    </p>
+                                                                </div>
+                                                                <div className="space-y-1.5">
+                                                                    <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">DNS API Host</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="e.g. https://dns.example.com"
+                                                                        value={dnsHost}
+                                                                        onChange={(e) => setDnsHost(e.target.value)}
+                                                                        className="w-full bg-black/20 border border-outline/20 rounded-2xl px-4 py-2.5 text-sm focus:outline-none"
+                                                                    />
+                                                                </div>
+                                                                <div className="space-y-1.5">
+                                                                    <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">API Token</label>
+                                                                    <input
+                                                                        type="password"
+                                                                        placeholder="Your API Token"
+                                                                        value={dnsApiToken}
+                                                                        onChange={(e) => setDnsApiToken(e.target.value)}
+                                                                        className="w-full bg-black/20 border border-outline/20 rounded-2xl px-4 py-2.5 text-sm font-mono focus:outline-none"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        )}
 
                                                         {dnsManualMode === 'api' ? (
                                                             <>
@@ -733,7 +774,7 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
                                                                     />
                                                                 </div>
                                                             </>
-                                                        ) : (
+                                                        ) : dnsManualMode === 'script' ? (
                                                             <div className="space-y-4 animate-in slide-in-from-top-2">
                                                                 <div className="space-y-1.5">
                                                                     <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1 flex justify-between">
@@ -777,7 +818,7 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
                                                                     </div>
                                                                 </div>
                                                             </div>
-                                                        )}
+                                                        ) : null}
                                                     </div>
                                                 ) : (
                                                     <div className="space-y-1.5 animate-in slide-in-from-top-2">

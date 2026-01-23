@@ -35,6 +35,7 @@ data class ProxyHost(
     val sslChallengeType: String = "http", // "http" or "dns"
     val dnsProvider: String? = null, // e.g., "cloudflare", "manual", "http-api"
     val dnsApiToken: String? = null, // API token for DNS provider
+    val dnsHost: String? = null, // Base host for custom DNS API
     val dnsAuthUrl: String? = null, // Custom HTTP API URL to set TXT record
     val dnsCleanupUrl: String? = null, // Custom HTTP API URL to remove TXT record
     val dnsAuthScript: String? = null, // Full custom script for auth hook

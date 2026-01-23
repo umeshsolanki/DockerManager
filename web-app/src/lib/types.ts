@@ -269,6 +269,7 @@ export interface ProxyHost {
   sslChallengeType?: 'http' | 'dns';
   dnsProvider?: string;
   dnsApiToken?: string;
+  dnsHost?: string;
   dnsAuthUrl?: string;
   dnsCleanupUrl?: string;
   dnsAuthScript?: string;
