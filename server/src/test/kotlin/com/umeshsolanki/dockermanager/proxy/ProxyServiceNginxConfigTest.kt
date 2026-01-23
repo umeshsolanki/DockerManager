@@ -41,7 +41,8 @@ class ProxyServiceNginxConfigTest {
         
         // 2. Create the service (dependencies mocked)
         val jailManager = mockk<com.umeshsolanki.dockermanager.jail.IJailManagerService>(relaxed = true)
-        val proxyService = ProxyServiceImpl(jailManager)
+        val sslService = mockk<ISSLService>(relaxed = true)
+        val proxyService = ProxyServiceImpl(jailManager, sslService)
 
         // 3. Access private method via reflection
         val ensureMethod = ProxyServiceImpl::class.declaredMemberFunctions
@@ -66,7 +67,8 @@ class ProxyServiceNginxConfigTest {
         
         // 2. Create the service
         val jailManager = mockk<com.umeshsolanki.dockermanager.jail.IJailManagerService>(relaxed = true)
-        val proxyService = ProxyServiceImpl(jailManager)
+        val sslService = mockk<ISSLService>(relaxed = true)
+        val proxyService = ProxyServiceImpl(jailManager, sslService)
 
         // 3. Access private method
         val ensureMethod = ProxyServiceImpl::class.declaredMemberFunctions
