@@ -106,13 +106,13 @@ export default function ProxyScreen() {
             </div>
 
             {/* Tab Selector - Scrollable on Mobile */}
-            <div className="flex overflow-x-auto no-scrollbar gap-1 bg-surface-variant/30 p-1.5 rounded-[22px] mb-6 w-full md:w-fit">
+            <div className="flex overflow-x-auto no-scrollbar gap-1 bg-surface-variant/30 p-1 rounded-2xl mb-4 w-full md:w-fit border border-outline/5">
                 {tabs.map(tab => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex items-center justify-center gap-2 px-5 py-2.5 rounded-[18px] text-sm font-bold transition-all whitespace-nowrap flex-1 md:flex-initial ${activeTab === tab.id
-                            ? 'bg-primary text-on-primary shadow-lg shadow-primary/20 scale-100'
+                        className={`flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-1 md:flex-initial ${activeTab === tab.id
+                            ? 'bg-primary text-on-primary shadow-lg shadow-primary/20'
                             : 'hover:bg-primary/5 text-on-surface-variant hover:text-on-surface'
                             }`}
                     >
@@ -127,55 +127,53 @@ export default function ProxyScreen() {
             <div className="flex-1 overflow-y-auto no-scrollbar pb-6 px-1">
                 {activeTab === 'domains' && (
                     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <div className="relative mb-2">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={20} />
+                        <div className="relative mb-3">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/40" size={16} />
                             <input
                                 type="text"
                                 placeholder="Search domains or targets..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full bg-surface border border-outline/20 rounded-2xl py-3 pl-10 pr-4 text-on-surface focus:outline-none focus:border-primary transition-all shadow-sm"
+                                className="w-full bg-surface/50 border border-outline/10 rounded-xl py-2.5 pl-10 pr-4 text-xs text-on-surface focus:outline-none focus:border-primary/50 transition-all"
                             />
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                             {filteredHosts.map(host => (
-                                <div key={host.id} className="bg-surface/40 backdrop-blur-md border border-outline/10 rounded-[28px] p-5 hover:border-primary/30 transition-all group relative overflow-hidden">
-                                    <div className="flex flex-col gap-4">
+                                <div key={host.id} className="bg-surface/40 backdrop-blur-md border border-outline/10 rounded-2xl p-4 hover:border-primary/20 transition-all group relative overflow-hidden">
+                                    <div className="flex flex-col gap-3">
                                         <div className="flex items-start justify-between gap-3">
-                                            <div className="flex gap-4 min-w-0">
-                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 duration-500 ${host.enabled ? 'bg-primary/15 text-primary shadow-inner' : 'bg-on-surface/5 text-on-surface-variant'}`}>
-                                                    <Globe size={24} />
+                                            <div className="flex gap-3 min-w-0">
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 duration-300 ${host.enabled ? 'bg-primary/10 text-primary' : 'bg-on-surface/5 text-on-surface-variant'}`}>
+                                                    <Globe size={18} />
                                                 </div>
                                                 <div className="min-w-0 pt-0.5">
-                                                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                                                        <h3 className="text-base font-bold truncate tracking-tight">{host.domain}</h3>
+                                                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                                                        <h3 className="text-sm font-bold truncate tracking-tight">{host.domain}</h3>
                                                         <div className="flex gap-1 shrink-0">
-                                                            {!host.enabled && <span className="text-[9px] bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded-md font-black uppercase tracking-wider">Offline</span>}
-                                                            {host.ssl && <span className="text-[9px] bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded-md font-black uppercase tracking-wider flex items-center gap-1"><Lock size={9} /> SSL {host.sslChallengeType === 'dns' && 'DNS'}</span>}
+                                                            {!host.enabled && <span className="text-[8px] bg-red-500/10 text-red-500 px-1 py-0.5 rounded font-black uppercase tracking-wider">OFF</span>}
+                                                            {host.ssl && <span className="text-[8px] bg-green-500/10 text-green-500 px-1 py-0.5 rounded font-black uppercase tracking-wider flex items-center gap-0.5"><Lock size={8} /> SSL</span>}
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-2 text-on-surface-variant/70 text-xs font-mono truncate">
-                                                        <ExternalLink size={12} className="shrink-0 opacity-50" />
+                                                    <div className="flex items-center gap-1.5 text-on-surface-variant/60 text-[10px] font-mono truncate">
+                                                        <ExternalLink size={10} className="shrink-0 opacity-40" />
                                                         <span className="truncate">{host.target}</span>
                                                     </div>
                                                 </div>
                                             </div>
-
-                                            {/* Status Dot for mobile quick reference */}
-                                            <div className={`w-2 h-2 rounded-full absolute top-5 right-5 ${host.enabled ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500'}`} />
+                                            <div className={`w-1.5 h-1.5 rounded-full mt-2 ${host.enabled ? 'bg-green-500' : 'bg-red-500'}`} />
                                         </div>
 
-                                        <div className="flex flex-wrap gap-1.5 items-center">
-                                            {host.hstsEnabled && <span className="text-[9px] bg-purple-500/10 text-purple-500 px-2 py-0.5 rounded-lg font-bold uppercase tracking-tight">HSTS</span>}
-                                            {host.websocketEnabled && <span className="text-[9px] bg-blue-500/10 text-blue-500 px-2 py-0.5 rounded-lg font-bold uppercase tracking-tight">WS</span>}
+                                        <div className="flex flex-wrap gap-1 items-center">
+                                            {host.hstsEnabled && <span className="text-[8px] bg-purple-500/10 text-purple-500 px-1.5 py-0.5 rounded font-bold uppercase">HSTS</span>}
+                                            {host.websocketEnabled && <span className="text-[8px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-bold uppercase">WS</span>}
                                             {host.allowedIps && host.allowedIps.length > 0 && (
-                                                <span className="text-[9px] bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded-lg font-bold uppercase tracking-tight flex items-center gap-1">
+                                                <span className="text-[8px] bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1">
                                                     <ShieldCheck size={10} /> {host.allowedIps.length} IPS
                                                 </span>
                                             )}
                                             {host.paths && host.paths.length > 0 && (
-                                                <span className={`text-[9px] px-2 py-0.5 rounded-lg font-bold uppercase tracking-tight flex items-center gap-1 ${host.paths.filter(p => p.enabled !== false).length === host.paths.length
+                                                <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1 ${host.paths.filter(p => p.enabled !== false).length === host.paths.length
                                                     ? 'bg-indigo-500/10 text-indigo-500'
                                                     : 'bg-orange-500/10 text-orange-500'
                                                     }`}>
@@ -185,40 +183,40 @@ export default function ProxyScreen() {
                                             )}
                                         </div>
 
-                                        <div className="flex items-center justify-between pt-3 border-t border-outline/5 mt-auto">
-                                            <div className="flex gap-1">
+                                        <div className="flex items-center justify-between pt-2 border-t border-outline/5 mt-auto">
+                                            <div className="flex gap-0.5">
                                                 <button
                                                     onClick={() => setEditingHost(host)}
-                                                    className="p-2.5 text-on-surface-variant hover:text-blue-500 hover:bg-blue-500/10 rounded-xl transition-all active:scale-90"
+                                                    className="p-2 text-on-surface-variant hover:text-blue-500 hover:bg-blue-500/5 rounded-lg transition-all active:scale-95"
                                                     title="Edit"
                                                 >
-                                                    <Pencil size={18} />
+                                                    <Pencil size={15} />
                                                 </button>
                                                 {!host.ssl && host.enabled && (
                                                     <button
                                                         onClick={() => handleRequestSSL(host.id)}
-                                                        className="p-2.5 text-primary hover:bg-primary/10 rounded-xl transition-all active:scale-90"
+                                                        className="p-2 text-primary hover:bg-primary/5 rounded-lg transition-all active:scale-95"
                                                         title="Request SSL"
                                                     >
-                                                        <ShieldCheck size={18} />
+                                                        <ShieldCheck size={15} />
                                                     </button>
                                                 )}
                                                 <button
                                                     onClick={() => handleDelete(host.id)}
-                                                    className="p-2.5 text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all active:scale-90"
+                                                    className="p-2 text-on-surface-variant hover:text-red-500 hover:bg-red-500/5 rounded-lg transition-all active:scale-95"
                                                     title="Delete"
                                                 >
-                                                    <Trash2 size={18} />
+                                                    <Trash2 size={15} />
                                                 </button>
                                             </div>
 
                                             <button
                                                 onClick={() => handleToggle(host.id)}
-                                                className={`flex items-center gap-2 pr-4 pl-3 py-1.5 rounded-2xl transition-all font-bold text-xs active:scale-95 ${host.enabled
-                                                    ? 'bg-green-500/10 text-green-500 border border-green-500/20'
+                                                className={`flex items-center gap-1.5 pr-3 pl-2 py-1 rounded-xl transition-all font-bold text-[10px] active:scale-95 ${host.enabled
+                                                    ? 'bg-green-500/15 text-green-500 border border-green-500/10'
                                                     : 'bg-on-surface/5 text-on-surface-variant border border-on-surface/10'}`}
                                             >
-                                                <Power size={14} className={host.enabled ? 'animate-pulse' : ''} />
+                                                <Power size={12} className={host.enabled ? 'animate-pulse' : ''} />
                                                 <span>{host.enabled ? 'Enabled' : 'Disabled'}</span>
                                             </button>
                                         </div>
@@ -433,38 +431,36 @@ export default function ProxyScreen() {
 
                         {/* DNS Challenge Settings Section */}
                         {hosts.some(h => h.sslChallengeType === 'dns' && h.dnsProvider === 'manual') && (
-                            <div className="mt-8 bg-surface/50 border border-outline/10 rounded-2xl overflow-hidden">
-                                <div className="p-4 border-b border-outline/10 bg-surface">
-                                    <h3 className="text-sm font-bold flex items-center gap-2">
-                                        <Network size={16} className="text-primary" />
+                            <div className="mt-4 bg-surface/30 border border-outline/10 rounded-xl overflow-hidden">
+                                <div className="px-3 py-2 border-b border-outline/5 bg-surface/50 flex items-center justify-between">
+                                    <h3 className="text-[11px] font-black uppercase tracking-wider flex items-center gap-2">
+                                        <Network size={12} className="text-primary" />
                                         <span>DNS Challenge Configuration</span>
                                     </h3>
-                                    <p className="text-[10px] text-on-surface-variant mt-1">
-                                        The following hosts use manual DNS hooks for SSL validation.
-                                    </p>
+                                    <span className="text-[9px] text-on-surface-variant/40 font-medium">Manual Hooks</span>
                                 </div>
                                 <div className="divide-y divide-outline/5">
                                     {hosts.filter(h => h.sslChallengeType === 'dns' && h.dnsProvider === 'manual').map(host => (
-                                        <div key={host.id} className="p-3 flex items-center justify-between hover:bg-white/5 transition-all">
+                                        <div key={host.id} className="p-2.5 flex items-center justify-between hover:bg-white/5 transition-all">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                                                    <Globe size={14} />
+                                                <div className="w-6 h-6 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                                    <Globe size={12} />
                                                 </div>
                                                 <div>
-                                                    <div className="text-xs font-bold">{host.domain}</div>
+                                                    <div className="text-[11px] font-bold">{host.domain}</div>
                                                     <div className="flex items-center gap-1.5 mt-0.5">
-                                                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${host.dnsAuthScript ? 'bg-purple-500/10 text-purple-500' : host.dnsHost ? 'bg-blue-500/10 text-blue-500' : 'bg-amber-500/10 text-amber-500'}`}>
-                                                            {host.dnsAuthScript ? 'Script' : host.dnsHost ? 'Default API' : host.dnsAuthUrl ? 'Custom API' : 'Manual'}
+                                                        <span className={`text-[7px] font-black px-1.5 py-0.5 rounded uppercase ${host.dnsAuthScript ? 'bg-purple-500/10 text-purple-500' : host.dnsHost ? 'bg-blue-500/10 text-blue-500' : 'bg-amber-500/10 text-amber-500'}`}>
+                                                            {host.dnsAuthScript ? 'Script' : host.dnsHost ? 'API' : 'Manual'}
                                                         </span>
-                                                        {host.ssl && <span className="text-[8px] text-green-500 font-bold uppercase tracking-widest">Active</span>}
+                                                        {host.ssl && <span className="text-[7px] text-green-500 font-bold uppercase tracking-widest">Active</span>}
                                                     </div>
                                                 </div>
                                             </div>
                                             <button
                                                 onClick={() => setEditingHost(host)}
-                                                className="px-3 py-1.5 bg-primary/10 text-primary rounded-lg text-xs font-black uppercase hover:bg-primary/20 transition-all active:scale-95"
+                                                className="px-2 py-1 bg-primary/10 text-primary rounded-lg text-[10px] font-black uppercase hover:bg-primary/20 transition-all active:scale-95"
                                             >
-                                                Configure
+                                                Edit
                                             </button>
                                         </div>
                                     ))}
@@ -1347,34 +1343,29 @@ function CertificateCard({ cert, hosts, onRenew }: { cert: SSLCertificate, hosts
     };
 
     return (
-        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-3 relative overflow-hidden group hover:border-primary/20 transition-all">
-            <div className="absolute top-0 right-0 p-3 opacity-5">
-                <FileKey size={32} />
+        <div className="bg-surface/50 border border-outline/10 rounded-xl p-2.5 relative overflow-hidden group hover:border-primary/20 transition-all">
+            <div className="absolute top-0 right-0 p-2 opacity-5">
+                <FileKey size={24} />
             </div>
 
             {/* Header */}
-            <div className="flex items-start justify-between mb-2 relative z-10">
+            <div className="flex items-start justify-between mb-1.5 relative z-10">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shadow-inner shrink-0 ${isExpired ? 'bg-red-500/10 text-red-500' :
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shadow-inner shrink-0 ${isExpired ? 'bg-red-500/10 text-red-500' :
                         isExpiringSoon ? 'bg-orange-500/10 text-orange-500' :
                             'bg-green-500/10 text-green-500'
                         }`}>
-                        <Lock size={14} />
+                        <Lock size={12} />
                     </div>
                     <div className="overflow-hidden flex-1 min-w-0">
-                        <h3 className="font-bold truncate text-sm pr-2">{cert.domain}</h3>
-                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                            <span className={`text-[8px] font-black px-1 py-0.5 rounded uppercase ${isLetsEncrypt
+                        <h3 className="font-bold truncate text-[13px] pr-2">{cert.domain}</h3>
+                        <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                            <span className={`text-[7px] font-black px-1 py-0.5 rounded uppercase ${isLetsEncrypt
                                 ? 'bg-blue-500/10 text-blue-500'
                                 : 'bg-purple-500/10 text-purple-500'
                                 }`}>
                                 {isLetsEncrypt ? 'LE' : 'Custom'}
                             </span>
-                            {cert.id !== cert.domain && (
-                                <span className="text-[8px] text-on-surface-variant font-mono truncate max-w-[80px]">
-                                    {cert.id}
-                                </span>
-                            )}
                         </div>
                     </div>
                 </div>
@@ -1383,130 +1374,75 @@ function CertificateCard({ cert, hosts, onRenew }: { cert: SSLCertificate, hosts
             {/* Status Badge */}
             <div className="mb-2 relative z-10">
                 {isExpired ? (
-                    <div className="flex flex-col gap-1 bg-red-500/10 border border-red-500/20 rounded-lg px-2 py-1.5">
-                        <div className="flex items-center gap-1.5">
-                            <AlertTriangle size={10} className="text-red-500" />
-                            <span className="text-[9px] font-bold text-red-500">EXPIRED</span>
-                        </div>
-                        {expiresAt && (
-                            <div className="flex items-center gap-1 text-[8px] text-red-500/80 font-medium">
-                                <Calendar size={8} />
-                                <span>{expiresAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                            </div>
-                        )}
+                    <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/10 rounded px-1.5 py-0.5">
+                        <AlertTriangle size={8} className="text-red-500" />
+                        <span className="text-[8px] font-bold text-red-500 uppercase">Expired</span>
                     </div>
                 ) : isExpiringSoon ? (
-                    <div className="flex flex-col gap-1 bg-orange-500/10 border border-orange-500/20 rounded-lg px-2 py-1.5">
-                        <div className="flex items-center gap-1.5">
-                            <AlertTriangle size={10} className="text-orange-500" />
-                            <span className="text-[9px] font-bold text-orange-500">
-                                {daysUntilExpiry}d left
-                            </span>
-                        </div>
-                        {expiresAt && (
-                            <div className="flex items-center gap-1 text-[8px] text-orange-500/80 font-medium">
-                                <Calendar size={8} />
-                                <span>Expires {expiresAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                            </div>
-                        )}
-                    </div>
-                ) : expiresAt ? (
-                    <div className="flex flex-col gap-1 bg-green-500/10 border border-green-500/20 rounded-lg px-2 py-1.5">
-                        <div className="flex items-center gap-1.5">
-                            <CheckCircle2 size={10} className="text-green-500" />
-                            <span className="text-[9px] font-bold text-green-500">VALID</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-[8px] text-green-500/80 font-medium">
-                            <Calendar size={8} />
-                            <span>Expires {expiresAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                        </div>
+                    <div className="flex items-center gap-1.5 bg-orange-500/10 border border-orange-500/10 rounded px-1.5 py-0.5">
+                        <AlertTriangle size={8} className="text-orange-500" />
+                        <span className="text-[8px] font-bold text-orange-500 uppercase">{daysUntilExpiry}d left</span>
                     </div>
                 ) : (
-                    <div className="flex items-center gap-1.5 bg-surface-variant/10 border border-outline/10 rounded-lg px-2 py-1">
-                        <ShieldCheck size={10} className="text-on-surface-variant" />
-                        <span className="text-[9px] font-bold text-on-surface-variant">VALID</span>
+                    <div className="flex items-center gap-1.5 bg-green-500/10 border border-green-500/10 rounded px-1.5 py-0.5">
+                        <CheckCircle2 size={8} className="text-green-500" />
+                        <span className="text-[8px] font-bold text-green-500 uppercase">Valid</span>
                     </div>
                 )}
             </div>
 
             {/* Issuer Info */}
             {cert.issuer && (
-                <div className="mb-2 flex items-center gap-1.5 text-[9px] text-on-surface-variant relative z-10">
-                    <Building2 size={10} />
+                <div className="mb-1.5 flex items-center gap-1 text-[8px] text-on-surface-variant/40 relative z-10">
+                    <Building2 size={8} />
                     <span className="font-medium truncate">{cert.issuer}</span>
                 </div>
             )}
 
             {/* Certificate Paths */}
-            <div className="space-y-1.5 mb-2 relative z-10">
-                <div className="flex flex-col gap-0.5">
-                    <div className="flex items-center justify-between">
-                        <span className="text-[8px] text-on-surface-variant uppercase font-black tracking-wider">Cert</span>
-                        <button
-                            onClick={() => copyToClipboard(cert.certPath, 'cert')}
-                            className="p-0.5 hover:bg-white/5 rounded transition-all"
-                            title="Copy path"
-                        >
-                            {copiedPath === 'cert' ? (
-                                <CheckCircle2 size={10} className="text-green-500" />
-                            ) : (
-                                <Copy size={10} className="text-on-surface-variant" />
-                            )}
-                        </button>
+            <div className="space-y-1 mb-2 relative z-10">
+                {[
+                    { label: 'CRT', path: cert.certPath, type: 'cert' as const },
+                    { label: 'KEY', path: cert.keyPath, type: 'key' as const }
+                ].map((item, idx) => (
+                    <div key={idx} className="flex flex-col gap-0.5">
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-[7px] text-on-surface-variant/40 uppercase font-black">{item.label}</span>
+                            <button
+                                onClick={() => copyToClipboard(item.path, item.type)}
+                                className="p-0.5 hover:bg-white/5 rounded transition-all"
+                            >
+                                {copiedPath === item.type ? (
+                                    <CheckCircle2 size={8} className="text-green-500" />
+                                ) : (
+                                    <Copy size={8} className="text-on-surface-variant/30" />
+                                )}
+                            </button>
+                        </div>
+                        <div className="text-[8px] bg-black/5 p-1 rounded font-mono truncate border border-outline/5 text-on-surface-variant/60">
+                            {item.path}
+                        </div>
                     </div>
-                    <div className="text-[9px] bg-black/10 p-1.5 rounded font-mono truncate border border-outline/5 text-on-surface-variant group-hover:bg-black/20 transition-colors">
-                        {cert.certPath}
-                    </div>
-                </div>
-                <div className="flex flex-col gap-0.5">
-                    <div className="flex items-center justify-between">
-                        <span className="text-[8px] text-on-surface-variant uppercase font-black tracking-wider">Key</span>
-                        <button
-                            onClick={() => copyToClipboard(cert.keyPath, 'key')}
-                            className="p-0.5 hover:bg-white/5 rounded transition-all"
-                            title="Copy path"
-                        >
-                            {copiedPath === 'key' ? (
-                                <CheckCircle2 size={10} className="text-green-500" />
-                            ) : (
-                                <Copy size={10} className="text-on-surface-variant" />
-                            )}
-                        </button>
-                    </div>
-                    <div className="text-[9px] bg-black/10 p-1.5 rounded font-mono truncate border border-outline/5 text-on-surface-variant group-hover:bg-black/20 transition-colors">
-                        {cert.keyPath}
-                    </div>
-                </div>
+                ))}
             </div>
 
             {/* Footer Actions */}
-            <div className="pt-2 border-t border-outline/5 flex justify-between items-center relative z-10">
+            <div className="pt-1.5 border-t border-outline/5 flex justify-between items-center relative z-10">
                 {expiresAt && (
-                    <div className="flex items-center gap-1.5 text-[8px] text-on-surface-variant">
+                    <div className="flex items-center gap-1 text-[8px] text-on-surface-variant/40">
                         <Calendar size={8} />
-                        <span className="font-medium">
-                            {daysUntilExpiry !== null && daysUntilExpiry > 0
-                                ? `${daysUntilExpiry} days remaining`
-                                : 'Expired'
-                            }
-                        </span>
+                        <span>{expiresAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                     </div>
                 )}
                 {isLetsEncrypt && (
                     <button
-                        className="text-[9px] font-bold text-primary hover:underline flex items-center gap-0.5"
+                        className="text-[8px] font-bold text-primary hover:underline"
                         onClick={() => {
-                            // Find host using this certificate and request renewal
                             const host = hosts.find(h => h.domain === cert.domain);
-                            if (host) {
-                                onRenew(host.id);
-                            } else {
-                                toast.info('No proxy host found for this domain');
-                            }
+                            if (host) onRenew(host.id);
                         }}
                     >
-                        <RefreshCw size={8} />
-                        RENEW
+                        Renew
                     </button>
                 )}
             </div>
