@@ -4,6 +4,10 @@ import com.umeshsolanki.dockermanager.firewall.FirewallServiceImpl
 import com.umeshsolanki.dockermanager.firewall.IFirewallService
 import com.umeshsolanki.dockermanager.jail.IJailManagerService
 import com.umeshsolanki.dockermanager.jail.JailManagerServiceImpl
+import com.umeshsolanki.dockermanager.proxy.*
+import com.umeshsolanki.dockermanager.utils.CommandExecutor
+import com.umeshsolanki.dockermanager.proxy.ProxyServiceImpl
+import com.umeshsolanki.dockermanager.proxy.SSLServiceImpl
 
 /**
  * Service container for dependency injection.
@@ -15,6 +19,13 @@ object ServiceContainer {
     
     // Dependent services
     val jailManagerService: IJailManagerService = JailManagerServiceImpl(firewallService)
+
+    val sslService: ISSLService = SSLServiceImpl { command ->
+         val executor = CommandExecutor(loggerName = "SSLServiceImpl")
+         executor.execute(command).output
+    }
+
+    val proxyService: IProxyService = ProxyServiceImpl(jailManagerService, sslService)
     
     /**
      * Initialize all services.

@@ -431,6 +431,47 @@ export default function ProxyScreen() {
                             ))}
                         </div>
 
+                        {/* DNS Challenge Settings Section */}
+                        {hosts.some(h => h.sslChallengeType === 'dns' && h.dnsProvider === 'manual') && (
+                            <div className="mt-8 bg-surface/50 border border-outline/10 rounded-2xl overflow-hidden">
+                                <div className="p-4 border-b border-outline/10 bg-surface">
+                                    <h3 className="text-sm font-bold flex items-center gap-2">
+                                        <Network size={16} className="text-primary" />
+                                        <span>DNS Challenge Configuration</span>
+                                    </h3>
+                                    <p className="text-[10px] text-on-surface-variant mt-1">
+                                        The following hosts use manual DNS hooks for SSL validation.
+                                    </p>
+                                </div>
+                                <div className="divide-y divide-outline/5">
+                                    {hosts.filter(h => h.sslChallengeType === 'dns' && h.dnsProvider === 'manual').map(host => (
+                                        <div key={host.id} className="p-3 flex items-center justify-between hover:bg-white/5 transition-all">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                                    <Globe size={14} />
+                                                </div>
+                                                <div>
+                                                    <div className="text-xs font-bold">{host.domain}</div>
+                                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${host.dnsAuthScript ? 'bg-purple-500/10 text-purple-500' : host.dnsHost ? 'bg-blue-500/10 text-blue-500' : 'bg-amber-500/10 text-amber-500'}`}>
+                                                            {host.dnsAuthScript ? 'Script' : host.dnsHost ? 'Default API' : host.dnsAuthUrl ? 'Custom API' : 'Manual'}
+                                                        </span>
+                                                        {host.ssl && <span className="text-[8px] text-green-500 font-bold uppercase tracking-widest">Active</span>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => setEditingHost(host)}
+                                                className="px-3 py-1.5 bg-primary/10 text-primary rounded-lg text-xs font-black uppercase hover:bg-primary/20 transition-all active:scale-95"
+                                            >
+                                                Configure
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {certs.length === 0 && (
                             <div className="flex flex-col items-center justify-center text-on-surface-variant py-16 opacity-30">
                                 <FileKey size={60} className="mb-3" />

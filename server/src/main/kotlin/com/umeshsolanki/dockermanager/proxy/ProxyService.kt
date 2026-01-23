@@ -64,6 +64,7 @@ interface IProxyService {
 
 class ProxyServiceImpl(
     private val jailManagerService: IJailManagerService,
+    private val sslService: ISSLService
 ) : IProxyService {
     private val logger = org.slf4j.LoggerFactory.getLogger(ProxyServiceImpl::class.java)
     private val configDir = AppConfig.proxyConfigDir
@@ -681,220 +682,20 @@ class ProxyServiceImpl(
     }
 
     override fun requestSSL(id: String): Boolean {
-        return try {
-            val hosts = loadHosts()
-            val index = hosts.indexOfFirst { it.id == id }
-            if (index == -1) return false
+        val hosts = loadHosts()
+        val index = hosts.indexOfFirst { it.id == id }
+        if (index == -1) return false
+        val host = hosts[index]
 
-            val host = hosts[index]
-
-            // Ensure we have a basic HTTP config for ACME challenge
-            val httpConfigResult = generateNginxConfig(host.copy(ssl = false))
-            if (!httpConfigResult.first) {
-                logger.error("Failed to generate HTTP config for SSL request: ${httpConfigResult.second}")
-                return false
-            }
-            
-            val reloadResult = reloadNginx()
-            if (!reloadResult.first) {
-                logger.error("Failed to reload nginx for SSL request: ${reloadResult.second}")
-                return false
-            }
-
-            try {
-                // Run certbot via docker using absolute paths map to the certbot volume
-                // Updated to run in proxy container with standard paths
-                val certCmd = if (host.sslChallengeType == "dns") {
-                    val dnsPlugin = when (host.dnsProvider) {
-                        "cloudflare" -> "dns-cloudflare"
-                        "digitalocean" -> "dns-digitalocean"
-                        else -> "manual"
-                    }
-
-                    if (dnsPlugin == "manual") {
-                        val hasScripts = !host.dnsAuthScript.isNullOrBlank()
-                        val hasUrls = !host.dnsAuthUrl.isNullOrBlank()
-                        val hasHost = !host.dnsHost.isNullOrBlank()
-
-                        if (hasScripts || hasUrls || hasHost) {
-                            val confDir = File(AppConfig.certbotDir, "conf")
-                            if (!confDir.exists()) confDir.mkdirs()
-                            
-                            // Load DNS hook template if using URLs (POST JSON)
-                            // If hasHost and no custom URL, we will use GET template instead of loading dns-hook.sh
-                            val useJsonHook = hasUrls && !hasHost && !hasScripts
-
-                            // Create auth script
-                            val authScript = File(confDir, "dns-auth.sh")
-                            val authContent = if (hasScripts) {
-                                host.dnsAuthScript ?: ""
-                            } else if (hasHost && host.dnsAuthUrl == null) {
-                                // Default GET template
-                                "#!/bin/sh\n" +
-                                "curl -G \"${host.dnsHost}/api/zones/records/add\" " +
-                                "--data-urlencode \"token=${host.dnsApiToken ?: ""}\" " +
-                                "--data-urlencode \"domain=${host.domain}\" " +
-                                "--data-urlencode \"type=txt\" " +
-                                "--data-urlencode \"text=\$CERTBOT_VALIDATION\""
-                            } else {
-                                val hookTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/dns-hook.sh")
-                                ResourceLoader.replacePlaceholders(hookTemplate, mapOf(
-                                    "url" to (host.dnsAuthUrl ?: ""),
-                                    "token" to (host.dnsApiToken ?: "")
-                                ))
-                            }
-                            authScript.writeText(authContent)
-                            
-                            // Create cleanup script
-                            var cleanupArg = ""
-                            val hasCleanupScript = !host.dnsCleanupScript.isNullOrBlank()
-                            val hasCleanupUrl = !host.dnsCleanupUrl.isNullOrBlank()
-                            
-                            if (hasCleanupScript || hasCleanupUrl || hasHost) {
-                                val cleanupScript = File(confDir, "dns-cleanup.sh")
-                                val cleanupContent = if (hasCleanupScript) {
-                                    host.dnsCleanupScript ?: ""
-                                } else if (hasHost && host.dnsCleanupUrl == null) {
-                                    // Default GET template for delete
-                                    "#!/bin/sh\n" +
-                                    "curl -G \"${host.dnsHost}/api/zones/records/delete\" " +
-                                    "--data-urlencode \"token=${host.dnsApiToken ?: ""}\" " +
-                                    "--data-urlencode \"domain=${host.domain}\" " +
-                                    "--data-urlencode \"type=txt\" " +
-                                    "--data-urlencode \"text=\$CERTBOT_VALIDATION\""
-                                } else {
-                                    val hookTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/dns-hook.sh")
-                                    ResourceLoader.replacePlaceholders(hookTemplate, mapOf(
-                                        "url" to (host.dnsCleanupUrl ?: ""),
-                                        "token" to (host.dnsApiToken ?: "")
-                                    ))
-                                }
-                                cleanupScript.writeText(cleanupContent)
-                                executeCommand("${AppConfig.dockerCommand} exec docker-manager-proxy chmod +x /etc/letsencrypt/dns-cleanup.sh")
-                                cleanupArg = "--manual-cleanup-hook /etc/letsencrypt/dns-cleanup.sh"
-                            }
-                            
-                            executeCommand("${AppConfig.dockerCommand} exec docker-manager-proxy chmod +x /etc/letsencrypt/dns-auth.sh")
-                            
-                            "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --manual --preferred-challenges dns " +
-                                "--manual-auth-hook /etc/letsencrypt/dns-auth.sh $cleanupArg " +
-                                "-d \"${host.domain}\" --non-interactive --agree-tos --email admin@${host.domain}"
-                        } else {
-                            "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --manual --preferred-challenges dns -d \"${host.domain}\" --non-interactive --agree-tos --email admin@${host.domain}"
-                        }
-                    } else {
-                        // Create credentials file in certbot/conf dir
-                        val confDir = File(AppConfig.certbotDir, "conf")
-                        if (!confDir.exists()) confDir.mkdirs()
-                        
-                        val credsFile = File(confDir, "dns-${host.dnsProvider}.ini")
-                        val credsContent = when (host.dnsProvider) {
-                            "cloudflare" -> "dns_cloudflare_api_token = ${host.dnsApiToken}"
-                            "digitalocean" -> "dns_digitalocean_token = ${host.dnsApiToken}"
-                            else -> ""
-                        }
-                        credsFile.writeText(credsContent)
-                        
-                        // Set permissions for the file (must be 600 or certbot warns/fails)
-                        // Note: This is on the host, but certbot runs in container
-                        try {
-                            java.nio.file.Files.setPosixFilePermissions(
-                                credsFile.toPath(),
-                                java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")
-                            )
-                        } catch (e: Exception) {
-                            logger.warn("Failed to set credentials file permissions on host, trying via container")
-                            executeCommand("${AppConfig.dockerCommand} exec docker-manager-proxy chmod 600 /etc/letsencrypt/dns-${host.dnsProvider}.ini")
-                        }
-
-                        val containerCredsPath = "/etc/letsencrypt/dns-${host.dnsProvider}.ini"
-                        "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --${dnsPlugin} --${dnsPlugin}-credentials ${containerCredsPath} -d \"${host.domain}\" --non-interactive --agree-tos --email admin@${host.domain}"
-                    }
-                } else {
-                    "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --webroot -w /var/www/certbot -d \"${host.domain}\" --non-interactive --agree-tos --email admin@${host.domain}"
-                }
-                
-                val result = executeCommand(certCmd)
-
-                if (result.contains("Successfully received certificate") || result.contains("Certificate not yet due for renewal")) {
-                    // Fix permissions so host process can see them (recursive 755 for live/archive)
-                    executeCommand("${AppConfig.dockerCommand} exec docker-manager-proxy chmod -R 755 /etc/letsencrypt")
-
-                    val updated = host.copy(ssl = true)
-                    hosts[index] = updated
-                    try {
-                        saveHosts(hosts)
-                    } catch (e: Exception) {
-                        logger.error("Failed to save hosts after SSL certificate obtained", e)
-                        return false
-                    }
-                    
-                    val sslConfigResult = generateNginxConfig(updated)
-                    if (!sslConfigResult.first) {
-                        logger.error("Failed to generate SSL config: ${sslConfigResult.second}")
-                        return false
-                    }
-                    
-                    val reloadResult = reloadNginx()
-                    if (!reloadResult.first) {
-                        logger.error("Failed to reload nginx after SSL certificate: ${reloadResult.second}")
-                        return false
-                    }
-                    return true
-                }
-            } catch (e: Exception) {
-                logger.error("SSL request failed for ${host.domain}", e)
-            }
-            false
-        } catch (e: Exception) {
-            logger.error("Error requesting SSL for host $id", e)
-            false
+        return sslService.requestSSL(host) { updated ->
+            hosts[index] = updated
+            saveHosts(hosts)
+            generateNginxConfig(updated).first && reloadNginx().first
         }
     }
 
     override fun listCertificates(): List<SSLCertificate> {
-        val certs = mutableListOf<SSLCertificate>()
-
-        // Scan LetsEncrypt
-        val leDir = AppConfig.letsEncryptDir
-        if (leDir.exists()) {
-            leDir.listFiles()?.filter { it.isDirectory }?.forEach { dir ->
-                val fullchain = File(dir, "fullchain.pem")
-                val privkey = File(dir, "privkey.pem")
-                if (fullchain.exists() && privkey.exists()) {
-                    certs.add(
-                        SSLCertificate(
-                            id = dir.name,
-                            domain = dir.name,
-                            certPath = fullchain.absolutePath,
-                            keyPath = privkey.absolutePath
-                        )
-                    )
-                }
-            }
-        }
-
-        // Scan custom certs dir
-        val custDir = AppConfig.customCertDir
-        if (custDir.exists()) {
-            custDir.listFiles()?.filter { it.extension == "crt" || it.extension == "pem" }
-                ?.forEach { cert ->
-                    val keyName = cert.nameWithoutExtension + ".key"
-                    val keyFile = File(cert.parentFile, keyName)
-                    if (keyFile.exists()) {
-                        certs.add(
-                            SSLCertificate(
-                                id = cert.nameWithoutExtension,
-                                domain = cert.nameWithoutExtension,
-                                certPath = cert.absolutePath,
-                                keyPath = keyFile.absolutePath
-                            )
-                        )
-                    }
-                }
-        }
-
-        return certs
+        return sslService.listCertificates()
     }
 
     private fun executeCommand(command: String): String {
@@ -1420,38 +1221,7 @@ class ProxyServiceImpl(
     }
 
     private fun resolveSslCertPaths(host: ProxyHost): Pair<String, String> {
-        val certsDir = AppConfig.letsEncryptDir
-
-        return if (!host.customSslPath.isNullOrBlank() && host.customSslPath.contains("|")) {
-            val parts = host.customSslPath.split("|")
-            if (parts.size >= 2) {
-                parts[0] to parts[1]
-            } else {
-                getDefaultCertPaths(certsDir, host.domain)
-            }
-        } else {
-            getDefaultCertPaths(certsDir, host.domain)
-        }
-    }
-
-    private fun getDefaultCertPaths(certsDir: File, domain: String): Pair<String, String> {
-        val folder = findDomainFolder(certsDir, domain)
-        return File(folder, "fullchain.pem").absolutePath to File(
-            folder,
-            "privkey.pem"
-        ).absolutePath
-    }
-
-    private fun findDomainFolder(liveDir: File, domain: String): File {
-        if (!liveDir.exists()) return File(liveDir, domain)
-
-        // Exact match
-        val exact = File(liveDir, domain)
-        if (exact.exists()) return exact
-
-        // Partial match (handles domain-0001 etc)
-        val matches = liveDir.listFiles()?.filter { it.isDirectory && it.name.startsWith(domain) }
-        return matches?.firstOrNull() ?: exact
+        return sslService.resolveSslCertPaths(host)
     }
 
     private fun ensureNginxMainConfig(forceOverwrite: Boolean = false) {
@@ -1578,7 +1348,7 @@ class ProxyServiceImpl(
 // Service object for easy access
 object ProxyService {
     private val service: IProxyService by lazy {
-        ProxyServiceImpl(ServiceContainer.jailManagerService)
+        ServiceContainer.proxyService
     }
 
     fun listHosts() = service.listHosts()
