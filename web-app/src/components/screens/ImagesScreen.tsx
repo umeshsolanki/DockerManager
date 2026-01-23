@@ -37,6 +37,13 @@ export default function ImagesScreen() {
         await fetchImages();
     };
 
+    const handlePrune = async () => {
+        if (!confirm('Are you sure you want to remove all dangling images?')) return;
+        setIsLoading(true);
+        await DockerClient.pruneImages();
+        await fetchImages();
+    };
+
     const filteredImages = useMemo(() => {
         return images.filter(img =>
             img.tags?.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -46,9 +53,19 @@ export default function ImagesScreen() {
 
     return (
         <div className="flex flex-col">
-            <div className="flex items-center gap-4 mb-5">
-                <h1 className="text-3xl font-bold">Images</h1>
-                {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
+            <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-4">
+                    <h1 className="text-3xl font-bold">Images</h1>
+                    {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
+                </div>
+                <button
+                    onClick={handlePrune}
+                    disabled={isLoading}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500/20 transition-all font-bold text-sm disabled:opacity-50"
+                >
+                    <Trash size={16} />
+                    <span>Prune Dangling</span>
+                </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">

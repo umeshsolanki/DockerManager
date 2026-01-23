@@ -7,6 +7,7 @@ interface IImageService {
     fun listImages(): List<DockerImage>
     fun pullImage(name: String): Boolean
     fun removeImage(id: String): Boolean
+    fun pruneImages(): Boolean
 }
 
 class ImageServiceImpl(private val dockerClient: com.github.dockerjava.api.DockerClient) : IImageService {
@@ -35,6 +36,16 @@ class ImageServiceImpl(private val dockerClient: com.github.dockerjava.api.Docke
     override fun removeImage(id: String): Boolean {
         return try {
             dockerClient.removeImageCmd(id).exec()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    override fun pruneImages(): Boolean {
+        return try {
+            dockerClient.pruneCmd(com.github.dockerjava.api.model.PruneType.IMAGES).withDangling(true).exec()
             true
         } catch (e: Exception) {
             e.printStackTrace()

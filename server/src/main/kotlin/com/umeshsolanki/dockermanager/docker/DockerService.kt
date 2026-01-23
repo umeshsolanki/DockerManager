@@ -37,6 +37,7 @@ object DockerService {
     fun listImages() = imageService.listImages()
     fun pullImage(name: String) = imageService.pullImage(name)
     fun removeImage(id: String) = imageService.removeImage(id)
+    fun pruneImages() = imageService.pruneImages()
 
     fun listComposeFiles() = composeService.listComposeFiles()
     fun composeUp(filePath: String) = composeService.composeUp(filePath)

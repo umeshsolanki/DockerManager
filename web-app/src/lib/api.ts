@@ -106,6 +106,7 @@ export const DockerClient = {
     listImages: () => req<DockerImage[]>('/images', {}, []),
     pullImage: (name: string) => apiFetch(`/images/pull?image=${encodeURIComponent(name)}`, { method: 'POST' }),
     removeImage: (id: string) => apiFetch(`/images/${id}`, { method: 'DELETE' }),
+    pruneImages: () => apiFetch('/images/prune', { method: 'POST' }),
 
     // --- Compose ---
     listComposeFiles: () => req<ComposeFile[]>('/compose', {}, []),

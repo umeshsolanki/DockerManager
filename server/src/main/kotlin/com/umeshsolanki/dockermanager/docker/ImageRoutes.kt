@@ -20,6 +20,14 @@ fun Route.imageRoutes() {
             )
         }
 
+        post("/prune") {
+            call.respondTextResult(
+                DockerService.pruneImages(),
+                "Images pruned",
+                "Failed to prune images"
+            )
+        }
+
         delete("/{id}") {
             val id = call.requireParameter("id") ?: return@delete
             DockerService.removeImage(id)
