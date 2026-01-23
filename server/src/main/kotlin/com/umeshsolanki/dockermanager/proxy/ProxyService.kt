@@ -712,7 +712,37 @@ class ProxyServiceImpl(
                     }
 
                     if (dnsPlugin == "manual") {
-                        "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --manual --preferred-challenges dns -d \"${host.domain}\" --non-interactive --agree-tos --email admin@${host.domain}"
+                        if (!host.dnsAuthUrl.isNullOrBlank()) {
+                            val confDir = File(AppConfig.certbotDir, "conf")
+                            if (!confDir.exists()) confDir.mkdirs()
+                            
+                            // Create auth script
+                            val authScript = File(confDir, "dns-auth.sh")
+                            authScript.writeText("#!/bin/sh\n" +
+                                "curl -X POST \"${host.dnsAuthUrl}\" " +
+                                "-H \"Content-Type: application/json\" " +
+                                "-d \"{\\\"domain\\\":\\\"\$CERTBOT_DOMAIN\\\", \\\"validation\\\":\\\"\$CERTBOT_VALIDATION\\\", \\\"token\\\":\\\"${host.dnsApiToken ?: ""}\\\"}\"")
+                            
+                            // Create cleanup script if provided
+                            var cleanupArg = ""
+                            if (!host.dnsCleanupUrl.isNullOrBlank()) {
+                                val cleanupScript = File(confDir, "dns-cleanup.sh")
+                                cleanupScript.writeText("#!/bin/sh\n" +
+                                    "curl -X POST \"${host.dnsCleanupUrl}\" " +
+                                    "-H \"Content-Type: application/json\" " +
+                                    "-d \"{\\\"domain\\\":\\\"\$CERTBOT_DOMAIN\\\", \\\"validation\\\":\\\"\$CERTBOT_VALIDATION\\\", \\\"token\\\":\\\"${host.dnsApiToken ?: ""}\\\"}\"")
+                                executeCommand("${AppConfig.dockerCommand} exec docker-manager-proxy chmod +x /etc/letsencrypt/dns-cleanup.sh")
+                                cleanupArg = "--manual-cleanup-hook /etc/letsencrypt/dns-cleanup.sh"
+                            }
+                            
+                            executeCommand("${AppConfig.dockerCommand} exec docker-manager-proxy chmod +x /etc/letsencrypt/dns-auth.sh")
+                            
+                            "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --manual --preferred-challenges dns " +
+                                "--manual-auth-hook /etc/letsencrypt/dns-auth.sh $cleanupArg " +
+                                "-d \"${host.domain}\" --non-interactive --agree-tos --email admin@${host.domain}"
+                        } else {
+                            "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --manual --preferred-challenges dns -d \"${host.domain}\" --non-interactive --agree-tos --email admin@${host.domain}"
+                        }
                     } else {
                         // Create credentials file in certbot/conf dir
                         val confDir = File(AppConfig.certbotDir, "conf")

@@ -33,8 +33,10 @@ data class ProxyHost(
     val hstsEnabled: Boolean = false,
     val paths: List<PathRoute> = emptyList(), // Custom path-based routes
     val sslChallengeType: String = "http", // "http" or "dns"
-    val dnsProvider: String? = null, // e.g., "cloudflare", "manual"
-    val dnsApiToken: String? = null // API token for DNS provider
+    val dnsProvider: String? = null, // e.g., "cloudflare", "manual", "http-api"
+    val dnsApiToken: String? = null, // API token for DNS provider
+    val dnsAuthUrl: String? = null, // Custom HTTP API URL to set TXT record
+    val dnsCleanupUrl: String? = null // Custom HTTP API URL to remove TXT record
 ) {
     // Computed property to get upstream, defaulting to target if not provided
     val effectiveUpstream: String get() = upstream ?: target

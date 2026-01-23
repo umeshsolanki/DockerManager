@@ -477,6 +477,8 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
     const [sslChallengeType, setSslChallengeType] = useState<'http' | 'dns'>(initialHost?.sslChallengeType || 'http');
     const [dnsProvider, setDnsProvider] = useState(initialHost?.dnsProvider || 'cloudflare');
     const [dnsApiToken, setDnsApiToken] = useState(initialHost?.dnsApiToken || '');
+    const [dnsAuthUrl, setDnsAuthUrl] = useState(initialHost?.dnsAuthUrl || '');
+    const [dnsCleanupUrl, setDnsCleanupUrl] = useState(initialHost?.dnsCleanupUrl || '');
     const [certs, setCerts] = useState<SSLCertificate[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [allowedIps, setAllowedIps] = useState<string[]>(initialHost?.allowedIps || []);
@@ -507,7 +509,9 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
             createdAt: initialHost?.createdAt || Date.now(),
             sslChallengeType,
             dnsProvider: sslChallengeType === 'dns' ? dnsProvider : undefined,
-            dnsApiToken: sslChallengeType === 'dns' ? dnsApiToken : undefined
+            dnsApiToken: sslChallengeType === 'dns' ? dnsApiToken : undefined,
+            dnsAuthUrl: (sslChallengeType === 'dns' && dnsProvider === 'manual') ? dnsAuthUrl : undefined,
+            dnsCleanupUrl: (sslChallengeType === 'dns' && dnsProvider === 'manual') ? dnsCleanupUrl : undefined
         };
 
         const result = initialHost
@@ -666,8 +670,47 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
                                                         <option value="manual">Manual (DNS TXT)</option>
                                                     </select>
                                                 </div>
-                                                {dnsProvider !== 'manual' && (
-                                                    <div className="space-y-1.5">
+                                                {dnsProvider === 'manual' ? (
+                                                    <div className="space-y-4 animate-in slide-in-from-top-2">
+                                                        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl mb-2">
+                                                            <p className="text-[10px] text-amber-200 font-medium leading-relaxed">
+                                                                If URLs are provided, an HTTP POST will be sent with JSON:
+                                                                <code className="bg-black/40 px-1 rounded ml-1">{"{domain, validation, token}"}</code>
+                                                            </p>
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Auth Hook URL (POST)</label>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="https://api.example.com/dns/auth"
+                                                                value={dnsAuthUrl}
+                                                                onChange={(e) => setDnsAuthUrl(e.target.value)}
+                                                                className="w-full bg-black/20 border border-outline/20 rounded-2xl px-4 py-2.5 text-sm focus:outline-none"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Cleanup Hook URL (POST)</label>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="https://api.example.com/dns/cleanup"
+                                                                value={dnsCleanupUrl}
+                                                                onChange={(e) => setDnsCleanupUrl(e.target.value)}
+                                                                className="w-full bg-black/20 border border-outline/20 rounded-2xl px-4 py-2.5 text-sm focus:outline-none"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">API Token (Optional)</label>
+                                                            <input
+                                                                type="password"
+                                                                placeholder="Secret token for your API"
+                                                                value={dnsApiToken}
+                                                                onChange={(e) => setDnsApiToken(e.target.value)}
+                                                                className="w-full bg-black/20 border border-outline/20 rounded-2xl px-4 py-2.5 text-sm font-mono focus:outline-none"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-1.5 animate-in slide-in-from-top-2">
                                                         <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">API Token / Secret</label>
                                                         <input
                                                             type="password"
