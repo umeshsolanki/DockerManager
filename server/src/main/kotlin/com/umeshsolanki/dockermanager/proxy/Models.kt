@@ -36,7 +36,9 @@ data class ProxyHost(
     val dnsProvider: String? = null, // e.g., "cloudflare", "manual", "http-api"
     val dnsApiToken: String? = null, // API token for DNS provider
     val dnsAuthUrl: String? = null, // Custom HTTP API URL to set TXT record
-    val dnsCleanupUrl: String? = null // Custom HTTP API URL to remove TXT record
+    val dnsCleanupUrl: String? = null, // Custom HTTP API URL to remove TXT record
+    val dnsAuthScript: String? = null, // Full custom script for auth hook
+    val dnsCleanupScript: String? = null // Full custom script for cleanup hook
 ) {
     // Computed property to get upstream, defaulting to target if not provided
     val effectiveUpstream: String get() = upstream ?: target

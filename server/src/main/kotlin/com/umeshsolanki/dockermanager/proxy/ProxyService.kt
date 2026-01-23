@@ -712,29 +712,43 @@ class ProxyServiceImpl(
                     }
 
                     if (dnsPlugin == "manual") {
-                        if (!host.dnsAuthUrl.isNullOrBlank()) {
+                        val hasScripts = !host.dnsAuthScript.isNullOrBlank()
+                        val hasUrls = !host.dnsAuthUrl.isNullOrBlank()
+
+                        if (hasScripts || hasUrls) {
                             val confDir = File(AppConfig.certbotDir, "conf")
                             if (!confDir.exists()) confDir.mkdirs()
                             
-                            // Load DNS hook template
-                            val hookTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/dns-hook.sh")
+                            // Load DNS hook template if using URLs
+                            val hookTemplate = if (!hasScripts) ResourceLoader.loadResourceOrThrow("templates/proxy/dns-hook.sh") else ""
 
                             // Create auth script
                             val authScript = File(confDir, "dns-auth.sh")
-                            val authContent = ResourceLoader.replacePlaceholders(hookTemplate, mapOf(
-                                "url" to host.dnsAuthUrl,
-                                "token" to (host.dnsApiToken ?: "")
-                            ))
-                            authScript.writeText(authContent)
-                            
-                            // Create cleanup script if provided
-                            var cleanupArg = ""
-                            if (!host.dnsCleanupUrl.isNullOrBlank()) {
-                                val cleanupScript = File(confDir, "dns-cleanup.sh")
-                                val cleanupContent = ResourceLoader.replacePlaceholders(hookTemplate, mapOf(
-                                    "url" to host.dnsCleanupUrl,
+                            val authContent = if (hasScripts) {
+                                host.dnsAuthScript ?: ""
+                            } else {
+                                ResourceLoader.replacePlaceholders(hookTemplate, mapOf(
+                                    "url" to (host.dnsAuthUrl ?: ""),
                                     "token" to (host.dnsApiToken ?: "")
                                 ))
+                            }
+                            authScript.writeText(authContent)
+                            
+                            // Create cleanup script
+                            var cleanupArg = ""
+                            val hasCleanupScript = !host.dnsCleanupScript.isNullOrBlank()
+                            val hasCleanupUrl = !host.dnsCleanupUrl.isNullOrBlank()
+                            
+                            if (hasCleanupScript || hasCleanupUrl) {
+                                val cleanupScript = File(confDir, "dns-cleanup.sh")
+                                val cleanupContent = if (hasCleanupScript) {
+                                    host.dnsCleanupScript ?: ""
+                                } else {
+                                    ResourceLoader.replacePlaceholders(hookTemplate, mapOf(
+                                        "url" to (host.dnsCleanupUrl ?: ""),
+                                        "token" to (host.dnsApiToken ?: "")
+                                    ))
+                                }
                                 cleanupScript.writeText(cleanupContent)
                                 executeCommand("${AppConfig.dockerCommand} exec docker-manager-proxy chmod +x /etc/letsencrypt/dns-cleanup.sh")
                                 cleanupArg = "--manual-cleanup-hook /etc/letsencrypt/dns-cleanup.sh"

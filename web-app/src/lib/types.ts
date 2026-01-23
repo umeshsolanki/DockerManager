@@ -271,6 +271,8 @@ export interface ProxyHost {
   dnsApiToken?: string;
   dnsAuthUrl?: string;
   dnsCleanupUrl?: string;
+  dnsAuthScript?: string;
+  dnsCleanupScript?: string;
 }
 
 export interface SSLCertificate {
