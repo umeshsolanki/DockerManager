@@ -40,7 +40,7 @@ export default function EmailsScreen() {
     }, [activeTab]);
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col">
             <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-4">
                     <h1 className="text-3xl font-bold">Email Management</h1>
@@ -297,9 +297,9 @@ function ManageJames() {
                             <button onClick={() => handleAction('restart')} disabled={isLoading} className="flex items-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-xl font-bold transition-all">
                                 <RotateCw size={18} /> Restart
                             </button>
-                            <button 
-                                onClick={() => handleAction('regenerate')} 
-                                disabled={isLoading} 
+                            <button
+                                onClick={() => handleAction('regenerate')}
+                                disabled={isLoading}
                                 className="flex items-center gap-2 px-4 py-2 bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 rounded-xl font-bold transition-all"
                                 title="Regenerate configuration files and SSL certificates"
                             >

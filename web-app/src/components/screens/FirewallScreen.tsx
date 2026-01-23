@@ -49,7 +49,7 @@ export default function FirewallScreen() {
     );
 
     return (
-        <div className="flex flex-col h-full relative">
+        <div className="flex flex-col relative">
             <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-4">
                     <h1 className="text-3xl font-bold">Firewall</h1>

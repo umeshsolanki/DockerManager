@@ -312,7 +312,7 @@ export default function ComposeScreen() {
     };
 
     return (
-        <div className="flex flex-col h-full relative">
+        <div className="flex flex-col relative">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
                 <div className="flex items-center gap-4">
                     <h1 className="text-2xl sm:text-3xl font-bold">Compose & Stacks</h1>
@@ -572,7 +572,7 @@ export default function ComposeScreen() {
                     </div>
                 )
             ) : (
-                <div className="flex flex-col lg:flex-row gap-6 h-full pb-10 sm:pb-0 overflow-visible">
+                <div className="flex flex-col lg:flex-row gap-6 pb-10 sm:pb-0 overflow-visible">
                     {/* Stacks List */}
                     <div className="lg:w-1/2 flex flex-col bg-surface/30 border border-outline/10 rounded-xl overflow-hidden min-h-[400px]">
                         {filteredStacks.length === 0 ? (
