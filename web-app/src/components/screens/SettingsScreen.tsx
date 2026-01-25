@@ -18,6 +18,8 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [serverUrl, setServerUrl] = useState(DockerClient.getServerUrl());
     const [dockerSocket, setDockerSocket] = useState('');
     const [jamesUrl, setJamesUrl] = useState('');
+    const [dockerBuildKit, setDockerBuildKit] = useState(true);
+    const [dockerCliBuild, setDockerCliBuild] = useState(true);
     const [message, setMessage] = useState('');
     const [config, setConfig] = useState<SystemConfig | null>(null);
     const [loading, setLoading] = useState(false);
@@ -53,6 +55,8 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
             if (data) {
                 setDockerSocket(data.dockerSocket);
                 setJamesUrl(data.jamesWebAdminUrl);
+                setDockerBuildKit(data.dockerBuildKit);
+                setDockerCliBuild(data.dockerCliBuild);
             }
 
             // Also fetch IP ranges count
@@ -85,7 +89,9 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
         try {
             const result = await DockerClient.updateSystemConfig({
                 dockerSocket: dockerSocket,
-                jamesWebAdminUrl: jamesUrl
+                jamesWebAdminUrl: jamesUrl,
+                dockerBuildKit: dockerBuildKit,
+                dockerCliBuild: dockerCliBuild
             });
             if (result.success) {
                 setMessage('System settings updated successfully!');
@@ -761,8 +767,8 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                 ) : (
                                     <button
                                         className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm transition-all active:scale-[0.98] ${dbStatuses.find(s => s.type === 'postgres' && s.isInstalled)
-                                                ? 'bg-indigo-500 text-white hover:bg-indigo-600 shadow-lg shadow-indigo-500/20'
-                                                : 'bg-surface text-on-surface border border-outline/20 opacity-50 cursor-not-allowed'
+                                            ? 'bg-indigo-500 text-white hover:bg-indigo-600 shadow-lg shadow-indigo-500/20'
+                                            : 'bg-surface text-on-surface border border-outline/20 opacity-50 cursor-not-allowed'
                                             }`}
                                         disabled={!dbStatuses.find(s => s.type === 'postgres' && s.isInstalled)}
                                         onClick={async () => {
@@ -795,6 +801,62 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                 >
                                     <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
                                     <span>Sync Settings</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Docker Build Settings Card */}
+                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="p-3 bg-blue-500/10 rounded-xl text-blue-500">
+                                    <Terminal size={20} />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-bold">Docker Build Settings</h2>
+                                    <p className="text-xs text-on-surface-variant mt-0.5">Control buildkit and CLI behavior</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:bg-surface-variant/20">
+                                    <div className="flex-1 pr-4">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <p className="text-sm font-bold text-on-surface">BuildKit Enabled</p>
+                                            <span className="text-[10px] font-bold bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded uppercase tracking-tighter">DOCKER_BUILDKIT</span>
+                                        </div>
+                                        <p className="text-xs text-on-surface-variant leading-relaxed">Modern build engine for better performance and security</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setDockerBuildKit(!dockerBuildKit)}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 flex-shrink-0 ${dockerBuildKit ? 'bg-primary' : 'bg-surface border border-outline/30'}`}
+                                    >
+                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${dockerBuildKit ? 'translate-x-6' : 'translate-x-1'}`} />
+                                    </button>
+                                </div>
+
+                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:bg-surface-variant/20">
+                                    <div className="flex-1 pr-4">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <p className="text-sm font-bold text-on-surface">CLI Build Enabled</p>
+                                            <span className="text-[10px] font-bold bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded uppercase tracking-tighter">COMPOSE_DOCKER_CLI_BUILD</span>
+                                        </div>
+                                        <p className="text-xs text-on-surface-variant leading-relaxed">Use native Docker CLI for building compose projects</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setDockerCliBuild(!dockerCliBuild)}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 flex-shrink-0 ${dockerCliBuild ? 'bg-primary' : 'bg-surface border border-outline/30'}`}
+                                    >
+                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${dockerCliBuild ? 'translate-x-6' : 'translate-x-1'}`} />
+                                    </button>
+                                </div>
+
+                                <button
+                                    onClick={handleSaveSystem}
+                                    disabled={saving || loading}
+                                    className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition-all active:scale-[0.98] shadow-md shadow-primary/20 disabled:opacity-50 text-sm mt-2"
+                                >
+                                    {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
+                                    <span>Update Build Settings</span>
                                 </button>
                             </div>
                         </div>

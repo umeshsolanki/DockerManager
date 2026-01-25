@@ -15,6 +15,7 @@ import { Modal } from '../ui/Modal';
 import { SearchInput } from '../ui/SearchInput';
 import { Button, ActionIconButton } from '../ui/Buttons';
 import { useActionTrigger } from '@/hooks/useActionTrigger';
+import { IptablesRule } from '@/lib/types';
 
 export default function SecurityScreen() {
     const [firewallRules, setFirewallRules] = useState<FirewallRule[]>([]);
@@ -22,6 +23,13 @@ export default function SecurityScreen() {
     const [proxyConfig, setProxyConfig] = useState<SystemConfig | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'overview' | 'firewall' | 'jails' | 'rules'>('overview');
+
+    // Firewall sub-tabs
+    const [firewallSubTab, setFirewallSubTab] = useState<'rules' | 'iptables' | 'nftables'>('rules');
+    const [iptables, setIptables] = useState<Record<string, IptablesRule[]>>({});
+    const [nftables, setNftables] = useState<string>('');
+    const [expandedChain, setExpandedChain] = useState<string | null>('INPUT');
+
     const { trigger } = useActionTrigger();
 
     // Firewall Modal
@@ -30,14 +38,18 @@ export default function SecurityScreen() {
     const fetchData = async (manual = false) => {
         if (manual) setIsLoading(true);
         try {
-            const [firewall, btmp, proxy] = await Promise.all([
+            const [firewall, btmp, proxy, iptablesData, nftablesData] = await Promise.all([
                 DockerClient.listFirewallRules(),
                 DockerClient.getBtmpStats(),
-                DockerClient.getProxySecuritySettings()
+                DockerClient.getProxySecuritySettings(),
+                DockerClient.getIptablesVisualisation(),
+                DockerClient.getNftablesVisualisation()
             ]);
             setFirewallRules(firewall);
             setBtmpStats(btmp);
             setProxyConfig(proxy);
+            setIptables(iptablesData || {});
+            setNftables(nftablesData || '');
         } catch (e) {
             console.error('Failed to fetch security data', e);
         } finally {
@@ -222,75 +234,171 @@ export default function SecurityScreen() {
 
             {activeTab === 'firewall' && (
                 <div className="space-y-6 animate-in fade-in duration-500">
-                    <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] overflow-hidden">
-                        <div className="p-6 border-b border-outline/5 flex items-center justify-between">
-                            <div>
-                                <h3 className="text-xl font-bold">Firewall Policy</h3>
-                                <p className="text-xs text-on-surface-variant font-medium">Explicit IP and Port level restrictions</p>
-                            </div>
-                            <button
-                                onClick={() => setIsFirewallModalOpen(true)}
-                                className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl text-xs font-bold hover:opacity-90 transition-opacity"
-                            >
-                                <Plus size={16} /> Add Rule
-                            </button>
-                        </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="bg-black/20">
-                                        <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest">IP Address</th>
-                                        <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest">Target Port</th>
-                                        <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest">Protocol</th>
-                                        <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest">Comment</th>
-                                        <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest text-right">Added On</th>
-                                        <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest text-right">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-outline/5">
-                                    {firewallRules.map((rule) => (
-                                        <tr key={rule.id} className="hover:bg-white/[0.02] transition-colors group">
-                                            <td className="px-6 py-4 flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500">
-                                                    <Lock size={14} />
-                                                </div>
-                                                <span className="text-sm font-bold font-mono">{rule.ip}</span>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <span className="text-xs font-mono font-bold">{rule.port || 'ALL'}</span>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-surface/50 border border-outline/10">
-                                                    {rule.protocol}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 text-xs italic text-on-surface-variant">
-                                                {rule.comment || '-'}
-                                            </td>
-                                            <td className="px-6 py-4 text-right font-mono text-[10px] text-on-surface-variant">
-                                                {new Date(rule.createdAt).toLocaleDateString()}
-                                            </td>
-                                            <td className="px-6 py-4 text-right">
-                                                <button
-                                                    onClick={() => handleUnblockIP(rule.id)}
-                                                    className="p-2 hover:bg-red-500/10 text-red-400 rounded-xl transition-all opacity-0 group-hover:opacity-100"
-                                                >
-                                                    <ShieldOff size={16} />
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    {firewallRules.length === 0 && (
-                                        <tr>
-                                            <td colSpan={6} className="px-6 py-20 text-center text-sm text-on-surface-variant italic">
-                                                No direct firewall rules defined
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
+                    <div className="flex bg-surface/50 border border-outline/10 p-1 rounded-xl w-fit">
+                        <button
+                            onClick={() => setFirewallSubTab('rules')}
+                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${firewallSubTab === 'rules' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-on-surface-variant/60 hover:bg-white/5'}`}
+                        >
+                            <ListFilter size={14} />
+                            Rules
+                        </button>
+                        <button
+                            onClick={() => setFirewallSubTab('iptables')}
+                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${firewallSubTab === 'iptables' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-on-surface-variant/60 hover:bg-white/5'}`}
+                        >
+                            <Activity size={14} />
+                            iptables
+                        </button>
+                        <button
+                            onClick={() => setFirewallSubTab('nftables')}
+                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${firewallSubTab === 'nftables' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-on-surface-variant/60 hover:bg-white/5'}`}
+                        >
+                            <Terminal size={14} />
+                            nftables
+                        </button>
                     </div>
+
+                    {firewallSubTab === 'rules' ? (
+                        <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] overflow-hidden">
+                            <div className="p-6 border-b border-outline/5 flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xl font-bold">Firewall Policy</h3>
+                                    <p className="text-xs text-on-surface-variant font-medium">Explicit IP and Port level restrictions</p>
+                                </div>
+                                <button
+                                    onClick={() => setIsFirewallModalOpen(true)}
+                                    className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl text-xs font-bold hover:opacity-90 transition-opacity"
+                                >
+                                    <Plus size={16} /> Add Rule
+                                </button>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-black/20">
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest">IP Address</th>
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest">Target Port</th>
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest">Protocol</th>
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest">Comment</th>
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest text-right">Added On</th>
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase text-on-surface-variant/60 tracking-widest text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-outline/5">
+                                        {firewallRules.map((rule) => (
+                                            <tr key={rule.id} className="hover:bg-white/[0.02] transition-colors group">
+                                                <td className="px-6 py-4 flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500">
+                                                        <Lock size={14} />
+                                                    </div>
+                                                    <span className="text-sm font-bold font-mono">{rule.ip}</span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="text-xs font-mono font-bold">{rule.port || 'ALL'}</span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-surface/50 border border-outline/10">
+                                                        {rule.protocol}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-xs italic text-on-surface-variant">
+                                                    {rule.comment || '-'}
+                                                </td>
+                                                <td className="px-6 py-4 text-right font-mono text-[10px] text-on-surface-variant">
+                                                    {new Date(rule.createdAt).toLocaleDateString()}
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <button
+                                                        onClick={() => handleUnblockIP(rule.id)}
+                                                        className="p-2 hover:bg-red-500/10 text-red-400 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                                                    >
+                                                        <ShieldOff size={16} />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {firewallRules.length === 0 && (
+                                            <tr>
+                                                <td colSpan={6} className="px-6 py-20 text-center text-sm text-on-surface-variant italic">
+                                                    No direct firewall rules defined
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    ) : firewallSubTab === 'iptables' ? (
+                        <div className="flex flex-col bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] overflow-hidden h-[600px]">
+                            <div className="flex h-full">
+                                <div className="w-64 border-r border-outline/10 flex flex-col bg-black/20">
+                                    <div className="p-4 border-b border-outline/10 flex items-center gap-2">
+                                        <Activity className="text-primary" size={16} />
+                                        <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Filter Chains</span>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                                        {Object.keys(iptables).map(chain => (
+                                            <button
+                                                key={chain}
+                                                onClick={() => setExpandedChain(chain)}
+                                                className={`w-full flex items-center justify-between p-3 rounded-xl transition-all ${expandedChain === chain ? 'bg-primary/20 text-primary border border-primary/20' : 'hover:bg-white/5 text-on-surface-variant'}`}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-2 h-2 rounded-full ${expandedChain === chain ? 'bg-primary' : 'bg-white/10'}`} />
+                                                    <span className="text-xs font-bold truncate">{chain}</span>
+                                                </div>
+                                                <span className="text-[10px] font-mono opacity-40">{iptables[chain].length}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="flex-1 flex flex-col overflow-hidden">
+                                    <div className="p-4 border-b border-outline/10 bg-white/5 flex items-center justify-between">
+                                        <h3 className="text-lg font-bold flex items-center gap-2">
+                                            <Terminal size={18} className="text-primary" />
+                                            Chain <span className="text-primary">{expandedChain || 'None'}</span>
+                                        </h3>
+                                    </div>
+                                    <div className="flex-1 overflow-auto custom-scrollbar">
+                                        {!expandedChain || !iptables[expandedChain] ? (
+                                            <div className="flex items-center justify-center h-full text-on-surface-variant italic">
+                                                Select a chain to view rules
+                                            </div>
+                                        ) : (
+                                            <table className="w-full text-left border-collapse">
+                                                <thead className="sticky top-0 bg-[#0f0f0f] z-10 border-b border-outline/10">
+                                                    <tr>
+                                                        <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/40 tracking-wider">Target</th>
+                                                        <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/40 tracking-wider">Proto</th>
+                                                        <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/40 tracking-wider">Source</th>
+                                                        <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/40 tracking-wider text-right">Activity</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-outline/5 font-mono">
+                                                    {iptables[expandedChain].map((rule, i) => (
+                                                        <tr key={i} className="hover:bg-white/5 transition-colors">
+                                                            <td className="px-4 py-2">
+                                                                <span className={`text-[10px] font-black ${rule.target === 'ACCEPT' ? 'text-green-500' : 'text-red-500'}`}>{rule.target}</span>
+                                                            </td>
+                                                            <td className="px-4 py-2 text-[10px]">{rule.prot}</td>
+                                                            <td className="px-4 py-2 text-[10px] truncate max-w-[150px]">{rule.source}</td>
+                                                            <td className="px-4 py-2 text-right text-[10px] text-primary">{rule.pkts} pkts</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] p-6 h-[600px] overflow-auto custom-scrollbar">
+                            <pre className="text-xs font-mono text-primary/80 leading-relaxed whitespace-pre">
+                                {nftables || 'No nftables data available.'}
+                            </pre>
+                        </div>
+                    )}
                 </div>
             )}
 

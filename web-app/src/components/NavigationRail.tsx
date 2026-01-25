@@ -20,6 +20,7 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
         { label: 'Resources', icon: <Database size={20} /> },
         { label: 'Analytics', icon: <Activity size={20} /> },
         { label: 'Security', icon: <Lock size={20} /> },
+        { label: 'Firewall', icon: <Shield size={20} /> },
         { label: 'Logs', icon: <FileText size={20} /> },
         { label: 'Proxy', icon: <Globe size={20} /> },
         { label: 'Emails', icon: <Mail size={20} /> },

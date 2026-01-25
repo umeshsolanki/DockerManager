@@ -5,6 +5,15 @@ import kotlinx.serialization.Serializable
 // ========== Proxy Models ==========
 
 @Serializable
+data class RateLimit(
+    val enabled: Boolean = false,
+    val rate: Int = 10, // requests
+    val period: String = "s", // "s" or "m" (r/s or r/m)
+    val burst: Int = 20,
+    val nodelay: Boolean = true
+)
+
+@Serializable
 data class PathRoute(
     val id: String = java.util.UUID.randomUUID().toString(),
     val path: String, // e.g., "/api", "/static", "/admin"
@@ -15,7 +24,8 @@ data class PathRoute(
     val customConfig: String? = null, // Custom Nginx config for this path
     val enabled: Boolean = true, // Enable/disable this path route
     val name: String? = null, // Optional name/description for UI display
-    val order: Int = 0 // Order/priority for path matching (higher = more priority)
+    val order: Int = 0, // Order/priority for path matching (higher = more priority)
+    val rateLimit: RateLimit? = null
 )
 
 @Serializable
@@ -39,7 +49,8 @@ data class ProxyHost(
     val dnsAuthUrl: String? = null, // Custom HTTP API URL to set TXT record
     val dnsCleanupUrl: String? = null, // Custom HTTP API URL to remove TXT record
     val dnsAuthScript: String? = null, // Full custom script for auth hook
-    val dnsCleanupScript: String? = null // Full custom script for cleanup hook
+    val dnsCleanupScript: String? = null, // Full custom script for cleanup hook
+    val rateLimit: RateLimit? = null
 ) {
     // Computed property to get upstream, defaulting to target if not provided
     val effectiveUpstream: String get() = upstream ?: target

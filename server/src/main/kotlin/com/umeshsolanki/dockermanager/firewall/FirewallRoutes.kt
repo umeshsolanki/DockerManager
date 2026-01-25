@@ -16,6 +16,10 @@ fun Route.firewallRoutes() {
             call.respond(FirewallService.getIptablesVisualisation())
         }
 
+        get("/nftables") {
+            call.respond(FirewallService.getNftablesVisualisation())
+        }
+
         post("/block") {
             val request = call.receive<BlockIPRequest>()
             call.respondBooleanResult(

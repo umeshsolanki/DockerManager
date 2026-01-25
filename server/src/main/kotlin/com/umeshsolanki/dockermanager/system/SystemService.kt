@@ -87,15 +87,19 @@ object SystemService {
         appVersion = AppConfig.appVersion,
         twoFactorEnabled = AuthService.is2FAEnabled(),
         username = AuthService.getUsername(),
-        proxyStatsActive = AppConfig.proxyStatsSettings.proxyStatsActive,
-        proxyStatsIntervalMs = AppConfig.proxyStatsSettings.proxyStatsIntervalMs,
-        storageBackend = AppConfig.storageBackend
+        proxyStatsActive = AppConfig.settings.proxyStatsActive,
+        proxyStatsIntervalMs = AppConfig.settings.proxyStatsIntervalMs,
+        storageBackend = AppConfig.storageBackend,
+        dockerBuildKit = AppConfig.settings.dockerBuildKit,
+        dockerCliBuild = AppConfig.settings.dockerCliBuild
     )
     
     fun updateSystemConfig(request: UpdateSystemConfigRequest) {
         AppConfig.updateSettings(
             dockerSocket = request.dockerSocket ?: AppConfig.dockerSocket,
-            jamesWebAdminUrl = request.jamesWebAdminUrl ?: AppConfig.jamesWebAdminUrl
+            jamesWebAdminUrl = request.jamesWebAdminUrl ?: AppConfig.jamesWebAdminUrl,
+            dockerBuildKit = request.dockerBuildKit ?: AppConfig.settings.dockerBuildKit,
+            dockerCliBuild = request.dockerCliBuild ?: AppConfig.settings.dockerCliBuild
         )
         // Refresh Docker client to use new settings
         DockerClientProvider.refreshClient()

@@ -216,7 +216,7 @@ class ComposeServiceImpl : IComposeService {
         return try {
             // Use AppConfig.dockerComposeCommand which handles different compose command formats
             val composeCmd = AppConfig.dockerComposeCommand
-            val process = if (composeCmd.contains("docker compose") || composeCmd == "docker compose") {
+            val pb = if (composeCmd.contains("docker compose") || composeCmd == "docker compose") {
                 // New docker compose plugin format
                 ProcessBuilder("docker", "compose", "-f", filePath, "up", "-d")
             } else {
@@ -225,7 +225,11 @@ class ComposeServiceImpl : IComposeService {
             }
                 .directory(file.parentFile)
                 .redirectErrorStream(true)
-                .start()
+            
+            pb.environment()["DOCKER_BUILDKIT"] = if (AppConfig.settings.dockerBuildKit) "1" else "0"
+            pb.environment()["COMPOSE_DOCKER_CLI_BUILD"] = if (AppConfig.settings.dockerCliBuild) "1" else "0"
+            
+            val process = pb.start()
             
             val output = process.inputStream.bufferedReader().readText()
             val success = process.waitFor(5, TimeUnit.MINUTES) && process.exitValue() == 0
@@ -243,14 +247,20 @@ class ComposeServiceImpl : IComposeService {
         val projectDir = file.parentFile
         val projectName = projectDir.name.lowercase()
 
+        val buildKit = if (AppConfig.settings.dockerBuildKit) "1" else "0"
+        val cliBuild = if (AppConfig.settings.dockerCliBuild) "1" else "0"
+
         return try {
             val dockerfile = File(projectDir, "Dockerfile")
             if (dockerfile.exists()) {
                  // Build using Dockerfile with buildx
-                val process = ProcessBuilder("docker", "buildx", "build", "--load", "-t", "$projectName:latest", ".")
+                val pb = ProcessBuilder("docker", "buildx", "build", "--load", "-t", "$projectName:latest", ".")
                     .directory(projectDir)
                     .redirectErrorStream(true)
-                    .start()
+                
+                pb.environment()["DOCKER_BUILDKIT"] = buildKit
+                
+                val process = pb.start()
                 
                 val output = process.inputStream.bufferedReader().readText()
                 val success = process.waitFor(20, TimeUnit.MINUTES) && process.exitValue() == 0
@@ -259,14 +269,18 @@ class ComposeServiceImpl : IComposeService {
             } else {
                 // Build using docker-compose
                 val composeCmd = AppConfig.dockerComposeCommand
-                val process = if (composeCmd.contains("docker compose") || composeCmd == "docker compose") {
+                val pb = if (composeCmd.contains("docker compose") || composeCmd == "docker compose") {
                     ProcessBuilder("docker", "compose", "-f", filePath, "build")
                 } else {
                     ProcessBuilder(composeCmd, "-f", filePath, "build")
                 }
                     .directory(projectDir)
                     .redirectErrorStream(true)
-                    .start()
+                
+                pb.environment()["DOCKER_BUILDKIT"] = buildKit
+                pb.environment()["COMPOSE_DOCKER_CLI_BUILD"] = cliBuild
+                
+                val process = pb.start()
                 
                 val output = process.inputStream.bufferedReader().readText()
                 val success = process.waitFor(20, TimeUnit.MINUTES) && process.exitValue() == 0

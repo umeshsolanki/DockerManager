@@ -97,7 +97,7 @@ class AnalyticsServiceImpl(
         scope.launch {
             while (isActive) {
                 try {
-                    val settings = AppConfig.proxyStatsSettings
+                    val settings = AppConfig.settings
                     if (settings.proxyStatsActive) {
                         updateStatsNatively()
                     }
@@ -127,7 +127,7 @@ class AnalyticsServiceImpl(
         if (hit.method !in standardMethods) return true
         
         // Check for suspicious paths using jail rules
-        val rules = AppConfig.proxySecuritySettings.proxyJailRules
+        val rules = AppConfig.settings.proxyJailRules
         for (rule in rules) {
             when (rule.type) {
                 ProxyJailRuleType.PATH -> {
@@ -363,7 +363,7 @@ class AnalyticsServiceImpl(
         val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
 
         // Get settings once per update cycle
-        val settings = AppConfig.proxyStatsSettings
+        val settings = AppConfig.settings
         val shouldFilterLocalIps = settings.filterLocalIps
 
         try {
@@ -702,7 +702,7 @@ class AnalyticsServiceImpl(
         }
 
         // Get settings
-        val settings = AppConfig.proxyStatsSettings
+        val settings = AppConfig.settings
         val shouldFilterLocalIps = settings.filterLocalIps
 
         // Temporary maps for this date's stats

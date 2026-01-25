@@ -11,6 +11,7 @@ services:
       - TZ=Asia/Kolkata
     volumes:
       - ${nginxPath}/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+      - ${nginxPath}/zones.conf:/etc/nginx/zones.conf:ro
       - ${nginxPath}/conf.d:/etc/nginx/conf.d:ro
       - ${nginxPath}/logs:/usr/local/openresty/nginx/logs
       - ${nginxPath}/www/html:/var/www/html:ro

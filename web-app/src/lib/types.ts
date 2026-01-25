@@ -4,6 +4,7 @@ export interface DockerContainer {
   image: string;
   status: string;
   state: string; // running, exited, etc.
+  ipAddress?: string;
 }
 
 export interface CreateContainerRequest {
@@ -154,12 +155,27 @@ export interface ContainerDetails {
   image: string;
   state: string;
   status: string;
-  createdAt: string;
+  createdAt: number;
+  startedAt?: number;
+  finishedAt?: number;
+  exitCode?: number;
+  error?: string;
   platform: string;
+  driver?: string;
+  hostname?: string;
+  workingDir?: string;
+  command?: string[];
+  entrypoint?: string[];
+  restartPolicy?: string;
+  autoRemove?: boolean;
+  privileged?: boolean;
+  tty?: boolean;
+  stdinOpen?: boolean;
   env: string[];
   labels: Record<string, string>;
   mounts: DockerMount[];
   ports: PortMapping[];
+  networks: Record<string, NetworkContainerDetails>;
 }
 
 export interface VolumeDetails {
@@ -241,6 +257,14 @@ export interface IptablesRule {
   extra: string;
 }
 
+export interface RateLimit {
+  enabled: boolean;
+  rate: number;
+  period: 's' | 'm';
+  burst: number;
+  nodelay: boolean;
+}
+
 export interface PathRoute {
   id: string;
   path: string;
@@ -252,6 +276,7 @@ export interface PathRoute {
   enabled?: boolean;
   name?: string;
   order?: number;
+  rateLimit?: RateLimit;
 }
 
 export interface ProxyHost {
@@ -274,6 +299,7 @@ export interface ProxyHost {
   dnsCleanupUrl?: string;
   dnsAuthScript?: string;
   dnsCleanupScript?: string;
+  rateLimit?: RateLimit;
 }
 
 export interface SSLCertificate {
@@ -450,11 +476,15 @@ export interface SystemConfig {
   proxyJailRules: ProxyJailRule[];
   proxyDefaultReturn404: boolean;
   storageBackend: string;
+  dockerBuildKit: boolean;
+  dockerCliBuild: boolean;
 }
 
 export interface UpdateSystemConfigRequest {
   dockerSocket: string;
   jamesWebAdminUrl: string;
+  dockerBuildKit?: boolean;
+  dockerCliBuild?: boolean;
 }
 
 export interface JamesContainerStatus {

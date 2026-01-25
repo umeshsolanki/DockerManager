@@ -12,18 +12,21 @@ export default function FirewallScreen() {
     const [searchQuery, setSearchQuery] = useState('');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-    const [activeTab, setActiveTab] = useState<'rules' | 'visualisation'>('rules');
+    const [activeTab, setActiveTab] = useState<'rules' | 'iptables' | 'nftables'>('rules');
     const [iptables, setIptables] = useState<Record<string, IptablesRule[]>>({});
+    const [nftables, setNftables] = useState<string>('');
     const [expandedChain, setExpandedChain] = useState<string | null>('INPUT');
 
     const fetchRules = async () => {
         setIsLoading(true);
-        const [rulesData, iptablesData] = await Promise.all([
+        const [rulesData, iptablesData, nftablesData] = await Promise.all([
             DockerClient.listFirewallRules(),
-            DockerClient.getIptablesVisualisation()
+            DockerClient.getIptablesVisualisation(),
+            DockerClient.getNftablesVisualisation()
         ]);
         setRules(rulesData || []);
         setIptables(iptablesData || {});
+        setNftables(nftablesData || '');
         setIsLoading(false);
     };
 
@@ -65,11 +68,18 @@ export default function FirewallScreen() {
                             Rule Manager
                         </button>
                         <button
-                            onClick={() => setActiveTab('visualisation')}
-                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'visualisation' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-on-surface-variant hover:bg-white/5'}`}
+                            onClick={() => setActiveTab('iptables')}
+                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'iptables' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-on-surface-variant hover:bg-white/5'}`}
                         >
                             <Activity size={16} />
-                            Live Visualiser
+                            iptables
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('nftables')}
+                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'nftables' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-on-surface-variant hover:bg-white/5'}`}
+                        >
+                            <Terminal size={16} />
+                            nftables
                         </button>
                     </div>
                     <button
@@ -186,7 +196,7 @@ export default function FirewallScreen() {
                         </div>
                     )}
                 </>
-            ) : (
+            ) : activeTab === 'iptables' ? (
                 <div className="flex flex-col flex-1 h-[600px] bg-black/40 rounded-3xl border border-outline/10 overflow-hidden mb-8">
                     <div className="flex h-full">
                         {/* Chains Sidebar */}
@@ -301,6 +311,23 @@ export default function FirewallScreen() {
                                 )}
                             </div>
                         </div>
+                    </div>
+                </div>
+            ) : (
+                <div className="flex flex-col flex-1 bg-black/40 rounded-3xl border border-outline/10 overflow-hidden mb-8 h-[600px]">
+                    <div className="p-4 border-b border-outline/10 bg-white/2 flex items-center justify-between">
+                        <div className="flex flex-col">
+                            <h3 className="text-lg font-bold flex items-center gap-2 leading-none">
+                                <Terminal size={18} className="text-primary" />
+                                nftables <span className="text-primary">Ruleset</span>
+                            </h3>
+                            <span className="text-[10px] uppercase font-bold text-on-surface-variant/40 tracking-wider mt-1.5 ml-0.5">Current netfilter ruleset configuration</span>
+                        </div>
+                    </div>
+                    <div className="flex-1 overflow-auto custom-scrollbar p-6 bg-black/20">
+                        <pre className="text-xs font-mono text-primary/80 leading-relaxed whitespace-pre">
+                            {nftables || 'No nftables data available. Ensure nftables is installed and active.'}
+                        </pre>
                     </div>
                 </div>
             )}

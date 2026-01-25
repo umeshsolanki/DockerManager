@@ -107,6 +107,12 @@ export default function ContainersScreen() {
                                             <span className={isRunning ? 'text-green-500/80 font-bold' : 'text-on-surface-variant/70'}>
                                                 {container.status}
                                             </span>
+                                            {container.ipAddress && (
+                                                <>
+                                                    <span className="opacity-30">•</span>
+                                                    <span className="text-primary font-bold">{container.ipAddress}</span>
+                                                </>
+                                            )}
                                             <span className="opacity-30">•</span>
                                             <span className="truncate opacity-50">{container.id.substring(0, 12)}</span>
                                         </div>
@@ -202,7 +208,7 @@ function ShellModal({ containerId, onClose }: { containerId: string; onClose: ()
 }
 
 function InspectModal({ details, onClose }: { details: ContainerDetails; onClose: () => void }) {
-    const [activeTab, setActiveTab] = React.useState<'details' | 'logs'>('details');
+    const [activeTab, setActiveTab] = React.useState<'details' | 'logs' | 'raw'>('details');
     const [logs, setLogs] = React.useState<string>('');
     const [isLoadingLogs, setIsLoadingLogs] = React.useState(false);
     const [logTail, setLogTail] = React.useState<number>(100);
@@ -232,16 +238,63 @@ function InspectModal({ details, onClose }: { details: ContainerDetails; onClose
             <TabsList className="mb-6">
                 <TabButton id="details" label="Details" active={activeTab === 'details'} onClick={() => setActiveTab('details')} />
                 <TabButton id="logs" label="Logs" active={activeTab === 'logs'} onClick={() => setActiveTab('logs')} />
+                <TabButton id="raw" label="JSON" active={activeTab === 'raw'} onClick={() => setActiveTab('raw')} />
             </TabsList>
 
             <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
                 {activeTab === 'details' ? (
                     <div className="space-y-8">
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                             <DetailItem label="Status" value={details.status} />
                             <DetailItem label="Image" value={details.image} />
                             <DetailItem label="Platform" value={details.platform} />
-                            <DetailItem label="Created" value={details.createdAt} />
+                            <DetailItem label="Driver" value={details.driver || 'unknown'} />
+                            <DetailItem label="Hostname" value={details.hostname || 'None'} />
+                            <DetailItem label="Restart Policy" value={details.restartPolicy || 'no'} />
+                        </div>
+
+                        <div>
+                            <h3 className="text-lg font-bold mb-3">Lifecycle</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <DetailItem label="Created At" value={new Date(details.createdAt || 0).toLocaleString()} />
+                                <DetailItem label="Started At" value={details.startedAt ? new Date(details.startedAt).toLocaleString() : 'N/A'} />
+                                {details.finishedAt && details.finishedAt !== 0 ? (
+                                    <DetailItem label="Finished At" value={new Date(details.finishedAt).toLocaleString()} />
+                                ) : null}
+                                {details.exitCode !== undefined && (
+                                    <DetailItem label="Exit Code" value={details.exitCode.toString()} />
+                                )}
+                            </div>
+                            {details.error && (
+                                <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-sm font-mono">
+                                    <div className="font-bold mb-1">Error:</div>
+                                    {details.error}
+                                </div>
+                            )}
+                        </div>
+
+                        <div>
+                            <h3 className="text-lg font-bold mb-3">Configuration</h3>
+                            <div className="space-y-4">
+                                <div className="bg-white/5 rounded-xl p-4">
+                                    <div className="text-[10px] text-on-surface-variant uppercase font-bold mb-2">Command</div>
+                                    <div className="text-sm font-mono break-all bg-black/30 p-2 rounded border border-white/5">
+                                        {details.command && details.command.length > 0 ? details.command.join(' ') : 'None'}
+                                    </div>
+                                </div>
+                                <div className="bg-white/5 rounded-xl p-4">
+                                    <div className="text-[10px] text-on-surface-variant uppercase font-bold mb-2">Entrypoint</div>
+                                    <div className="text-sm font-mono break-all bg-black/30 p-2 rounded border border-white/5">
+                                        {details.entrypoint && details.entrypoint.length > 0 ? details.entrypoint.join(' ') : 'None'}
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <DetailItem label="Working Dir" value={details.workingDir || '/'} />
+                                    <DetailItem label="Privileged" value={details.privileged ? 'Yes' : 'No'} />
+                                    <DetailItem label="TTY" value={details.tty ? 'Yes' : 'No'} />
+                                    <DetailItem label="Auto Remove" value={details.autoRemove ? 'Yes' : 'No'} />
+                                </div>
+                            </div>
                         </div>
 
                         <div>
@@ -284,6 +337,31 @@ function InspectModal({ details, onClose }: { details: ContainerDetails; onClose
                         </div>
 
                         <div>
+                            <h3 className="text-lg font-bold mb-3">Networking</h3>
+                            <div className="space-y-2">
+                                {details.networks && Object.keys(details.networks).length > 0 ? (
+                                    Object.entries(details.networks).map(([name, net]: [string, any], i: number) => (
+                                        <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-4">
+                                            <div className="text-xs text-on-surface-variant uppercase font-bold mb-1">{name}</div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div>
+                                                    <div className="text-[10px] text-on-surface-variant">IP Address</div>
+                                                    <div className="text-sm font-mono">{net.ipv4Address || 'None'}</div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-[10px] text-on-surface-variant">MAC Address</div>
+                                                    <div className="text-sm font-mono">{net.macAddress || 'None'}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="text-sm text-on-surface-variant italic">No network information available</div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div>
                             <h3 className="text-lg font-bold mb-3">Mounts</h3>
                             <div className="space-y-2">
                                 {details.mounts.map((m: any, i: number) => (
@@ -304,7 +382,7 @@ function InspectModal({ details, onClose }: { details: ContainerDetails; onClose
                             </div>
                         </div>
                     </div>
-                ) : (
+                ) : activeTab === 'logs' ? (
                     <div className="h-full">
                         <div className="flex items-center justify-between mb-3">
                             <h3 className="text-lg font-bold">Container Logs (Last {logTail} lines)</h3>
@@ -334,6 +412,15 @@ function InspectModal({ details, onClose }: { details: ContainerDetails; onClose
                         <div className="bg-black/60 rounded-2xl p-4 font-mono text-[11px] overflow-auto max-h-[60vh] border border-outline/5 shadow-inner">
                             <pre className="whitespace-pre-wrap text-green-400/90 selection:bg-primary/30 leading-relaxed">
                                 {logs || 'No logs available. Refresh to fetch.'}
+                            </pre>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="h-full">
+                        <h3 className="text-lg font-bold mb-3">Raw Inspection Data</h3>
+                        <div className="bg-black/60 rounded-2xl p-4 font-mono text-[11px] overflow-auto max-h-[65vh] border border-outline/5 shadow-inner">
+                            <pre className="whitespace-pre-wrap text-blue-400/90 selection:bg-primary/30 leading-relaxed">
+                                {JSON.stringify(details, null, 2)}
                             </pre>
                         </div>
                     </div>

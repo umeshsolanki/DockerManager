@@ -29,6 +29,7 @@ services:
       - TZ=Asia/Kolkata
     volumes:
       - ./data/nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+      - ./data/nginx/zones.conf:/etc/nginx/zones.conf:ro
       - ./data/nginx/conf.d:/etc/nginx/conf.d:ro
       - ./data/nginx/logs:/usr/local/openresty/nginx/logs
       - ./data/certbot/conf:/etc/letsencrypt

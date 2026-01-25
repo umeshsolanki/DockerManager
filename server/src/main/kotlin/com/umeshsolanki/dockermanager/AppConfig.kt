@@ -80,7 +80,11 @@ data class AppSettings(
     val redisConfig: RedisConfig = RedisConfig(),
     
     // Alert & SMTP Configuration
-    val alertConfig: AlertConfig = AlertConfig()
+    val alertConfig: AlertConfig = AlertConfig(),
+
+    // Docker Build Settings
+    val dockerBuildKit: Boolean = true,
+    val dockerCliBuild: Boolean = true
 )
 
 object AppConfig {
@@ -91,6 +95,7 @@ object AppConfig {
         prettyPrint = false
         ignoreUnknownKeys = true
         encodeDefaults = true
+        coerceInputValues = true
         isLenient = true
     }
 
@@ -249,9 +254,17 @@ object AppConfig {
         }
     }
 
-    fun updateSettings(dockerSocket: String, jamesWebAdminUrl: String) {
+    fun updateSettings(
+        dockerSocket: String,
+        jamesWebAdminUrl: String,
+        dockerBuildKit: Boolean = _settings.dockerBuildKit,
+        dockerCliBuild: Boolean = _settings.dockerCliBuild
+    ) {
         _settings = _settings.copy(
-            dockerSocket = dockerSocket, jamesWebAdminUrl = jamesWebAdminUrl
+            dockerSocket = dockerSocket,
+            jamesWebAdminUrl = jamesWebAdminUrl,
+            dockerBuildKit = dockerBuildKit,
+            dockerCliBuild = dockerCliBuild
         )
         saveSettings()
     }
@@ -303,10 +316,8 @@ object AppConfig {
         saveSettings()
     }
 
-    val jailSettings: AppSettings get() = _settings
-    val proxyStatsSettings: AppSettings get() = _settings
-    val proxySecuritySettings: AppSettings get() = _settings
-    
+    val settings: AppSettings get() = _settings
+
     fun updateRedisConfig(config: RedisConfig) {
         _settings = _settings.copy(redisConfig = config)
         saveSettings()
@@ -432,6 +443,14 @@ object AppConfig {
             if (File(SystemConstants.IPSET_BIN_USR_SBIN).exists()) return SystemConstants.IPSET_BIN_USR_SBIN
             if (File(SystemConstants.IPSET_BIN_SBIN).exists()) return SystemConstants.IPSET_BIN_SBIN
             return SystemConstants.IPSET_COMMAND
+        }
+
+    val nftCmd: String
+        get() {
+            if (isDocker) return SystemConstants.NFT_BIN_DOCKER
+            if (File(SystemConstants.NFT_BIN_USR_SBIN).exists()) return SystemConstants.NFT_BIN_USR_SBIN
+            if (File(SystemConstants.NFT_BIN_SBIN).exists()) return SystemConstants.NFT_BIN_SBIN
+            return SystemConstants.NFT_COMMAND
         }
 
     // James

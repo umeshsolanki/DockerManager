@@ -528,6 +528,13 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
     const [isPathModalOpen, setIsPathModalOpen] = useState(false);
     const [editingPath, setEditingPath] = useState<PathRoute | null>(null);
 
+    // Rate Limiting State
+    const [rateLimitEnabled, setRateLimitEnabled] = useState(initialHost?.rateLimit?.enabled || false);
+    const [rateLimitRate, setRateLimitRate] = useState(initialHost?.rateLimit?.rate?.toString() || '10');
+    const [rateLimitPeriod, setRateLimitPeriod] = useState<'s' | 'm'>(initialHost?.rateLimit?.period || 's');
+    const [rateLimitBurst, setRateLimitBurst] = useState(initialHost?.rateLimit?.burst?.toString() || '20');
+    const [rateLimitNodelay, setRateLimitNodelay] = useState(initialHost?.rateLimit?.nodelay ?? true);
+
     useEffect(() => {
         DockerClient.listProxyCertificates().then(setCerts);
     }, []);
@@ -555,7 +562,14 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
             dnsAuthUrl: (sslChallengeType === 'dns' && dnsProvider === 'manual' && dnsManualMode === 'api') ? dnsAuthUrl : undefined,
             dnsCleanupUrl: (sslChallengeType === 'dns' && dnsProvider === 'manual' && dnsManualMode === 'api') ? dnsCleanupUrl : undefined,
             dnsAuthScript: (sslChallengeType === 'dns' && dnsProvider === 'manual' && dnsManualMode === 'script' && dnsAuthScript.trim() !== '#!/bin/sh\n# Use $CERTBOT_DOMAIN and $CERTBOT_VALIDATION\n') ? dnsAuthScript : undefined,
-            dnsCleanupScript: (sslChallengeType === 'dns' && dnsProvider === 'manual' && dnsManualMode === 'script' && dnsCleanupScript.trim() !== '#!/bin/sh\n') ? dnsCleanupScript : undefined
+            dnsCleanupScript: (sslChallengeType === 'dns' && dnsProvider === 'manual' && dnsManualMode === 'script' && dnsCleanupScript.trim() !== '#!/bin/sh\n') ? dnsCleanupScript : undefined,
+            rateLimit: rateLimitEnabled ? {
+                enabled: true,
+                rate: parseInt(rateLimitRate) || 10,
+                period: rateLimitPeriod,
+                burst: parseInt(rateLimitBurst) || 20,
+                nodelay: rateLimitNodelay
+            } : undefined
         };
 
         const result = initialHost
@@ -893,6 +907,74 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
                         )}
                     </div>
 
+                    {/* Rate Limiting */}
+                    <div className="pt-4 border-t border-outline/10">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2">
+                                <ShieldCheck size={16} className={rateLimitEnabled ? 'text-primary' : 'text-on-surface-variant/40'} />
+                                <label className="block text-[11px] font-black text-on-surface-variant uppercase tracking-widest">Rate Limiting</label>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={rateLimitEnabled}
+                                    onChange={(e) => setRateLimitEnabled(e.target.checked)}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+
+                        {rateLimitEnabled && (
+                            <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10 space-y-4 animate-in slide-in-from-top-2 duration-200">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1.5">
+                                        <label className="block text-[9px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Rate</label>
+                                        <div className="flex gap-1">
+                                            <input
+                                                type="number"
+                                                value={rateLimitRate}
+                                                onChange={(e) => setRateLimitRate(e.target.value)}
+                                                className="w-full bg-black/20 border border-outline/20 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-primary"
+                                                placeholder="10"
+                                            />
+                                            <select
+                                                value={rateLimitPeriod}
+                                                onChange={(e) => setRateLimitPeriod(e.target.value as 's' | 'm')}
+                                                className="bg-black/20 border border-outline/20 rounded-xl px-2 py-2 text-[10px] font-bold focus:outline-none"
+                                            >
+                                                <option value="s">r/s</option>
+                                                <option value="m">r/m</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="block text-[9px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Burst</label>
+                                        <input
+                                            type="number"
+                                            value={rateLimitBurst}
+                                            onChange={(e) => setRateLimitBurst(e.target.value)}
+                                            className="w-full bg-black/20 border border-outline/20 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-primary"
+                                            placeholder="20"
+                                        />
+                                    </div>
+                                </div>
+                                <label className="flex items-center gap-3 cursor-pointer group select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={rateLimitNodelay}
+                                        onChange={(e) => setRateLimitNodelay(e.target.checked)}
+                                        className="w-4 h-4 rounded-md border-outline/20 bg-white/5 checked:bg-primary accent-primary"
+                                    />
+                                    <div className="flex flex-col">
+                                        <span className="text-[11px] font-bold">No Delay</span>
+                                        <span className="text-[9px] text-on-surface-variant/60 font-medium">Process requests immediately within burst</span>
+                                    </div>
+                                </label>
+                            </div>
+                        )}
+                    </div>
+
                     {/* IP Restrictions */}
                     <div className="pt-2 border-t border-outline/10">
                         <label className="block text-xs font-bold text-on-surface-variant uppercase mb-2 ml-1">IP Restrictions</label>
@@ -1074,6 +1156,13 @@ function PathRouteModal({
     const [order, setOrder] = useState(initialPath?.order?.toString() || '0');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // Rate Limiting State
+    const [rateLimitEnabled, setRateLimitEnabled] = useState(initialPath?.rateLimit?.enabled || false);
+    const [rateLimitRate, setRateLimitRate] = useState(initialPath?.rateLimit?.rate?.toString() || '10');
+    const [rateLimitPeriod, setRateLimitPeriod] = useState<'s' | 'm'>(initialPath?.rateLimit?.period || 's');
+    const [rateLimitBurst, setRateLimitBurst] = useState(initialPath?.rateLimit?.burst?.toString() || '20');
+    const [rateLimitNodelay, setRateLimitNodelay] = useState(initialPath?.rateLimit?.nodelay ?? true);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
@@ -1088,7 +1177,14 @@ function PathRouteModal({
             customConfig: customConfig.trim() || undefined,
             enabled,
             name: name.trim() || undefined,
-            order: parseInt(order) || 0
+            order: parseInt(order) || 0,
+            rateLimit: rateLimitEnabled ? {
+                enabled: true,
+                rate: parseInt(rateLimitRate) || 10,
+                period: rateLimitPeriod,
+                burst: parseInt(rateLimitBurst) || 20,
+                nodelay: rateLimitNodelay
+            } : undefined
         };
 
         await onSave(pathData);
@@ -1225,6 +1321,74 @@ function PathRouteModal({
                                 </div>
                             ))}
                         </div>
+                    </div>
+
+                    {/* Rate Limiting */}
+                    <div className="pt-4 border-t border-outline/5">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2">
+                                <ShieldCheck size={16} className={rateLimitEnabled ? 'text-primary' : 'text-on-surface-variant/40'} />
+                                <label className="block text-[11px] font-black text-on-surface-variant uppercase tracking-widest">Rate Limiting</label>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={rateLimitEnabled}
+                                    onChange={(e) => setRateLimitEnabled(e.target.checked)}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+
+                        {rateLimitEnabled && (
+                            <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10 space-y-4 animate-in slide-in-from-top-2 duration-200">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1.5">
+                                        <label className="block text-[9px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Rate</label>
+                                        <div className="flex gap-1">
+                                            <input
+                                                type="number"
+                                                value={rateLimitRate}
+                                                onChange={(e) => setRateLimitRate(e.target.value)}
+                                                className="w-full bg-black/20 border border-outline/20 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-primary"
+                                                placeholder="10"
+                                            />
+                                            <select
+                                                value={rateLimitPeriod}
+                                                onChange={(e) => setRateLimitPeriod(e.target.value as 's' | 'm')}
+                                                className="bg-black/20 border border-outline/20 rounded-xl px-2 py-2 text-[10px] font-bold focus:outline-none"
+                                            >
+                                                <option value="s">r/s</option>
+                                                <option value="m">r/m</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="block text-[9px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Burst</label>
+                                        <input
+                                            type="number"
+                                            value={rateLimitBurst}
+                                            onChange={(e) => setRateLimitBurst(e.target.value)}
+                                            className="w-full bg-black/20 border border-outline/20 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-primary"
+                                            placeholder="20"
+                                        />
+                                    </div>
+                                </div>
+                                <label className="flex items-center gap-3 cursor-pointer group select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={rateLimitNodelay}
+                                        onChange={(e) => setRateLimitNodelay(e.target.checked)}
+                                        className="w-4 h-4 rounded-md border-outline/20 bg-white/5 checked:bg-primary accent-primary"
+                                    />
+                                    <div className="flex flex-col">
+                                        <span className="text-[11px] font-bold">No Delay</span>
+                                        <span className="text-[9px] text-on-surface-variant/60 font-medium">Process requests immediately within burst</span>
+                                    </div>
+                                </label>
+                            </div>
+                        )}
                     </div>
 
                     {/* Custom Config using Monaco-style textarea */}

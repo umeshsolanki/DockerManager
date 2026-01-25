@@ -3,8 +3,6 @@ package com.umeshsolanki.dockermanager.jail
 import com.sun.jna.Native
 import com.umeshsolanki.dockermanager.AppConfig
 import com.umeshsolanki.dockermanager.ServiceContainer
-import com.umeshsolanki.dockermanager.firewall.FirewallServiceImpl
-import com.umeshsolanki.dockermanager.firewall.IFirewallService
 import com.umeshsolanki.dockermanager.jna.Utmpx
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,9 +41,9 @@ class BtmpServiceImpl(
     private var lastInode: Any? = null
     private var lastPosition = 0L
 
-    private var autoJailEnabled = AppConfig.jailSettings.jailEnabled
-    private var jailThreshold = AppConfig.jailSettings.jailThreshold
-    private var jailDurationMinutes = AppConfig.jailSettings.jailDurationMinutes
+    private var autoJailEnabled = AppConfig.settings.jailEnabled
+    private var jailThreshold = AppConfig.settings.jailThreshold
+    private var jailDurationMinutes = AppConfig.settings.jailDurationMinutes
     private val jailedIps = java.util.concurrent.CopyOnWriteArrayList<JailedIP>()
 
     private var cachedBtmpStats: BtmpStats = BtmpStats(
@@ -62,8 +60,8 @@ class BtmpServiceImpl(
         isMonitoringActive = false
     )
 
-    private var refreshIntervalMinutes = AppConfig.jailSettings.monitoringIntervalMinutes
-    private var isMonitoringActive = AppConfig.jailSettings.monitoringActive
+    private var refreshIntervalMinutes = AppConfig.settings.monitoringIntervalMinutes
+    private var isMonitoringActive = AppConfig.settings.monitoringActive
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var workerJob: Job? = null

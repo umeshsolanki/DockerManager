@@ -10,7 +10,8 @@ data class DockerContainer(
     val names: String,
     val image: String,
     val status: String,
-    val state: String
+    val state: String,
+    val ipAddress: String = ""
 )
 
 @Serializable
@@ -44,11 +45,26 @@ data class ContainerDetails(
     val state: String,
     val status: String,
     val createdAt: Long,
+    val startedAt: Long = 0L,
+    val finishedAt: Long = 0L,
+    val exitCode: Int? = null,
+    val error: String? = null,
     val platform: String,
+    val driver: String = "",
+    val hostname: String? = null,
+    val workingDir: String? = null,
+    val command: List<String> = emptyList(),
+    val entrypoint: List<String> = emptyList(),
+    val restartPolicy: String = "no",
+    val autoRemove: Boolean = false,
+    val privileged: Boolean = false,
+    val tty: Boolean = false,
+    val stdinOpen: Boolean = false,
     val env: List<String> = emptyList(),
     val labels: Map<String, String> = emptyMap(),
     val mounts: List<DockerMount> = emptyList(),
-    val ports: List<PortMapping> = emptyList()
+    val ports: List<PortMapping> = emptyList(),
+    val networks: Map<String, NetworkContainerDetails> = emptyMap()
 )
 
 @Serializable

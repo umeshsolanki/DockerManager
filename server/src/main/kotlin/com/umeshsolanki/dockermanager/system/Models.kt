@@ -16,13 +16,17 @@ data class SystemConfig(
     val username: String,
     val proxyStatsActive: Boolean,
     val proxyStatsIntervalMs: Long,
-    val storageBackend: String
+    val storageBackend: String,
+    val dockerBuildKit: Boolean,
+    val dockerCliBuild: Boolean
 )
 
 @Serializable
 data class UpdateSystemConfigRequest(
     val dockerSocket: String? = null,
-    val jamesWebAdminUrl: String? = null
+    val jamesWebAdminUrl: String? = null,
+    val dockerBuildKit: Boolean? = null,
+    val dockerCliBuild: Boolean? = null
 )
 
 @Serializable

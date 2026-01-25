@@ -15,6 +15,7 @@ interface IFirewallService {
     fun unblockIP(id: String): Boolean
     fun unblockIPByAddress(ip: String): Boolean
     fun getIptablesVisualisation(): Map<String, List<IptablesRule>>
+    fun getNftablesVisualisation(): String
 }
 
 class FirewallServiceImpl : IFirewallService {
@@ -22,6 +23,7 @@ class FirewallServiceImpl : IFirewallService {
     private val dataDir = AppConfig.firewallDataDir
     private val iptablesCmd = AppConfig.iptablesCmd
     private val ipSetCmd = AppConfig.ipsetCmd
+    private val nftCmd = AppConfig.nftCmd
     private val rulesFile = File(dataDir, FileConstants.RULES_JSON)
     private val jsonPersistence = JsonPersistence.create<List<FirewallRule>>(
         file = rulesFile,
@@ -213,6 +215,16 @@ class FirewallServiceImpl : IFirewallService {
         }
         return chains
     }
+    
+    override fun getNftablesVisualisation(): String {
+        // We use text format here for easy display, or we could use -j for JSON
+        val res = commandExecutor.execute("$nftCmd list ruleset")
+        if (res.exitCode != 0) {
+            logger.warn("Failed to list nftables: ${res.error}")
+            return "Error: ${res.error}"
+        }
+        return res.output
+    }
 
     private fun ensureBaseRules() {
         // Ensure iptables is tracking the ipset for CONTAINER traffic
@@ -284,6 +296,7 @@ object FirewallService {
     fun unblockIP(id: String) = service.unblockIP(id)
     fun unblockIPByAddress(ip: String) = service.unblockIPByAddress(ip)
     fun getIptablesVisualisation() = service.getIptablesVisualisation()
+    fun getNftablesVisualisation() = service.getNftablesVisualisation()
 }
 
 

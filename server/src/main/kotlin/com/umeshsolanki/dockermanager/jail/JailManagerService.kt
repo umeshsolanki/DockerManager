@@ -126,7 +126,7 @@ class JailManagerServiceImpl(
     override fun recordFailedLoginAttempt(ip: String) {
         if (ip.isBlank() || AppConfig.isLocalIP(ip)) return
         
-        val settings = AppConfig.jailSettings
+        val settings = AppConfig.settings
         if (!settings.jailEnabled) return
         
         // Check if already jailed
@@ -214,7 +214,7 @@ class JailManagerServiceImpl(
                     // This implements a simple "errors per interval" rate limit.
                     // A proper sliding window is more complex but this should suffice to prevent
                     // long-term accumulation of errors.
-                    val interval = AppConfig.jailSettings.monitoringIntervalMinutes * 60_000L
+                    val interval = AppConfig.settings.monitoringIntervalMinutes * 60_000L
                     delay(interval)
                     if (proxyViolationsInWindow.isNotEmpty()) {
                         logger.debug("Clearing ${proxyViolationsInWindow.size} proxy violation records (window reset)")
@@ -231,7 +231,7 @@ class JailManagerServiceImpl(
     override fun checkProxySecurityViolation(ip: String, userAgent: String, method: String, path: String, status: Int, errorCount: Long) {
         if (ip.isBlank() || AppConfig.isLocalIP(ip)) return
         
-        val secSettings = AppConfig.proxySecuritySettings
+        val secSettings = AppConfig.settings
         if (!secSettings.proxyJailEnabled) return
         
         // Check if already jailed
@@ -319,7 +319,7 @@ class JailManagerServiceImpl(
         
         if (shouldJail) {
             logger.warn("Jailing IP $ip for proxy violation: $reason")
-            val duration = AppConfig.jailSettings.jailDurationMinutes
+            val duration = AppConfig.settings.jailDurationMinutes
             val success = jailIP(ip, duration, "Proxy: $reason")
             
             if (success) {

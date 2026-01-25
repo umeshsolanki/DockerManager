@@ -28,7 +28,8 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
                 names = container.names.joinToString(", ").removePrefix("/"),
                 image = container.image,
                 status = container.status,
-                state = container.state
+                state = container.state,
+                ipAddress = container.networkSettings?.networks?.values?.firstOrNull()?.ipAddress ?: ""
             )
         }
     }
@@ -106,7 +107,25 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
                 createdAt = details.created?.let { 
                     try { Instant.parse(it).toEpochMilli() } catch(e: Exception) { 0L }
                 } ?: 0L,
+                startedAt = details.state.startedAt?.let { 
+                    try { Instant.parse(it).toEpochMilli() } catch(e: Exception) { 0L }
+                } ?: 0L,
+                finishedAt = details.state.finishedAt?.let { 
+                    try { Instant.parse(it).toEpochMilli() } catch(e: Exception) { 0L }
+                } ?: 0L,
+                exitCode = details.state.exitCodeLong?.toInt(),
+                error = details.state.error,
                 platform = details.platform ?: "unknown",
+                driver = details.driver ?: "unknown",
+                hostname = details.config.hostName,
+                workingDir = details.config.workingDir,
+                command = details.config.cmd?.toList() ?: emptyList(),
+                entrypoint = details.config.entrypoint?.toList() ?: emptyList(),
+                restartPolicy = details.hostConfig.restartPolicy.name,
+                autoRemove = details.hostConfig.autoRemove ?: false,
+                privileged = details.hostConfig.privileged ?: false,
+                tty = details.config.tty ?: false,
+                stdinOpen = details.config.stdinOpen ?: false,
                 env = details.config.env?.toList() ?: emptyList(),
                 labels = details.config.labels ?: emptyMap(),
                 mounts = details.mounts?.map { mount ->
@@ -126,7 +145,16 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
                             protocol = exposedPort.protocol.toString()
                         )
                     } ?: emptyList()
-                })
+                }.distinct(),
+                networks = details.networkSettings.networks?.mapValues { (name, network) ->
+                    NetworkContainerDetails(
+                        name = name,
+                        endpointId = network.endpointId ?: "",
+                        macAddress = network.macAddress ?: "",
+                        ipv4Address = network.ipAddress ?: "",
+                        ipv6Address = network.globalIPv6Address ?: ""
+                    )
+                } ?: emptyMap())
         } catch (e: Exception) {
             // Check if it's the Jackson deserialization error (e.g. for Capability CAP_MKNOD)
             // or any other issue that makes library fails to parse the response
@@ -150,16 +178,36 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
             val networkSettings = details["NetworkSettings"]?.jsonObject
             val mounts = details["Mounts"]?.jsonArray
             
+            val hostConfig = details["HostConfig"]?.jsonObject
+            
             ContainerDetails(
                 id = details["Id"]?.jsonPrimitive?.content ?: id,
                 name = details["Name"]?.jsonPrimitive?.content?.removePrefix("/") ?: "unknown",
                 image = config?.get("Image")?.jsonPrimitive?.content ?: "unknown",
                 state = state?.get("Status")?.jsonPrimitive?.content ?: "unknown",
                 status = state?.get("Status")?.jsonPrimitive?.content ?: "unknown",
-                createdAt = state?.get("StartedAt")?.jsonPrimitive?.content?.let { 
+                createdAt = details["Created"]?.jsonPrimitive?.content?.let { 
                     try { Instant.parse(it).toEpochMilli() } catch(e: Exception) { 0L }
                 } ?: 0L,
+                startedAt = state?.get("StartedAt")?.jsonPrimitive?.content?.let { 
+                    try { Instant.parse(it).toEpochMilli() } catch(e: Exception) { 0L }
+                } ?: 0L,
+                finishedAt = state?.get("FinishedAt")?.jsonPrimitive?.content?.let { 
+                    try { Instant.parse(it).toEpochMilli() } catch(e: Exception) { 0L }
+                } ?: 0L,
+                exitCode = state?.get("ExitCode")?.jsonPrimitive?.intOrNull,
+                error = state?.get("Error")?.jsonPrimitive?.content,
                 platform = details["Platform"]?.jsonPrimitive?.content ?: "unknown",
+                driver = details["Driver"]?.jsonPrimitive?.content ?: "unknown",
+                hostname = config?.get("Hostname")?.jsonPrimitive?.content,
+                workingDir = config?.get("WorkingDir")?.jsonPrimitive?.content,
+                command = config?.get("Cmd")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
+                entrypoint = config?.get("Entrypoint")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
+                restartPolicy = hostConfig?.get("RestartPolicy")?.jsonObject?.get("Name")?.jsonPrimitive?.content ?: "no",
+                autoRemove = hostConfig?.get("AutoRemove")?.jsonPrimitive?.boolean ?: false,
+                privileged = hostConfig?.get("Privileged")?.jsonPrimitive?.boolean ?: false,
+                tty = config?.get("Tty")?.jsonPrimitive?.boolean ?: false,
+                stdinOpen = config?.get("OpenStdin")?.jsonPrimitive?.boolean ?: false,
                 env = config?.get("Env")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
                 labels = config?.get("Labels")?.jsonObject?.mapValues { it.value.jsonPrimitive.content } ?: emptyMap(),
                 mounts = mounts?.map { m ->
@@ -172,7 +220,7 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
                         rw = mo["RW"]?.jsonPrimitive?.boolean ?: false
                     )
                 } ?: emptyList(),
-                ports = networkSettings?.get("Ports")?.jsonObject?.flatMap { (portSpec, bindings) ->
+                ports = (networkSettings?.get("Ports")?.jsonObject?.flatMap { (portSpec, bindings) ->
                     val specParts = portSpec.split("/")
                     val port = specParts[0].toIntOrNull() ?: 0
                     val proto = if (specParts.size > 1) specParts[1] else "tcp"
@@ -189,7 +237,17 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
                             )
                         }
                     }
-                } ?: emptyList()
+                } ?: emptyList()).distinct(),
+                networks = networkSettings?.get("Networks")?.jsonObject?.mapValues { (name, network) ->
+                    val no = network.jsonObject
+                    NetworkContainerDetails(
+                        name = name,
+                        endpointId = no["EndpointID"]?.jsonPrimitive?.content ?: "",
+                        macAddress = no["MacAddress"]?.jsonPrimitive?.content ?: "",
+                        ipv4Address = no["IPAddress"]?.jsonPrimitive?.content ?: "",
+                        ipv6Address = no["GlobalIPv6Address"]?.jsonPrimitive?.content ?: ""
+                    )
+                } ?: emptyMap()
             )
         } catch (e: Exception) {
             System.err.println("Fallback inspection also failed for $id")

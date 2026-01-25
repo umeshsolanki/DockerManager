@@ -32,6 +32,11 @@ object SystemConstants {
     const val IPSET_BIN_USR_SBIN = "/usr/sbin/ipset"
     const val IPSET_BIN_SBIN = "/sbin/ipset"
     const val IPSET_COMMAND = "ipset"
+
+    const val NFT_BIN_DOCKER = "/usr/sbin/nft"
+    const val NFT_BIN_USR_SBIN = "/usr/sbin/nft"
+    const val NFT_BIN_SBIN = "/sbin/nft"
+    const val NFT_COMMAND = "nft"
     
     // Environment variables
     const val ENV_DATA_DIR = "DATA_DIR"

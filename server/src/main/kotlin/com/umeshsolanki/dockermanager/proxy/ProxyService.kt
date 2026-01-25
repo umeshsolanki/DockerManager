@@ -13,16 +13,15 @@ import com.umeshsolanki.dockermanager.utils.ExecuteResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.encodeToString
 import com.umeshsolanki.dockermanager.database.SettingsTable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -375,6 +374,42 @@ class ProxyServiceImpl(
                 logger.warn("Failed to sync proxy hosts to Redis: ${e.message}", e)
             }
         }
+
+        // 4. Generate zones config for rate limiting
+        generateZonesConfig(hosts)
+    }
+
+    private fun generateZonesConfig(hosts: List<ProxyHost>) {
+        val zonesFile = File(AppConfig.proxyDir, "zones.conf")
+        val sb = StringBuilder()
+        sb.append("# Auto-generated zones configuration for rate limiting\n")
+
+        for (host in hosts) {
+            if (!host.enabled) continue
+            
+            host.rateLimit?.let { rl ->
+                if (rl.enabled) {
+                    val zoneName = "limit_${host.id.replace("-", "")}"
+                    sb.append("limit_req_zone \$binary_remote_addr zone=$zoneName:10m rate=${rl.rate}r/${rl.period};\n")
+                }
+            }
+            for (path in host.paths) {
+                if (!path.enabled) continue
+                path.rateLimit?.let { rl ->
+                    if (rl.enabled) {
+                        val zoneName = "limit_${path.id.replace("-", "")}"
+                        sb.append("limit_req_zone \$binary_remote_addr zone=$zoneName:10m rate=${rl.rate}r/${rl.period};\n")
+                    }
+                }
+            }
+        }
+
+        try {
+            zonesFile.writeText(sb.toString())
+            logger.debug("Generated zones.conf with rate limiting zones")
+        } catch (e: Exception) {
+            logger.error("Failed to write zones.conf", e)
+        }
     }
 
     override fun listHosts(): List<ProxyHost> = loadHosts()
@@ -718,6 +753,14 @@ class ProxyServiceImpl(
             host.allowedIps.joinToString("\n        ") { "allow $it;" } + "\n        deny all;"
         } else ""
 
+        // Generate Rate Limiting config
+        val rateLimitConfig = host.rateLimit?.let { rl ->
+            if (rl.enabled) {
+                val zoneName = "limit_${host.id.replace("-", "")}"
+                "limit_req zone=$zoneName burst=${rl.burst}${if (rl.nodelay) " nodelay" else ""};"
+            } else ""
+        } ?: ""
+
         // Generate path-based location blocks
         val pathLocations = generatePathLocations(host.paths, wsConfig)
 
@@ -755,7 +798,8 @@ class ProxyServiceImpl(
                     "target" to host.target,
                     "websocketConfig" to wsConfig,
                     "ipRestrictions" to ipConfig,
-                    "pathLocations" to pathLocations
+                    "pathLocations" to pathLocations,
+                    "rateLimitConfig" to rateLimitConfig
                 )
             )
         } else ""
@@ -772,7 +816,8 @@ class ProxyServiceImpl(
                 proxyTemplate, mapOf(
                     "target" to host.target,
                     "websocketConfig" to wsConfig,
-                    "ipRestrictions" to ipConfig
+                    "ipRestrictions" to ipConfig,
+                    "rateLimitConfig" to rateLimitConfig
                 )
             )
             // Indent each line (8 spaces for location block)
@@ -785,7 +830,8 @@ class ProxyServiceImpl(
                 "domain" to host.domain,
                 "httpRedirect" to httpRedirect,
                 "httpProxyConfig" to httpProxyConfig,
-                "pathLocations" to pathLocations
+                "pathLocations" to pathLocations,
+                "rateLimitConfig" to rateLimitConfig
             )
         )
 
@@ -826,10 +872,17 @@ class ProxyServiceImpl(
                 wsConfigRaw.lines().joinToString("\n        ") { it.trim() }
             } else ""
 
-            // Generate IP restrictions for this path
             val ipConfig = if (pathRoute.allowedIps.isNotEmpty()) {
                 pathRoute.allowedIps.joinToString("\n        ") { "allow $it;" } + "\n        deny all;"
             } else ""
+
+            // Generate Rate Limiting config for this path
+            val rateLimitConfig = pathRoute.rateLimit?.let { rl ->
+                if (rl.enabled) {
+                    val zoneName = "limit_${pathRoute.id.replace("-", "")}"
+                    "limit_req zone=$zoneName burst=${rl.burst}${if (rl.nodelay) " nodelay" else ""};"
+                } else ""
+            } ?: ""
 
             // Determine proxy_pass directive
             val proxyPass = if (pathRoute.stripPrefix) {
@@ -857,7 +910,8 @@ class ProxyServiceImpl(
                     "proxyPass" to proxyPass,
                     "websocketConfig" to wsConfig,
                     "ipRestrictions" to ipConfig,
-                    "customConfig" to customConfig
+                    "customConfig" to customConfig,
+                    "rateLimitConfig" to rateLimitConfig
                 )
             )
         }
@@ -931,7 +985,11 @@ class ProxyServiceImpl(
             val buildCmd =
                 "${AppConfig.dockerComposeCommand} -f ${composeFile.absolutePath} build proxy"
 
-            val result = executeComposeCommand(buildCmd, truncateOutput = true)
+            val env = mutableMapOf<String, String>()
+            env["DOCKER_BUILDKIT"] = if (AppConfig.settings.dockerBuildKit) "1" else "0"
+            env["COMPOSE_DOCKER_CLI_BUILD"] = if (AppConfig.settings.dockerCliBuild) "1" else "0"
+
+            val result = executeComposeCommand(buildCmd, truncateOutput = true, env = env)
             if (result.exitCode == 0) {
                 logger.info("Proxy image built successfully")
                 true to "Proxy image built successfully\n${result.output}"
@@ -1004,9 +1062,15 @@ class ProxyServiceImpl(
     private fun executeComposeCommand(
         command: String,
         truncateOutput: Boolean = false,
+        env: Map<String, String> = emptyMap()
     ): ExecuteResult {
         val processBuilder = ProcessBuilder("sh", "-c", command).directory(proxyDockerComposeDir)
             .redirectErrorStream(true)
+
+        // Add extra environment variables
+        if (env.isNotEmpty()) {
+            processBuilder.environment().putAll(env)
+        }
 
         val process = processBuilder.start()
         val outputFull = process.inputStream.bufferedReader().readText()
@@ -1241,6 +1305,12 @@ class ProxyServiceImpl(
             logger.info("Creating/Updating default nginx.conf in ${nginxConf.absolutePath}")
             nginxConf.writeText(getDefaultNginxConfig())
         }
+
+        // Always ensure zones.conf exists, even if empty
+        val zonesFile = File(AppConfig.proxyDir, "zones.conf")
+        if (!zonesFile.exists()) {
+            generateZonesConfig(loadHosts())
+        }
     }
 
     private fun getDefaultNginxConfig(): String {
@@ -1255,7 +1325,7 @@ class ProxyServiceImpl(
     private fun ensureDefaultServer() {
         val defaultServerFile = File(configDir, "zz-default-server.conf")
         try {
-            val templateName = if (AppConfig.jailSettings.proxyDefaultReturn404) {
+            val templateName = if (AppConfig.settings.proxyDefaultReturn404) {
                 "templates/proxy/default-server-404.conf"
             } else {
                 "templates/proxy/default-server.conf"
@@ -1265,7 +1335,7 @@ class ProxyServiceImpl(
             
             // Allow overwriting if content changed (simple check: always write)
             defaultServerFile.writeText(defaultServerTemplate)
-            logger.info("Updated default nginx server block: ${defaultServerFile.absolutePath} (Return 404: ${AppConfig.jailSettings.proxyDefaultReturn404})")
+            logger.info("Updated default nginx server block: ${defaultServerFile.absolutePath} (Return 404: ${AppConfig.settings.proxyDefaultReturn404})")
         } catch (e: Exception) {
             logger.error("Failed to create/update default server block", e)
         }
@@ -1377,7 +1447,7 @@ object ProxyService {
 
     fun updateDefaultBehavior(return404: Boolean) = service.updateDefaultBehavior(return404)
 
-    fun getProxySecuritySettings() = AppConfig.proxySecuritySettings
+    fun getProxySecuritySettings() = AppConfig.settings
 
     // Analytics History
     fun getHistoricalStats(date: String) = service.getHistoricalStats(date)
