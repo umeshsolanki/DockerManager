@@ -443,15 +443,39 @@ export default function FirewallScreen() {
                                                                         ) : (
                                                                             rules.map((ruleObj: any, ruleIdx: number) => {
                                                                                 const rule = ruleObj.rule;
-                                                                                // Very basic expression stringification
+                                                                                const stringifyNft = (v: any): string => {
+                                                                                    if (typeof v !== 'object' || v === null) return String(v);
+                                                                                    if (v.payload) return `${v.payload.protocol} ${v.payload.field}`;
+                                                                                    if (v.meta) return v.meta.key;
+                                                                                    if (v.ct) return `ct ${v.ct.key}`;
+                                                                                    if (v.prefix) return `${v.prefix.addr}/${v.prefix.len}`;
+                                                                                    if (v.range) return `${v.range[0]}-${v.range[1]}`;
+                                                                                    if (v.set) return `@${v.set}`;
+                                                                                    if (v.immediate) return String(v.immediate.data);
+                                                                                    if (v.iifname) return `iif ${v.iifname}`;
+                                                                                    if (v.oifname) return `oif ${v.oifname}`;
+
+                                                                                    // Generic key-value if only one key exists
+                                                                                    const keys = Object.keys(v);
+                                                                                    if (keys.length === 1) return `${keys[0]} ${v[keys[0]]}`;
+
+                                                                                    return JSON.stringify(v);
+                                                                                };
+
                                                                                 const exprStr = rule.expr
                                                                                     ? rule.expr.map((e: any) => {
                                                                                         const key = Object.keys(e)[0];
                                                                                         const val = e[key];
-                                                                                        if (key === 'match') return `${val.left} ${val.op} ${val.right}`;
+                                                                                        if (key === 'match') return `${stringifyNft(val.left)} ${val.op} ${stringifyNft(val.right)}`;
                                                                                         if (key === 'accept') return 'accept';
                                                                                         if (key === 'drop') return 'drop';
+                                                                                        if (key === 'reject') return 'reject';
                                                                                         if (key === 'counter') return 'counter';
+                                                                                        if (key === 'log') return 'log';
+                                                                                        if (key === 'target') return val.name || key;
+                                                                                        if (key === 'limit') return `limit ${val.rate}${val.unit}`;
+                                                                                        if (key === 'lookup') return `${stringifyNft(val.map)} @${val.set}`;
+                                                                                        if (key === 'mangle') return `mangle ${stringifyNft(val.key)} set ${stringifyNft(val.value)}`;
                                                                                         return key;
                                                                                     }).join(' ')
                                                                                     : '...';
