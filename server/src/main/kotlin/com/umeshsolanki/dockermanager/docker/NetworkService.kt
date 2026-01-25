@@ -40,10 +40,18 @@ class NetworkServiceImpl(private val dockerClient: com.github.dockerjava.api.Doc
                 driver = network.driver ?: "unknown",
                 scope = network.scope ?: "unknown",
                 internal = network.internal ?: false,
+                attachable = false, // Field access is private and getter is unresolved
+                ingress = false, // Field not available in this version of docker-java
+                enableIPv6 = network.enableIPv6 ?: false,
                 ipam = IpamConfig(
                     driver = network.ipam?.driver ?: "default",
                     config = network.ipam?.config?.map {
-                        IpamData(subnet = it.subnet, gateway = it.gateway)
+                        IpamData(
+                            subnet = it.subnet,
+                            gateway = it.gateway,
+                            ipRange = it.ipRange,
+                            auxAddresses = emptyMap() // Field not available in this version
+                        )
                     } ?: emptyList()
                 ),
                 containers = network.containers?.mapValues { (containerId, details) ->
@@ -56,7 +64,8 @@ class NetworkServiceImpl(private val dockerClient: com.github.dockerjava.api.Doc
                     )
                 } ?: emptyMap(),
                 options = network.options ?: emptyMap(),
-                labels = network.labels ?: emptyMap()
+                labels = network.labels ?: emptyMap(),
+                createdAt = network.created?.toString()
             )
         } catch (e: Exception) {
             e.printStackTrace()

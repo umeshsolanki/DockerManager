@@ -4,6 +4,7 @@ import com.umeshsolanki.dockermanager.*
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.*
 
 fun Route.firewallRoutes() {
@@ -16,8 +17,17 @@ fun Route.firewallRoutes() {
             call.respond(FirewallService.getIptablesVisualisation())
         }
 
+        get("/iptables/raw") {
+            call.respond(FirewallService.getIptablesRaw())
+        }
+
         get("/nftables") {
             call.respond(FirewallService.getNftablesVisualisation())
+        }
+
+        get("/nftables/json") {
+            val json = FirewallService.getNftablesJson()
+            call.respondText(json, io.ktor.http.ContentType.Application.Json)
         }
 
         post("/block") {

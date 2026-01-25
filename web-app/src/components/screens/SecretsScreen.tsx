@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Search, RefreshCw, Lock, Trash2, Plus, X, Key } from 'lucide-react';
+import { RefreshCw, Lock, Trash2, Plus, X, Key } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { DockerSecret } from '@/lib/types';
+import { SearchInput } from '../ui/SearchInput';
+import { ActionIconButton, Button } from '../ui/Buttons';
 
 export default function SecretsScreen() {
     const [secrets, setSecrets] = useState<DockerSecret[]>([]);
@@ -49,38 +51,29 @@ export default function SecretsScreen() {
 
     return (
         <div className="flex flex-col relative">
-            <div className="flex items-center justify-between mb-5">
-                <div className="flex items-center gap-4">
-                    <h1 className="text-3xl font-bold">Secrets</h1>
-                    {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
-                </div>
-                <button
-                    onClick={() => setIsCreateOpen(true)}
-                    className="flex items-center gap-2 bg-primary text-primary-foreground font-bold px-6 py-3 rounded-xl hover:opacity-90 transition-all active:scale-95 shadow-lg shadow-primary/20"
-                >
-                    <Plus size={20} />
-                    <span>Create Secret</span>
-                </button>
-            </div>
+            <div className="flex flex-wrap items-center gap-4 mb-6">
+                <SearchInput
+                    value={searchQuery}
+                    onChange={setSearchQuery}
+                    placeholder="Search secrets..."
+                    className="flex-1 min-w-[200px]"
+                />
 
-            <div className="flex items-center gap-4 mb-5">
-                <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={20} />
-                    <input
-                        type="text"
-                        placeholder="Search secrets..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-surface border border-outline/20 rounded-xl py-3 pl-10 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors"
+                {/* Actions */}
+                <div className="flex items-center gap-2">
+                    {isLoading && <RefreshCw className="animate-spin text-primary mr-2" size={20} />}
+                    <Button
+                        onClick={() => setIsCreateOpen(true)}
+                        icon={<Plus size={18} />}
+                    >
+                        New Secret
+                    </Button>
+                    <ActionIconButton
+                        onClick={fetchSecrets}
+                        icon={<RefreshCw />}
+                        title="Refresh"
                     />
                 </div>
-                <button
-                    onClick={fetchSecrets}
-                    className="p-3 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors"
-                    title="Refresh"
-                >
-                    <RefreshCw size={20} />
-                </button>
             </div>
 
             {filteredSecrets.length === 0 ? (

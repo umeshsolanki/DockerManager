@@ -58,28 +58,27 @@ export default function VolumesScreen() {
 
     return (
         <div className="flex flex-col">
-            <div className="flex items-center gap-4 mb-5">
-                <h1 className="text-3xl font-bold">Volumes</h1>
-                {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
-            </div>
-
-            <div className="flex items-center gap-4 mb-5">
+            <div className="flex flex-wrap items-center gap-4 mb-6">
                 <SearchInput
                     value={searchQuery}
                     onChange={setSearchQuery}
                     placeholder="Search volumes..."
+                    className="flex-1 min-w-[200px]"
                 />
-                <ActionIconButton
-                    onClick={() => fetchVolumes()}
-                    icon={<RefreshCw />}
-                    title="Refresh"
-                />
-                <ActionIconButton
-                    onClick={() => handleAction(() => DockerClient.pruneVolumes())}
-                    icon={<Trash />}
-                    color="red"
-                    title="Prune Unused Volumes"
-                />
+                <div className="flex items-center gap-2">
+                    {isLoading && <RefreshCw className="animate-spin text-primary mr-2" size={20} />}
+                    <ActionIconButton
+                        onClick={() => fetchVolumes()}
+                        icon={<RefreshCw />}
+                        title="Refresh"
+                    />
+                    <ActionIconButton
+                        onClick={() => handleAction(() => DockerClient.pruneVolumes())}
+                        icon={<Trash />}
+                        color="red"
+                        title="Prune Unused Volumes"
+                    />
+                </div>
             </div>
 
             {filteredVolumes.length === 0 ? (

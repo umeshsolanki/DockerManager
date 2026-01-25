@@ -15,7 +15,7 @@ import LogsScreen from '@/components/screens/LogsScreen';
 import FirewallScreen from '@/components/screens/FirewallScreen';
 import ProxyScreen from '@/components/screens/ProxyScreen';
 import DashboardScreen from '@/components/screens/DashboardScreen';
-import ResourcesScreen from '@/components/screens/ResourcesScreen';
+import DockerScreen from '@/components/screens/DockerScreen';
 import EmailsScreen from '@/components/screens/EmailsScreen';
 import AnalyticsScreen from '@/components/screens/AnalyticsScreen';
 import SecurityScreen from '@/components/screens/SecurityScreen';
@@ -24,7 +24,7 @@ import FileManagerScreen from '@/components/screens/FileManagerScreen';
 import DatabaseScreen from '@/components/screens/DatabaseScreen';
 import { DockerClient } from '@/lib/api';
 
-const VALID_SCREENS: Screen[] = ['Dashboard', 'Containers', 'Images', 'Compose', 'Networks', 'Resources', 'Volumes', 'Secrets', 'Logs', 'Firewall', 'Proxy', 'Emails', 'Files', 'Settings', 'Security', 'Analytics', 'DB'];
+const VALID_SCREENS: Screen[] = ['Dashboard', 'Docker', 'Containers', 'Images', 'Compose', 'Networks', 'Resources', 'Volumes', 'Secrets', 'Logs', 'Firewall', 'Proxy', 'Emails', 'Files', 'Settings', 'Security', 'Analytics', 'DB'];
 
 function HomeContent() {
   const router = useRouter();
@@ -121,13 +121,20 @@ function HomeContent() {
   const renderScreen = () => {
     switch (selectedScreen) {
       case 'Dashboard': return <DashboardScreen />;
-      case 'Containers': return <ContainersScreen />;
-      case 'Compose': return <ComposeScreen />;
+      case 'Docker': {
+        const tab = searchParams.get('tab') as any;
+        return <DockerScreen initialTab={tab || 'Containers'} />;
+      }
+      case 'Containers':
+      case 'Compose':
       case 'Images':
       case 'Networks':
       case 'Volumes':
       case 'Secrets':
-      case 'Resources': return <ResourcesScreen initialTab={(selectedScreen === 'Resources' ? 'Images' : selectedScreen) as any} />;
+      case 'Resources': {
+        const initialTab = (selectedScreen === 'Resources' ? 'Images' : selectedScreen) as any;
+        return <DockerScreen initialTab={initialTab} />;
+      }
       case 'Logs': return <LogsScreen />;
       case 'Firewall': return <FirewallScreen />;
       case 'Proxy': return <ProxyScreen />;

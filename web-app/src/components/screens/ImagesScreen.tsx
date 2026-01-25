@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Search, RefreshCw, Download, Trash, Database } from 'lucide-react';
+import { RefreshCw, Download, Trash, Database } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { DockerImage } from '@/lib/types';
+import { SearchInput } from '../ui/SearchInput';
+import { ActionIconButton, Button } from '../ui/Buttons';
 
 export default function ImagesScreen() {
     const [images, setImages] = useState<DockerImage[]>([]);
@@ -28,7 +30,8 @@ export default function ImagesScreen() {
         setIsLoading(true);
         await DockerClient.pullImage(pullingImage);
         setPullingImage('');
-        await fetchImages();
+        // Wait a bit before fetching to let the pull start
+        setTimeout(() => fetchImages(), 1000);
     };
 
     const handleRemove = async (id: string) => {
@@ -53,47 +56,45 @@ export default function ImagesScreen() {
 
     return (
         <div className="flex flex-col">
-            <div className="flex items-center justify-between mb-5">
-                <div className="flex items-center gap-4">
-                    <h1 className="text-3xl font-bold">Images</h1>
-                    {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
-                </div>
-                <button
-                    onClick={handlePrune}
-                    disabled={isLoading}
-                    className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500/20 transition-all font-bold text-sm disabled:opacity-50"
-                >
-                    <Trash size={16} />
-                    <span>Prune Dangling</span>
-                </button>
-            </div>
+            <div className="flex flex-wrap items-center gap-4 mb-6">
+                <SearchInput
+                    value={searchQuery}
+                    onChange={setSearchQuery}
+                    placeholder="Search images..."
+                    className="flex-1 min-w-[200px]"
+                />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-                <form onSubmit={handlePull} className="flex gap-2">
+                {/* Pull Image Form */}
+                <form onSubmit={handlePull} className="flex gap-2 min-w-[300px]">
                     <input
                         type="text"
                         placeholder="Image name (e.g., nginx:latest)"
                         value={pullingImage}
                         onChange={(e) => setPullingImage(e.target.value)}
-                        className="flex-1 bg-surface border border-outline/20 rounded-xl py-2 px-4 text-on-surface focus:outline-none focus:border-primary transition-colors"
+                        className="flex-1 bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
                     />
-                    <button
+                    <Button
                         type="submit"
                         disabled={isLoading || !pullingImage}
-                        className="p-2.5 bg-primary text-on-primary rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50"
+                        icon={<Download size={18} />}
                     >
-                        <Download size={18} />
-                    </button>
+                        Pull
+                    </Button>
                 </form>
 
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={20} />
-                    <input
-                        type="text"
-                        placeholder="Search images..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-surface border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors"
+                {/* Actions */}
+                <div className="flex items-center gap-2">
+                    {isLoading && <RefreshCw className="animate-spin text-primary mr-2" size={20} />}
+                    <ActionIconButton
+                        onClick={handlePrune}
+                        icon={<Trash />}
+                        color="red"
+                        title="Prune Dangling"
+                    />
+                    <ActionIconButton
+                        onClick={fetchImages}
+                        icon={<RefreshCw />}
+                        title="Refresh"
                     />
                 </div>
             </div>

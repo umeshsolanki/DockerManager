@@ -216,11 +216,11 @@ class ComposeServiceImpl : IComposeService {
         return try {
             // Use AppConfig.dockerComposeCommand which handles different compose command formats
             val composeCmd = AppConfig.dockerComposeCommand
-            val pb = if (composeCmd.contains("docker compose") || composeCmd == "docker compose") {
-                // New docker compose plugin format
-                ProcessBuilder("docker", "compose", "-f", filePath, "up", "-d")
+            val pb = if (composeCmd.contains(" ")) {
+                val parts = composeCmd.split(" ").filter { it.isNotBlank() }.toMutableList()
+                parts.addAll(listOf("-f", filePath, "up", "-d"))
+                ProcessBuilder(parts)
             } else {
-                // Legacy docker-compose format
                 ProcessBuilder(composeCmd, "-f", filePath, "up", "-d")
             }
                 .directory(file.parentFile)
@@ -253,8 +253,8 @@ class ComposeServiceImpl : IComposeService {
         return try {
             val dockerfile = File(projectDir, "Dockerfile")
             if (dockerfile.exists()) {
-                 // Build using Dockerfile with buildx
-                val pb = ProcessBuilder("docker", "buildx", "build", "--load", "-t", "$projectName:latest", ".")
+                // Build using Dockerfile with buildx
+                val pb = ProcessBuilder(AppConfig.dockerCommand, "buildx", "build", "--load", "-t", "$projectName:latest", ".")
                     .directory(projectDir)
                     .redirectErrorStream(true)
                 
@@ -269,8 +269,10 @@ class ComposeServiceImpl : IComposeService {
             } else {
                 // Build using docker-compose
                 val composeCmd = AppConfig.dockerComposeCommand
-                val pb = if (composeCmd.contains("docker compose") || composeCmd == "docker compose") {
-                    ProcessBuilder("docker", "compose", "-f", filePath, "build")
+                val pb = if (composeCmd.contains(" ")) {
+                    val parts = composeCmd.split(" ").filter { it.isNotBlank() }.toMutableList()
+                    parts.addAll(listOf("-f", filePath, "build"))
+                    ProcessBuilder(parts)
                 } else {
                     ProcessBuilder(composeCmd, "-f", filePath, "build")
                 }
@@ -298,7 +300,13 @@ class ComposeServiceImpl : IComposeService {
         if (!file.exists()) return ComposeResult(false, "File not found")
 
         return try {
-            val commandList = mutableListOf("docker", "compose", "-f", filePath, "down")
+            val composeCmd = AppConfig.dockerComposeCommand
+            val commandList = if (composeCmd.contains(" ")) {
+                composeCmd.split(" ").filter { it.isNotBlank() }.toMutableList()
+            } else {
+                mutableListOf(composeCmd)
+            }
+            commandList.addAll(listOf("-f", filePath, "down"))
             if (removeVolumes) {
                 commandList.add("-v")
             }
@@ -447,7 +455,7 @@ class ComposeServiceImpl : IComposeService {
 
     override fun listStacks(): List<DockerStack> {
         return try {
-            val process = ProcessBuilder("docker", "stack", "ls", "--format", "{{.Name}}\t{{.Services}}")
+            val process = ProcessBuilder(AppConfig.dockerCommand, "stack", "ls", "--format", "{{.Name}}\t{{.Services}}")
                 .redirectErrorStream(true)
                 .start()
             
@@ -630,7 +638,7 @@ class ComposeServiceImpl : IComposeService {
                 file
             }
             
-            val process = ProcessBuilder("docker", "stack", "deploy", "-c", swarmFile.absolutePath, stackName)
+            val process = ProcessBuilder(AppConfig.dockerCommand, "stack", "deploy", "-c", swarmFile.absolutePath, stackName)
                 .directory(file.parentFile)
                 .redirectErrorStream(true)
                 .start()
@@ -677,7 +685,7 @@ class ComposeServiceImpl : IComposeService {
 
     override fun removeStack(stackName: String): ComposeResult {
         return try {
-            val process = ProcessBuilder("docker", "stack", "rm", stackName)
+            val process = ProcessBuilder(AppConfig.dockerCommand, "stack", "rm", stackName)
                 .redirectErrorStream(true)
                 .start()
             
@@ -740,7 +748,7 @@ class ComposeServiceImpl : IComposeService {
 
     override fun listStackServices(stackName: String): List<StackService> {
         return try {
-            val process = ProcessBuilder("docker", "stack", "services", stackName, "--format", "{{.ID}}\t{{.Name}}\t{{.Image}}\t{{.Mode}}\t{{.Replicas}}\t{{.Ports}}")
+            val process = ProcessBuilder(AppConfig.dockerCommand, "stack", "services", stackName, "--format", "{{.ID}}\t{{.Name}}\t{{.Image}}\t{{.Mode}}\t{{.Replicas}}\t{{.Ports}}")
                 .redirectErrorStream(true)
                 .start()
             
@@ -771,7 +779,7 @@ class ComposeServiceImpl : IComposeService {
 
     override fun listStackTasks(stackName: String): List<StackTask> {
         return try {
-            val process = ProcessBuilder("docker", "stack", "ps", stackName, "--format", "{{.ID}}\t{{.Name}}\t{{.Image}}\t{{.Node}}\t{{.DesiredState}}\t{{.CurrentState}}\t{{.Error}}\t{{.Ports}}")
+            val process = ProcessBuilder(AppConfig.dockerCommand, "stack", "ps", stackName, "--format", "{{.ID}}\t{{.Name}}\t{{.Image}}\t{{.Node}}\t{{.DesiredState}}\t{{.CurrentState}}\t{{.Error}}\t{{.Ports}}")
                 .redirectErrorStream(true)
                 .start()
             

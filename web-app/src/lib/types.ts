@@ -109,10 +109,14 @@ export interface NetworkDetails {
   driver: string;
   scope: string;
   internal: boolean;
+  attachable: boolean;
+  ingress: boolean;
+  enableIPv6: boolean;
   ipam: IpamConfig;
   containers: Record<string, NetworkContainerDetails>;
   options: Record<string, string>;
   labels: Record<string, string>;
+  createdAt?: string;
 }
 
 export interface IpamConfig {
@@ -123,6 +127,8 @@ export interface IpamConfig {
 export interface IpamData {
   subnet?: string;
   gateway?: string;
+  ipRange?: string;
+  auxAddresses?: Record<string, string>;
 }
 
 export interface NetworkContainerDetails {
@@ -512,7 +518,7 @@ export interface EmailUserDetail {
   quotaCount?: EmailQuota;
 }
 
-export type Screen = 'Dashboard' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Files' | 'Settings' | 'Security' | 'Analytics' | 'DB';
+export type Screen = 'Dashboard' | 'Docker' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Files' | 'Settings' | 'Security' | 'Analytics' | 'DB';
 
 
 export interface AuthRequest {

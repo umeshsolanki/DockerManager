@@ -372,7 +372,15 @@ object AppConfig {
 
     val dockerCommand: String
         get() = if (isDocker) SystemConstants.DOCKER_BIN_DOCKER else {
-            if (File(SystemConstants.DOCKER_BIN_DOCKER).exists()) SystemConstants.DOCKER_BIN_DOCKER else SystemConstants.DOCKER_COMMAND
+            if (File(SystemConstants.DOCKER_BIN_HOMEBREW).exists()) {
+                SystemConstants.DOCKER_BIN_HOMEBREW
+            } else if (File(SystemConstants.DOCKER_BIN_USR_LOCAL).exists()) {
+                SystemConstants.DOCKER_BIN_USR_LOCAL
+            } else if (File(SystemConstants.DOCKER_BIN_DOCKER).exists()) {
+                SystemConstants.DOCKER_BIN_DOCKER
+            } else {
+                SystemConstants.DOCKER_COMMAND
+            }
         }
 
     val dockerComposeCommand: String

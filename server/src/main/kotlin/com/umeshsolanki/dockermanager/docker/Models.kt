@@ -100,10 +100,14 @@ data class NetworkDetails(
     val driver: String,
     val scope: String,
     val internal: Boolean,
+    val attachable: Boolean = false,
+    val ingress: Boolean = false,
+    val enableIPv6: Boolean = false,
     val ipam: IpamConfig,
     val containers: Map<String, NetworkContainerDetails> = emptyMap(),
     val options: Map<String, String> = emptyMap(),
-    val labels: Map<String, String> = emptyMap()
+    val labels: Map<String, String> = emptyMap(),
+    val createdAt: String? = null
 )
 
 @Serializable
@@ -115,7 +119,9 @@ data class IpamConfig(
 @Serializable
 data class IpamData(
     val subnet: String? = null,
-    val gateway: String? = null
+    val gateway: String? = null,
+    val ipRange: String? = null,
+    val auxAddresses: Map<String, String> = emptyMap()
 )
 
 @Serializable

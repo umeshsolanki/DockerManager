@@ -14,19 +14,27 @@ export default function FirewallScreen() {
 
     const [activeTab, setActiveTab] = useState<'rules' | 'iptables' | 'nftables'>('rules');
     const [iptables, setIptables] = useState<Record<string, IptablesRule[]>>({});
+    const [iptablesRaw, setIptablesRaw] = useState<string>('');
+    const [isIptablesRaw, setIsIptablesRaw] = useState(false);
     const [nftables, setNftables] = useState<string>('');
+    const [nftablesJson, setNftablesJson] = useState<any>(null);
+    const [isNftablesRaw, setIsNftablesRaw] = useState(false);
     const [expandedChain, setExpandedChain] = useState<string | null>('INPUT');
 
     const fetchRules = async () => {
         setIsLoading(true);
-        const [rulesData, iptablesData, nftablesData] = await Promise.all([
+        const [rulesData, iptablesData, iptablesRawData, nftablesData, nftablesJsonData] = await Promise.all([
             DockerClient.listFirewallRules(),
             DockerClient.getIptablesVisualisation(),
-            DockerClient.getNftablesVisualisation()
+            DockerClient.getIptablesRaw(),
+            DockerClient.getNftablesVisualisation(),
+            DockerClient.getNftablesJson()
         ]);
         setRules(rulesData || []);
         setIptables(iptablesData || {});
+        setIptablesRaw(iptablesRawData || '');
         setNftables(nftablesData || '');
+        setNftablesJson(nftablesJsonData);
         setIsLoading(false);
     };
 
@@ -198,120 +206,153 @@ export default function FirewallScreen() {
                 </>
             ) : activeTab === 'iptables' ? (
                 <div className="flex flex-col flex-1 h-[600px] bg-black/40 rounded-3xl border border-outline/10 overflow-hidden mb-8">
-                    <div className="flex h-full">
-                        {/* Chains Sidebar */}
-                        <div className="w-64 border-r border-outline/10 flex flex-col bg-white/5">
-                            <div className="p-4 border-b border-outline/10 flex items-center gap-2 bg-white/5">
-                                <Activity className="text-primary" size={16} />
-                                <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Filter Chains</span>
-                            </div>
-                            <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-                                {Object.keys(iptables).map(chain => (
+                    {!isIptablesRaw ? (
+                        <div className="flex h-full">
+                            {/* Chains Sidebar */}
+                            <div className="w-64 border-r border-outline/10 flex flex-col bg-white/5">
+                                <div className="p-4 border-b border-outline/10 flex items-center justify-between bg-white/5">
+                                    <div className="flex items-center gap-2">
+                                        <Activity className="text-primary" size={16} />
+                                        <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Filter Chains</span>
+                                    </div>
                                     <button
-                                        key={chain}
-                                        onClick={() => setExpandedChain(chain)}
-                                        className={`w-full flex items-center justify-between p-3 rounded-xl transition-all ${expandedChain === chain ? 'bg-primary/20 text-primary border border-primary/20' : 'hover:bg-white/5 text-on-surface-variant'}`}
+                                        onClick={() => setIsIptablesRaw(true)}
+                                        className="text-[10px] font-bold text-primary hover:underline"
                                     >
-                                        <div className="flex items-center gap-3">
-                                            <div className={`w-2 h-2 rounded-full ${expandedChain === chain ? 'bg-primary' : 'bg-white/10'}`} />
-                                            <span className="text-xs font-bold truncate">{chain}</span>
-                                        </div>
-                                        <span className="text-[10px] font-mono opacity-40">{iptables[chain].length}</span>
+                                        Raw View
                                     </button>
-                                ))}
+                                </div>
+                                <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                                    {Object.keys(iptables).map(chain => (
+                                        <button
+                                            key={chain}
+                                            onClick={() => setExpandedChain(chain)}
+                                            className={`w-full flex items-center justify-between p-3 rounded-xl transition-all ${expandedChain === chain ? 'bg-primary/20 text-primary border border-primary/20' : 'hover:bg-white/5 text-on-surface-variant'}`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-2 h-2 rounded-full ${expandedChain === chain ? 'bg-primary' : 'bg-white/10'}`} />
+                                                <span className="text-xs font-bold truncate">{chain}</span>
+                                            </div>
+                                            <span className="text-[10px] font-mono opacity-40">{iptables[chain].length}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Rules Content */}
+                            <div className="flex-1 flex flex-col overflow-hidden">
+                                <div className="p-4 border-b border-outline/10 bg-white/2 flex items-center justify-between">
+                                    <div className="flex flex-col">
+                                        <h3 className="text-lg font-bold flex items-center gap-2 leading-none">
+                                            <Terminal size={18} className="text-primary" />
+                                            Chain <span className="text-primary">{expandedChain || 'None'}</span>
+                                        </h3>
+                                        <span className="text-[10px] uppercase font-bold text-on-surface-variant/40 tracking-wider mt-1.5 ml-0.5">Active packet filtering rules</span>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <div className="px-3 py-1.5 rounded-lg bg-white/5 border border-outline/5 flex items-center gap-2">
+                                            <Database size={14} className="text-blue-400" />
+                                            <span className="text-xs font-mono font-bold text-blue-400">
+                                                {iptables[expandedChain || '']?.reduce((acc, r) => acc + (parseInt(r.pkts) || 0), 0).toLocaleString() ?? 0} <span className="text-[10px] opacity-40">PKTS</span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex-1 overflow-auto custom-scrollbar">
+                                    {!expandedChain || !iptables[expandedChain] ? (
+                                        <div className="flex flex-col items-center justify-center h-full text-on-surface-variant/50 gap-2">
+                                            <ShieldAlert size={48} className="opacity-20" />
+                                            <p className="font-bold">No chain data available</p>
+                                            <p className="text-xs">Check server logs or permissions (iptables access required)</p>
+                                        </div>
+                                    ) : (
+                                        <table className="w-full text-left border-collapse">
+                                            <thead className="sticky top-0 bg-surface z-10">
+                                                <tr className="border-b border-outline/10">
+                                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/40 tracking-wider">Target</th>
+                                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/40 tracking-wider">Proto</th>
+                                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/40 tracking-wider">Source</th>
+                                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/40 tracking-wider">Destination</th>
+                                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/40 tracking-wider">Extra Information</th>
+                                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/40 tracking-wider text-right">Activity</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-outline/5">
+                                                {iptables[expandedChain].map((rule, i) => (
+                                                    <tr key={i} className="hover:bg-white/2 transition-colors group">
+                                                        <td className="px-4 py-3">
+                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${rule.target === 'DROP' || rule.target === 'REJECT' ? 'bg-red-500/20 text-red-500' :
+                                                                rule.target === 'ACCEPT' ? 'bg-green-500/20 text-green-500' :
+                                                                    'bg-primary/20 text-primary'
+                                                                }`}>
+                                                                {rule.target}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-xs font-mono font-bold text-on-surface-variant uppercase">{rule.prot}</td>
+                                                        <td className="px-4 py-3 text-xs font-mono font-medium text-primary">
+                                                            {rule.extra?.includes('match-set') ? (
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <Database size={10} className="text-secondary opacity-70" />
+                                                                    <span className="font-bold text-secondary text-[10px]">
+                                                                        {rule.extra.match(/match-set\s+(\S+)/)?.[1] ?? 'Unknown Set'}
+                                                                    </span>
+                                                                </div>
+                                                            ) : (
+                                                                rule.source === '0.0.0.0/0' ? <span className="opacity-50 italic">Anywhere</span> : rule.source
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-xs font-mono font-medium text-on-surface-variant">
+                                                            {rule.destination === '0.0.0.0/0' ? <span className="opacity-50 italic">Anywhere</span> : rule.destination}
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <div className="max-w-md truncate text-[10px] font-bold text-on-surface-variant/60 group-hover:text-on-surface-variant transition-colors">
+                                                                {rule.extra?.replace(/match-set\s+\S+\s+src/, '') || '--'}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right">
+                                                            <div className="flex flex-col items-end gap-0.5">
+                                                                <div className="flex items-center gap-1.5 text-[10px] font-bold">
+                                                                    <span className="text-on-surface-variant/30 uppercase tracking-tighter">P:</span>
+                                                                    <span className="text-primary">{rule.pkts}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-1.5 text-[10px] font-bold">
+                                                                    <span className="text-on-surface-variant/30 uppercase tracking-tighter">B:</span>
+                                                                    <span className="text-blue-400">{rule.bytes}</span>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
                             </div>
                         </div>
-
-                        {/* Rules Content */}
-                        <div className="flex-1 flex flex-col overflow-hidden">
+                    ) : (
+                        <div className="flex flex-col h-full">
                             <div className="p-4 border-b border-outline/10 bg-white/2 flex items-center justify-between">
                                 <div className="flex flex-col">
                                     <h3 className="text-lg font-bold flex items-center gap-2 leading-none">
                                         <Terminal size={18} className="text-primary" />
-                                        Chain <span className="text-primary">{expandedChain || 'None'}</span>
+                                        Raw <span className="text-primary">iptables-save</span> Output
                                     </h3>
-                                    <span className="text-[10px] uppercase font-bold text-on-surface-variant/40 tracking-wider mt-1.5 ml-0.5">Active packet filtering rules</span>
+                                    <span className="text-[10px] uppercase font-bold text-on-surface-variant/40 tracking-wider mt-1.5 ml-0.5">Current iptables configuration in raw format</span>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <div className="px-3 py-1.5 rounded-lg bg-white/5 border border-outline/5 flex items-center gap-2">
-                                        <Database size={14} className="text-blue-400" />
-                                        <span className="text-xs font-mono font-bold text-blue-400">
-                                            {iptables[expandedChain || '']?.reduce((acc, r) => acc + (parseInt(r.pkts) || 0), 0).toLocaleString() ?? 0} <span className="text-[10px] opacity-40">PKTS</span>
-                                        </span>
-                                    </div>
-                                </div>
+                                <button
+                                    onClick={() => setIsIptablesRaw(false)}
+                                    className="text-[10px] font-bold text-primary hover:underline"
+                                >
+                                    Visual View
+                                </button>
                             </div>
-                            <div className="flex-1 overflow-auto custom-scrollbar">
-                                {!expandedChain || !iptables[expandedChain] ? (
-                                    <div className="flex flex-col items-center justify-center h-full text-on-surface-variant/50 gap-2">
-                                        <ShieldAlert size={48} className="opacity-20" />
-                                        <p className="font-bold">No chain data available</p>
-                                        <p className="text-xs">Check server logs or permissions (iptables access required)</p>
-                                    </div>
-                                ) : (
-                                    <table className="w-full text-left border-collapse">
-                                        <thead className="sticky top-0 bg-surface z-10">
-                                            <tr className="border-b border-outline/10">
-                                                <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/40 tracking-wider">Target</th>
-                                                <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/40 tracking-wider">Proto</th>
-                                                <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/40 tracking-wider">Source</th>
-                                                <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/40 tracking-wider">Destination</th>
-                                                <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/40 tracking-wider">Extra Information</th>
-                                                <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/40 tracking-wider text-right">Activity</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-outline/5">
-                                            {iptables[expandedChain].map((rule, i) => (
-                                                <tr key={i} className="hover:bg-white/2 transition-colors group">
-                                                    <td className="px-4 py-3">
-                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${rule.target === 'DROP' || rule.target === 'REJECT' ? 'bg-red-500/20 text-red-500' :
-                                                            rule.target === 'ACCEPT' ? 'bg-green-500/20 text-green-500' :
-                                                                'bg-primary/20 text-primary'
-                                                            }`}>
-                                                            {rule.target}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-xs font-mono font-bold text-on-surface-variant uppercase">{rule.prot}</td>
-                                                    <td className="px-4 py-3 text-xs font-mono font-medium text-primary">
-                                                        {rule.extra?.includes('match-set') ? (
-                                                            <div className="flex items-center gap-1.5">
-                                                                <Database size={10} className="text-secondary opacity-70" />
-                                                                <span className="font-bold text-secondary text-[10px]">
-                                                                    {rule.extra.match(/match-set\s+(\S+)/)?.[1] ?? 'Unknown Set'}
-                                                                </span>
-                                                            </div>
-                                                        ) : (
-                                                            rule.source === '0.0.0.0/0' ? <span className="opacity-50 italic">Anywhere</span> : rule.source
-                                                        )}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-xs font-mono font-medium text-on-surface-variant">
-                                                        {rule.destination === '0.0.0.0/0' ? <span className="opacity-50 italic">Anywhere</span> : rule.destination}
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <div className="max-w-md truncate text-[10px] font-bold text-on-surface-variant/60 group-hover:text-on-surface-variant transition-colors">
-                                                            {rule.extra?.replace(/match-set\s+\S+\s+src/, '') || '--'}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-right">
-                                                        <div className="flex flex-col items-end gap-0.5">
-                                                            <div className="flex items-center gap-1.5 text-[10px] font-bold">
-                                                                <span className="text-on-surface-variant/30 uppercase tracking-tighter">P:</span>
-                                                                <span className="text-primary">{rule.pkts}</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-1.5 text-[10px] font-bold">
-                                                                <span className="text-on-surface-variant/30 uppercase tracking-tighter">B:</span>
-                                                                <span className="text-blue-400">{rule.bytes}</span>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                )}
+                            <div className="flex-1 overflow-auto custom-scrollbar p-6 bg-black/20">
+                                <pre className="text-xs font-mono text-primary/80 leading-relaxed whitespace-pre">
+                                    {iptablesRaw || 'No raw iptables data available.'}
+                                </pre>
                             </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             ) : (
                 <div className="flex flex-col flex-1 bg-black/40 rounded-3xl border border-outline/10 overflow-hidden mb-8 h-[600px]">
@@ -319,26 +360,138 @@ export default function FirewallScreen() {
                         <div className="flex flex-col">
                             <h3 className="text-lg font-bold flex items-center gap-2 leading-none">
                                 <Terminal size={18} className="text-primary" />
-                                nftables <span className="text-primary">Ruleset</span>
+                                {isNftablesRaw ? 'Raw nftables Ruleset' : 'Visual nftables Inspector'}
                             </h3>
-                            <span className="text-[10px] uppercase font-bold text-on-surface-variant/40 tracking-wider mt-1.5 ml-0.5">Current netfilter ruleset configuration</span>
+                            <span className="text-[10px] uppercase font-bold text-on-surface-variant/40 tracking-wider mt-1.5 ml-0.5">
+                                {isNftablesRaw ? 'Current netfilter ruleset configuration' : 'Interactive view of netfilter tables and chains'}
+                            </span>
                         </div>
+                        <button
+                            onClick={() => setIsNftablesRaw(!isNftablesRaw)}
+                            className="text-[10px] font-bold text-primary hover:underline"
+                        >
+                            {isNftablesRaw ? 'Visual View' : 'Raw View'}
+                        </button>
                     </div>
-                    <div className="flex-1 overflow-auto custom-scrollbar p-6 bg-black/20">
-                        <pre className="text-xs font-mono text-primary/80 leading-relaxed whitespace-pre">
-                            {nftables || 'No nftables data available. Ensure nftables is installed and active.'}
-                        </pre>
-                    </div>
-                </div>
-            )}
 
-            {isAddModalOpen && (
-                <AddBlockModal
-                    onClose={() => setIsAddModalOpen(false)}
-                    onAdded={() => { setIsAddModalOpen(false); fetchRules(); }}
-                />
-            )}
-        </div>
+                    <div className="flex-1 overflow-auto custom-scrollbar">
+                        {isNftablesRaw ? (
+                            <div className="p-6 bg-black/20">
+                                <pre className="text-xs font-mono text-primary/80 leading-relaxed whitespace-pre">
+                                    {nftables || 'No nftables data available. Ensure nftables is installed and active.'}
+                                </pre>
+                            </div>
+                        ) : (
+                            <div className="p-6">
+                                {!nftablesJson || !nftablesJson.nftables ? (
+                                    <div className="flex flex-col items-center justify-center py-20 text-on-surface-variant/50">
+                                        <Activity size={48} className="mb-4 opacity-20" />
+                                        <p className="font-bold">No structured nftables data</p>
+                                        <p className="text-xs">Parsing JSON failed or nftables is not configured</p>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        {/* Group by tables */}
+                                        {nftablesJson.nftables.filter((obj: any) => obj.table).map((tableObj: any) => {
+                                            const table = tableObj.table;
+                                            const chains = nftablesJson.nftables.filter((obj: any) => obj.chain && obj.chain.table === table.name && obj.chain.family === table.family);
+
+                                            return (
+                                                <div key={`${table.family}-${table.name}`} className="bg-surface/30 border border-outline/10 rounded-2xl overflow-hidden">
+                                                    <div className="p-4 bg-primary/10 border-b border-outline/10 flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center text-primary text-[10px] font-black uppercase">
+                                                                {table.family}
+                                                            </div>
+                                                            <div className="flex flex-col">
+                                                                <span className="text-xs font-black uppercase tracking-widest text-on-surface/80">Table: {table.name}</span>
+                                                                <span className="text-[8px] font-bold text-on-surface-variant/50 uppercase tracking-tighter">Handle: {table.handle}</span>
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-white/5 text-on-surface-variant">{chains.length} Chains</span>
+                                                    </div>
+
+                                                    <div className="divide-y divide-outline/5">
+                                                        {chains.map((chainObj: any) => {
+                                                            const chain = chainObj.chain;
+                                                            const rules = nftablesJson.nftables.filter((obj: any) => obj.rule && obj.rule.table === table.name && obj.rule.chain === chain.name);
+
+                                                            return (
+                                                                <div key={chain.name} className="p-4 hover:bg-white/[0.02] transition-colors">
+                                                                    <div className="flex items-center justify-between mb-3">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <ChevronRight size={14} className="text-primary/40" />
+                                                                            <span className="text-sm font-bold">{chain.name}</span>
+                                                                            {chain.type && (
+                                                                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 uppercase">
+                                                                                    {chain.type}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            {chain.policy && (
+                                                                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${chain.policy === 'accept' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                                                                                    Policy: {chain.policy}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div className="space-y-1.5 pl-6 border-l border-outline/5 ml-1.5">
+                                                                        {rules.length === 0 ? (
+                                                                            <span className="text-[10px] italic text-on-surface-variant/40">No rules defined</span>
+                                                                        ) : (
+                                                                            rules.map((ruleObj: any, ruleIdx: number) => {
+                                                                                const rule = ruleObj.rule;
+                                                                                // Very basic expression stringification
+                                                                                const exprStr = rule.expr
+                                                                                    ? rule.expr.map((e: any) => {
+                                                                                        const key = Object.keys(e)[0];
+                                                                                        const val = e[key];
+                                                                                        if (key === 'match') return `${val.left} ${val.op} ${val.right}`;
+                                                                                        if (key === 'accept') return 'accept';
+                                                                                        if (key === 'drop') return 'drop';
+                                                                                        if (key === 'counter') return 'counter';
+                                                                                        return key;
+                                                                                    }).join(' ')
+                                                                                    : '...';
+
+                                                                                return (
+                                                                                    <div key={ruleIdx} className="group relative flex items-start gap-3 py-1">
+                                                                                        <span className="text-[9px] font-mono text-on-surface-variant/30 mt-0.5 font-bold">[{rule.handle}]</span>
+                                                                                        <code className="text-[11px] font-mono text-primary/70 break-all leading-tight">
+                                                                                            {exprStr}
+                                                                                        </code>
+                                                                                    </div>
+                                                                                );
+                                                                            })
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div >
+            )
+            }
+
+            {
+                isAddModalOpen && (
+                    <AddBlockModal
+                        onClose={() => setIsAddModalOpen(false)}
+                        onAdded={() => { setIsAddModalOpen(false); fetchRules(); }}
+                    />
+                )
+            }
+        </div >
     );
 }
 

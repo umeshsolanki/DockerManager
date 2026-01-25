@@ -182,7 +182,9 @@ export const DockerClient = {
     blockIP: (body: BlockIPRequest) => apiFetch('/firewall/block', { method: 'POST', body: JSON.stringify(body) }).then(r => r.ok),
     unblockIP: (id: string) => apiFetch(`/firewall/rules/${id}`, { method: 'DELETE' }).then(r => r.ok),
     getIptablesVisualisation: () => req<Record<string, IptablesRule[]>>('/firewall/iptables', {}, {}),
+    getIptablesRaw: () => textReq('/firewall/iptables/raw'),
     getNftablesVisualisation: () => textReq('/firewall/nftables'),
+    getNftablesJson: () => req<any>('/firewall/nftables/json', {}, {}),
 
     // --- Reverse Proxy (NGINX/Edge) ---
     listProxyHosts: () => req<ProxyHost[]>('/proxy/hosts', {}, []),

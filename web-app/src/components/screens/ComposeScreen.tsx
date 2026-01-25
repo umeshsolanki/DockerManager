@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Search, RefreshCw, Folder, Play, Square, Plus, Edit2, X, Save, FileCode, Wand2, Archive, Upload, Layers, Trash2, Server, Activity, CheckCircle, XCircle, AlertCircle, RotateCw, Power, Hammer } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
+import { SearchInput } from '../ui/SearchInput';
 import { ComposeFile, SaveComposeRequest, DockerStack, StackService, StackTask, DeployStackRequest } from '@/lib/types';
 import Editor from '@monaco-editor/react';
 import { toast } from 'sonner';
@@ -313,68 +314,86 @@ export default function ComposeScreen() {
 
     return (
         <div className="flex flex-col relative">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
-                <div className="flex items-center gap-4">
-                    <h1 className="text-2xl sm:text-3xl font-bold">Compose & Stacks</h1>
-                    {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                    {viewMode === 'compose' && (
-                        <>
-                            <button
-                                onClick={handleBackupAll}
-                                className="flex items-center gap-2 bg-surface border border-outline/20 text-on-surface px-4 py-2 rounded-xl hover:bg-white/5 transition-colors text-sm font-bold shadow-sm"
-                            >
-                                <Archive size={18} />
-                                Backup All
-                            </button>
-                            <button
-                                onClick={handleCreate}
-                                className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl hover:bg-primary/90 transition-colors text-sm font-bold shadow-lg shadow-primary/20"
-                            >
-                                <Plus size={20} />
-                                New Project
-                            </button>
-                        </>
-                    )}
-                    {viewMode === 'stacks' && (
-                        <button
-                            onClick={() => setIsDeployModalOpen(true)}
-                            className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl hover:bg-primary/90 transition-colors text-sm font-bold shadow-lg shadow-primary/20"
-                        >
-                            <Plus size={20} />
-                            Deploy Stack
-                        </button>
-                    )}
-                </div>
-            </div>
+            <div className="flex flex-wrap items-center gap-4 mb-6">
+                <SearchInput
+                    value={searchQuery}
+                    onChange={setSearchQuery}
+                    placeholder={`Search ${viewMode === 'compose' ? 'compose projects' : 'stacks'}...`}
+                    className="flex-1 min-w-[200px]"
+                />
 
-            {/* View Mode Tabs */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-                <div className="flex gap-1 bg-surface-variant/30 p-1 rounded-2xl w-fit shrink-0">
+                {/* View Mode Switching */}
+                <div className="flex gap-1 bg-surface-variant/30 p-1 rounded-xl shrink-0 border border-outline/5">
                     <button
                         onClick={() => setViewMode('compose')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'compose'
-                            ? 'bg-primary text-on-primary shadow-md'
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'compose'
+                            ? 'bg-primary text-on-primary shadow-sm'
                             : 'hover:bg-primary/10 text-on-surface-variant'
                             }`}
                     >
-                        <FileCode size={18} />
+                        <FileCode size={14} />
                         <span>Compose</span>
                     </button>
                     <button
                         onClick={() => setViewMode('stacks')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'stacks'
-                            ? 'bg-primary text-on-primary shadow-md'
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'stacks'
+                            ? 'bg-primary text-on-primary shadow-sm'
                             : 'hover:bg-primary/10 text-on-surface-variant'
                             }`}
                     >
-                        <Layers size={18} />
+                        <Layers size={14} />
                         <span>Stacks</span>
                     </button>
                 </div>
-                {viewMode === 'stacks' && (
-                    <div className="flex items-center gap-4">
+
+                {/* Actions */}
+                <div className="flex items-center gap-2">
+                    {isLoading && <RefreshCw className="animate-spin text-primary mr-2" size={18} />}
+
+                    {viewMode === 'compose' && (
+                        <>
+                            <button
+                                onClick={handleBackupAll}
+                                className="flex items-center gap-2 bg-surface border border-outline/20 text-on-surface px-3 py-2 rounded-xl hover:bg-white/5 transition-colors text-xs font-bold"
+                                title="Backup All Projects"
+                            >
+                                <Archive size={16} />
+                                <span className="hidden sm:inline">Backup All</span>
+                            </button>
+                            <button
+                                onClick={handleCreate}
+                                className="flex items-center gap-2 bg-primary text-on-primary px-3 py-2 rounded-xl hover:bg-primary/90 transition-colors text-xs font-bold shadow-md shadow-primary/10"
+                            >
+                                <Plus size={18} />
+                                <span className="hidden sm:inline">New Project</span>
+                            </button>
+                        </>
+                    )}
+
+                    {viewMode === 'stacks' && (
+                        <button
+                            onClick={() => setIsDeployModalOpen(true)}
+                            className="flex items-center gap-2 bg-primary text-on-primary px-3 py-2 rounded-xl hover:bg-primary/90 transition-colors text-xs font-bold shadow-md shadow-primary/10"
+                        >
+                            <Plus size={18} />
+                            <span className="hidden sm:inline">Deploy Stack</span>
+                        </button>
+                    )}
+
+                    <button
+                        onClick={viewMode === 'compose' ? fetchComposeFiles : fetchStacks}
+                        className="p-2 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors"
+                        title="Refresh"
+                    >
+                        <RefreshCw size={16} />
+                    </button>
+                </div>
+            </div>
+
+            {/* Stack Stats Summary (Only if stacks view) */}
+            {viewMode === 'stacks' && (
+                <div className="mb-6 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex flex-wrap items-center gap-3">
                         {(() => {
                             const runningStacks = stacks.filter(s => {
                                 const status = stackStatuses[s.name] || 'unknown';
@@ -386,49 +405,27 @@ export default function ComposeScreen() {
                                 return replicas.length === 2 && parseInt(replicas[0]) > 0;
                             }).length : 0;
                             return (
-                                <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm">
-                                    <div className="flex items-center gap-2 bg-green-500/10 text-green-500 px-3 py-1.5 rounded-lg border border-green-500/20">
-                                        <CheckCircle size={16} />
-                                        <span className="font-bold whitespace-nowrap">{runningStacks.length} Running Stack{runningStacks.length !== 1 ? 's' : ''}</span>
+                                <>
+                                    <div className="flex items-center gap-2 bg-green-500/10 text-green-500 px-3 py-1.5 rounded-lg border border-green-500/10 text-[11px] font-bold">
+                                        <CheckCircle size={14} />
+                                        <span>{runningStacks.length} Active Stacks</span>
                                     </div>
-                                    <div className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-lg border border-primary/20">
-                                        <Server size={16} />
-                                        <span className="font-bold whitespace-nowrap">{totalServices} Total Service{totalServices !== 1 ? 's' : ''}</span>
+                                    <div className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-lg border border-primary/10 text-[11px] font-bold">
+                                        <Server size={14} />
+                                        <span>{totalServices} Total Services</span>
                                     </div>
-                                    {selectedStack && stackServices.length > 0 && (
-                                        <div className="flex items-center gap-2 bg-blue-500/10 text-blue-500 px-3 py-1.5 rounded-lg border border-blue-500/20">
-                                            <Activity size={16} />
-                                            <span className="font-bold whitespace-nowrap">
-                                                {runningServicesInSelected}/{stackServices.length} Running
-                                            </span>
+                                    {selectedStack && (
+                                        <div className="flex items-center gap-2 bg-blue-500/10 text-blue-500 px-3 py-1.5 rounded-lg border border-blue-500/10 text-[11px] font-bold">
+                                            <Activity size={14} />
+                                            <span>{runningServicesInSelected}/{stackServices.length} Selected Active</span>
                                         </div>
                                     )}
-                                </div>
+                                </>
                             );
                         })()}
                     </div>
-                )}
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 mb-5">
-                <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={20} />
-                    <input
-                        type="text"
-                        placeholder="Search compose projects..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-surface border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors"
-                    />
                 </div>
-                <button
-                    onClick={fetchComposeFiles}
-                    className="p-2.5 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors self-end sm:self-auto"
-                    title="Refresh"
-                >
-                    <RefreshCw size={18} />
-                </button>
-            </div>
+            )}
 
             {viewMode === 'compose' ? (
                 filteredFiles.length === 0 ? (

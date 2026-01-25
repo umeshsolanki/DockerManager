@@ -15,9 +15,7 @@ interface Props {
 export default function NavigationRail({ selectedScreen, onScreenChange, onLogout }: Props) {
     const items: { label: Screen; icon: React.ReactNode }[] = [
         { label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
-        { label: 'Containers', icon: <Box size={20} /> },
-        { label: 'Compose', icon: <Layers size={20} /> },
-        { label: 'Resources', icon: <Database size={20} /> },
+        { label: 'Docker', icon: <Box size={20} /> },
         { label: 'Analytics', icon: <Activity size={20} /> },
         { label: 'Security', icon: <Lock size={20} /> },
         { label: 'Firewall', icon: <Shield size={20} /> },
@@ -41,7 +39,7 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
             <div className="flex flex-col gap-2 flex-1 overflow-y-auto w-full no-scrollbar">
                 {items.map((item) => {
                     const isActive = selectedScreen === item.label ||
-                        (item.label === 'Resources' && ['Images', 'Networks', 'Volumes', 'Secrets'].includes(selectedScreen));
+                        (item.label === 'Docker' && ['Containers', 'Compose', 'Images', 'Networks', 'Volumes', 'Secrets', 'Resources'].includes(selectedScreen));
 
                     return (
                         <button

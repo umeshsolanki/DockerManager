@@ -55,31 +55,30 @@ export default function ContainersScreen() {
 
     return (
         <div className="flex flex-col relative">
-            <div className="flex items-center gap-4 mb-5">
-                <h1 className="text-3xl font-bold">Containers</h1>
-                {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
-            </div>
-
-            <div className="flex items-center gap-4 mb-5">
+            <div className="flex flex-wrap items-center gap-4 mb-6">
                 <SearchInput
                     value={searchQuery}
                     onChange={setSearchQuery}
                     placeholder="Search containers..."
+                    className="flex-1 min-w-[200px]"
                 />
-                <Button onClick={() => setIsWizardOpen(true)} icon={<Plus size={18} />}>
-                    New Container
-                </Button>
-                <ActionIconButton
-                    onClick={() => fetchContainers()}
-                    icon={<RefreshCw />}
-                    title="Refresh"
-                />
-                <ActionIconButton
-                    onClick={() => handleAction(() => DockerClient.pruneContainers())}
-                    icon={<Trash2 />}
-                    color="red"
-                    title="Prune"
-                />
+                <div className="flex items-center gap-2">
+                    {isLoading && <RefreshCw className="animate-spin text-primary mr-2" size={20} />}
+                    <Button onClick={() => setIsWizardOpen(true)} icon={<Plus size={18} />}>
+                        New Container
+                    </Button>
+                    <ActionIconButton
+                        onClick={() => fetchContainers()}
+                        icon={<RefreshCw />}
+                        title="Refresh"
+                    />
+                    <ActionIconButton
+                        onClick={() => handleAction(() => DockerClient.pruneContainers())}
+                        icon={<Trash2 />}
+                        color="red"
+                        title="Prune"
+                    />
+                </div>
             </div>
 
             {filteredContainers.length === 0 ? (

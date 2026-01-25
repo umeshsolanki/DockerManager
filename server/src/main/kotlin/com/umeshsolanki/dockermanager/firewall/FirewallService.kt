@@ -15,7 +15,9 @@ interface IFirewallService {
     fun unblockIP(id: String): Boolean
     fun unblockIPByAddress(ip: String): Boolean
     fun getIptablesVisualisation(): Map<String, List<IptablesRule>>
+    fun getIptablesRaw(): String
     fun getNftablesVisualisation(): String
+    fun getNftablesJson(): String
 }
 
 class FirewallServiceImpl : IFirewallService {
@@ -216,14 +218,48 @@ class FirewallServiceImpl : IFirewallService {
         return chains
     }
     
+    override fun getIptablesRaw(): String {
+        val res = commandExecutor.execute("$iptablesCmd-save")
+        if (res.exitCode != 0) {
+            // Fallback to iptables -S if iptables-save failed or not found
+            val resS = commandExecutor.execute("$iptablesCmd -S")
+            if (resS.exitCode != 0) {
+                logger.warn("Failed to get raw iptables: ${resS.error}")
+                return "Error: ${resS.error}"
+            }
+            return resS.output
+        }
+        return res.output
+    }
+    
     override fun getNftablesVisualisation(): String {
-        // We use text format here for easy display, or we could use -j for JSON
         val res = commandExecutor.execute("$nftCmd list ruleset")
         if (res.exitCode != 0) {
             logger.warn("Failed to list nftables: ${res.error}")
             return "Error: ${res.error}"
         }
         return res.output
+    }
+
+    override fun getNftablesJson(): String {
+        val res = commandExecutor.execute("$nftCmd -j list ruleset")
+        if (res.exitCode != 0) {
+            logger.warn("Failed to list nftables json: ${res.error}")
+            return "{ \"error\": \"${res.error}\" }"
+        }
+        
+        // Sanitize output: 
+        // 1. Remove any non-JSON prefix (like warnings)
+        val output = res.output
+        val jsonStart = output.indexOf('{')
+        val finalOutput = if (jsonStart > 0) output.substring(jsonStart) else output
+
+        // 2. Remove invalid control characters (0-31) except allowed whitespace (tab, newline, carriage return)
+        // These can't appear literally in JSON strings.
+        return finalOutput.filter { 
+            val code = it.code
+            code >= 32 || code == 9 || code == 10 || code == 13 
+        }
     }
 
     private fun ensureBaseRules() {
@@ -296,7 +332,9 @@ object FirewallService {
     fun unblockIP(id: String) = service.unblockIP(id)
     fun unblockIPByAddress(ip: String) = service.unblockIPByAddress(ip)
     fun getIptablesVisualisation() = service.getIptablesVisualisation()
+    fun getIptablesRaw() = service.getIptablesRaw()
     fun getNftablesVisualisation() = service.getNftablesVisualisation()
+    fun getNftablesJson() = service.getNftablesJson()
 }
 
 

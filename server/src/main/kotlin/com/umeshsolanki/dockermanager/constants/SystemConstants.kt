@@ -17,6 +17,8 @@ object SystemConstants {
     
     // Docker command paths
     const val DOCKER_BIN_DOCKER = "/usr/bin/docker"
+    const val DOCKER_BIN_HOMEBREW = "/opt/homebrew/bin/docker"
+    const val DOCKER_BIN_USR_LOCAL = "/usr/local/bin/docker"
     const val DOCKER_COMPOSE_BIN_HOMEBREW = "/opt/homebrew/bin/docker-compose"
     const val DOCKER_COMPOSE_BIN_USR = "/usr/bin/docker compose"
     const val DOCKER_COMMAND = "docker"

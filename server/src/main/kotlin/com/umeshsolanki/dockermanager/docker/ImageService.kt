@@ -24,13 +24,17 @@ class ImageServiceImpl(private val dockerClient: com.github.dockerjava.api.Docke
     }
 
     override fun pullImage(name: String): Boolean {
-        return try {
-            dockerClient.pullImageCmd(name).start().awaitCompletion(300, TimeUnit.SECONDS)
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
-        }
+        // Start pull in background to prevent UI hang. 
+        // Note: The UI might fetch images before the pull is complete, 
+        // but this is better than hanging the entire server.
+        Thread {
+            try {
+                dockerClient.pullImageCmd(name).start().awaitCompletion(300, TimeUnit.SECONDS)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }.start()
+        return true
     }
 
     override fun removeImage(id: String): Boolean {
