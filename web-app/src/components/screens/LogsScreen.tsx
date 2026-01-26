@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Search, RefreshCw, FileText, XCircle, Terminal, Shield, User, Clock, Settings, Lock, Ban, ChevronDown, ChevronRight, Folder, ArrowLeft, Database } from 'lucide-react';
+import { Search, RefreshCw, FileText, XCircle, Terminal, Shield, User, Clock, Settings, Lock, Ban, ChevronDown, ChevronRight, Folder, ArrowLeft, Database, Plus } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { SystemLog, BlockIPRequest, BtmpStats } from '@/lib/types';
 import { toast } from 'sonner';
+import { Modal } from '../ui/Modal';
 
 export default function LogsScreen() {
     const [logs, setLogs] = useState<SystemLog[]>([]);
@@ -140,6 +141,24 @@ export default function LogsScreen() {
         const interval = setInterval(() => fetchLogs(currentPath), 30000);
         return () => clearInterval(interval);
     }, [currentPath]);
+
+    const handleUpdateSecurityConfig = async () => {
+        setIsLoading(true);
+        try {
+            const success = await DockerClient.updateAutoJailSettings(isAutoJailEnabled, jailThreshold, jailDuration);
+            const monitorSuccess = await DockerClient.updateBtmpMonitoring(isMonitoringActive, refreshInterval);
+            if (success && monitorSuccess) {
+                toast.success('Security policy updated successfully');
+                await fetchLogs();
+            } else {
+                toast.error('Some settings failed to update');
+            }
+        } catch (e) {
+            toast.error('Failed to update security configuration');
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     const filteredLogs = useMemo(() => {
         return logs.filter(l =>
@@ -571,88 +590,85 @@ export default function LogsScreen() {
                 </div>
             </div>
             {isBlockModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                    <div className="bg-surface border border-outline/20 rounded-3xl w-full max-w-md shadow-2xl p-6 animate-in fade-in zoom-in duration-200">
-                        <div className="flex items-center gap-3 mb-6">
-                            <Shield className="text-red-500" size={24} />
-                            <h2 className="text-xl font-bold">Quick Block IP</h2>
+                <Modal
+                    onClose={() => setIsBlockModalOpen(false)}
+                    title="Quick Block IP"
+                    icon={<Shield className="text-red-500" size={24} />}
+                    maxWidth="max-w-md"
+                >
+                    <div className="space-y-4 mt-4">
+                        <div>
+                            <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1.5 ml-1">IP Address</label>
+                            <input
+                                type="text"
+                                value={ipToBlock}
+                                onChange={(e) => setIpToBlock(e.target.value)}
+                                placeholder="e.g. 1.2.3.4"
+                                className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2.5 focus:outline-none focus:border-red-500 transition-all font-mono"
+                            />
                         </div>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1.5 ml-1">IP Address</label>
-                                <input
-                                    type="text"
-                                    value={ipToBlock}
-                                    onChange={(e) => setIpToBlock(e.target.value)}
-                                    placeholder="e.g. 1.2.3.4"
-                                    className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2.5 focus:outline-none focus:border-red-500 transition-all font-mono"
-                                />
-                            </div>
-                            <div className="flex gap-3 pt-2">
-                                <button
-                                    onClick={() => setIsBlockModalOpen(false)}
-                                    className="flex-1 px-4 py-2.5 rounded-xl border border-outline/20 hover:bg-white/5 transition-all font-bold"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={async () => {
-                                        const success = await DockerClient.blockIP({
-                                            ip: ipToBlock,
-                                            comment: `Blocked from Logs: ${selectedLog?.name}`,
-                                            protocol: 'ALL'
-                                        });
-                                        if (success) {
-                                            toast.success(`IP ${ipToBlock} blocked`);
-                                            setIsBlockModalOpen(false);
-                                        } else {
-                                            toast.error('Failed to block IP');
-                                        }
-                                    }}
-                                    className="flex-1 bg-red-500 text-white px-4 py-2.5 rounded-xl font-bold hover:opacity-90 transition-all"
-                                >
-                                    Confirm Block
-                                </button>
-                            </div>
+                        <div className="flex gap-3 pt-2">
+                            <button
+                                onClick={() => setIsBlockModalOpen(false)}
+                                className="flex-1 px-4 py-2.5 rounded-xl border border-outline/20 hover:bg-white/5 transition-all font-bold text-sm"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    const success = await DockerClient.blockIP({
+                                        ip: ipToBlock,
+                                        comment: `Blocked from Logs: ${selectedLog?.name}`,
+                                        protocol: 'ALL'
+                                    });
+                                    if (success) {
+                                        toast.success(`IP ${ipToBlock} blocked`);
+                                        setIsBlockModalOpen(false);
+                                    } else {
+                                        toast.error('Failed to block IP');
+                                    }
+                                }}
+                                className="flex-1 bg-red-500 text-white px-4 py-2.5 rounded-xl font-bold hover:opacity-90 transition-all text-sm"
+                            >
+                                Confirm Block
+                            </button>
                         </div>
                     </div>
-                </div>
+                </Modal>
             )}
 
-            {/* Stats View All Modal */}
             {isStatsModalOpen && btmpStats && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-                    <div className="bg-surface border border-outline/20 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh] animate-in fade-in zoom-in duration-200">
-                        <div className="p-6 border-b border-outline/10 bg-white/5 space-y-4">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3 text-primary">
-                                    {statsModalType === 'IPS' && <Shield size={24} />}
-                                    {statsModalType === 'ATTEMPTS' && <Terminal size={24} />}
-                                    {statsModalType === 'USERS' && <User size={24} />}
-                                    {statsModalType === 'JAILED' && <Lock size={24} className="text-red-500" />}
-                                    {statsModalType === 'CONFIG' && <Settings size={24} />}
-                                    <h2 className="text-xl font-bold">
-                                        {statsModalType === 'IPS' && 'Top Attacking IPs'}
-                                        {statsModalType === 'ATTEMPTS' && 'Authentication Failures'}
-                                        {statsModalType === 'USERS' && 'Top Targeted Users'}
-                                        {statsModalType === 'JAILED' && 'Active Jails'}
-                                        {statsModalType === 'CONFIG' && 'System Security Config'}
-                                    </h2>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={manualRefreshBtmp}
-                                        disabled={isRefreshingBtmp}
-                                        className="p-2 hover:bg-white/10 rounded-xl transition-all"
-                                    >
-                                        <RefreshCw size={18} className={isRefreshingBtmp ? 'animate-spin' : ''} />
-                                    </button>
-                                    <button onClick={() => setIsStatsModalOpen(false)} className="p-2 hover:bg-red-500/10 text-on-surface-variant hover:text-red-500 rounded-xl transition-all">
-                                        <XCircle size={20} />
-                                    </button>
-                                </div>
-                            </div>
-
+                <Modal
+                    onClose={() => setIsStatsModalOpen(false)}
+                    title={
+                        statsModalType === 'IPS' ? 'Top Attacking IPs' :
+                            statsModalType === 'ATTEMPTS' ? 'Authentication Failures' :
+                                statsModalType === 'USERS' ? 'Top Targeted Users' :
+                                    statsModalType === 'JAILED' ? 'Active Jails' :
+                                        'System Security Config'
+                    }
+                    icon={
+                        statsModalType === 'IPS' ? <Shield size={24} /> :
+                            statsModalType === 'ATTEMPTS' ? <Terminal size={24} /> :
+                                statsModalType === 'USERS' ? <User size={24} /> :
+                                    statsModalType === 'JAILED' ? <Lock size={24} className="text-red-500" /> :
+                                        <Settings size={24} />
+                    }
+                    maxWidth="max-w-4xl"
+                    className="h-[80vh] flex flex-col"
+                    headerActions={
+                        <button
+                            onClick={manualRefreshBtmp}
+                            disabled={isRefreshingBtmp}
+                            className="p-2 hover:bg-white/10 rounded-xl transition-all"
+                            title="Refresh Stats"
+                        >
+                            <RefreshCw size={18} className={isRefreshingBtmp ? 'animate-spin' : ''} />
+                        </button>
+                    }
+                >
+                    <div className="flex-1 flex flex-col min-h-0 -mx-6 -mb-6 mt-4">
+                        <div className="p-4 border-b border-outline/10 bg-white/5 space-y-4">
                             <div className="flex flex-wrap items-center gap-2">
                                 {(['IPS', 'USERS', 'ATTEMPTS', 'JAILED', 'CONFIG'] as const).map(tab => (
                                     <button
@@ -679,7 +695,7 @@ export default function LogsScreen() {
                         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
                             {statsModalType === 'IPS' && (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                    {btmpStats?.topIps?.map(({ ip, count, country }) => {
+                                    {(btmpStats?.topIps || []).map(({ ip, count, country }) => {
                                         const isJailed = btmpStats?.jailedIps?.some(j => j.ip === ip);
                                         return (
                                             <div key={ip} className="flex justify-between items-center bg-white/5 border border-outline/5 rounded-xl p-4 hover:border-primary/20 transition-all group">
@@ -712,7 +728,7 @@ export default function LogsScreen() {
 
                             {statsModalType === 'USERS' && (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                    {btmpStats?.topUsers?.map(({ user, count }) => (
+                                    {(btmpStats?.topUsers || []).map(({ user, count }) => (
                                         <div key={user} className="bg-white/5 border border-outline/5 rounded-xl p-3 flex flex-col items-center text-center">
                                             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-2 text-primary">
                                                 <User size={20} />
@@ -736,7 +752,7 @@ export default function LogsScreen() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {btmpStats?.recentFailures?.map((entry, i) => (
+                                            {(btmpStats?.recentFailures || []).map((entry, i) => (
                                                 <tr key={i} className="hover:bg-white/5 transition-colors border-b border-outline/5 last:border-0 group">
                                                     <td className="px-4 py-3 text-red-400 font-bold uppercase">{entry.user}</td>
                                                     <td className="px-4 py-3 text-primary font-bold">{entry.ip}</td>
@@ -759,145 +775,130 @@ export default function LogsScreen() {
 
                             {statsModalType === 'JAILED' && (
                                 <div className="space-y-3">
-                                    {(btmpStats.jailedIps?.length || 0) === 0 ? (
-                                        <div className="text-center py-20 text-on-surface-variant italic opacity-50">
-                                            No IPs currently in jail. The system is secure.
-                                        </div>
+                                    {(btmpStats?.jailedIps || []).length === 0 ? (
+                                        <div className="text-center py-20 opacity-30 italic text-sm">No IP addresses are currently jailed</div>
                                     ) : (
-                                        btmpStats.jailedIps?.map(jail => (
-                                            <div key={jail.ip} className="flex justify-between items-center bg-red-500/5 border border-red-500/20 rounded-2xl p-4">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center text-red-500">
-                                                        <Lock size={20} />
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                            {btmpStats?.jailedIps?.map((jail, i) => (
+                                                <div key={i} className="bg-red-500/5 border border-red-500/10 rounded-xl p-4 flex flex-col">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="font-mono text-sm text-red-400 font-bold">{jail.ip}</span>
+                                                        <Lock size={14} className="text-red-500" />
                                                     </div>
-                                                    <div className="flex flex-col">
-                                                        <span className="font-mono text-lg text-red-500 font-bold">{jail.ip}</span>
-                                                        <span className="text-[10px] text-on-surface-variant uppercase font-bold">{jail.reason}</span>
+                                                    <div className="flex flex-col gap-1">
+                                                        <div className="flex justify-between text-[8px] uppercase font-black text-on-surface-variant/40">
+                                                            <span>IP Address</span>
+                                                            <span className="text-on-surface-variant">{jail.ip}</span>
+                                                        </div>
+                                                        <div className="flex justify-between text-[8px] uppercase font-black text-on-surface-variant/40">
+                                                            <span>Expires At</span>
+                                                            <span className="text-red-400">{new Date(jail.expiresAt).toLocaleString()}</span>
+                                                        </div>
+                                                        <div className="text-[8px] text-on-surface-variant/40 italic mt-1 truncate">
+                                                            {jail.reason}
+                                                        </div>
                                                     </div>
+                                                    <button
+                                                        onClick={async () => {
+                                                            const res = await DockerClient.unblockIP(jail.ip);
+                                                            if (res) { toast.success(`IP ${jail.ip} unjailed`); manualRefreshBtmp(); }
+                                                            else { toast.error('Failed to unjail IP'); }
+                                                        }}
+                                                        className="mt-3 w-full py-2 bg-on-surface/5 hover:bg-white/10 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all"
+                                                    >
+                                                        Unjail Manually
+                                                    </button>
                                                 </div>
-                                                <div className="text-right flex flex-col">
-                                                    <span className="text-[10px] uppercase font-bold text-on-surface-variant mb-1">Expires in</span>
-                                                    <span className="text-sm font-mono font-bold text-primary">
-                                                        {Math.max(0, Math.ceil((jail.expiresAt - Date.now()) / 60000))} MINUTES
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        ))
+                                            ))}
+                                        </div>
                                     )}
                                 </div>
                             )}
 
                             {statsModalType === 'CONFIG' && (
-                                <div className="max-w-md mx-auto space-y-6 py-6">
-                                    <div className="flex items-center justify-between bg-white/5 border border-outline/10 p-4 rounded-2xl">
-                                        <div className="flex flex-col">
-                                            <span className="font-bold">Auto-Jail Active</span>
-                                            <span className="text-[10px] text-on-surface-variant uppercase font-bold">Automatically block offending IPs</span>
-                                        </div>
-                                        <button
-                                            onClick={() => {
-                                                const newState = !isAutoJailEnabled;
-                                                setIsAutoJailEnabled(newState);
-                                                DockerClient.updateAutoJailSettings(newState, jailThreshold, jailDuration);
-                                            }}
-                                            className={`w-12 h-6 rounded-full transition-all relative ${isAutoJailEnabled ? 'bg-primary' : 'bg-white/10'}`}
-                                        >
-                                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${isAutoJailEnabled ? 'left-7' : 'left-1'}`} />
-                                        </button>
-                                    </div>
-
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-on-surface-variant uppercase mb-2 ml-1">Jail Threshold</label>
-                                            <div className="flex gap-4 items-center">
-                                                <input
-                                                    type="range" min="1" max="20"
-                                                    value={jailThreshold}
-                                                    onChange={(e) => setJailThreshold(parseInt(e.target.value))}
-                                                    className="flex-1 accent-primary"
-                                                />
-                                                <span className="w-12 text-center bg-white/5 border border-outline/10 rounded-lg py-1 font-bold font-mono text-primary">{jailThreshold}</span>
+                                <div className="max-w-xl mx-auto space-y-6">
+                                    <div className="bg-white/5 border border-outline/10 rounded-2xl p-6">
+                                        <div className="flex items-center gap-3 mb-6">
+                                            <div className="p-3 bg-red-500/10 rounded-xl text-red-500">
+                                                <Shield size={24} />
                                             </div>
-                                            <p className="text-[9px] text-on-surface-variant mt-2 italic">Number of failed attempts before automatic IP block</p>
+                                            <div>
+                                                <h3 className="font-bold text-sm">Auto-Jail Policy</h3>
+                                                <p className="text-[10px] text-on-surface-variant font-medium">Configure automatic brute-force protection</p>
+                                            </div>
+                                            <div className="ml-auto">
+                                                <button
+                                                    onClick={() => setIsAutoJailEnabled(!isAutoJailEnabled)}
+                                                    className={`w-10 h-5 rounded-full transition-all relative ${isAutoJailEnabled ? 'bg-red-500' : 'bg-white/10'}`}
+                                                >
+                                                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${isAutoJailEnabled ? 'left-5.5' : 'left-0.5'}`} />
+                                                </button>
+                                            </div>
                                         </div>
 
-                                        <div>
-                                            <label className="block text-xs font-bold text-on-surface-variant uppercase mb-2 ml-1">Jail Duration (Minutes)</label>
-                                            <div className="flex gap-4 items-center">
-                                                <input
-                                                    type="range" min="5" max="1440" step="5"
-                                                    value={jailDuration}
-                                                    onChange={(e) => setJailDuration(parseInt(e.target.value))}
-                                                    className="flex-1 accent-primary"
-                                                />
-                                                <span className="w-12 text-center bg-white/5 border border-outline/10 rounded-lg py-1 font-bold font-mono text-primary">{jailDuration}</span>
+                                        <div className="space-y-6">
+                                            <div>
+                                                <div className="flex justify-between text-[10px] font-bold uppercase text-on-surface-variant mb-2">
+                                                    <span>Failure Threshold</span>
+                                                    <span className="text-red-400">{jailThreshold} Attempts</span>
+                                                </div>
+                                                <input type="range" min="1" max="20" value={jailThreshold} onChange={e => setJailThreshold(parseInt(e.target.value))} className="w-full accent-red-500" />
                                             </div>
-                                            <p className="text-[9px] text-on-surface-variant mt-2 italic">How long the IP stays in jail before being automatically released</p>
+                                            <div>
+                                                <div className="flex justify-between text-[10px] font-bold uppercase text-on-surface-variant mb-2">
+                                                    <span>Jail Duration</span>
+                                                    <span className="text-red-400">{jailDuration} Minutes</span>
+                                                </div>
+                                                <input type="range" min="1" max="240" step="5" value={jailDuration} onChange={e => setJailDuration(parseInt(e.target.value))} className="w-full accent-red-500" />
+                                            </div>
+
+                                            <div className="border-t border-outline/5 pt-6 space-y-4">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-bold">Active Monitoring</span>
+                                                        <span className="text-[10px] text-on-surface-variant uppercase font-bold">Background processing</span>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => setIsMonitoringActive(!isMonitoringActive)}
+                                                        className={`w-10 h-5 rounded-full transition-all relative ${isMonitoringActive ? 'bg-green-500' : 'bg-white/10'}`}
+                                                    >
+                                                        <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${isMonitoringActive ? 'left-5.5' : 'left-0.5'}`} />
+                                                    </button>
+                                                </div>
+
+                                                <div>
+                                                    <div className="flex justify-between text-[10px] font-bold uppercase text-on-surface-variant mb-2">
+                                                        <span>Sync Interval</span>
+                                                        <span className="text-primary">{refreshInterval} Minutes</span>
+                                                    </div>
+                                                    <input type="range" min="1" max="60" value={refreshInterval} onChange={e => setRefreshInterval(parseInt(e.target.value))} className="w-full accent-primary" />
+                                                </div>
+
+                                                <button
+                                                    onClick={handleUpdateSecurityConfig}
+                                                    className="w-full bg-primary text-white py-3 rounded-xl font-bold text-sm shadow-xl shadow-primary/20 hover:opacity-90 active:scale-95 transition-all mt-2"
+                                                >
+                                                    Apply System Policy
+                                                </button>
+                                            </div>
                                         </div>
-
-                                        <button
-                                            onClick={async () => {
-                                                const success = await DockerClient.updateAutoJailSettings(isAutoJailEnabled, jailThreshold, jailDuration);
-                                                const monitorSuccess = await DockerClient.updateBtmpMonitoring(isMonitoringActive, refreshInterval);
-                                                if (success && monitorSuccess) toast.success('Security settings saved');
-                                            }}
-                                            className="w-full bg-primary text-black font-bold py-3 rounded-xl mt-4 hover:opacity-90 transition-all"
-                                        >
-                                            SAVE SETTINGS
-                                        </button>
-                                    </div>
-
-                                    <div className="border-t border-outline/10 pt-6 space-y-4">
-                                        <div className="flex items-center justify-between bg-white/5 border border-outline/10 p-4 rounded-2xl">
-                                            <div className="flex flex-col">
-                                                <span className="font-bold">Active Monitoring</span>
-                                                <span className="text-[10px] text-on-surface-variant uppercase font-bold">Enable background log processing</span>
-                                            </div>
-                                            <button
-                                                onClick={() => setIsMonitoringActive(!isMonitoringActive)}
-                                                className={`w-12 h-6 rounded-full transition-all relative ${isMonitoringActive ? 'bg-green-500' : 'bg-white/10'}`}
-                                            >
-                                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${isMonitoringActive ? 'left-7' : 'left-1'}`} />
-                                            </button>
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-xs font-bold text-on-surface-variant uppercase mb-2 ml-1">Refresh Interval (Minutes)</label>
-                                            <div className="flex gap-4 items-center">
-                                                <input
-                                                    type="range" min="1" max="60" step="1"
-                                                    value={refreshInterval}
-                                                    onChange={(e) => setRefreshInterval(parseInt(e.target.value))}
-                                                    className="flex-1 accent-primary"
-                                                />
-                                                <span className="w-12 text-center bg-white/5 border border-outline/10 rounded-lg py-1 font-bold font-mono text-primary">{refreshInterval}</span>
-                                            </div>
-                                            <p className="text-[9px] text-on-surface-variant mt-2 italic">How often to scan logs for new failed attempts</p>
-                                        </div>
-
-                                        {!isMonitoringActive && (
-                                            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs flex gap-2 items-center">
-                                                <Ban size={16} />
-                                                <span>Monitoring is disabled. Stats will not update and auto-jail will not function.</span>
-                                            </div>
-                                        )}
                                     </div>
                                 </div>
                             )}
                         </div>
                         <div className="p-4 border-t border-outline/10 bg-white/5 flex items-center justify-between">
                             <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest opacity-50">
-                                {btmpStats.lastUpdated > 0 && `System Clock: ${new Date(btmpStats.lastUpdated).toLocaleTimeString()}`}
+                                {btmpStats.lastUpdated > 0 && `Updated: ${new Date(btmpStats.lastUpdated).toLocaleTimeString()}`}
                             </span>
                             <button
                                 onClick={() => setIsStatsModalOpen(false)}
-                                className="px-8 py-2.5 bg-primary text-white rounded-xl font-bold hover:shadow-lg hover:shadow-primary/20 transition-all active:scale-95"
+                                className="px-8 py-2.5 bg-on-surface text-surface rounded-xl font-bold hover:opacity-90 transition-all active:scale-95 text-xs"
                             >
                                 Close
                             </button>
                         </div>
                     </div>
-                </div>
+                </Modal>
             )}
         </div>
     );

@@ -4,7 +4,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     File, Folder, Download, Upload, Trash2,
     ArrowLeft, Plus, Archive, ExternalLink,
-    Search, RefreshCcw, Eye, EyeOff, Loader2, LayoutList, Grid2X2
+    Search, RefreshCcw, Eye, EyeOff, Loader2, LayoutList, Grid2X2,
+    ArrowUpToLine, ArrowDownToLine
 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { FileItem } from '@/lib/types';
@@ -541,33 +542,28 @@ export default function FileManagerScreen() {
                     title={viewingFile.path}
                     description="File Viewer"
                     icon={<Eye size={24} />}
-                    maxWidth="max-w-4xl"
+                    maxWidth="max-w-5xl"
                     className="h-[80vh] flex flex-col"
+                    headerActions={
+                        <div className="bg-black/50 backdrop-blur rounded-lg p-1 flex gap-1 border border-white/10 shadow-xl">
+                            <button
+                                onClick={() => handleSwitchMode('head')}
+                                className={`p-1.5 rounded-md transition-all ${viewingFile.mode === 'head' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-white/10 text-gray-400'}`}
+                                title="View Top (Head)"
+                            >
+                                <ArrowUpToLine size={16} />
+                            </button>
+                            <button
+                                onClick={() => handleSwitchMode('tail')}
+                                className={`p-1.5 rounded-md transition-all ${viewingFile.mode === 'tail' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-white/10 text-gray-400'}`}
+                                title="View Bottom (Tail)"
+                            >
+                                <ArrowDownToLine size={16} />
+                            </button>
+                        </div>
+                    }
                 >
                     <div className="flex-1 flex flex-col min-h-0 mt-4 -mx-6 -mb-6 relative">
-                        <div className="absolute top-0 right-0 p-4 z-10 flex gap-2">
-                            <div className="bg-black/50 backdrop-blur rounded-lg p-1 flex gap-1 mr-2 border border-white/10">
-                                <button
-                                    onClick={() => handleSwitchMode('head')}
-                                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${viewingFile.mode === 'head' ? 'bg-blue-600 text-white' : 'hover:bg-white/10 text-gray-400'}`}
-                                >
-                                    HEAD
-                                </button>
-                                <button
-                                    onClick={() => handleSwitchMode('tail')}
-                                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${viewingFile.mode === 'tail' ? 'bg-blue-600 text-white' : 'hover:bg-white/10 text-gray-400'}`}
-                                >
-                                    TAIL
-                                </button>
-                            </div>
-                            <Button
-                                variant="primary"
-                                className="bg-black/50 backdrop-blur"
-                                onClick={() => setViewingFile(null)}
-                            >
-                                Close Viewer
-                            </Button>
-                        </div>
                         <Editor
                             height="100%"
                             defaultLanguage={viewingFile.path.endsWith('.json') ? 'json' : viewingFile.path.endsWith('.yml') || viewingFile.path.endsWith('.yaml') ? 'yaml' : 'plaintext'}

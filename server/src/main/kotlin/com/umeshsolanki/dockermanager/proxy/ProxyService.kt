@@ -753,11 +753,11 @@ class ProxyServiceImpl(
             host.allowedIps.joinToString("\n        ") { "allow $it;" } + "\n        deny all;"
         } else ""
 
-        // Generate Rate Limiting config
-        val rateLimitConfig = host.rateLimit?.let { rl ->
+        // Generate Rate Limiting config (server level - 4 spaces)
+        val serverRateLimit = host.rateLimit?.let { rl ->
             if (rl.enabled) {
                 val zoneName = "limit_${host.id.replace("-", "")}"
-                "limit_req zone=$zoneName burst=${rl.burst}${if (rl.nodelay) " nodelay" else ""};"
+                "    limit_req zone=$zoneName burst=${rl.burst}${if (rl.nodelay) " nodelay" else ""};"
             } else ""
         } ?: ""
 
@@ -799,7 +799,7 @@ class ProxyServiceImpl(
                     "websocketConfig" to wsConfig,
                     "ipRestrictions" to ipConfig,
                     "pathLocations" to pathLocations,
-                    "rateLimitConfig" to rateLimitConfig
+                    "rateLimitConfig" to (if (host.paths.isEmpty()) serverRateLimit else "") // Apply server-level rate limit only if no paths defined
                 )
             )
         } else ""
@@ -817,7 +817,7 @@ class ProxyServiceImpl(
                     "target" to host.target,
                     "websocketConfig" to wsConfig,
                     "ipRestrictions" to ipConfig,
-                    "rateLimitConfig" to rateLimitConfig
+                    "rateLimitConfig" to "" // Rate limit handled at server or path level, not here
                 )
             )
             // Indent each line (8 spaces for location block)
@@ -831,7 +831,7 @@ class ProxyServiceImpl(
                 "httpRedirect" to httpRedirect,
                 "httpProxyConfig" to httpProxyConfig,
                 "pathLocations" to pathLocations,
-                "rateLimitConfig" to rateLimitConfig
+                "rateLimitConfig" to (if (host.ssl || host.paths.isNotEmpty()) "" else serverRateLimit) // Apply server-level rate limit only if no paths defined and not SSL (SSL block handles it)
             )
         )
 
@@ -876,11 +876,11 @@ class ProxyServiceImpl(
                 pathRoute.allowedIps.joinToString("\n        ") { "allow $it;" } + "\n        deny all;"
             } else ""
 
-            // Generate Rate Limiting config for this path
+            // Generate Rate Limiting config for this path (indented 8 spaces)
             val rateLimitConfig = pathRoute.rateLimit?.let { rl ->
                 if (rl.enabled) {
                     val zoneName = "limit_${pathRoute.id.replace("-", "")}"
-                    "limit_req zone=$zoneName burst=${rl.burst}${if (rl.nodelay) " nodelay" else ""};"
+                    "        limit_req zone=$zoneName burst=${rl.burst}${if (rl.nodelay) " nodelay" else ""};"
                 } else ""
             } ?: ""
 
@@ -1111,6 +1111,7 @@ class ProxyServiceImpl(
 
         ensureNginxMainConfig()
         ensureDefaultServer()
+        generateZonesConfig(loadHosts()) // Ensure zones.conf exists before proxy starts
         ensureDefaultPage(wwwHtmlDir)
     }
 

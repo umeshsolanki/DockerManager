@@ -7,6 +7,7 @@ import { SearchInput } from '../ui/SearchInput';
 import { ComposeFile, SaveComposeRequest, DockerStack, StackService, StackTask, DeployStackRequest } from '@/lib/types';
 import Editor from '@monaco-editor/react';
 import { toast } from 'sonner';
+import { Modal } from '../ui/Modal';
 
 export default function ComposeScreen() {
     const [composeFiles, setComposeFiles] = useState<ComposeFile[]>([]);
@@ -947,286 +948,209 @@ export default function ComposeScreen() {
                 </div>
             )}
 
+            {/* Modals - Outside the main list ternary but inside the component return div */}
             {/* Editor Modal */}
             {isEditorOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                    <div className="bg-surface border border-outline/20 rounded-3xl w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in duration-200">
-                        <div className="p-6 border-b border-outline/10 flex items-center justify-between bg-surface/50">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                                    <FileCode size={24} />
+                <Modal
+                    onClose={() => setIsEditorOpen(false)}
+                    title={editingFile ? `Edit ${editingFile.name} / ${editingFileName}` : 'Create New Compose Project'}
+                    description="Configure container orchestration"
+                    icon={<FileCode size={24} />}
+                    maxWidth="max-w-5xl"
+                    className="h-[85vh] flex flex-col"
+                >
+                    <div className="flex-1 overflow-hidden flex flex-col">
+                        <div className="p-4 bg-surface/30 border-b border-outline/10 flex items-center gap-4">
+                            <div className="flex-1 flex gap-3 items-end">
+                                <div className="flex-1">
+                                    <label className="text-[10px] text-on-surface-variant uppercase font-bold mb-1 block">Project Name</label>
+                                    <input
+                                        type="text"
+                                        value={projectName}
+                                        onChange={(e) => setProjectName(e.target.value)}
+                                        placeholder="e.g. my-app"
+                                        disabled={!!editingFile}
+                                        className="w-full bg-black/20 border border-outline/20 rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors disabled:opacity-50"
+                                    />
                                 </div>
-                                <h2 className="text-xl font-bold">
-                                    {editingFile ? `Edit ${editingFile.name} / ${editingFileName}` : 'Create New Compose Project'}
-                                </h2>
+                                <div className="relative">
+                                    <input
+                                        type="file"
+                                        id="restore-file"
+                                        className="hidden"
+                                        accept=".yml,.yaml"
+                                        onChange={handleRestoreFromFile}
+                                    />
+                                    <label
+                                        htmlFor="restore-file"
+                                        className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-outline/20 rounded-lg text-xs font-bold hover:bg-white/10 cursor-pointer transition-colors whitespace-nowrap"
+                                    >
+                                        <Upload size={14} />
+                                        Restore YAML
+                                    </label>
+                                </div>
                             </div>
-                            <button onClick={() => setIsEditorOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
-                                <X size={24} />
-                            </button>
+                            <div className="flex items-center bg-black/20 rounded-xl p-1 border border-outline/10">
+                                <button
+                                    onClick={() => setActiveTab('editor')}
+                                    className={`px-4 py-1.5 rounded-lg flex items-center gap-2 text-xs font-bold transition-all ${activeTab === 'editor' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-on-surface-variant hover:text-on-surface'}`}
+                                >
+                                    <FileCode size={16} />
+                                    YAML
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('wizard')}
+                                    className={`px-4 py-1.5 rounded-lg flex items-center gap-2 text-xs font-bold transition-all ${activeTab === 'wizard' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-on-surface-variant hover:text-on-surface'}`}
+                                >
+                                    <Wand2 size={16} />
+                                    Wizard
+                                </button>
+                            </div>
                         </div>
 
-                        <div className="flex-1 overflow-hidden flex flex-col">
-                            <div className="p-4 bg-surface/30 border-b border-outline/10 flex items-center gap-4">
-                                <div className="flex-1 flex gap-3 items-end">
-                                    <div className="flex-1">
-                                        <label className="text-[10px] text-on-surface-variant uppercase font-bold mb-1 block">Project Name</label>
-                                        <input
-                                            type="text"
-                                            value={projectName}
-                                            onChange={(e) => setProjectName(e.target.value)}
-                                            placeholder="e.g. my-app"
-                                            disabled={!!editingFile}
-                                            className="w-full bg-black/20 border border-outline/20 rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors disabled:opacity-50"
-                                        />
-                                    </div>
-                                    <div className="relative">
-                                        <input
-                                            type="file"
-                                            id="restore-file"
-                                            className="hidden"
-                                            accept=".yml,.yaml"
-                                            onChange={handleRestoreFromFile}
-                                        />
-                                        <label
-                                            htmlFor="restore-file"
-                                            className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-outline/20 rounded-lg text-xs font-bold hover:bg-white/10 cursor-pointer transition-colors whitespace-nowrap"
-                                        >
-                                            <Upload size={14} />
-                                            Restore YAML
-                                        </label>
-                                    </div>
-                                </div>
-                                <div className="flex items-center bg-black/20 rounded-xl p-1 border border-outline/10">
-                                    <button
-                                        onClick={() => setActiveTab('editor')}
-                                        className={`px-4 py-1.5 rounded-lg flex items-center gap-2 text-xs font-bold transition-all ${activeTab === 'editor' ? 'bg-primary text-on-primary shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}
-                                    >
-                                        <FileCode size={16} />
-                                        YAML
-                                    </button>
-                                    <button
-                                        onClick={() => setActiveTab('wizard')}
-                                        className={`px-4 py-1.5 rounded-lg flex items-center gap-2 text-xs font-bold transition-all ${activeTab === 'wizard' ? 'bg-primary text-on-primary shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}
-                                    >
-                                        <Wand2 size={16} />
-                                        Wizard
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="flex-1 overflow-auto bg-[#1e1e1e]">
-                                {activeTab === 'editor' ? (
+                        <div className="flex-1 overflow-hidden">
+                            {activeTab === 'editor' ? (
+                                <div className="h-full bg-[#1e1e1e]">
                                     <Editor
                                         height="100%"
                                         defaultLanguage="yaml"
-                                        theme="vs-dark"
                                         value={editorContent}
                                         onChange={(value) => setEditorContent(value || '')}
+                                        theme="vs-dark"
                                         options={{
                                             minimap: { enabled: false },
                                             fontSize: 14,
-                                            lineNumbers: 'on',
-                                            roundedSelection: true,
+                                            fontFamily: 'monospace',
+                                            padding: { top: 20 },
                                             scrollBeyondLastLine: false,
-                                            readOnly: false,
                                             automaticLayout: true,
-                                            padding: { top: 16 }
                                         }}
                                     />
-                                ) : (
-                                    <div className="p-4">
-                                        <ComposeWizard onGenerate={(yml) => {
-                                            setEditorContent(yml);
-                                            setActiveTab('editor');
-                                        }} />
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="p-4 sm:p-6 border-t border-outline/10 bg-surface/50 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
-                            <div className="flex flex-wrap gap-2">
-                                {projectName && (
-                                    <>
-                                        <button
-                                            onClick={async () => {
-                                                const filePath = editingFile?.path || `${composeFiles.find(f => f.name === projectName)?.path || ''}`;
-                                                if (!filePath && !editingFile) {
-                                                    // Save first if new project
-                                                    await handleSave();
-                                                    const savedFile = composeFiles.find(f => f.name === projectName);
-                                                    if (savedFile) {
-                                                        setIsEditorOpen(false);
-                                                        setIsLoading(true);
-                                                        try {
-                                                            const result = await DockerClient.composeUp(savedFile.path);
-                                                            if (result?.success) {
-                                                                toast.success('Started as Compose');
-                                                            } else {
-                                                                toast.error(result?.message || 'Failed to start');
-                                                            }
-                                                        } catch (e) {
-                                                            toast.error('Failed to start compose');
-                                                        } finally {
-                                                            setIsLoading(false);
-                                                        }
-                                                    }
-                                                } else {
-                                                    setIsEditorOpen(false);
-                                                    setIsLoading(true);
-                                                    try {
-                                                        const result = await DockerClient.composeUp(filePath);
-                                                        if (result?.success) {
-                                                            toast.success('Started as Compose');
-                                                        } else {
-                                                            toast.error(result?.message || 'Failed to start');
-                                                        }
-                                                    } catch (e) {
-                                                        toast.error('Failed to start compose');
-                                                    } finally {
-                                                        setIsLoading(false);
-                                                    }
-                                                }
-                                            }}
-                                            className="px-3 py-1.5 sm:px-4 sm:py-2 bg-green-500/10 text-green-500 border border-green-500/20 rounded-xl hover:bg-green-500/20 transition-colors text-xs sm:text-sm font-bold flex items-center gap-2"
-                                        >
-                                            <Play size={14} fill="currentColor" />
-                                            Start Compose
-                                        </button>
-                                        <button
-                                            onClick={async () => {
-                                                const stackName = prompt('Enter stack name:', projectName || editingFile?.name);
-                                                if (!stackName) return;
-
-                                                const filePath = editingFile?.path || `${composeFiles.find(f => f.name === projectName)?.path || ''}`;
-                                                if (!filePath && !editingFile) {
-                                                    // Save first if new project
-                                                    await handleSave();
-                                                    const savedFile = composeFiles.find(f => f.name === projectName);
-                                                    if (savedFile) {
-                                                        setIsEditorOpen(false);
-                                                        setIsLoading(true);
-                                                        try {
-                                                            const result = await DockerClient.deployStack({
-                                                                stackName: stackName.trim(),
-                                                                composeFile: savedFile.path
-                                                            });
-                                                            if (result.success) {
-                                                                toast.success(`Deployed as Stack: ${stackName}`);
-                                                                await fetchStacks();
-                                                            } else {
-                                                                toast.error(result.message || 'Failed to deploy stack');
-                                                            }
-                                                        } catch (e) {
-                                                            toast.error('Failed to deploy stack');
-                                                        } finally {
-                                                            setIsLoading(false);
-                                                        }
-                                                    }
-                                                } else {
-                                                    setIsEditorOpen(false);
-                                                    setIsLoading(true);
-                                                    try {
-                                                        const result = await DockerClient.deployStack({
-                                                            stackName: stackName.trim(),
-                                                            composeFile: filePath
-                                                        });
-                                                        if (result.success) {
-                                                            toast.success(`Deployed as Stack: ${stackName}`);
-                                                            await fetchStacks();
-                                                        } else {
-                                                            toast.error(result.message || 'Failed to deploy stack');
-                                                        }
-                                                    } catch (e) {
-                                                        toast.error('Failed to deploy stack');
-                                                    } finally {
-                                                        setIsLoading(false);
-                                                    }
-                                                }
-                                            }}
-                                            className="px-3 py-1.5 sm:px-4 sm:py-2 bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 rounded-xl hover:bg-indigo-500/20 transition-colors text-xs sm:text-sm font-bold flex items-center gap-2"
-                                        >
-                                            <Layers size={14} />
-                                            Deploy Stack
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={() => setIsEditorOpen(false)}
-                                    className="flex-1 sm:flex-none px-4 sm:px-6 py-2 sm:py-2.5 rounded-xl hover:bg-white/5 transition-colors text-xs sm:text-sm font-bold border border-outline/20"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleSave}
-                                    className="flex-1 sm:flex-none px-4 sm:px-6 py-2 sm:py-2.5 bg-primary text-on-primary rounded-xl hover:bg-primary/90 transition-all text-xs sm:text-sm font-bold flex items-center gap-2 shadow-lg shadow-primary/20"
-                                >
-                                    <Save size={18} />
-                                    {editingFile ? 'Update' : 'Create'}
-                                </button>
-                            </div>
+                                </div>
+                            ) : (
+                                <div className="h-full overflow-y-auto custom-scrollbar">
+                                    <ComposeWizard onGenerate={(yml) => {
+                                        setEditorContent(yml);
+                                        setActiveTab('editor');
+                                    }} />
+                                </div>
+                            )}
                         </div>
                     </div>
-                </div>
+                    <div className="p-4 border-t border-outline/10 bg-surface/50 flex justify-end gap-3 -mx-6 -mb-6 mt-4">
+                        <div className="flex items-center gap-2 mr-auto">
+                            {projectName && (
+                                <>
+                                    <button
+                                        onClick={async () => {
+                                            const filePath = editingFile?.path || `${composeFiles.find(f => f.name === projectName)?.path || ''}`;
+                                            if (!filePath && !editingFile) {
+                                                await handleSave();
+                                                const savedFile = composeFiles.find(f => f.name === projectName);
+                                                if (savedFile) {
+                                                    setIsEditorOpen(false);
+                                                    setIsLoading(true);
+                                                    try {
+                                                        const result = await DockerClient.composeUp(savedFile.path);
+                                                        if (result?.success) { toast.success('Started as Compose'); }
+                                                        else { toast.error(result?.message || 'Failed to start'); }
+                                                    } finally { setIsLoading(false); }
+                                                }
+                                            } else {
+                                                setIsEditorOpen(false);
+                                                setIsLoading(true);
+                                                try {
+                                                    const result = await DockerClient.composeUp(filePath);
+                                                    if (result?.success) { toast.success('Started as Compose'); }
+                                                    else { toast.error(result?.message || 'Failed to start'); }
+                                                } finally { setIsLoading(false); }
+                                            }
+                                        }}
+                                        className="hidden sm:flex px-4 py-2 bg-green-500/10 text-green-500 border border-green-500/20 rounded-xl hover:bg-green-500/20 transition-all text-xs font-bold items-center gap-2"
+                                    >
+                                        <Play size={14} fill="currentColor" />
+                                        Start Compose
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setDeployComposeFile(editingFile?.path || `${composeFiles.find(f => f.name === projectName)?.path || ''}`);
+                                            setDeployStackName(projectName || '');
+                                            setIsDeployModalOpen(true);
+                                            setIsEditorOpen(false);
+                                        }}
+                                        className="hidden sm:flex px-4 py-2 bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 rounded-xl hover:bg-indigo-500/20 transition-all text-xs font-bold items-center gap-2"
+                                    >
+                                        <Layers size={14} />
+                                        Deploy Stack
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => setIsEditorOpen(false)}
+                            className="px-6 py-2.5 rounded-xl border border-outline/20 hover:bg-white/5 font-bold transition-all"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleSave}
+                            disabled={isLoading}
+                            className="flex items-center gap-2 px-8 py-2.5 bg-primary text-on-primary rounded-xl font-bold shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all disabled:opacity-50"
+                        >
+                            {isLoading ? <RotateCw className="animate-spin" size={18} /> : <Save size={18} />}
+                            {editingFile ? 'Update' : 'Create'}
+                        </button>
+                    </div>
+                </Modal>
             )}
 
             {/* Deploy Stack Modal */}
             {isDeployModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                    <div className="bg-surface border border-outline/20 rounded-2xl w-full max-w-md shadow-2xl p-6">
-                        <h2 className="text-lg font-bold mb-4">Deploy Docker Stack</h2>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1 ml-1">
-                                    Stack Name
-                                </label>
-                                <input
-                                    type="text"
-                                    value={deployStackName}
-                                    onChange={(e) => setDeployStackName(e.target.value)}
-                                    placeholder="e.g. my-stack"
-                                    className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2 focus:outline-none focus:border-primary"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1 ml-1">
-                                    Compose File Path
-                                </label>
-                                <input
-                                    type="text"
-                                    value={deployComposeFile}
-                                    onChange={(e) => setDeployComposeFile(e.target.value)}
-                                    placeholder="/path/to/docker-compose.yml"
-                                    className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2 focus:outline-none focus:border-primary font-mono text-sm"
-                                />
-                                <p className="text-[10px] text-on-surface-variant mt-1 ml-1">
-                                    Absolute path to your docker-compose.yml file
-                                </p>
-                            </div>
+                <Modal
+                    onClose={() => setIsDeployModalOpen(false)}
+                    title="Deploy Docker Stack"
+                    description="Swarm orchestration"
+                    icon={<Layers size={24} />}
+                    maxWidth="max-w-md"
+                >
+                    <div className="space-y-4 mt-4">
+                        <div>
+                            <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1 ml-1">Stack Name</label>
+                            <input
+                                type="text"
+                                value={deployStackName}
+                                onChange={(e) => setDeployStackName(e.target.value)}
+                                placeholder="e.g. my-stack"
+                                className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2 focus:outline-none focus:border-primary"
+                            />
                         </div>
-                        <div className="flex gap-2 mt-6">
+                        <div>
+                            <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1 ml-1">Compose File Path</label>
+                            <input
+                                type="text"
+                                value={deployComposeFile}
+                                onChange={(e) => setDeployComposeFile(e.target.value)}
+                                placeholder="/path/to/docker-compose.yml"
+                                className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2 focus:outline-none focus:border-primary font-mono text-sm"
+                            />
+                        </div>
+                        <div className="flex gap-2 pt-4">
                             <button
-                                onClick={() => {
-                                    setIsDeployModalOpen(false);
-                                    setDeployStackName('');
-                                    setDeployComposeFile('');
-                                }}
-                                className="flex-1 px-4 py-2 rounded-xl border border-outline/20 hover:bg-white/5 text-sm font-bold"
+                                onClick={() => setIsDeployModalOpen(false)}
+                                className="flex-1 px-4 py-2.5 rounded-xl border border-outline/20 hover:bg-white/5 text-sm font-bold"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleDeployStack}
                                 disabled={isLoading || !deployStackName || !deployComposeFile}
-                                className="flex-1 bg-primary text-on-primary px-4 py-2 rounded-xl font-bold text-sm shadow-lg shadow-primary/20 disabled:opacity-50"
+                                className="flex-1 bg-primary text-on-primary px-4 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-primary/20 disabled:opacity-50"
                             >
                                 {isLoading ? 'Deploying...' : 'Deploy Stack'}
                             </button>
                         </div>
                     </div>
-                </div>
+                </Modal>
             )}
         </div>
     );

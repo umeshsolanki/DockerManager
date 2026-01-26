@@ -232,7 +232,7 @@ function InspectModal({ details, onClose }: { details: ContainerDetails; onClose
             description={`Container ID: ${details.id.substring(0, 12)}`}
             icon={<Box size={24} />}
             maxWidth="max-w-3xl"
-            className="max-h-[90vh] flex flex-col"
+            className="h-[80vh] flex flex-col"
         >
             <TabsList className="mb-6">
                 <TabButton id="details" label="Details" active={activeTab === 'details'} onClick={() => setActiveTab('details')} />
@@ -639,7 +639,7 @@ function CreateContainerWizard({ onClose, onCreated }: { onClose: () => void; on
             description={`Step ${step} of 5`}
             icon={<Box size={24} />}
             maxWidth="max-w-2xl"
-            className="max-h-[85vh] flex flex-col"
+            className="flex flex-col"
         >
             <div className="flex-1 overflow-y-auto min-h-[400px] mt-4">
                 {renderStep()}

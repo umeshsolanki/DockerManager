@@ -7,6 +7,8 @@ import { SystemConfig, TwoFactorSetupResponse } from '@/lib/types';
 import dynamic from 'next/dynamic';
 import packageJson from '../../../package.json';
 
+import { Modal } from '../ui/Modal';
+
 const WebShell = dynamic(() => import('../Terminal'), { ssr: false });
 
 interface SettingsScreenProps {
@@ -25,7 +27,6 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [isShellOpen, setIsShellOpen] = useState(false);
-    const [isFullscreen, setIsFullscreen] = useState(false);
 
     // Auth & 2FA state
     const [currentPassword, setCurrentPassword] = useState('');
@@ -227,54 +228,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
         fetchConfig();
     };
 
-    const toggleFullscreen = () => {
-        if (!isFullscreen) {
-            const modal = document.getElementById('terminal-modal');
-            if (modal?.requestFullscreen) {
-                modal.requestFullscreen().then(() => setIsFullscreen(true));
-            } else if ((modal as any)?.webkitRequestFullscreen) {
-                (modal as any).webkitRequestFullscreen();
-                setIsFullscreen(true);
-            } else if ((modal as any)?.mozRequestFullScreen) {
-                (modal as any).mozRequestFullScreen();
-                setIsFullscreen(true);
-            } else if ((modal as any)?.msRequestFullscreen) {
-                (modal as any).msRequestFullscreen();
-                setIsFullscreen(true);
-            }
-        } else {
-            if (document.exitFullscreen) {
-                document.exitFullscreen().then(() => setIsFullscreen(false));
-            } else if ((document as any).webkitExitFullscreen) {
-                (document as any).webkitExitFullscreen();
-                setIsFullscreen(false);
-            } else if ((document as any).mozCancelFullScreen) {
-                (document as any).mozCancelFullScreen();
-                setIsFullscreen(false);
-            } else if ((document as any).msExitFullscreen) {
-                (document as any).msExitFullscreen();
-                setIsFullscreen(false);
-            }
-        }
-    };
 
-    useEffect(() => {
-        const handleFullscreenChange = () => {
-            setIsFullscreen(!!document.fullscreenElement || !!(document as any).webkitFullscreenElement || !!(document as any).mozFullScreenElement || !!(document as any).msFullscreenElement);
-        };
-
-        document.addEventListener('fullscreenchange', handleFullscreenChange);
-        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-        document.addEventListener('mozfullscreenchange', handleFullscreenChange);
-        document.addEventListener('MSFullscreenChange', handleFullscreenChange);
-
-        return () => {
-            document.removeEventListener('fullscreenchange', handleFullscreenChange);
-            document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-            document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
-            document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
-        };
-    }, []);
 
     return (
         <div className="flex flex-col h-full overflow-y-auto pb-6">
@@ -999,144 +953,93 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
             </div>
 
             {isShellOpen && (
-                <div
-                    id="terminal-modal"
-                    className={`fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md transition-all ${isFullscreen ? 'p-0' : 'p-4'
-                        }`}
+                <Modal
+                    onClose={() => setIsShellOpen(false)}
+                    title="Server Terminal"
+                    description="Interactive shell session"
+                    icon={<Terminal size={24} />}
+                    maxWidth="max-w-6xl"
+                    className="h-[80vh] flex flex-col"
                 >
-                    <div className={`bg-surface border border-outline/20 overflow-hidden flex flex-col shadow-2xl animate-in zoom-in duration-300 ${isFullscreen
-                        ? 'w-full h-full rounded-none'
-                        : 'rounded-3xl w-full max-w-6xl h-[90vh]'
-                        }`}>
-                        <div className="p-5 border-b border-outline/10 flex items-center justify-between bg-surface/50">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-primary/10 rounded-xl text-primary">
-                                    <Terminal size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-xl font-bold">Server Terminal</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">Interactive shell session</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={toggleFullscreen}
-                                    className="p-2 hover:bg-white/10 rounded-xl transition-all active:scale-95"
-                                    title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-                                >
-                                    {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        setIsShellOpen(false);
-                                        setIsFullscreen(false);
-                                        if (document.fullscreenElement) {
-                                            document.exitFullscreen();
-                                        }
-                                    }}
-                                    className="p-2 hover:bg-white/10 rounded-xl transition-all active:scale-95"
-                                    title="Close terminal"
-                                >
-                                    <XCircle size={20} />
-                                </button>
-                            </div>
-                        </div>
-                        <div className={`flex-1 bg-black ${isFullscreen ? 'p-2' : 'p-4'}`}>
-                            <WebShell url={`${DockerClient.getServerUrl()}/shell/server`} onClose={() => {
-                                setIsShellOpen(false);
-                                setIsFullscreen(false);
-                                if (document.fullscreenElement) {
-                                    document.exitFullscreen();
-                                }
-                            }} />
-                        </div>
+                    <div className="flex-1 bg-black rounded-2xl overflow-hidden mt-4 border border-outline/10 p-2">
+                        <WebShell
+                            url={`${DockerClient.getServerUrl()}/shell/server`}
+                            onClose={() => setIsShellOpen(false)}
+                        />
                     </div>
-                </div>
+                </Modal>
             )}
 
             {/* IP Import Modal */}
             {showIpImportModal && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm">
-                    <div className="bg-surface border border-outline/10 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
-                        <div className="p-6 border-b border-outline/10 flex items-center justify-between bg-on-surface/[0.02]">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2.5 bg-secondary/10 rounded-xl text-secondary">
-                                    <Globe size={20} />
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-lg">Import IP Range Data</h3>
-                                    <p className="text-xs text-on-surface-variant">CSV: cidr, country_code, country_name, provider, type</p>
-                                </div>
-                            </div>
+                <Modal
+                    onClose={() => setShowIpImportModal(false)}
+                    title="Import IP Range Data"
+                    description="CSV: cidr, country_code, country_name, provider, type"
+                    icon={<Globe size={24} />}
+                    maxWidth="max-w-2xl"
+                    className="flex flex-col"
+                >
+                    <div className="flex-1 overflow-y-auto mt-4 pr-2 custom-scrollbar">
+                        <div className="mb-4">
+                            <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                                CSV Content (One range per line)
+                            </label>
+                            <textarea
+                                className="w-full h-80 bg-on-surface/5 border border-outline/10 rounded-2xl p-4 text-sm font-mono focus:outline-none focus:border-secondary/50 focus:bg-on-surface/[0.08] transition-all resize-none"
+                                placeholder="8.8.8.0/24, US, United States, Google, hosting&#10;1.1.1.0/24, AU, Australia, Cloudflare, hosting"
+                                value={ipCsv}
+                                onChange={(e) => setIpCsv(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="flex items-center gap-3 bg-secondary/5 p-4 rounded-2xl border border-secondary/10 mb-6 text-on-surface-variant">
+                            <Info size={20} className="text-secondary shrink-0" />
+                            <p className="text-xs leading-relaxed">
+                                IPv4 and IPv6 CIDR notations are supported. The system will skip empty or invalid lines. Large imports may take a moment.
+                            </p>
+                        </div>
+
+                        <div className="flex items-center gap-3 pb-2">
                             <button
-                                onClick={() => setShowIpImportModal(false)}
-                                className="p-2 hover:bg-white/5 rounded-full transition-colors"
+                                className="flex-1 bg-on-surface text-surface py-3.5 rounded-2xl font-bold text-sm hover:opacity-90 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                disabled={importingIpRanges || !ipCsv.trim()}
+                                onClick={async () => {
+                                    setImportingIpRanges(true);
+                                    try {
+                                        const res = await DockerClient.importIpRanges(ipCsv) as any;
+                                        if (res.status === 'success') {
+                                            alert(`Successfully imported ${res.imported} ranges!`);
+                                            setShowIpImportModal(false);
+                                            setIpCsv('');
+                                            fetchConfig();
+                                        } else {
+                                            alert(res.error || 'Failed to import ranges');
+                                        }
+                                    } catch (e) {
+                                        console.error(e);
+                                        alert('An error occurred during import');
+                                    } finally {
+                                        setImportingIpRanges(false);
+                                    }
+                                }}
                             >
-                                <XCircle size={24} className="text-on-surface-variant" />
+                                {importingIpRanges ? (
+                                    <RefreshCw size={18} className="animate-spin" />
+                                ) : (
+                                    <Save size={18} />
+                                )}
+                                <span>{importingIpRanges ? 'Importing...' : 'Confirm Import'}</span>
+                            </button>
+                            <button
+                                className="px-6 py-3.5 bg-on-surface/5 text-on-surface rounded-2xl font-bold text-sm hover:bg-on-surface/10 transition-all"
+                                onClick={() => setShowIpImportModal(false)}
+                            >
+                                Cancel
                             </button>
                         </div>
-
-                        <div className="p-6">
-                            <div className="mb-4">
-                                <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">
-                                    CSV Content (One range per line)
-                                </label>
-                                <textarea
-                                    className="w-full h-80 bg-on-surface/5 border border-outline/10 rounded-2xl p-4 text-sm font-mono focus:outline-none focus:border-secondary/50 focus:bg-on-surface/[0.08] transition-all resize-none"
-                                    placeholder="8.8.8.0/24, US, United States, Google, hosting&#10;1.1.1.0/24, AU, Australia, Cloudflare, hosting"
-                                    value={ipCsv}
-                                    onChange={(e) => setIpCsv(e.target.value)}
-                                />
-                            </div>
-
-                            <div className="flex items-center gap-3 bg-secondary/5 p-4 rounded-2xl border border-secondary/10 mb-6 text-on-surface-variant">
-                                <Info size={20} className="text-secondary shrink-0" />
-                                <p className="text-xs leading-relaxed">
-                                    IPv4 and IPv6 CIDR notations are supported. The system will skip empty or invalid lines. Large imports may take a moment.
-                                </p>
-                            </div>
-
-                            <div className="flex items-center gap-3">
-                                <button
-                                    className="flex-1 bg-on-surface text-surface py-3.5 rounded-2xl font-bold text-sm hover:opacity-90 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                                    disabled={importingIpRanges || !ipCsv.trim()}
-                                    onClick={async () => {
-                                        setImportingIpRanges(true);
-                                        try {
-                                            const res = await DockerClient.importIpRanges(ipCsv) as any;
-                                            if (res.status === 'success') {
-                                                alert(`Successfully imported ${res.imported} ranges!`);
-                                                setShowIpImportModal(false);
-                                                setIpCsv('');
-                                                fetchConfig();
-                                            } else {
-                                                alert(res.error || 'Failed to import ranges');
-                                            }
-                                        } catch (e) {
-                                            console.error(e);
-                                            alert('An error occurred during import');
-                                        } finally {
-                                            setImportingIpRanges(false);
-                                        }
-                                    }}
-                                >
-                                    {importingIpRanges ? (
-                                        <RefreshCw size={18} className="animate-spin" />
-                                    ) : (
-                                        <Save size={18} />
-                                    )}
-                                    <span>{importingIpRanges ? 'Importing...' : 'Confirm Import'}</span>
-                                </button>
-                                <button
-                                    className="px-6 py-3.5 bg-on-surface/5 text-on-surface rounded-2xl font-bold text-sm hover:bg-on-surface/10 transition-all"
-                                    onClick={() => setShowIpImportModal(false)}
-                                >
-                                    Cancel
-                                </button>
-                            </div>
-                        </div>
                     </div>
-                </div>
+                </Modal>
             )}
         </div>
     );

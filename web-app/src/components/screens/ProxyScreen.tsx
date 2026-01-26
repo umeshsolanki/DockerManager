@@ -6,6 +6,7 @@ import { DockerClient } from '@/lib/api';
 import { ProxyHost, PathRoute, SSLCertificate } from '@/lib/types';
 import { toast } from 'sonner';
 import Editor from '@monaco-editor/react';
+import { Modal } from '../ui/Modal';
 
 
 export default function ProxyScreen() {
@@ -587,18 +588,16 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md transition-all">
-            <div className="bg-surface border border-outline/20 rounded-[32px] w-full max-w-lg shadow-2xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto no-scrollbar relative">
-                <div className="flex items-center justify-between mb-8">
-                    <div>
-                        <h2 className="text-2xl font-black tracking-tight">{initialHost ? 'Edit Proxy Host' : 'Add Proxy Host'}</h2>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/60 mt-1">Configure Routing & Security</p>
-                    </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-all opacity-50 hover:opacity-100">
-                        <Plus size={24} className="rotate-45" />
-                    </button>
-                </div>
-                <form onSubmit={handleSubmit} className="space-y-6">
+        <Modal
+            onClose={onClose}
+            title={initialHost ? 'Edit Proxy Host' : 'Add Proxy Host'}
+            description="Configure Routing & Security"
+            icon={<Globe size={24} />}
+            maxWidth="max-w-lg"
+            className="flex flex-col"
+        >
+            <form onSubmit={handleSubmit} className="mt-4 flex-1 flex flex-col min-h-0">
+                <div className="flex-1 overflow-y-auto px-1 custom-scrollbar space-y-6">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-1.5">
                             <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Domain Name</label>
@@ -1090,46 +1089,47 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
                         )}
                     </div>
 
-                    <div className="flex gap-2 pt-2">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="flex-1 px-4 py-2 rounded-xl border border-outline/20 hover:bg-white/5 text-sm font-bold"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={isSubmitting}
-                            className="flex-1 bg-primary text-on-primary px-4 py-2 rounded-xl font-bold text-sm shadow-lg shadow-primary/20"
-                        >
-                            {initialHost ? 'Save Changes' : 'Create Host'}
-                        </button>
-                    </div>
-                </form>
+                </div>
 
-                {/* Path Route Modal - rendered inside ProxyHostModal */}
-                {isPathModalOpen && (
-                    <PathRouteModal
-                        hostId={initialHost?.id || ''}
-                        initialPath={editingPath || undefined}
-                        onClose={() => {
-                            setIsPathModalOpen(false);
-                            setEditingPath(null);
-                        }}
-                        onSave={(path) => {
-                            if (editingPath) {
-                                setPaths(paths.map(p => p.id === path.id ? path : p));
-                            } else {
-                                setPaths([...paths, path]);
-                            }
-                            setIsPathModalOpen(false);
-                            setEditingPath(null);
-                        }}
-                    />
-                )}
-            </div>
-        </div>
+                <div className="flex gap-2 pt-4 border-t border-outline/5 flex-shrink-0">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="flex-1 px-4 py-2.5 rounded-xl border border-outline/20 hover:bg-white/5 text-sm font-bold transition-all"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="flex-1 bg-primary text-on-primary px-4 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all"
+                    >
+                        {initialHost ? 'Save Changes' : 'Create Host'}
+                    </button>
+                </div>
+            </form>
+
+            {/* Path Route Modal - rendered inside ProxyHostModal */}
+            {isPathModalOpen && (
+                <PathRouteModal
+                    hostId={initialHost?.id || ''}
+                    initialPath={editingPath || undefined}
+                    onClose={() => {
+                        setIsPathModalOpen(false);
+                        setEditingPath(null);
+                    }}
+                    onSave={(path) => {
+                        if (editingPath) {
+                            setPaths(paths.map(p => p.id === path.id ? path : p));
+                        } else {
+                            setPaths([...paths, path]);
+                        }
+                        setIsPathModalOpen(false);
+                        setEditingPath(null);
+                    }}
+                />
+            )}
+        </Modal>
     );
 }
 
@@ -1194,206 +1194,59 @@ function PathRouteModal({
 
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md transition-all">
-            <div className="bg-surface border border-outline/20 rounded-[32px] w-full max-w-lg shadow-2xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto no-scrollbar relative animate-in zoom-in-95 duration-200">
-                <div className="flex items-center justify-between mb-8">
-                    <div>
-                        <h2 className="text-2xl font-black tracking-tight">{initialPath ? 'Edit Path Route' : 'Add Path Route'}</h2>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/60 mt-1">Specific Endpoints Management</p>
-                    </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-all opacity-50 hover:opacity-100">
-                        <Plus size={24} className="rotate-45" />
-                    </button>
-                </div>
-
+        <Modal
+            onClose={onClose}
+            title={initialPath ? 'Edit Path Route' : 'Add Path Route'}
+            description="Fine-grained routing rules"
+            icon={<Network size={24} />}
+            maxWidth="max-w-xl"
+            className="flex flex-col"
+        >
+            <div className="flex-1 overflow-y-auto mt-4 px-1 custom-scrollbar">
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-1.5">
-                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Display Name</label>
-                            <input
-                                type="text"
-                                placeholder="e.g. API Gateway"
-                                value={name}
-                                onChange={(e) => setName(e.target.value)}
-                                className="w-full bg-white/5 border border-outline/20 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary transition-all font-bold placeholder:font-normal"
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Path / Prefix</label>
+                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Path Prefix</label>
                             <input
                                 required
                                 type="text"
                                 placeholder="e.g. /api"
                                 value={path}
                                 onChange={(e) => setPath(e.target.value)}
-                                className="w-full bg-white/5 border border-outline/20 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary transition-all font-mono font-bold placeholder:font-normal text-primary"
+                                className="w-full bg-white/5 border border-outline/20 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary transition-all font-bold placeholder:font-normal"
                             />
                         </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div className="sm:col-span-2 space-y-1.5">
-                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Forwarding Target</label>
+                        <div className="space-y-1.5">
+                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Target Internal Address</label>
                             <input
                                 required
                                 type="text"
-                                placeholder="http://service:8080"
+                                placeholder="e.g. http://127.0.0.1:3000"
                                 value={target}
                                 onChange={(e) => setTarget(e.target.value)}
                                 className="w-full bg-white/5 border border-outline/20 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary transition-all font-mono font-bold placeholder:font-normal"
                             />
                         </div>
-                        <div className="space-y-1.5">
-                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Priority</label>
-                            <input
-                                type="number"
-                                value={order}
-                                onChange={(e) => setOrder(e.target.value)}
-                                className="w-full bg-white/5 border border-outline/20 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary transition-all font-mono font-bold"
-                            />
-                        </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4 border-t border-outline/5">
-                        <label className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/5 border border-outline/10 cursor-pointer hover:border-primary/30 transition-all">
-                            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="w-4 h-4 rounded-md border-outline/20 bg-white/5 checked:bg-green-500 accent-green-500" />
-                            <div className="flex flex-col">
-                                <span className="text-xs font-bold">Route Enabled</span>
-                                <span className="text-[9px] text-on-surface-variant/60 font-black uppercase tracking-tighter">Active Traffic</span>
-                            </div>
-                        </label>
-                        <label className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/5 border border-outline/10 cursor-pointer hover:border-primary/30 transition-all">
-                            <input type="checkbox" checked={websocketEnabled} onChange={(e) => setWebsocketEnabled(e.target.checked)} className="w-4 h-4 rounded-md border-outline/20 bg-white/5 checked:bg-primary accent-primary" />
-                            <div className="flex flex-col">
-                                <span className="text-xs font-bold">Websockets</span>
-                                <span className="text-[9px] text-on-surface-variant/60 font-black uppercase tracking-tighter">Upgrade Headers</span>
-                            </div>
-                        </label>
-                        <label className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/5 border border-outline/10 cursor-pointer hover:border-primary/30 transition-all sm:col-span-2">
-                            <input type="checkbox" checked={stripPrefix} onChange={(e) => setStripPrefix(e.target.checked)} className="w-4 h-4 rounded-md border-outline/20 bg-white/5 checked:bg-orange-500 accent-orange-500" />
-                            <div className="flex flex-col">
-                                <span className="text-xs font-bold">Strip Path Prefix</span>
-                                <span className="text-[9px] text-on-surface-variant/60 font-black uppercase tracking-tighter">Forwarded request will not include the path prefix</span>
-                            </div>
-                        </label>
+                    <div className="flex items-start gap-4 p-4 rounded-2xl bg-white/5 border border-outline/10 cursor-pointer hover:border-primary/30 transition-all group">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${stripPrefix ? 'bg-primary/20 text-primary' : 'bg-white/5 text-on-surface-variant'}`}>
+                            <Activity size={18} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <div className="text-sm font-bold text-on-surface">Strip Prefix</div>
+                            <div className="text-[10px] text-on-surface-variant font-medium">Remove path from target request</div>
+                        </div>
+                        <input
+                            type="checkbox"
+                            checked={stripPrefix}
+                            onChange={(e) => setStripPrefix(e.target.checked)}
+                            className="w-5 h-5 rounded-lg border-outline/20 bg-white/5 checked:bg-primary accent-primary"
+                        />
                     </div>
 
-                    {/* IP Restrictions */}
-                    <div className="space-y-2 pt-4 border-t border-outline/5">
-                        <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">IP Restrict (Optional)</label>
-                        <div className="flex gap-2">
-                            <input
-                                type="text"
-                                placeholder="192.168.1.0/24"
-                                value={newIp}
-                                onChange={(e) => setNewIp(e.target.value)}
-                                className="flex-1 bg-white/5 border border-outline/20 rounded-2xl px-4 py-2 text-xs font-mono focus:outline-none focus:border-primary transition-all font-bold"
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        if (newIp.trim()) {
-                                            setAllowedIps([...allowedIps, newIp.trim()]);
-                                            setNewIp('');
-                                        }
-                                    }
-                                }}
-                            />
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (newIp.trim()) {
-                                        setAllowedIps([...allowedIps, newIp.trim()]);
-                                        setNewIp('');
-                                    }
-                                }}
-                                className="bg-primary/20 text-primary p-2.5 rounded-2xl hover:bg-primary/30 transition-all active:scale-90"
-                            >
-                                <Plus size={20} />
-                            </button>
-                        </div>
-                        <div className="flex flex-wrap gap-2 pt-1">
-                            {allowedIps.map(ip => (
-                                <div key={ip} className="flex items-center gap-2 bg-on-surface/5 border border-outline/10 px-3 py-1.5 rounded-xl text-[10px] font-mono font-bold">
-                                    <span>{ip}</span>
-                                    <button type="button" onClick={() => setAllowedIps(allowedIps.filter(i => i !== ip))} className="text-on-surface-variant hover:text-red-500 transition-colors">
-                                        <Plus size={12} className="rotate-45" />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Rate Limiting */}
-                    <div className="pt-4 border-t border-outline/5">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-2">
-                                <ShieldCheck size={16} className={rateLimitEnabled ? 'text-primary' : 'text-on-surface-variant/40'} />
-                                <label className="block text-[11px] font-black text-on-surface-variant uppercase tracking-widest">Rate Limiting</label>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={rateLimitEnabled}
-                                    onChange={(e) => setRateLimitEnabled(e.target.checked)}
-                                    className="sr-only peer"
-                                />
-                                <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                            </label>
-                        </div>
-
-                        {rateLimitEnabled && (
-                            <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10 space-y-4 animate-in slide-in-from-top-2 duration-200">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-1.5">
-                                        <label className="block text-[9px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Rate</label>
-                                        <div className="flex gap-1">
-                                            <input
-                                                type="number"
-                                                value={rateLimitRate}
-                                                onChange={(e) => setRateLimitRate(e.target.value)}
-                                                className="w-full bg-black/20 border border-outline/20 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-primary"
-                                                placeholder="10"
-                                            />
-                                            <select
-                                                value={rateLimitPeriod}
-                                                onChange={(e) => setRateLimitPeriod(e.target.value as 's' | 'm')}
-                                                className="bg-black/20 border border-outline/20 rounded-xl px-2 py-2 text-[10px] font-bold focus:outline-none"
-                                            >
-                                                <option value="s">r/s</option>
-                                                <option value="m">r/m</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <label className="block text-[9px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Burst</label>
-                                        <input
-                                            type="number"
-                                            value={rateLimitBurst}
-                                            onChange={(e) => setRateLimitBurst(e.target.value)}
-                                            className="w-full bg-black/20 border border-outline/20 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-primary"
-                                            placeholder="20"
-                                        />
-                                    </div>
-                                </div>
-                                <label className="flex items-center gap-3 cursor-pointer group select-none">
-                                    <input
-                                        type="checkbox"
-                                        checked={rateLimitNodelay}
-                                        onChange={(e) => setRateLimitNodelay(e.target.checked)}
-                                        className="w-4 h-4 rounded-md border-outline/20 bg-white/5 checked:bg-primary accent-primary"
-                                    />
-                                    <div className="flex flex-col">
-                                        <span className="text-[11px] font-bold">No Delay</span>
-                                        <span className="text-[9px] text-on-surface-variant/60 font-medium">Process requests immediately within burst</span>
-                                    </div>
-                                </label>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Custom Config using Monaco-style textarea */}
-                    <div className="space-y-2 pt-4 border-t border-outline/5 font-mono">
-                        <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Custom Nginx Directives</label>
+                    <div className="space-y-2">
+                        <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Custom Nginx Config</label>
                         <textarea
                             value={customConfig}
                             onChange={(e) => setCustomConfig(e.target.value)}
@@ -1420,7 +1273,7 @@ function PathRouteModal({
                     </div>
                 </form>
             </div>
-        </div>
+        </Modal>
     );
 
 }

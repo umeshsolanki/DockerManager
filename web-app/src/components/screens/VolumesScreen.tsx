@@ -167,7 +167,7 @@ function InspectModal({ details, onClose }: { details: VolumeDetails; onClose: (
             description="Volume Inspection"
             icon={<HardDrive size={24} />}
             maxWidth="max-w-2xl"
-            className="max-h-[80vh] flex flex-col"
+            className="flex flex-col"
         >
             <div className="flex-1 overflow-y-auto mt-4 space-y-6 pr-2 custom-scrollbar">
                 <div className="grid grid-cols-2 gap-4">
@@ -290,19 +290,10 @@ function VolumeBrowserModal({ volumeName, onClose }: { volumeName: string; onClo
             description={`Browsing Volume: ${volumeName}`}
             icon={<Folder size={24} />}
             maxWidth="max-w-4xl"
-            className="h-[80vh] flex flex-col"
+            className="flex flex-col"
         >
             {viewingFile ? (
                 <div className="flex-1 flex flex-col min-h-0 mt-4 -mx-6 -mb-6 relative">
-                    <div className="absolute top-0 right-0 p-4 z-10 flex gap-2">
-                        <Button
-                            variant="primary"
-                            className="bg-black/50 backdrop-blur"
-                            onClick={() => setViewingFile(null)}
-                        >
-                            Close Viewer
-                        </Button>
-                    </div>
                     <Editor
                         height="100%"
                         defaultLanguage={viewingFile.path.endsWith('.json') ? 'json' : viewingFile.path.endsWith('.yml') || viewingFile.path.endsWith('.yaml') ? 'yaml' : 'plaintext'}
