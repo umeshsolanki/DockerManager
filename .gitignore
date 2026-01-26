@@ -22,3 +22,4 @@ node_modules/
 /server.log
 /server/src/main/resources/access.log
 /server/bin/
+**.log
