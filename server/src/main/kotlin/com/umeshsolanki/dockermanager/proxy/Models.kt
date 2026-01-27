@@ -41,6 +41,7 @@ data class ProxyHost(
     val allowedIps: List<String> = emptyList(),
     val customSslPath: String? = null,
     val hstsEnabled: Boolean = false,
+    val isWildcard: Boolean = false, // Enable wildcard SSL certificate (*.domain.com)
     val paths: List<PathRoute> = emptyList(), // Custom path-based routes
     val sslChallengeType: String = "http", // "http" or "dns"
     val dnsProvider: String? = null, // e.g., "cloudflare", "manual", "http-api"

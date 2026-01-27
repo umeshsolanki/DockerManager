@@ -510,6 +510,7 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
     const [target, setTarget] = useState(initialHost?.target || 'http://');
     const [websocketEnabled, setWebsocketEnabled] = useState(initialHost?.websocketEnabled || false);
     const [hstsEnabled, setHstsEnabled] = useState(initialHost?.hstsEnabled || false);
+    const [isWildcard, setIsWildcard] = useState(initialHost?.isWildcard || false);
     const [sslEnabled, setSslEnabled] = useState(initialHost?.ssl || false);
     const [selectedCert, setSelectedCert] = useState<string>(initialHost?.customSslPath || '');
     const [sslChallengeType, setSslChallengeType] = useState<'http' | 'dns'>(initialHost?.sslChallengeType || 'http');
@@ -552,11 +553,12 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
             ssl: sslEnabled,
             websocketEnabled,
             hstsEnabled: sslEnabled ? hstsEnabled : false,
+            isWildcard: sslEnabled ? isWildcard : false,
             customSslPath: (sslEnabled && selectedCert) ? selectedCert : undefined,
             allowedIps,
             paths: paths.length > 0 ? paths : undefined,
             createdAt: initialHost?.createdAt || Date.now(),
-            sslChallengeType,
+            sslChallengeType: isWildcard ? 'dns' : sslChallengeType,
             dnsProvider: sslChallengeType === 'dns' ? dnsProvider : undefined,
             dnsApiToken: sslChallengeType === 'dns' ? dnsApiToken : undefined,
             dnsHost: (sslChallengeType === 'dns' && dnsProvider === 'manual' && dnsManualMode === 'default') ? dnsHost : undefined,
@@ -713,6 +715,36 @@ function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () => void
                                             </div>
                                         </div>
 
+                                        {/* Wildcard SSL Toggle */}
+                                        <div className="flex items-center justify-between p-3 bg-white/5 rounded-2xl border border-white/5">
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] font-black uppercase text-on-surface">Wildcard Certificate</span>
+                                                <span className="text-[9px] text-on-surface-variant font-medium">*.{domain || 'domain.com'}</span>
+                                            </div>
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isWildcard}
+                                                    onChange={(e) => {
+                                                        setIsWildcard(e.target.checked);
+                                                        if (e.target.checked) {
+                                                            setSslChallengeType('dns'); // Wildcard requires DNS-01
+                                                        }
+                                                    }}
+                                                    className="sr-only peer"
+                                                />
+                                                <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                                            </label>
+                                        </div>
+
+                                        {isWildcard && (
+                                            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                                                <p className="text-[10px] text-amber-200 font-medium leading-relaxed flex items-center gap-2">
+                                                    <span className="text-amber-400">⚠️</span>
+                                                    Wildcard certificates require DNS-01 challenge. Configure your DNS provider below.
+                                                </p>
+                                            </div>
+                                        )}
                                         {sslChallengeType === 'dns' && (
                                             <div className="space-y-4 pt-1 animate-in slide-in-from-top-2">
                                                 <div className="space-y-1.5">

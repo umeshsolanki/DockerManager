@@ -91,6 +91,22 @@ class SSLServiceImpl(
 
     override fun requestSSL(host: ProxyHost, reloadCallback: (ProxyHost) -> Boolean): Boolean {
         try {
+            // Check if wildcard certificate is requested
+            if (host.isWildcard && host.sslChallengeType != "dns") {
+                logger.error("Wildcard certificates require DNS-01 challenge. Aborting for ${host.domain}")
+                return false
+            }
+
+            // Build domain arguments: for wildcard, include both base and wildcard domains
+            val domainsArg = if (host.isWildcard) {
+                "-d \"${host.domain}\" -d \"*.${host.domain}\""
+            } else {
+                "-d \"${host.domain}\""
+            }
+
+            // Email uses the domain directly
+            val emailDomain = host.domain
+
             // Updated to run in proxy container with standard paths
             val certCmd = if (host.sslChallengeType == "dns") {
                 val dnsPlugin = when (host.dnsProvider) {
@@ -174,9 +190,9 @@ class SSLServiceImpl(
 
                         executeCommand("${AppConfig.dockerCommand} exec docker-manager-proxy chmod +x /etc/letsencrypt/dns-auth.sh")
 
-                        "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --manual --preferred-challenges dns " + "--manual-auth-hook /etc/letsencrypt/dns-auth.sh $cleanupArg " + "-d \"${host.domain}\" --non-interactive --agree-tos --email admin@${host.domain}"
+                        "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --manual --preferred-challenges dns " + "--manual-auth-hook /etc/letsencrypt/dns-auth.sh $cleanupArg " + "$domainsArg --non-interactive --agree-tos --email admin@$emailDomain"
                     } else {
-                        "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --manual --preferred-challenges dns -d \"${host.domain}\" --non-interactive --agree-tos --email admin@${host.domain}"
+                        "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --manual --preferred-challenges dns $domainsArg --non-interactive --agree-tos --email admin@$emailDomain"
                     }
                 } else {
                     // Create credentials file in certbot/conf dir
@@ -202,10 +218,10 @@ class SSLServiceImpl(
                     }
 
                     val containerCredsPath = "/etc/letsencrypt/dns-${host.dnsProvider}.ini"
-                    "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --${dnsPlugin} --${dnsPlugin}-credentials ${containerCredsPath} -d \"${host.domain}\" --non-interactive --agree-tos --email admin@${host.domain}"
+                    "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --${dnsPlugin} --${dnsPlugin}-credentials ${containerCredsPath} $domainsArg --non-interactive --agree-tos --email admin@$emailDomain"
                 }
             } else {
-                "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --webroot -w /var/www/certbot -d \"${host.domain}\" --non-interactive --agree-tos --email admin@${host.domain}"
+                "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --webroot -w /var/www/certbot $domainsArg --non-interactive --agree-tos --email admin@$emailDomain"
             }
 
             val result = executeCommand(certCmd)

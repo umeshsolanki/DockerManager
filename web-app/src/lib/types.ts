@@ -293,6 +293,7 @@ export interface ProxyHost {
   ssl: boolean;
   websocketEnabled: boolean;
   hstsEnabled: boolean;
+  isWildcard?: boolean; // Enable wildcard SSL certificate (*.domain.com)
   customSslPath?: string;
   allowedIps?: string[];
   paths?: PathRoute[];
