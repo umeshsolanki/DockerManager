@@ -3,7 +3,7 @@ import {
     DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult,
     CreateContainerRequest, SaveComposeRequest, ComposeResult, SystemLog,
     FirewallRule, BlockIPRequest, ProxyHost, PathRoute, ProxyHit, ProxyStats, DailyProxyStats, BtmpStats,
-    BtmpEntry, IptablesRule, SSLCertificate, EmailDomain, EmailUser,
+    BtmpEntry, IptablesRule, SSLCertificate, DnsConfig, EmailDomain, EmailUser,
     CreateEmailUserRequest, UpdateEmailUserPasswordRequest, SystemConfig,
     UpdateSystemConfigRequest, EmailMailbox, NetworkDetails, EmailTestRequest,
     EmailTestResult, AuthRequest, AuthResponse, UpdatePasswordRequest,
@@ -239,6 +239,13 @@ export const DockerClient = {
     updateProxySecuritySettings: (body: Partial<SystemConfig>) => safeReq('/proxy/security/settings', { method: 'POST', body: JSON.stringify(body) }),
     updateProxyDefaultBehavior: (return404: boolean) => safeReq('/proxy/settings/default-behavior', { method: 'POST', body: JSON.stringify({ return404 }) }),
     listProxyCertificates: () => req<SSLCertificate[]>('/proxy/certificates', {}, []),
+
+    // DNS Config Management
+    listDnsConfigs: () => req<DnsConfig[]>('/proxy/dns-configs', {}, []),
+    createDnsConfig: (body: Partial<DnsConfig>) => safeReq('/proxy/dns-configs', { method: 'POST', body: JSON.stringify(body) }),
+    updateDnsConfig: (body: DnsConfig) => safeReq(`/proxy/dns-configs/${body.id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    deleteDnsConfig: (id: string) => safeReq(`/proxy/dns-configs/${id}`, { method: 'DELETE' }),
+
     getProxyContainerStatus: () => safeReq('/proxy/container/status'),
     buildProxyImage: () => safeReq('/proxy/container/build', { method: 'POST' }),
     createProxyContainer: () => safeReq('/proxy/container/create', { method: 'POST' }),

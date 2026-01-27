@@ -285,6 +285,19 @@ export interface PathRoute {
   rateLimit?: RateLimit;
 }
 
+export interface DnsConfig {
+  id: string;
+  name: string;
+  provider: string; // cloudflare, digitalocean, manual
+  apiToken?: string;
+  dnsHost?: string;
+  authUrl?: string;
+  cleanupUrl?: string;
+  authScript?: string;
+  cleanupScript?: string;
+  createdAt: number;
+}
+
 export interface ProxyHost {
   id: string;
   domain: string;
@@ -294,6 +307,7 @@ export interface ProxyHost {
   websocketEnabled: boolean;
   hstsEnabled: boolean;
   isWildcard?: boolean; // Enable wildcard SSL certificate (*.domain.com)
+  dnsConfigId?: string; // Reference to saved DNS config
   customSslPath?: string;
   allowedIps?: string[];
   paths?: PathRoute[];

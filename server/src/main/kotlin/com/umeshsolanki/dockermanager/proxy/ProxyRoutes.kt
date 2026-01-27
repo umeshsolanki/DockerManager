@@ -166,6 +166,46 @@ fun Route.proxyRoutes() {
             call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.BadRequest)
         }
 
+        // DNS Config Management
+        get("/dns-configs") {
+            call.respond(ProxyService.listDnsConfigs())
+        }
+
+        post("/dns-configs") {
+            val config = try {
+                call.receive<DnsConfig>()
+            } catch (e: Exception) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ProxyActionResult(false, "Invalid request body: ${e.message ?: "Failed to parse DnsConfig"}")
+                )
+                return@post
+            }
+            val result = ProxyService.createDnsConfig(config)
+            call.respondPairResult(result, HttpStatusCode.Created, HttpStatusCode.BadRequest)
+        }
+
+        put("/dns-configs/{id}") {
+            val id = call.requireParameter("id") ?: return@put
+            val config = try {
+                call.receive<DnsConfig>()
+            } catch (e: Exception) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ProxyActionResult(false, "Invalid request body: ${e.message ?: "Failed to parse DnsConfig"}")
+                )
+                return@put
+            }
+            val result = ProxyService.updateDnsConfig(config.copy(id = id))
+            call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.BadRequest)
+        }
+
+        delete("/dns-configs/{id}") {
+            val id = call.requireParameter("id") ?: return@delete
+            val result = ProxyService.deleteDnsConfig(id)
+            call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.BadRequest)
+        }
+
         get("/security/settings") {
             call.respond(ProxyService.getProxySecuritySettings())
         }

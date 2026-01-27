@@ -38,6 +38,13 @@ interface IProxyService {
     fun requestSSL(id: String): Boolean
     fun listCertificates(): List<SSLCertificate>
 
+    // DNS Config Management
+    fun listDnsConfigs(): List<DnsConfig>
+    fun getDnsConfig(id: String): DnsConfig?
+    fun createDnsConfig(config: DnsConfig): Pair<Boolean, String>
+    fun updateDnsConfig(config: DnsConfig): Pair<Boolean, String>
+    fun deleteDnsConfig(id: String): Pair<Boolean, String>
+
     // Proxy Container Management
     fun buildProxyImage(): Pair<Boolean, String>
     fun createProxyContainer(): Pair<Boolean, String>
@@ -1414,6 +1421,91 @@ class ProxyServiceImpl(
             false
         }
     }
+
+    // ========== DNS Config Management ==========
+
+    private val dnsConfigsFile = File(configDir, "dns-configs.json")
+    private val dnsConfigPersistence = JsonPersistence.create<List<DnsConfig>>(
+        file = dnsConfigsFile,
+        defaultContent = emptyList(),
+        loggerName = ProxyServiceImpl::class.java.name
+    )
+
+    override fun listDnsConfigs(): List<DnsConfig> {
+        return dnsConfigPersistence.load()
+    }
+
+    override fun getDnsConfig(id: String): DnsConfig? {
+        return listDnsConfigs().find { it.id == id }
+    }
+
+    override fun createDnsConfig(config: DnsConfig): Pair<Boolean, String> {
+        return try {
+            if (config.name.isBlank()) {
+                return false to "Name is required"
+            }
+            if (config.provider.isBlank()) {
+                return false to "Provider is required"
+            }
+
+            val configs = listDnsConfigs().toMutableList()
+            val newConfig = config.copy(
+                id = UUID.randomUUID().toString(),
+                createdAt = System.currentTimeMillis()
+            )
+            configs.add(newConfig)
+            dnsConfigPersistence.save(configs)
+            true to "DNS config created"
+        } catch (e: Exception) {
+            logger.error("Error creating DNS config", e)
+            false to "Error creating DNS config: ${e.message}"
+        }
+    }
+
+    override fun updateDnsConfig(config: DnsConfig): Pair<Boolean, String> {
+        return try {
+            if (config.id.isBlank()) {
+                return false to "Config ID is required"
+            }
+            if (config.name.isBlank()) {
+                return false to "Name is required"
+            }
+
+            val configs = listDnsConfigs().toMutableList()
+            val index = configs.indexOfFirst { it.id == config.id }
+            if (index == -1) {
+                return false to "DNS config not found"
+            }
+            configs[index] = config
+            dnsConfigPersistence.save(configs)
+            true to "DNS config updated"
+        } catch (e: Exception) {
+            logger.error("Error updating DNS config", e)
+            false to "Error updating DNS config: ${e.message}"
+        }
+    }
+
+    override fun deleteDnsConfig(id: String): Pair<Boolean, String> {
+        return try {
+            // Check if any host is using this config
+            val hostsUsingConfig = listHosts().filter { it.dnsConfigId == id }
+            if (hostsUsingConfig.isNotEmpty()) {
+                val domains = hostsUsingConfig.joinToString(", ") { it.domain }
+                return false to "Cannot delete: config is in use by $domains"
+            }
+
+            val configs = listDnsConfigs().toMutableList()
+            val removed = configs.removeIf { it.id == id }
+            if (!removed) {
+                return false to "DNS config not found"
+            }
+            dnsConfigPersistence.save(configs)
+            true to "DNS config deleted"
+        } catch (e: Exception) {
+            logger.error("Error deleting DNS config", e)
+            false to "Error deleting DNS config: ${e.message}"
+        }
+    }
 }
 
 // Service object for easy access
@@ -1430,6 +1522,14 @@ object ProxyService {
     fun updateHost(host: ProxyHost) = service.updateHost(host)
     fun requestSSL(id: String) = service.requestSSL(id)
     fun listCertificates() = service.listCertificates()
+
+    // DNS Config Management
+    fun listDnsConfigs() = service.listDnsConfigs()
+    fun getDnsConfig(id: String) = service.getDnsConfig(id)
+    fun createDnsConfig(config: DnsConfig) = service.createDnsConfig(config)
+    fun updateDnsConfig(config: DnsConfig) = service.updateDnsConfig(config)
+    fun deleteDnsConfig(id: String) = service.deleteDnsConfig(id)
+
     fun buildProxyImage() = service.buildProxyImage()
     fun createProxyContainer() = service.createProxyContainer()
     fun startProxyContainer() = service.startProxyContainer()

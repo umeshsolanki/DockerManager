@@ -29,6 +29,20 @@ data class PathRoute(
 )
 
 @Serializable
+data class DnsConfig(
+    val id: String = "",
+    val name: String,                    // User-friendly name (e.g., "Cloudflare Production")
+    val provider: String,                // cloudflare, digitalocean, manual
+    val apiToken: String? = null,        // API token for cloudflare/digitalocean
+    val dnsHost: String? = null,         // For manual default mode
+    val authUrl: String? = null,         // For manual API hook mode
+    val cleanupUrl: String? = null,      // For manual API hook mode
+    val authScript: String? = null,      // For manual script mode
+    val cleanupScript: String? = null,   // For manual script mode
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Serializable
 data class ProxyHost(
     val id: String = "",
     val domain: String,
@@ -42,6 +56,7 @@ data class ProxyHost(
     val customSslPath: String? = null,
     val hstsEnabled: Boolean = false,
     val isWildcard: Boolean = false, // Enable wildcard SSL certificate (*.domain.com)
+    val dnsConfigId: String? = null, // Reference to saved DNS config
     val paths: List<PathRoute> = emptyList(), // Custom path-based routes
     val sslChallengeType: String = "http", // "http" or "dns"
     val dnsProvider: String? = null, // e.g., "cloudflare", "manual", "http-api"

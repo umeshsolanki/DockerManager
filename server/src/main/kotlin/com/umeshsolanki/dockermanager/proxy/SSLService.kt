@@ -107,18 +107,28 @@ class SSLServiceImpl(
             // Email uses the domain directly
             val emailDomain = host.domain
 
+            // Resolve DNS config from dnsConfigId if set, otherwise use inline fields
+            val dnsConfig = host.dnsConfigId?.let { ProxyService.getDnsConfig(it) }
+            val effectiveProvider = dnsConfig?.provider ?: host.dnsProvider
+            val effectiveApiToken = dnsConfig?.apiToken ?: host.dnsApiToken
+            val effectiveDnsHost = dnsConfig?.dnsHost ?: host.dnsHost
+            val effectiveAuthUrl = dnsConfig?.authUrl ?: host.dnsAuthUrl
+            val effectiveCleanupUrl = dnsConfig?.cleanupUrl ?: host.dnsCleanupUrl
+            val effectiveAuthScript = dnsConfig?.authScript ?: host.dnsAuthScript
+            val effectiveCleanupScript = dnsConfig?.cleanupScript ?: host.dnsCleanupScript
+
             // Updated to run in proxy container with standard paths
             val certCmd = if (host.sslChallengeType == "dns") {
-                val dnsPlugin = when (host.dnsProvider) {
+                val dnsPlugin = when (effectiveProvider) {
                     "cloudflare" -> "dns-cloudflare"
                     "digitalocean" -> "dns-digitalocean"
                     else -> "manual"
                 }
 
                 if (dnsPlugin == "manual") {
-                    val hasScripts = !host.dnsAuthScript.isNullOrBlank()
-                    val hasUrls = !host.dnsAuthUrl.isNullOrBlank()
-                    val hasHost = !host.dnsHost.isNullOrBlank()
+                    val hasScripts = !effectiveAuthScript.isNullOrBlank()
+                    val hasUrls = !effectiveAuthUrl.isNullOrBlank()
+                    val hasHost = !effectiveDnsHost.isNullOrBlank()
 
                     if (hasScripts || hasUrls || hasHost) {
                         val confDir = File(AppConfig.certbotDir, "conf")
@@ -127,15 +137,15 @@ class SSLServiceImpl(
                         // Create auth script
                         val authScript = File(confDir, "dns-auth.sh")
                         val authContent = if (hasScripts) {
-                            host.dnsAuthScript ?: ""
-                        } else if (hasHost && host.dnsAuthUrl == null) {
+                            effectiveAuthScript ?: ""
+                        } else if (hasHost && effectiveAuthUrl == null) {
                             // Default GET template for auth (add)
                             val template =
                                 ResourceLoader.loadResourceOrThrow("templates/proxy/dns-default-get.sh")
                             ResourceLoader.replacePlaceholders(
                                 template, mapOf(
-                                    "host" to host.dnsHost,
-                                    "token" to (host.dnsApiToken ?: ""),
+                                    "host" to effectiveDnsHost,
+                                    "token" to (effectiveApiToken ?: ""),
                                     "domain" to host.domain,
                                     "action" to "add"
                                 )
@@ -145,8 +155,8 @@ class SSLServiceImpl(
                                 ResourceLoader.loadResourceOrThrow("templates/proxy/dns-hook.sh")
                             ResourceLoader.replacePlaceholders(
                                 hookTemplate, mapOf(
-                                    "url" to (host.dnsAuthUrl ?: ""),
-                                    "token" to (host.dnsApiToken ?: "")
+                                    "url" to (effectiveAuthUrl ?: ""),
+                                    "token" to (effectiveApiToken ?: "")
                                 )
                             )
                         }
@@ -154,21 +164,21 @@ class SSLServiceImpl(
 
                         // Create cleanup script
                         var cleanupArg = ""
-                        val hasCleanupScript = !host.dnsCleanupScript.isNullOrBlank()
-                        val hasCleanupUrl = !host.dnsCleanupUrl.isNullOrBlank()
+                        val hasCleanupScript = !effectiveCleanupScript.isNullOrBlank()
+                        val hasCleanupUrl = !effectiveCleanupUrl.isNullOrBlank()
 
                         if (hasCleanupScript || hasCleanupUrl || hasHost) {
                             val cleanupScript = File(confDir, "dns-cleanup.sh")
                             val cleanupContent = if (hasCleanupScript) {
-                                host.dnsCleanupScript
-                            } else if (hasHost && host.dnsCleanupUrl == null) {
+                                effectiveCleanupScript
+                            } else if (hasHost && effectiveCleanupUrl == null) {
                                 // Default GET template for cleanup (delete)
                                 val template =
                                     ResourceLoader.loadResourceOrThrow("templates/proxy/dns-default-get.sh")
                                 ResourceLoader.replacePlaceholders(
                                     template, mapOf(
-                                        "host" to host.dnsHost,
-                                        "token" to (host.dnsApiToken ?: ""),
+                                        "host" to effectiveDnsHost,
+                                        "token" to (effectiveApiToken ?: ""),
                                         "domain" to host.domain,
                                         "action" to "delete"
                                     )
@@ -178,8 +188,8 @@ class SSLServiceImpl(
                                     ResourceLoader.loadResourceOrThrow("templates/proxy/dns-hook.sh")
                                 ResourceLoader.replacePlaceholders(
                                     hookTemplate, mapOf(
-                                        "url" to (host.dnsCleanupUrl ?: ""),
-                                        "token" to (host.dnsApiToken ?: "")
+                                        "url" to (effectiveCleanupUrl ?: ""),
+                                        "token" to (effectiveApiToken ?: "")
                                     )
                                 )
                             }
@@ -199,10 +209,10 @@ class SSLServiceImpl(
                     val confDir = File(AppConfig.certbotDir, "conf")
                     if (!confDir.exists()) confDir.mkdirs()
 
-                    val credsFile = File(confDir, "dns-${host.dnsProvider}.ini")
-                    val credsContent = when (host.dnsProvider) {
-                        "cloudflare" -> "dns_cloudflare_api_token = ${host.dnsApiToken}"
-                        "digitalocean" -> "dns_digitalocean_token = ${host.dnsApiToken}"
+                    val credsFile = File(confDir, "dns-${effectiveProvider}.ini")
+                    val credsContent = when (effectiveProvider) {
+                        "cloudflare" -> "dns_cloudflare_api_token = ${effectiveApiToken}"
+                        "digitalocean" -> "dns_digitalocean_token = ${effectiveApiToken}"
                         else -> ""
                     }
                     credsFile.writeText(credsContent)
@@ -214,10 +224,10 @@ class SSLServiceImpl(
                         )
                     } catch (e: Exception) {
                         logger.warn("Failed to set credentials file permissions on host, trying via container")
-                        executeCommand("${AppConfig.dockerCommand} exec docker-manager-proxy chmod 600 /etc/letsencrypt/dns-${host.dnsProvider}.ini")
+                        executeCommand("${AppConfig.dockerCommand} exec docker-manager-proxy chmod 600 /etc/letsencrypt/dns-${effectiveProvider}.ini")
                     }
 
-                    val containerCredsPath = "/etc/letsencrypt/dns-${host.dnsProvider}.ini"
+                    val containerCredsPath = "/etc/letsencrypt/dns-${effectiveProvider}.ini"
                     "${AppConfig.dockerCommand} exec docker-manager-proxy certbot certonly --${dnsPlugin} --${dnsPlugin}-credentials ${containerCredsPath} $domainsArg --non-interactive --agree-tos --email admin@$emailDomain"
                 }
             } else {
