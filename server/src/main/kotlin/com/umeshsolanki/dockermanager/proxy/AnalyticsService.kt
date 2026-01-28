@@ -387,6 +387,24 @@ class AnalyticsServiceImpl(
                             val reqParts = fullRequest.split(" ")
                             val method = reqParts.getOrNull(0) ?: "-"
                             val path = reqParts.getOrNull(1) ?: fullRequest
+
+                            // Filter 200 responses for .js and .css files
+                            if (status == 200) {
+                                val cleanPath = path.substringBefore('?')
+                                if (cleanPath.endsWith(".js", ignoreCase = true) ||
+                                    cleanPath.endsWith(".css", ignoreCase = true)) {
+                                    return@let
+                                }
+                            }
+
+                            // Filter failures (>= 400) for .ico files
+                            if (status >= 400) {
+                                val cleanPath = path.substringBefore('?')
+                                if (cleanPath.endsWith(".ico", ignoreCase = true)) {
+                                    return@let
+                                }
+                            }
+
                             val domain = if (referer != "-") try {
                                 java.net.URI(referer).host
                             } catch (e: Exception) {
@@ -756,6 +774,24 @@ class AnalyticsServiceImpl(
                                     val reqParts = fullRequest.split(" ")
                                     val method = reqParts.getOrNull(0) ?: "-"
                                     val path = reqParts.getOrNull(1) ?: fullRequest
+
+                                    // Filter 200 responses for .js and .css files
+                                    if (status == 200) {
+                                        val cleanPath = path.substringBefore('?')
+                                        if (cleanPath.endsWith(".js", ignoreCase = true) ||
+                                            cleanPath.endsWith(".css", ignoreCase = true)) {
+                                            return@let
+                                        }
+                                    }
+
+                                    // Filter failures (>= 400) for .ico files
+                                    if (status >= 400) {
+                                        val cleanPath = path.substringBefore('?')
+                                        if (cleanPath.endsWith(".ico", ignoreCase = true)) {
+                                            return@let
+                                        }
+                                    }
+
                                     val domain = if (referer != "-") try {
                                         java.net.URI(referer).host
                                     } catch (e: Exception) {

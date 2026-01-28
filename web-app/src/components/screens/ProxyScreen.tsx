@@ -143,92 +143,91 @@ export default function ProxyScreen() {
                                 placeholder="Search domains or targets..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full bg-surface/50 border border-outline/10 rounded-xl py-2.5 pl-10 pr-4 text-xs text-on-surface focus:outline-none focus:border-primary/50 transition-all"
+                                className="w-full bg-surface/50 border border-outline/10 rounded-xl py-2.5 pl-10 pr-4 text-xs text-on-surface focus:outline-none focus:border-primary/50 transition-all font-medium placeholder:font-normal"
                             />
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                             {filteredHosts.map(host => (
-                                <div key={host.id} className="bg-surface/40 backdrop-blur-md border border-outline/10 rounded-2xl p-4 hover:border-primary/20 transition-all group relative overflow-hidden">
-                                    <div className="flex flex-col gap-3">
-                                        <div className="flex items-start justify-between gap-3">
+                                <div key={host.id} className="bg-surface/60 backdrop-blur-md border border-outline/10 rounded-2xl p-0 hover:border-primary/20 hover:shadow-lg transition-all group relative overflow-hidden flex flex-col">
+                                    <div className={`absolute top-0 left-0 w-1 h-full ${host.enabled ? 'bg-green-500' : 'bg-on-surface-variant/20'}`} />
+
+                                    <div className="p-4 flex-1">
+                                        <div className="flex items-start justify-between gap-3 mb-3">
                                             <div className="flex gap-3 min-w-0">
-                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 duration-300 ${host.enabled ? 'bg-primary/10 text-primary' : 'bg-on-surface/5 text-on-surface-variant'}`}>
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 duration-300 shadow-inner ${host.enabled ? 'bg-primary/10 text-primary' : 'bg-on-surface/5 text-on-surface-variant'}`}>
                                                     <Globe size={18} />
                                                 </div>
-                                                <div className="min-w-0 pt-0.5">
-                                                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                                                        <h3 className="text-sm font-bold truncate tracking-tight">{host.domain}</h3>
-                                                        <div className="flex gap-1 shrink-0">
-                                                            {!host.enabled && <span className="text-[8px] bg-red-500/10 text-red-500 px-1 py-0.5 rounded font-black uppercase tracking-wider">OFF</span>}
-                                                            {host.ssl && <span className="text-[8px] bg-green-500/10 text-green-500 px-1 py-0.5 rounded font-black uppercase tracking-wider flex items-center gap-0.5"><Lock size={8} /> SSL</span>}
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-1.5 text-on-surface-variant/60 text-[10px] font-mono truncate">
-                                                        <ExternalLink size={10} className="shrink-0 opacity-40" />
-                                                        <span className="truncate">{host.target}</span>
+                                                <div className="min-w-0 flex flex-col justify-center">
+                                                    <h3 className="text-sm font-black truncate tracking-tight text-on-surface">{host.domain}</h3>
+                                                    <div className="flex items-center gap-1.5 text-on-surface-variant/70 text-[10px] font-mono truncate mt-0.5">
+                                                        <span className="text-primary/60">→</span>
+                                                        <span className="truncate hover:text-primary transition-colors cursor-pointer" title={host.target}>{host.target}</span>
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div className={`w-1.5 h-1.5 rounded-full mt-2 ${host.enabled ? 'bg-green-500' : 'bg-red-500'}`} />
+                                            <div className="flex flex-col gap-1 items-end">
+                                                {host.ssl && <span className="text-[9px] text-green-500 font-bold bg-green-500/10 px-1.5 py-0.5 rounded-md flex items-center gap-1"><Lock size={8} /> SSL</span>}
+                                            </div>
                                         </div>
 
-                                        <div className="flex flex-wrap gap-1 items-center">
-                                            {host.hstsEnabled && <span className="text-[8px] bg-purple-500/10 text-purple-500 px-1.5 py-0.5 rounded font-bold uppercase">HSTS</span>}
-                                            {host.websocketEnabled && <span className="text-[8px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-bold uppercase">WS</span>}
+                                        <div className="flex flex-wrap gap-1.5 mb-4">
+                                            {!host.enabled && <span className="text-[9px] bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider border border-red-500/10">Disabled</span>}
+                                            {host.hstsEnabled && <span className="text-[9px] bg-purple-500/10 text-purple-500 px-1.5 py-0.5 rounded-md font-bold uppercase border border-purple-500/10">HSTS</span>}
+                                            {host.websocketEnabled && <span className="text-[9px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded-md font-bold uppercase border border-blue-500/10">WS</span>}
                                             {host.allowedIps && host.allowedIps.length > 0 && (
-                                                <span className="text-[8px] bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1">
+                                                <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded-md font-bold uppercase flex items-center gap-1 border border-amber-500/10">
                                                     <ShieldCheck size={10} /> {host.allowedIps.length} IPS
                                                 </span>
                                             )}
                                             {host.paths && host.paths.length > 0 && (
-                                                <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1 ${host.paths.filter(p => p.enabled !== false).length === host.paths.length
-                                                    ? 'bg-indigo-500/10 text-indigo-500'
-                                                    : 'bg-orange-500/10 text-orange-500'
+                                                <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase flex items-center gap-1 border ${host.paths.filter(p => p.enabled !== false).length === host.paths.length
+                                                    ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/10'
+                                                    : 'bg-orange-500/10 text-orange-500 border-orange-500/10'
                                                     }`}>
                                                     <Layers size={10} />
-                                                    {host.paths.filter(p => p.enabled !== false).length}/{host.paths.length} PATHS
+                                                    {host.paths.filter(p => p.enabled !== false).length} Rules
                                                 </span>
                                             )}
                                         </div>
+                                    </div>
 
-                                        <div className="flex items-center justify-between pt-2 border-t border-outline/5 mt-auto">
-                                            <div className="flex gap-0.5">
-                                                <button
-                                                    onClick={() => setEditingHost(host)}
-                                                    className="p-2 text-on-surface-variant hover:text-blue-500 hover:bg-blue-500/5 rounded-lg transition-all active:scale-95"
-                                                    title="Edit"
-                                                >
-                                                    <Pencil size={15} />
-                                                </button>
-                                                {!host.ssl && host.enabled && (
-                                                    <button
-                                                        onClick={() => handleRequestSSL(host.id)}
-                                                        className="p-2 text-primary hover:bg-primary/5 rounded-lg transition-all active:scale-95"
-                                                        title="Request SSL"
-                                                    >
-                                                        <ShieldCheck size={15} />
-                                                    </button>
-                                                )}
-                                                <button
-                                                    onClick={() => handleDelete(host.id)}
-                                                    className="p-2 text-on-surface-variant hover:text-red-500 hover:bg-red-500/5 rounded-lg transition-all active:scale-95"
-                                                    title="Delete"
-                                                >
-                                                    <Trash2 size={15} />
-                                                </button>
-                                            </div>
-
+                                    <div className="flex items-center justify-between p-2 bg-black/20 border-t border-outline/5 mt-auto mb-0">
+                                        <div className="flex gap-1">
                                             <button
-                                                onClick={() => handleToggle(host.id)}
-                                                className={`flex items-center gap-1.5 pr-3 pl-2 py-1 rounded-xl transition-all font-bold text-[10px] active:scale-95 ${host.enabled
-                                                    ? 'bg-green-500/15 text-green-500 border border-green-500/10'
-                                                    : 'bg-on-surface/5 text-on-surface-variant border border-on-surface/10'}`}
+                                                onClick={() => setEditingHost(host)}
+                                                className="p-1.5 text-on-surface-variant hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-all active:scale-95"
+                                                title="Edit"
                                             >
-                                                <Power size={12} className={host.enabled ? 'animate-pulse' : ''} />
-                                                <span>{host.enabled ? 'Enabled' : 'Disabled'}</span>
+                                                <Pencil size={14} />
+                                            </button>
+                                            {!host.ssl && host.enabled && (
+                                                <button
+                                                    onClick={() => handleRequestSSL(host.id)}
+                                                    className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-all active:scale-95"
+                                                    title="Request SSL"
+                                                >
+                                                    <ShieldCheck size={14} />
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => handleDelete(host.id)}
+                                                className="p-1.5 text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all active:scale-95"
+                                                title="Delete"
+                                            >
+                                                <Trash2 size={14} />
                                             </button>
                                         </div>
+
+                                        <button
+                                            onClick={() => handleToggle(host.id)}
+                                            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all font-bold text-[10px] active:scale-95 ${host.enabled
+                                                ? 'bg-green-500/10 text-green-500 hover:bg-green-500/20'
+                                                : 'bg-on-surface/5 text-on-surface-variant hover:bg-on-surface/10'}`}
+                                        >
+                                            <Power size={10} className={host.enabled ? 'text-green-500' : ''} />
+                                            <span>{host.enabled ? 'ON' : 'OFF'}</span>
+                                        </button>
                                     </div>
                                 </div>
                             ))}
@@ -244,161 +243,142 @@ export default function ProxyScreen() {
                 )}
 
                 {activeTab === 'container' && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        {/* Container Management Card */}
-                        <div className="bg-gradient-to-br from-primary/10 to-secondary/10 border border-primary/20 rounded-2xl p-6 shadow-lg overflow-hidden relative">
-                            {/* ... (existing content) ... */}
-                            {/* Keep existing container management content here. I will just insert the section at the bottom of THIS card or a new card */}
-                            <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
-                                <Server size={120} />
+                    <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        {/* Compact Container Management Card */}
+                        <div className="bg-surface/40 backdrop-blur-sm border border-outline/10 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-4 opacity-[0.03] pointer-events-none">
+                                <Server size={100} />
                             </div>
 
-                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 mb-8 relative z-10">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center shadow-xl backdrop-blur-md border border-white/20 relative">
-                                        <Server size={30} className="text-primary" />
+                            <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-4 relative z-10">
+                                <div className="flex items-center gap-3 w-full md:w-auto">
+                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center shadow-inner border border-white/10 relative shrink-0">
+                                        <Server size={20} className="text-primary" />
                                         {containerStatus?.running && (
-                                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-surface animate-pulse" />
+                                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-surface animate-pulse" />
                                         )}
                                     </div>
                                     <div>
-                                        <h2 className="text-2xl font-black tracking-tight">Proxy Engine</h2>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/60">OpenResty Gateway</span>
+                                        <h2 className="text-lg font-bold text-on-surface">Proxy Engine</h2>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-medium text-on-surface-variant">OpenResty Gateway</span>
                                             <span className="w-1 h-1 rounded-full bg-on-surface-variant/30" />
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-primary">v1.21.x</span>
+                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${containerStatus?.running ? 'text-green-500' : 'text-on-surface-variant'}`}>
+                                                {containerStatus?.running ? 'Active' : 'Stopped'}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
-                                {containerStatus && (
-                                    <div className={`px-5 py-2.5 rounded-2xl font-black text-xs flex items-center gap-3 shadow-lg backdrop-blur-xl border transition-all ${containerStatus.running
-                                        ? 'bg-green-500/15 text-green-500 border-green-500/30'
-                                        : containerStatus.exists
-                                            ? 'bg-orange-500/15 text-orange-500 border-orange-500/30'
-                                            : 'bg-red-500/15 text-red-500 border-red-500/30'
-                                        }`}>
-                                        <div className={`w-2.5 h-2.5 rounded-full ${containerStatus.running ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.6)] animate-pulse' : 'bg-current'
-                                            }`} />
-                                        <span className="tracking-widest">{containerStatus.running ? 'SYSTEM RUNNING' : containerStatus.exists ? 'SYSTEM STOPPED' : 'NOT INITIALIZED'}</span>
-                                    </div>
-                                )}
+
+                                <div className="flex flex-wrap gap-2 w-full md:w-auto justify-end">
+                                    {[
+                                        { label: 'Start', icon: <Activity size={14} />, action: () => DockerClient.startProxyContainer(), color: 'bg-green-500/10 text-green-500 hover:bg-green-500/20 border-green-500/10', disabled: !containerStatus?.exists || containerStatus?.running },
+                                        { label: 'Stop', icon: <Power size={14} />, action: () => DockerClient.stopProxyContainer(), color: 'bg-red-500/10 text-red-500 hover:bg-red-500/20 border-red-500/10', disabled: !containerStatus?.running },
+                                        { label: 'Restart', icon: <RefreshCw size={14} />, action: () => DockerClient.restartProxyContainer(), color: 'bg-orange-500/10 text-orange-500 hover:bg-orange-500/20 border-orange-500/10', disabled: !containerStatus?.running },
+                                    ].map((btn, i) => (
+                                        <button
+                                            key={i}
+                                            onClick={async () => {
+                                                setIsContainerActionLoading(true);
+                                                const result = await btn.action();
+                                                if (result.success) {
+                                                    toast.success(result.message || 'Success');
+                                                    setTimeout(fetchContainerStatus, 1000);
+                                                } else {
+                                                    toast.error(result.message || 'Failed');
+                                                }
+                                                setIsContainerActionLoading(false);
+                                            }}
+                                            disabled={isContainerActionLoading || btn.disabled}
+                                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed ${btn.color}`}
+                                        >
+                                            {btn.icon}
+                                            {btn.label}
+                                        </button>
+                                    ))}
+
+                                    <button
+                                        onClick={() => setIsComposeModalOpen(true)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline/10 bg-surface text-on-surface-variant hover:text-primary hover:bg-white/5 text-[10px] font-bold uppercase tracking-wider transition-all"
+                                    >
+                                        <Pencil size={14} />
+                                        Config
+                                    </button>
+                                </div>
                             </div>
 
                             {containerStatus && (
-                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
                                     {[
-                                        { label: 'Infrastructure', value: containerStatus.exists ? 'Deployed' : 'Missing', color: containerStatus.exists ? 'text-green-500' : 'text-red-500', icon: <Layers size={14} /> },
-                                        { label: 'Docker Image', value: containerStatus.imageExists ? 'Available' : 'Missing', color: containerStatus.imageExists ? 'text-green-500' : 'text-red-500', icon: <Database size={14} /> },
-                                        { label: 'Lifecycle', value: containerStatus.status, color: 'text-primary', icon: <Activity size={14} /> },
-                                        { label: 'System ID', value: containerStatus.containerId?.substring(0, 12) || 'N/A', color: 'text-on-surface', icon: <FileKey size={14} /> }
+                                        { label: 'Status', value: containerStatus.exists ? 'Installed' : 'Missing', color: containerStatus.exists ? 'text-green-500' : 'text-red-500', icon: <Layers size={12} /> },
+                                        { label: 'Image', value: containerStatus.imageExists ? 'Ready' : 'Pull Needed', color: containerStatus.imageExists ? 'text-green-500' : 'text-orange-500', icon: <Database size={12} /> },
+                                        { label: 'State', value: containerStatus.status || 'Unknown', color: 'text-primary', icon: <Activity size={12} /> },
+                                        { label: 'ID', value: containerStatus.containerId?.substring(0, 8) || '-', color: 'text-on-surface-variant', icon: <FileKey size={12} /> }
                                     ].map((stat, i) => (
-                                        <div key={i} className="bg-surface/40 backdrop-blur-md rounded-2xl p-4 border border-white/5 shadow-sm group hover:border-primary/30 transition-all">
-                                            <div className="flex items-center gap-2 text-[10px] text-on-surface-variant/70 uppercase font-black mb-2 tracking-widest">
-                                                {stat.icon}
-                                                <span>{stat.label}</span>
+                                        <div key={i} className="bg-black/20 rounded-xl p-2.5 border border-white/5 flex items-center justify-between group">
+                                            <div className="flex items-center gap-2">
+                                                <div className="text-on-surface-variant/50">{stat.icon}</div>
+                                                <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">{stat.label}</span>
                                             </div>
-                                            <div className={`text-sm font-black font-mono tracking-tight ${stat.color}`}>{stat.value}</div>
+                                            <span className={`text-[10px] font-bold font-mono ${stat.color}`}>{stat.value}</span>
                                         </div>
                                     ))}
                                 </div>
                             )}
 
-                            <div className="flex flex-wrap gap-3 mb-6">
-                                {[
-                                    { label: 'Build', icon: <Activity className="rotate-90" />, action: () => DockerClient.buildProxyImage(), color: 'bg-surface/50 hover:bg-surface-variant border-outline/20 text-on-surface' },
-                                    { label: 'Create', icon: <Plus />, action: () => DockerClient.createProxyContainer(), color: 'bg-surface/50 hover:bg-surface-variant border-outline/20 text-on-surface', disabled: !containerStatus?.imageExists },
-                                    { label: 'Start', icon: <Activity />, action: () => DockerClient.startProxyContainer(), color: 'bg-green-500 hover:bg-green-600 text-white shadow-green-500/20', disabled: !containerStatus?.exists || containerStatus?.running },
-                                    { label: 'Stop', icon: <Power />, action: () => DockerClient.stopProxyContainer(), color: 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/20', disabled: !containerStatus?.running },
-                                    { label: 'Restart', icon: <RefreshCw />, action: () => DockerClient.restartProxyContainer(), color: 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/20', disabled: !containerStatus?.running },
-                                ].map((btn, i) => (
-                                    <button
-                                        key={i}
-                                        onClick={async () => {
-                                            setIsContainerActionLoading(true);
-                                            const result = await btn.action();
-                                            if (result.success) {
-                                                toast.success(`${btn.label} successful`);
-                                                setTimeout(fetchContainerStatus, 1000);
-                                            } else {
-                                                toast.error(result.message || `Failed to ${btn.label.toLowerCase()}`);
-                                            }
-                                            setIsContainerActionLoading(false);
-                                        }}
-                                        disabled={isContainerActionLoading || btn.disabled}
-                                        className={`inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl transition-all shadow-lg active:scale-95 border font-black text-[10px] uppercase tracking-widest disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed flex-1 sm:flex-initial ${btn.color}`}
-                                    >
-                                        <span className="shrink-0">{btn.icon}</span>
-                                        <span>{btn.label}</span>
-                                    </button>
-                                ))}
-                            </div>
-
-                            <div className="flex flex-col sm:flex-row items-center gap-3 mb-4">
+                            <div className="flex gap-2">
                                 <button
                                     onClick={async () => {
                                         setIsContainerActionLoading(true);
-                                        toast.promise(
-                                            DockerClient.ensureProxyContainer(),
-                                            {
-                                                loading: 'Initializing proxy infrastructure...',
-                                                success: (result) => {
-                                                    setTimeout(fetchContainerStatus, 1500);
-                                                    return result.message || 'Infrastructure synchronized!';
-                                                },
-                                                error: (err) => err.message || 'Synchronization failed'
-                                            }
-                                        );
+                                        const res = await DockerClient.ensureProxyContainer();
+                                        if (res.success) {
+                                            toast.success('Synced');
+                                            setTimeout(fetchContainerStatus, 1500);
+                                        } else {
+                                            toast.error(res.message);
+                                        }
                                         setIsContainerActionLoading(false);
                                     }}
                                     disabled={isContainerActionLoading}
-                                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-on-primary px-5 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-lg active:scale-[0.98] disabled:opacity-50"
+                                    className="w-full bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
                                 >
-                                    <Activity size={18} />
-                                    <span>Sync Infrastructure</span>
-                                </button>
-                                <button
-                                    onClick={() => setIsComposeModalOpen(true)}
-                                    className="inline-flex items-center gap-2 text-xs font-semibold text-on-surface-variant hover:text-primary px-4 py-2.5 rounded-xl hover:bg-white/5 transition-all border border-outline/10"
-                                >
-                                    <Pencil size={14} />
-                                    <span>Edit Compose</span>
+                                    <Activity size={14} />
+                                    Full Sync / Install
                                 </button>
                             </div>
                         </div>
 
-                        {/* Configuration & Behavior */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg">
-                                <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                                    <ShieldCheck className="text-green-500" size={20} />
-                                    <span>Default Behavior</span>
-                                </h3>
-                                <p className="text-sm text-on-surface-variant mb-4">
-                                    Configure how the proxy handles requests that don't match any defined host.
-                                </p>
-                                <DefaultBehaviorToggle />
+                        {/* Configuration & Networking Compact */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            <div className="bg-surface/40 border border-outline/10 rounded-2xl p-4 shadow-sm flex flex-col justify-center">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h3 className="text-sm font-bold flex items-center gap-2 text-on-surface">
+                                        <ShieldCheck className="text-green-500" size={16} />
+                                        <span>Default Route</span>
+                                    </h3>
+                                    <span className="text-[10px] text-on-surface-variant bg-white/5 px-2 py-0.5 rounded-full">fallback behavior</span>
+                                </div>
+                                <div className="scale-95 origin-top-left w-full">
+                                    <DefaultBehaviorToggle />
+                                </div>
                             </div>
 
-                            {/* Information Guide */}
-                            <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg">
-                                <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                                    <Network className="text-primary" size={20} />
-                                    <span>Network Topology</span>
+                            <div className="bg-surface/40 border border-outline/10 rounded-2xl p-4 shadow-sm">
+                                <h3 className="text-sm font-bold mb-3 flex items-center gap-2 text-on-surface">
+                                    <Network className="text-primary" size={16} />
+                                    <span>Ports & Storage</span>
                                 </h3>
-                                <div className="space-y-3 text-sm text-on-surface-variant">
-                                    <div className="p-3.5 bg-primary/5 rounded-xl border border-primary/10">
-                                        <div className="flex justify-between items-center mb-1.5">
-                                            <span className="font-semibold text-primary text-sm">Inbound (WAN)</span>
-                                            <span className="text-[10px] font-mono bg-white/5 px-2 py-0.5 rounded">80, 443</span>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="p-2.5 bg-black/20 rounded-xl border border-white/5">
+                                        <span className="block text-[9px] font-black text-on-surface-variant uppercase tracking-wider mb-1">Public Ports</span>
+                                        <div className="flex gap-1.5">
+                                            <span className="text-[10px] font-mono font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded">80</span>
+                                            <span className="text-[10px] font-mono font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded">443</span>
                                         </div>
-                                        <p className="text-xs leading-relaxed">Traffic enters through the proxy container and is routed to internal targets based on the Host header.</p>
                                     </div>
-                                    <div className="p-3.5 bg-secondary/5 rounded-xl border border-secondary/10">
-                                        <div className="flex justify-between items-center mb-1.5">
-                                            <span className="font-semibold text-secondary text-sm">Local Storage</span>
-                                            <span className="text-[10px] font-mono bg-white/5 px-2 py-0.5 rounded">data/nginx</span>
-                                        </div>
-                                        <p className="text-xs leading-relaxed">Configurations and logs are persisted locally for easy access and backup.</p>
+                                    <div className="p-2.5 bg-black/20 rounded-xl border border-white/5">
+                                        <span className="block text-[9px] font-black text-on-surface-variant uppercase tracking-wider mb-1">Data Vol</span>
+                                        <span className="text-[10px] font-mono font-bold text-on-surface truncate block" title="data/nginx">data/nginx</span>
                                     </div>
                                 </div>
                             </div>
