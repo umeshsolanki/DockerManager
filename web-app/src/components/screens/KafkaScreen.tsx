@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import {
     Zap, RefreshCw, Plus, Trash2, Search,
     MessageSquare, List, Info, AlertTriangle,
-    Eye, ChevronRight, Clock, Hash
+    Eye, ChevronRight, Clock, Hash, Copy, Check
 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { KafkaTopicInfo, KafkaMessage } from '@/lib/types';
@@ -23,6 +23,12 @@ export default function KafkaScreen() {
     const [newTopicPartitions, setNewTopicPartitions] = useState(1);
     const [newTopicReplication, setNewTopicReplication] = useState(1);
     const [isCreating, setIsCreating] = useState(false);
+
+    // Filtering & Processing state
+    const [topicSearchQuery, setTopicSearchQuery] = useState('');
+    const [messageSearchQuery, setMessageSearchQuery] = useState('');
+    const [partitionFilter, setPartitionFilter] = useState<number | null>(null);
+    const [autoFormatJson, setAutoFormatJson] = useState(true);
 
     const fetchTopics = async () => {
         setLoading(true);
@@ -94,6 +100,38 @@ export default function KafkaScreen() {
         }
     };
 
+    const formatMessageValue = (value: string) => {
+        if (!autoFormatJson) return value;
+        try {
+            const parsed = JSON.parse(value);
+            return JSON.stringify(parsed, null, 2);
+        } catch (e) {
+            return value;
+        }
+    };
+
+    const filteredTopics = topics.filter(t =>
+        t.name.toLowerCase().includes(topicSearchQuery.toLowerCase())
+    );
+
+    const filteredMessages = messages.filter(msg => {
+        const matchesFilter = partitionFilter === null || msg.partition === partitionFilter;
+        const matchesSearch = messageSearchQuery === '' ||
+            msg.value.toLowerCase().includes(messageSearchQuery.toLowerCase()) ||
+            (msg.key?.toLowerCase().includes(messageSearchQuery.toLowerCase()) || false);
+        return matchesFilter && matchesSearch;
+    });
+
+    const uniquePartitions = Array.from(new Set(messages.map(m => m.partition))).sort((a, b) => a - b);
+
+    const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+
+    const handleCopy = (text: string, index: number) => {
+        navigator.clipboard.writeText(text);
+        setCopiedIndex(index);
+        setTimeout(() => setCopiedIndex(null), 2000);
+    };
+
     return (
         <div className="flex flex-col h-full overflow-hidden pb-4">
             <div className="flex items-center justify-between mb-4">
@@ -137,6 +175,8 @@ export default function KafkaScreen() {
                             <input
                                 type="text"
                                 placeholder="Search topics..."
+                                value={topicSearchQuery}
+                                onChange={(e) => setTopicSearchQuery(e.target.value)}
                                 className="w-full bg-surface border border-outline/20 rounded-lg py-1.5 pl-9 pr-3 text-xs focus:outline-none focus:border-primary transition-all"
                             />
                         </div>
@@ -147,13 +187,13 @@ export default function KafkaScreen() {
                             Array(5).fill(0).map((_, i) => (
                                 <div key={i} className="h-12 bg-surface animate-pulse rounded-lg" />
                             ))
-                        ) : topics.length === 0 ? (
+                        ) : filteredTopics.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-12 text-center">
                                 <AlertTriangle size={32} className="text-on-surface-variant/30 mb-2" />
-                                <p className="text-xs text-on-surface-variant italic">No topics found</p>
+                                <p className="text-xs text-on-surface-variant italic">No matches found</p>
                             </div>
                         ) : (
-                            topics.map((topic) => (
+                            filteredTopics.map((topic) => (
                                 <button
                                     key={topic.name}
                                     onClick={() => {
@@ -161,8 +201,8 @@ export default function KafkaScreen() {
                                         fetchMessages(topic.name);
                                     }}
                                     className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${selectedTopic === topic.name
-                                            ? 'bg-primary text-primary-foreground shadow-md'
-                                            : 'hover:bg-surface text-on-surface'
+                                        ? 'bg-primary text-primary-foreground shadow-md'
+                                        : 'hover:bg-surface text-on-surface'
                                         }`}
                                 >
                                     <div className="flex items-center gap-3 overflow-hidden">
@@ -226,6 +266,48 @@ export default function KafkaScreen() {
                                 <div className="flex items-center gap-2 mb-4">
                                     <MessageSquare size={16} className="text-primary" />
                                     <h3 className="text-sm font-bold uppercase tracking-wider">Recent Messages</h3>
+
+                                    <div className="flex-1 px-4">
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={14} />
+                                            <input
+                                                type="text"
+                                                placeholder="Filter messages..."
+                                                value={messageSearchQuery}
+                                                onChange={(e) => setMessageSearchQuery(e.target.value)}
+                                                className="w-full bg-surface/50 border border-outline/10 rounded-xl py-1.5 pl-9 pr-3 text-xs focus:outline-none focus:border-primary transition-all"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => setAutoFormatJson(!autoFormatJson)}
+                                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase border transition-all ${autoFormatJson ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-surface border-outline/10 text-on-surface-variant'}`}
+                                        >
+                                            JSON Auto-Format
+                                        </button>
+
+                                        {uniquePartitions.length > 1 && (
+                                            <div className="flex items-center gap-1 bg-surface/50 border border-outline/10 rounded-lg p-1">
+                                                <button
+                                                    onClick={() => setPartitionFilter(null)}
+                                                    className={`px-2 py-1 rounded text-[10px] font-bold ${partitionFilter === null ? 'bg-primary text-primary-foreground' : 'hover:bg-primary/10 text-on-surface-variant'}`}
+                                                >
+                                                    ALL P
+                                                </button>
+                                                {uniquePartitions.map(p => (
+                                                    <button
+                                                        key={p}
+                                                        onClick={() => setPartitionFilter(p)}
+                                                        className={`px-2 py-1 rounded text-[10px] font-bold ${partitionFilter === p ? 'bg-primary text-primary-foreground' : 'hover:bg-primary/10 text-on-surface-variant'}`}
+                                                    >
+                                                        P{p}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {loadingMessages ? (
@@ -234,15 +316,15 @@ export default function KafkaScreen() {
                                             <div key={i} className="h-24 bg-surface animate-pulse rounded-2xl" />
                                         ))}
                                     </div>
-                                ) : messages.length === 0 ? (
+                                ) : filteredMessages.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center py-24 text-center border border-outline/10 border-dashed rounded-2xl bg-surface/20">
-                                        <MessageSquare size={48} className="text-on-surface-variant/20 mb-4" />
-                                        <p className="text-sm font-medium">No messages found in this topic</p>
-                                        <p className="text-xs text-on-surface-variant mt-1">Try sending some data or check the offset settings.</p>
+                                        <Search size={48} className="text-on-surface-variant/20 mb-4" />
+                                        <p className="text-sm font-medium">No messages matching your filters</p>
+                                        <p className="text-xs text-on-surface-variant mt-1">Try changing your search query or partition filter.</p>
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
-                                        {messages.map((msg, i) => (
+                                        {filteredMessages.map((msg, i) => (
                                             <div key={i} className="bg-surface/80 border border-outline/10 rounded-2xl overflow-hidden shadow-sm hover:border-primary/30 transition-all group">
                                                 <div className="px-4 py-2 bg-surface flex items-center justify-between text-[11px] font-medium text-on-surface-variant">
                                                     <div className="flex items-center gap-3">
@@ -262,10 +344,19 @@ export default function KafkaScreen() {
                                                             </code>
                                                         </div>
                                                     )}
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-[10px] font-bold text-primary uppercase tracking-tight mb-1">Payload</p>
-                                                        <pre className="text-[11px] font-mono bg-on-surface/5 p-3 rounded-lg border border-outline/5 overflow-x-auto custom-scrollbar leading-relaxed">
-                                                            {msg.value}
+                                                    <div className="flex-1 min-w-0 flex flex-col">
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <p className="text-[10px] font-bold text-primary uppercase tracking-tight">Payload</p>
+                                                            <button
+                                                                onClick={() => handleCopy(msg.value, i)}
+                                                                className="p-1 hover:bg-primary/10 rounded transition-all text-on-surface-variant hover:text-primary"
+                                                                title="Copy payload"
+                                                            >
+                                                                {copiedIndex === i ? <Check size={12} /> : <Copy size={12} />}
+                                                            </button>
+                                                        </div>
+                                                        <pre className="text-[11px] font-mono bg-on-surface/5 p-3 rounded-lg border border-outline/5 overflow-x-auto custom-scrollbar leading-relaxed whitespace-pre-wrap flex-1">
+                                                            {formatMessageValue(msg.value)}
                                                         </pre>
                                                     </div>
                                                 </div>

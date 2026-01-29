@@ -59,6 +59,7 @@ val DEFAULT_PROXY_JAIL_RULES = listOf(
 data class KafkaSettings(
     val enabled: Boolean = false,
     val bootstrapServers: String = "localhost:9092",
+    val adminHost: String = "localhost:9092",
     val topic: String = "ip-blocking-requests",
     val groupId: String = "docker-manager-jailer"
 )

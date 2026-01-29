@@ -480,6 +480,7 @@ export interface UpdateEmailUserPasswordRequest {
 export interface KafkaSettings {
   enabled: boolean;
   bootstrapServers: string;
+  adminHost: string;
   topic: string;
   groupId: string;
 }

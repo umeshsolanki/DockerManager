@@ -24,6 +24,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [dockerCliBuild, setDockerCliBuild] = useState(true);
     const [kafkaEnabled, setKafkaEnabled] = useState(false);
     const [kafkaBootstrap, setKafkaBootstrap] = useState('localhost:9092');
+    const [kafkaAdminHost, setKafkaAdminHost] = useState('localhost:9092');
     const [kafkaTopic, setKafkaTopic] = useState('ip-blocking-requests');
     const [kafkaGroupId, setKafkaGroupId] = useState('docker-manager-jailer');
     const [message, setMessage] = useState('');
@@ -65,6 +66,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 if (data.kafkaSettings) {
                     setKafkaEnabled(data.kafkaSettings.enabled);
                     setKafkaBootstrap(data.kafkaSettings.bootstrapServers);
+                    setKafkaAdminHost(data.kafkaSettings.adminHost);
                     setKafkaTopic(data.kafkaSettings.topic);
                     setKafkaGroupId(data.kafkaSettings.groupId);
                 }
@@ -106,6 +108,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 kafkaSettings: {
                     enabled: kafkaEnabled,
                     bootstrapServers: kafkaBootstrap,
+                    adminHost: kafkaAdminHost,
                     topic: kafkaTopic,
                     groupId: kafkaGroupId
                 }
@@ -1006,11 +1009,22 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-xs font-semibold text-on-surface-variant px-1">Bootstrap Servers</label>
+                                    <label className="text-xs font-semibold text-on-surface-variant px-1">Bootstrap Servers (Consumer)</label>
                                     <input
                                         type="text"
                                         value={kafkaBootstrap}
                                         onChange={(e) => setKafkaBootstrap(e.target.value)}
+                                        placeholder="localhost:9092"
+                                        className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-xs font-semibold text-on-surface-variant px-1">Admin/Controller Host</label>
+                                    <input
+                                        type="text"
+                                        value={kafkaAdminHost}
+                                        onChange={(e) => setKafkaAdminHost(e.target.value)}
                                         placeholder="localhost:9092"
                                         className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
                                     />

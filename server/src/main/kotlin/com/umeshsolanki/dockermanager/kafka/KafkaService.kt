@@ -129,7 +129,7 @@ class KafkaServiceImpl(
     private fun getAdminClient(): AdminClient {
         val settings = AppConfig.settings.kafkaSettings
         val props = Properties()
-        props[AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG] = settings.bootstrapServers
+        props[AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG] = settings.adminHost
         props[AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG] = 5000
         props[AdminClientConfig.DEFAULT_API_TIMEOUT_MS_CONFIG] = 5000
         return AdminClient.create(props)
