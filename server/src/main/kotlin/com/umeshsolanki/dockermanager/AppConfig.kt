@@ -56,6 +56,14 @@ val DEFAULT_PROXY_JAIL_RULES = listOf(
 )
 
 @Serializable
+data class KafkaSettings(
+    val enabled: Boolean = false,
+    val bootstrapServers: String = "localhost:9092",
+    val topic: String = "ip-blocking-requests",
+    val groupId: String = "docker-manager-jailer"
+)
+
+@Serializable
 data class AppSettings(
     val dockerSocket: String = SystemConstants.DOCKER_SOCKET_DEFAULT,
     val jamesWebAdminUrl: String = NetworkConstants.JAMES_WEB_ADMIN_DEFAULT,
@@ -84,7 +92,10 @@ data class AppSettings(
 
     // Docker Build Settings
     val dockerBuildKit: Boolean = true,
-    val dockerCliBuild: Boolean = true
+    val dockerCliBuild: Boolean = true,
+
+    // Kafka Settings
+    val kafkaSettings: KafkaSettings = KafkaSettings()
 )
 
 object AppConfig {

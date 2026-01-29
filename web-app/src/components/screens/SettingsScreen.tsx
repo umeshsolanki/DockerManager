@@ -22,6 +22,10 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [jamesUrl, setJamesUrl] = useState('');
     const [dockerBuildKit, setDockerBuildKit] = useState(true);
     const [dockerCliBuild, setDockerCliBuild] = useState(true);
+    const [kafkaEnabled, setKafkaEnabled] = useState(false);
+    const [kafkaBootstrap, setKafkaBootstrap] = useState('localhost:9092');
+    const [kafkaTopic, setKafkaTopic] = useState('ip-blocking-requests');
+    const [kafkaGroupId, setKafkaGroupId] = useState('docker-manager-jailer');
     const [message, setMessage] = useState('');
     const [config, setConfig] = useState<SystemConfig | null>(null);
     const [loading, setLoading] = useState(false);
@@ -58,6 +62,12 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 setJamesUrl(data.jamesWebAdminUrl);
                 setDockerBuildKit(data.dockerBuildKit);
                 setDockerCliBuild(data.dockerCliBuild);
+                if (data.kafkaSettings) {
+                    setKafkaEnabled(data.kafkaSettings.enabled);
+                    setKafkaBootstrap(data.kafkaSettings.bootstrapServers);
+                    setKafkaTopic(data.kafkaSettings.topic);
+                    setKafkaGroupId(data.kafkaSettings.groupId);
+                }
             }
 
             // Also fetch IP ranges count
@@ -92,7 +102,13 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 dockerSocket: dockerSocket,
                 jamesWebAdminUrl: jamesUrl,
                 dockerBuildKit: dockerBuildKit,
-                dockerCliBuild: dockerCliBuild
+                dockerCliBuild: dockerCliBuild,
+                kafkaSettings: {
+                    enabled: kafkaEnabled,
+                    bootstrapServers: kafkaBootstrap,
+                    topic: kafkaTopic,
+                    groupId: kafkaGroupId
+                }
             });
             if (result.success) {
                 setMessage('System settings updated successfully!');
@@ -318,6 +334,16 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 >
                     <Info size={16} />
                     <span>Info</span>
+                </button>
+                <button
+                    onClick={() => setActiveTab('kafka' as any)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-t-xl text-xs font-semibold transition-all whitespace-nowrap ${activeTab === 'kafka' as any
+                        ? 'bg-primary text-primary-foreground shadow-md border-b-2 border-primary'
+                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
+                        }`}
+                >
+                    <RefreshCw size={16} />
+                    <span>Kafka</span>
                 </button>
             </div>
 
@@ -945,6 +971,109 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                 <div className="p-4 bg-surface/80 rounded-xl border border-outline/5 flex items-center justify-between">
                                     <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Server</p>
                                     <p className="text-sm font-mono font-bold text-on-surface">{config ? `v${config.appVersion}` : 'Checking...'}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'kafka' as any && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        {/* Kafka Configuration */}
+                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="p-3 bg-blue-500/10 rounded-xl text-blue-500">
+                                    <RefreshCw size={20} />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-bold">Kafka Integration</h2>
+                                    <p className="text-xs text-on-surface-variant mt-0.5">External IP blocking requests</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5">
+                                    <div className="flex-1 pr-4">
+                                        <p className="text-sm font-bold text-on-surface">Enable Consumer</p>
+                                        <p className="text-xs text-on-surface-variant leading-relaxed">Listen for IP blocking requests from other apps</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setKafkaEnabled(!kafkaEnabled)}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 flex-shrink-0 ${kafkaEnabled ? 'bg-primary' : 'bg-surface border border-outline/30'}`}
+                                    >
+                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${kafkaEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                                    </button>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-xs font-semibold text-on-surface-variant px-1">Bootstrap Servers</label>
+                                    <input
+                                        type="text"
+                                        value={kafkaBootstrap}
+                                        onChange={(e) => setKafkaBootstrap(e.target.value)}
+                                        placeholder="localhost:9092"
+                                        className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-xs font-semibold text-on-surface-variant px-1">Topic Name</label>
+                                    <input
+                                        type="text"
+                                        value={kafkaTopic}
+                                        onChange={(e) => setKafkaTopic(e.target.value)}
+                                        placeholder="ip-blocking-requests"
+                                        className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-xs font-semibold text-on-surface-variant px-1">Group ID</label>
+                                    <input
+                                        type="text"
+                                        value={kafkaGroupId}
+                                        onChange={(e) => setKafkaGroupId(e.target.value)}
+                                        placeholder="docker-manager-jailer"
+                                        className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-sm"
+                                    />
+                                </div>
+
+                                <button
+                                    onClick={handleSaveSystem}
+                                    disabled={saving || loading}
+                                    className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition-all active:scale-[0.98] shadow-md shadow-primary/20 disabled:opacity-50 text-sm mt-2"
+                                >
+                                    {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
+                                    <span>Save Kafka Settings</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-6 shadow-lg backdrop-blur-sm">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="p-3 bg-primary/10 rounded-xl text-primary">
+                                    <Info size={20} />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-bold">Message Format</h2>
+                                    <p className="text-xs text-on-surface-variant mt-0.5">JSON payload structure</p>
+                                </div>
+                            </div>
+                            <div className="space-y-4">
+                                <p className="text-sm text-on-surface leading-relaxed">
+                                    Your external apps should publish JSON messages to the specified topic in the following format:
+                                </p>
+                                <pre className="p-4 bg-black/30 rounded-xl border border-white/5 font-mono text-[11px] text-blue-300 overflow-x-auto">
+                                    {`{
+  "ip": "1.2.3.4",
+  "durationMinutes": 30,
+  "reason": "Suspicious login attempt"
+}`}
+                                </pre>
+                                <div className="p-4 bg-surface/80 rounded-xl border border-outline/5">
+                                    <p className="text-xs text-on-surface leading-relaxed italic">
+                                        Note: Kafka consumer will auto-restart when settings are applied.
+                                    </p>
                                 </div>
                             </div>
                         </div>

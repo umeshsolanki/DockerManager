@@ -27,3 +27,14 @@ npm warn Unknown user config "email". This will stop working in the next major v
 ✓ Compiled in 1076ms
  GET /?screen=Proxy 200 in 226ms (compile: 61ms, render: 165ms)
 ✓ Compiled in 225ms
+ GET /?screen=Proxy 200 in 197ms (compile: 51ms, render: 146ms)
+ GET /?screen=Proxy 200 in 55ms (compile: 10ms, render: 45ms)
+ GET /?screen=Proxy 200 in 28ms (compile: 4ms, render: 24ms)
+ GET /?screen=Proxy 200 in 34ms (compile: 4ms, render: 30ms)
+ GET /?screen=Proxy 200 in 25ms (compile: 3ms, render: 22ms)
+ GET /?screen=Proxy 200 in 33ms (compile: 5ms, render: 28ms)
+ GET /?screen=Proxy 200 in 44ms (compile: 4ms, render: 40ms)
+ GET /?screen=Proxy 200 in 35ms (compile: 5ms, render: 30ms)
+ GET /?screen=Proxy 200 in 36ms (compile: 5ms, render: 30ms)
+✓ Compiled in 1124ms
+ GET /?screen=Proxy 200 in 287ms (compile: 89ms, render: 199ms)

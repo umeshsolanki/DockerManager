@@ -72,6 +72,7 @@ dependencies {
     // Redis for caching
     implementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
     implementation("org.slf4j:slf4j-api:2.0.9")
+    implementation("org.apache.kafka:kafka-clients:3.7.0")
     testImplementation(libs.ktor.serverTestHost)
     testImplementation(libs.kotlin.testJunit)
     testImplementation("io.mockk:mockk:1.13.8")

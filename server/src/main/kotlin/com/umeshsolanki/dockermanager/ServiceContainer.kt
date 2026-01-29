@@ -8,6 +8,8 @@ import com.umeshsolanki.dockermanager.proxy.*
 import com.umeshsolanki.dockermanager.utils.CommandExecutor
 import com.umeshsolanki.dockermanager.proxy.ProxyServiceImpl
 import com.umeshsolanki.dockermanager.proxy.SSLServiceImpl
+import com.umeshsolanki.dockermanager.kafka.IKafkaService
+import com.umeshsolanki.dockermanager.kafka.KafkaServiceImpl
 
 /**
  * Service container for dependency injection.
@@ -27,6 +29,8 @@ object ServiceContainer {
 
     val proxyService: IProxyService = ProxyServiceImpl(jailManagerService, sslService)
     
+    val kafkaService: IKafkaService = KafkaServiceImpl(jailManagerService)
+    
     /**
      * Initialize all services.
      * This can be called during application startup to ensure services are ready.
@@ -34,6 +38,7 @@ object ServiceContainer {
     fun initialize() {
         // Services are initialized lazily when accessed
         // This method can be used for any initialization logic if needed
+        kafkaService.start()
     }
 }
 

@@ -477,6 +477,13 @@ export interface UpdateEmailUserPasswordRequest {
   password: string;
 }
 
+export interface KafkaSettings {
+  enabled: boolean;
+  bootstrapServers: string;
+  topic: string;
+  groupId: string;
+}
+
 export interface EmailMailbox {
   name: string;
 }
@@ -499,6 +506,7 @@ export interface SystemConfig {
   storageBackend: string;
   dockerBuildKit: boolean;
   dockerCliBuild: boolean;
+  kafkaSettings: KafkaSettings;
 }
 
 export interface UpdateSystemConfigRequest {
@@ -506,6 +514,7 @@ export interface UpdateSystemConfigRequest {
   jamesWebAdminUrl: string;
   dockerBuildKit?: boolean;
   dockerCliBuild?: boolean;
+  kafkaSettings?: KafkaSettings;
 }
 
 export interface JamesContainerStatus {
