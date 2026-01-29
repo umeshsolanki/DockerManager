@@ -13,6 +13,7 @@ import com.umeshsolanki.dockermanager.docker.volumeRoutes
 import com.umeshsolanki.dockermanager.email.emailRoutes
 import com.umeshsolanki.dockermanager.file.fileRoutes
 import com.umeshsolanki.dockermanager.firewall.firewallRoutes
+import com.umeshsolanki.dockermanager.kafka.kafkaRoutes
 import com.umeshsolanki.dockermanager.proxy.analyticsRoutes
 import com.umeshsolanki.dockermanager.proxy.proxyRoutes
 import com.umeshsolanki.dockermanager.system.systemRoutes
@@ -50,6 +51,7 @@ fun Application.configureRouting() {
             emailRoutes()
             cacheRoutes()
             databaseRoutes()
+            kafkaRoutes()
         }
 
         fileRoutes()

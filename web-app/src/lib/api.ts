@@ -10,7 +10,7 @@ import {
     UpdateUsernameRequest, TwoFactorSetupResponse, Enable2FARequest, EmailGroup, EmailUserDetail, JamesContainerStatus,
     FileItem, RedisConfig, RedisStatus, RedisTestResult, RedisConfigUpdateResult,
     DockerStack, StackService, StackTask, DeployStackRequest, MigrateComposeToStackRequest, StopStackRequest,
-    SaveProjectFileRequest
+    SaveProjectFileRequest, KafkaTopicInfo, KafkaMessage
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -310,4 +310,10 @@ export const DockerClient = {
         }).then(r => r.ok);
     },
     downloadFileUrl: (path: string) => `${DockerClient.getServerUrl()}/files/download?path=${encodeURIComponent(path)}&token=${DockerClient.getAuthToken()}`,
+
+    // --- Kafka Management ---
+    listKafkaTopics: () => req<KafkaTopicInfo[]>('/kafka/topics', {}, []),
+    createKafkaTopic: (body: KafkaTopicInfo) => safeReq('/kafka/topics', { method: 'POST', body: JSON.stringify(body) }),
+    deleteKafkaTopic: (name: string) => safeReq(`/kafka/topics/${name}`, { method: 'DELETE' }),
+    getKafkaMessages: (topic: string, limit = 50) => req<KafkaMessage[]>(`/kafka/topics/${topic}/messages?limit=${limit}`, {}, []),
 };

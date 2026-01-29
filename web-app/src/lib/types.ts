@@ -484,6 +484,21 @@ export interface KafkaSettings {
   groupId: string;
 }
 
+export interface KafkaTopicInfo {
+  name: string;
+  partitions: number;
+  replicationFactor: number;
+}
+
+export interface KafkaMessage {
+  topic: string;
+  partition: number;
+  offset: number;
+  key: string | null;
+  value: string;
+  timestamp: number;
+}
+
 export interface EmailMailbox {
   name: string;
 }
@@ -542,7 +557,7 @@ export interface EmailUserDetail {
   quotaCount?: EmailQuota;
 }
 
-export type Screen = 'Dashboard' | 'Docker' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Files' | 'Settings' | 'Security' | 'Analytics' | 'DB';
+export type Screen = 'Dashboard' | 'Docker' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Files' | 'Settings' | 'Security' | 'Analytics' | 'DB' | 'Kafka';
 
 
 export interface AuthRequest {

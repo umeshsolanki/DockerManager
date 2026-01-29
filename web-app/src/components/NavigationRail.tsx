@@ -24,6 +24,7 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
         { label: 'Emails', icon: <Mail size={20} /> },
         { label: 'Files', icon: <FileText size={20} /> },
         { label: 'DB', icon: <Database size={20} /> },
+        { label: 'Kafka', icon: <Zap size={20} /> },
     ];
 
 

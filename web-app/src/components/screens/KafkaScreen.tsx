@@ -1,0 +1,356 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import {
+    Zap, RefreshCw, Plus, Trash2, Search,
+    MessageSquare, List, Info, AlertTriangle,
+    Eye, ChevronRight, Clock, Hash
+} from 'lucide-react';
+import { DockerClient } from '@/lib/api';
+import { KafkaTopicInfo, KafkaMessage } from '@/lib/types';
+import { Modal } from '../ui/Modal';
+
+export default function KafkaScreen() {
+    const [topics, setTopics] = useState<KafkaTopicInfo[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+    const [messages, setMessages] = useState<KafkaMessage[]>([]);
+    const [loadingMessages, setLoadingMessages] = useState(false);
+    const [showCreateModal, setShowCreateModal] = useState(false);
+
+    // Create topic form state
+    const [newTopicName, setNewTopicName] = useState('');
+    const [newTopicPartitions, setNewTopicPartitions] = useState(1);
+    const [newTopicReplication, setNewTopicReplication] = useState(1);
+    const [isCreating, setIsCreating] = useState(false);
+
+    const fetchTopics = async () => {
+        setLoading(true);
+        try {
+            const data = await DockerClient.listKafkaTopics();
+            setTopics(data);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchMessages = async (topic: string) => {
+        setLoadingMessages(true);
+        try {
+            const data = await DockerClient.getKafkaMessages(topic);
+            setMessages(data);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoadingMessages(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchTopics();
+    }, []);
+
+    const handleCreateTopic = async () => {
+        if (!newTopicName) return;
+        setIsCreating(true);
+        try {
+            const result = await DockerClient.createKafkaTopic({
+                name: newTopicName,
+                partitions: newTopicPartitions,
+                replicationFactor: newTopicReplication
+            });
+            if (result.success) {
+                setShowCreateModal(false);
+                setNewTopicName('');
+                setNewTopicPartitions(1);
+                setNewTopicReplication(1);
+                fetchTopics();
+            } else {
+                alert(result.message || 'Failed to create topic');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error creating topic');
+        } finally {
+            setIsCreating(false);
+        }
+    };
+
+    const handleDeleteTopic = async (name: string) => {
+        if (!confirm(`Are you sure you want to delete topic "${name}"? This action cannot be undone.`)) return;
+        try {
+            const result = await DockerClient.deleteKafkaTopic(name);
+            if (result.success) {
+                if (selectedTopic === name) setSelectedTopic(null);
+                fetchTopics();
+            } else {
+                alert(result.message || 'Failed to delete topic');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error deleting topic');
+        }
+    };
+
+    return (
+        <div className="flex flex-col h-full overflow-hidden pb-4">
+            <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-primary/10 rounded-xl text-primary">
+                        <Zap size={24} />
+                    </div>
+                    <div>
+                        <h1 className="text-2xl font-bold">Kafka Management</h1>
+                        <p className="text-xs text-on-surface-variant">View and manage topics, partitions, and data</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setShowCreateModal(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl hover:opacity-90 transition-all font-semibold text-sm shadow-lg shadow-primary/20"
+                    >
+                        <Plus size={18} />
+                        <span>Create Topic</span>
+                    </button>
+                    <button
+                        onClick={fetchTopics}
+                        className="p-2 hover:bg-surface rounded-xl transition-all text-on-surface-variant hover:text-primary border border-outline/10"
+                        title="Refresh topics"
+                    >
+                        <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+                    </button>
+                </div>
+            </div>
+
+            <div className="flex-1 flex gap-4 overflow-hidden">
+                {/* Topics List */}
+                <div className="w-80 bg-surface/50 border border-outline/10 rounded-2xl flex flex-col overflow-hidden backdrop-blur-sm">
+                    <div className="p-4 border-b border-outline/10 bg-surface/50">
+                        <div className="flex items-center gap-2 mb-3">
+                            <List size={16} className="text-primary" />
+                            <h2 className="text-sm font-bold uppercase tracking-wider">Topics</h2>
+                        </div>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={14} />
+                            <input
+                                type="text"
+                                placeholder="Search topics..."
+                                className="w-full bg-surface border border-outline/20 rounded-lg py-1.5 pl-9 pr-3 text-xs focus:outline-none focus:border-primary transition-all"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                        {loading ? (
+                            Array(5).fill(0).map((_, i) => (
+                                <div key={i} className="h-12 bg-surface animate-pulse rounded-lg" />
+                            ))
+                        ) : topics.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-12 text-center">
+                                <AlertTriangle size={32} className="text-on-surface-variant/30 mb-2" />
+                                <p className="text-xs text-on-surface-variant italic">No topics found</p>
+                            </div>
+                        ) : (
+                            topics.map((topic) => (
+                                <button
+                                    key={topic.name}
+                                    onClick={() => {
+                                        setSelectedTopic(topic.name);
+                                        fetchMessages(topic.name);
+                                    }}
+                                    className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${selectedTopic === topic.name
+                                            ? 'bg-primary text-primary-foreground shadow-md'
+                                            : 'hover:bg-surface text-on-surface'
+                                        }`}
+                                >
+                                    <div className="flex items-center gap-3 overflow-hidden">
+                                        <Hash size={14} className={selectedTopic === topic.name ? 'text-primary-foreground/60' : 'text-primary/60'} />
+                                        <span className="text-sm font-semibold truncate">{topic.name}</span>
+                                    </div>
+                                    <ChevronRight size={14} className={`transition-transform ${selectedTopic === topic.name ? 'translate-x-0' : '-translate-x-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-0'}`} />
+                                </button>
+                            ))
+                        )}
+                    </div>
+                </div>
+
+                {/* Topic Details & Messages */}
+                <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                    {!selectedTopic ? (
+                        <div className="flex-1 flex flex-col items-center justify-center bg-surface/30 border border-outline/10 border-dashed rounded-2xl text-on-surface-variant">
+                            <div className="p-6 bg-primary/5 rounded-full mb-4">
+                                <Zap size={48} className="opacity-20 text-primary" />
+                            </div>
+                            <h3 className="text-lg font-bold">Select a topic</h3>
+                            <p className="text-sm max-w-xs text-center mt-2">
+                                Choose a Kafka topic from the sidebar to view its partitions, configuration, and recent messages.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="flex-1 flex flex-col overflow-hidden bg-surface/50 border border-outline/10 rounded-2xl backdrop-blur-sm">
+                            {/* Header */}
+                            <div className="p-4 border-b border-outline/10 flex items-center justify-between bg-surface/50">
+                                <div className="flex items-center gap-4">
+                                    <h2 className="text-xl font-bold">{selectedTopic}</h2>
+                                    <div className="flex items-center gap-2">
+                                        <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-lg text-[10px] font-bold uppercase border border-primary/20">
+                                            {topics.find(t => t.name === selectedTopic)?.partitions} Partitions
+                                        </span>
+                                        <span className="px-2 py-0.5 bg-secondary/10 text-secondary rounded-lg text-[10px] font-bold uppercase border border-secondary/20">
+                                            {topics.find(t => t.name === selectedTopic)?.replicationFactor}x Repl
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => fetchMessages(selectedTopic)}
+                                        className="p-2 hover:bg-surface rounded-xl transition-all text-on-surface-variant hover:text-primary border border-outline/10"
+                                        title="Reload messages"
+                                    >
+                                        <RefreshCw size={18} className={loadingMessages ? 'animate-spin' : ''} />
+                                    </button>
+                                    <button
+                                        onClick={() => handleDeleteTopic(selectedTopic)}
+                                        className="p-2 hover:bg-red-500/10 rounded-xl transition-all text-on-surface-variant hover:text-red-500 border border-outline/10 hover:border-red-500/20"
+                                        title="Delete Topic"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Messages List */}
+                            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <MessageSquare size={16} className="text-primary" />
+                                    <h3 className="text-sm font-bold uppercase tracking-wider">Recent Messages</h3>
+                                </div>
+
+                                {loadingMessages ? (
+                                    <div className="space-y-3">
+                                        {Array(3).fill(0).map((_, i) => (
+                                            <div key={i} className="h-24 bg-surface animate-pulse rounded-2xl" />
+                                        ))}
+                                    </div>
+                                ) : messages.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center py-24 text-center border border-outline/10 border-dashed rounded-2xl bg-surface/20">
+                                        <MessageSquare size={48} className="text-on-surface-variant/20 mb-4" />
+                                        <p className="text-sm font-medium">No messages found in this topic</p>
+                                        <p className="text-xs text-on-surface-variant mt-1">Try sending some data or check the offset settings.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {messages.map((msg, i) => (
+                                            <div key={i} className="bg-surface/80 border border-outline/10 rounded-2xl overflow-hidden shadow-sm hover:border-primary/30 transition-all group">
+                                                <div className="px-4 py-2 bg-surface flex items-center justify-between text-[11px] font-medium text-on-surface-variant">
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="flex items-center gap-1"><Hash size={12} /> P{msg.partition}</span>
+                                                        <span className="flex items-center gap-1"><ChevronRight size={12} /> Offset {msg.offset}</span>
+                                                    </div>
+                                                    <span className="flex items-center gap-1 font-mono">
+                                                        <Clock size={12} /> {new Date(msg.timestamp).toLocaleString()}
+                                                    </span>
+                                                </div>
+                                                <div className="p-4 flex gap-4">
+                                                    {msg.key && (
+                                                        <div className="w-1/4 shrink-0 overflow-hidden">
+                                                            <p className="text-[10px] font-bold text-primary uppercase tracking-tight mb-1">Key</p>
+                                                            <code className="text-[11px] font-mono block p-2 bg-on-surface/5 rounded-lg border border-outline/5 truncate" title={msg.key}>
+                                                                {msg.key}
+                                                            </code>
+                                                        </div>
+                                                    )}
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-[10px] font-bold text-primary uppercase tracking-tight mb-1">Payload</p>
+                                                        <pre className="text-[11px] font-mono bg-on-surface/5 p-3 rounded-lg border border-outline/5 overflow-x-auto custom-scrollbar leading-relaxed">
+                                                            {msg.value}
+                                                        </pre>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Create Topic Modal */}
+            {showCreateModal && (
+                <Modal
+                    onClose={() => setShowCreateModal(false)}
+                    title="Create New Kafka Topic"
+                    description="Configure topic name and basic partitioning"
+                    icon={<Zap size={24} />}
+                >
+                    <div className="space-y-6 pt-4">
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider px-1">Topic Name</label>
+                            <input
+                                type="text"
+                                value={newTopicName}
+                                onChange={(e) => setNewTopicName(e.target.value)}
+                                placeholder="my-awesome-topic"
+                                className="w-full bg-surface border border-outline/20 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium"
+                                autoFocus
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider px-1">Partitions</label>
+                                <input
+                                    type="number"
+                                    value={newTopicPartitions}
+                                    onChange={(e) => setNewTopicPartitions(parseInt(e.target.value))}
+                                    min={1}
+                                    max={100}
+                                    className="w-full bg-surface border border-outline/20 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:border-primary transition-all font-mono"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider px-1">Repl. Factor</label>
+                                <input
+                                    type="number"
+                                    value={newTopicReplication}
+                                    onChange={(e) => setNewTopicReplication(parseInt(e.target.value))}
+                                    min={1}
+                                    max={3}
+                                    className="w-full bg-surface border border-outline/20 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:border-primary transition-all font-mono"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10 flex items-start gap-3">
+                            <Info size={18} className="text-primary shrink-0 mt-0.5" />
+                            <p className="text-[11px] leading-relaxed text-on-surface-variant">
+                                Replication factor cannot exceed the number of brokers in your cluster. For local setups, 1 is the typical value.
+                            </p>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={handleCreateTopic}
+                                disabled={isCreating || !newTopicName}
+                                className="flex-1 bg-primary text-primary-foreground py-3.5 rounded-2xl font-bold text-sm hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20 active:scale-[0.98] disabled:opacity-50"
+                            >
+                                {isCreating ? <RefreshCw className="animate-spin" size={18} /> : <Plus size={18} />}
+                                <span>Create Topic</span>
+                            </button>
+                            <button
+                                onClick={() => setShowCreateModal(false)}
+                                className="px-6 py-3.5 bg-surface border border-outline/20 text-on-surface rounded-2xl font-bold text-sm hover:bg-surface-variant transition-all"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+        </div>
+    );
+}
