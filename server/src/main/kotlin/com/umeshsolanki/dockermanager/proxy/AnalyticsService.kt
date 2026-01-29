@@ -388,11 +388,21 @@ class AnalyticsServiceImpl(
                             val method = reqParts.getOrNull(0) ?: "-"
                             val path = reqParts.getOrNull(1) ?: fullRequest
 
-                            // Filter 200 responses for .js and .css files
+                            // Filter 200 responses for static asset files
                             if (status == 200) {
                                 val cleanPath = path.substringBefore('?')
-                                if (cleanPath.endsWith(".js", ignoreCase = true) ||
-                                    cleanPath.endsWith(".css", ignoreCase = true)) {
+                                val isStaticAsset = cleanPath.endsWith(".js", ignoreCase = true) ||
+                                        cleanPath.endsWith(".css", ignoreCase = true) ||
+                                        cleanPath.endsWith(".png", ignoreCase = true) ||
+                                        cleanPath.endsWith(".jpg", ignoreCase = true) ||
+                                        cleanPath.endsWith(".jpeg", ignoreCase = true) ||
+                                        cleanPath.endsWith(".gif", ignoreCase = true) ||
+                                        cleanPath.endsWith(".svg", ignoreCase = true) ||
+                                        cleanPath.endsWith(".woff", ignoreCase = true) ||
+                                        cleanPath.endsWith(".woff2", ignoreCase = true) ||
+                                        cleanPath.endsWith(".ttf", ignoreCase = true) ||
+                                        cleanPath.endsWith(".webp", ignoreCase = true)
+                                if (isStaticAsset) {
                                     return@let
                                 }
                             }
@@ -775,11 +785,21 @@ class AnalyticsServiceImpl(
                                     val method = reqParts.getOrNull(0) ?: "-"
                                     val path = reqParts.getOrNull(1) ?: fullRequest
 
-                                    // Filter 200 responses for .js and .css files
+                                    // Filter 200 responses for static asset files
                                     if (status == 200) {
                                         val cleanPath = path.substringBefore('?')
-                                        if (cleanPath.endsWith(".js", ignoreCase = true) ||
-                                            cleanPath.endsWith(".css", ignoreCase = true)) {
+                                        val isStaticAsset = cleanPath.endsWith(".js", ignoreCase = true) ||
+                                                cleanPath.endsWith(".css", ignoreCase = true) ||
+                                                cleanPath.endsWith(".png", ignoreCase = true) ||
+                                                cleanPath.endsWith(".jpg", ignoreCase = true) ||
+                                                cleanPath.endsWith(".jpeg", ignoreCase = true) ||
+                                                cleanPath.endsWith(".gif", ignoreCase = true) ||
+                                                cleanPath.endsWith(".svg", ignoreCase = true) ||
+                                                cleanPath.endsWith(".woff", ignoreCase = true) ||
+                                                cleanPath.endsWith(".woff2", ignoreCase = true) ||
+                                                cleanPath.endsWith(".ttf", ignoreCase = true) ||
+                                                cleanPath.endsWith(".webp", ignoreCase = true)
+                                        if (isStaticAsset) {
                                             return@let
                                         }
                                     }
