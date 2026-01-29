@@ -47,8 +47,8 @@ interface IKafkaService {
     
     // Topic Management
     fun listTopics(): List<KafkaTopicInfo>
-    fun createTopic(name: String, partitions: Int, replicationFactor: Short): Boolean
-    fun deleteTopic(name: String): Boolean
+    fun createTopic(name: String, partitions: Int, replicationFactor: Short): Result<Unit>
+    fun deleteTopic(name: String): Result<Unit>
     
     // Message Review
     fun getMessages(topic: String, limit: Int): List<KafkaMessage>
@@ -130,6 +130,8 @@ class KafkaServiceImpl(
         val settings = AppConfig.settings.kafkaSettings
         val props = Properties()
         props[AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG] = settings.bootstrapServers
+        props[AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG] = 5000
+        props[AdminClientConfig.DEFAULT_API_TIMEOUT_MS_CONFIG] = 5000
         return AdminClient.create(props)
     }
 
@@ -153,27 +155,29 @@ class KafkaServiceImpl(
         }
     }
 
-    override fun createTopic(name: String, partitions: Int, replicationFactor: Short): Boolean {
+    override fun createTopic(name: String, partitions: Int, replicationFactor: Short): Result<Unit> {
         return try {
             getAdminClient().use { admin ->
                 admin.createTopics(listOf(NewTopic(name, partitions, replicationFactor))).all().get()
-                true
+                Result.success(Unit)
             }
         } catch (e: Exception) {
-            logger.error("Error creating Kafka topic: $name", e)
-            false
+            val cause = e.cause ?: e
+            logger.error("Error creating Kafka topic: $name", cause)
+            Result.failure(cause)
         }
     }
 
-    override fun deleteTopic(name: String): Boolean {
+    override fun deleteTopic(name: String): Result<Unit> {
         return try {
             getAdminClient().use { admin ->
                 admin.deleteTopics(listOf(name)).all().get()
-                true
+                Result.success(Unit)
             }
         } catch (e: Exception) {
-            logger.error("Error deleting Kafka topic: $name", e)
-            false
+            val cause = e.cause ?: e
+            logger.error("Error deleting Kafka topic: $name", cause)
+            Result.failure(cause)
         }
     }
 

@@ -1,41 +1,65 @@
 package com.umeshsolanki.dockermanager.kafka
 
 import com.umeshsolanki.dockermanager.*
+import com.umeshsolanki.dockermanager.proxy.KafkaActionResult
 import com.umeshsolanki.dockermanager.ServiceContainer
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.*
 
+private val logger = org.slf4j.LoggerFactory.getLogger("KafkaRoutes")
+
 fun Route.kafkaRoutes() {
     val kafkaService = ServiceContainer.kafkaService
 
     route("/kafka") {
         get("/topics") {
-            call.respond(kafkaService.listTopics())
+            try {
+                call.respond(kafkaService.listTopics())
+            } catch (e: Exception) {
+                logger.error("Error listing topics", e)
+                call.respond(HttpStatusCode.InternalServerError, KafkaActionResult(success = false, message = e.message ?: "Unknown error"))
+            }
         }
 
         post("/topics") {
-            val request = call.receive<KafkaTopicInfo>()
-            val success = kafkaService.createTopic(
+            val request = try {
+                call.receive<KafkaTopicInfo>()
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("success" to false, "message" to "Invalid request body"))
+                return@post
+            }
+            
+            logger.info("Creating Kafka topic: ${request.name}")
+            val result = kafkaService.createTopic(
                 request.name,
                 request.partitions,
                 request.replicationFactor.toShort()
             )
-            if (success) {
-                call.respond(HttpStatusCode.Created, mapOf("success" to true))
+            if (result.isSuccess) {
+                logger.info("Topic ${request.name} created successfully")
+                call.respond(HttpStatusCode.Created, KafkaActionResult(success = true))
             } else {
-                call.respond(HttpStatusCode.BadRequest, mapOf("success" to false, "message" to "Failed to create topic"))
+                val error = result.exceptionOrNull()
+                logger.error("Failed to create topic ${request.name}", error)
+                call.respond(HttpStatusCode.BadRequest, KafkaActionResult(
+                    success = false, 
+                    message = error?.message ?: "Failed to create topic"
+                ))
             }
         }
 
         delete("/topics/{name}") {
             val name = call.parameters["name"] ?: return@delete call.respond(HttpStatusCode.BadRequest)
-            val success = kafkaService.deleteTopic(name)
-            if (success) {
-                call.respond(HttpStatusCode.OK, mapOf("success" to true))
+            val result = kafkaService.deleteTopic(name)
+            if (result.isSuccess) {
+                call.respond(HttpStatusCode.OK, KafkaActionResult(success = true))
             } else {
-                call.respond(HttpStatusCode.BadRequest, mapOf("success" to false, "message" to "Failed to delete topic"))
+                call.respond(HttpStatusCode.BadRequest, KafkaActionResult(
+                    success = false, 
+                    message = result.exceptionOrNull()?.message ?: "Failed to delete topic"
+                ))
             }
         }
 

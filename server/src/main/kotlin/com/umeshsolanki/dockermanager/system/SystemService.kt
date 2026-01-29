@@ -1,6 +1,7 @@
 package com.umeshsolanki.dockermanager.system
 
 import com.umeshsolanki.dockermanager.*
+import com.umeshsolanki.dockermanager.ServiceContainer
 import com.umeshsolanki.dockermanager.auth.AuthService
 import com.umeshsolanki.dockermanager.docker.DockerClientProvider
 import com.umeshsolanki.dockermanager.docker.DockerService
@@ -91,7 +92,8 @@ object SystemService {
         proxyStatsIntervalMs = AppConfig.settings.proxyStatsIntervalMs,
         storageBackend = AppConfig.storageBackend,
         dockerBuildKit = AppConfig.settings.dockerBuildKit,
-        dockerCliBuild = AppConfig.settings.dockerCliBuild
+        dockerCliBuild = AppConfig.settings.dockerCliBuild,
+        kafkaSettings = AppConfig.settings.kafkaSettings
     )
     
     fun updateSystemConfig(request: UpdateSystemConfigRequest) {
@@ -99,10 +101,15 @@ object SystemService {
             dockerSocket = request.dockerSocket ?: AppConfig.dockerSocket,
             jamesWebAdminUrl = request.jamesWebAdminUrl ?: AppConfig.jamesWebAdminUrl,
             dockerBuildKit = request.dockerBuildKit ?: AppConfig.settings.dockerBuildKit,
-            dockerCliBuild = request.dockerCliBuild ?: AppConfig.settings.dockerCliBuild
+            dockerCliBuild = request.dockerCliBuild ?: AppConfig.settings.dockerCliBuild,
+            kafkaSettings = request.kafkaSettings ?: AppConfig.settings.kafkaSettings
         )
         // Refresh Docker client to use new settings
         DockerClientProvider.refreshClient()
         DockerService.refreshServices()
+        
+        // Refresh Kafka service
+        ServiceContainer.kafkaService.stop()
+        ServiceContainer.kafkaService.start()
     }
 }

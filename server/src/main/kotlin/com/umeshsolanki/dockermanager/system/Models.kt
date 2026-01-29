@@ -1,5 +1,6 @@
 package com.umeshsolanki.dockermanager.system
 
+import com.umeshsolanki.dockermanager.KafkaSettings
 import kotlinx.serialization.Serializable
 
 // ========== System Models ==========
@@ -18,7 +19,8 @@ data class SystemConfig(
     val proxyStatsIntervalMs: Long,
     val storageBackend: String,
     val dockerBuildKit: Boolean,
-    val dockerCliBuild: Boolean
+    val dockerCliBuild: Boolean,
+    val kafkaSettings: KafkaSettings
 )
 
 @Serializable
@@ -26,7 +28,8 @@ data class UpdateSystemConfigRequest(
     val dockerSocket: String? = null,
     val jamesWebAdminUrl: String? = null,
     val dockerBuildKit: Boolean? = null,
-    val dockerCliBuild: Boolean? = null
+    val dockerCliBuild: Boolean? = null,
+    val kafkaSettings: KafkaSettings? = null
 )
 
 @Serializable

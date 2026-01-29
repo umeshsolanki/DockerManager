@@ -269,13 +269,15 @@ object AppConfig {
         dockerSocket: String,
         jamesWebAdminUrl: String,
         dockerBuildKit: Boolean = _settings.dockerBuildKit,
-        dockerCliBuild: Boolean = _settings.dockerCliBuild
+        dockerCliBuild: Boolean = _settings.dockerCliBuild,
+        kafkaSettings: KafkaSettings = _settings.kafkaSettings
     ) {
         _settings = _settings.copy(
             dockerSocket = dockerSocket,
             jamesWebAdminUrl = jamesWebAdminUrl,
             dockerBuildKit = dockerBuildKit,
-            dockerCliBuild = dockerCliBuild
+            dockerCliBuild = dockerCliBuild,
+            kafkaSettings = kafkaSettings
         )
         saveSettings()
     }

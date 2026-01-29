@@ -141,6 +141,12 @@ data class ProxyActionResult(
 )
 
 @Serializable
+data class KafkaActionResult(
+    val success: Boolean,
+    val message: String? = null
+)
+
+@Serializable
 enum class ProxyJailRuleType {
     USER_AGENT, METHOD, PATH, STATUS_CODE, COMPOSITE
 }
