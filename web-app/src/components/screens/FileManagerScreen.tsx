@@ -5,13 +5,14 @@ import {
     File, Folder, Download, Upload, Trash2,
     ArrowLeft, Plus, Archive, ExternalLink,
     Search, RefreshCcw, Eye, EyeOff, Loader2, LayoutList, Grid2X2,
-    ArrowUpToLine, ArrowDownToLine
+    ArrowUpToLine, ArrowDownToLine, Edit, Save
 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { FileItem } from '@/lib/types';
 import { Editor } from '@monaco-editor/react';
 import { Modal } from '../ui/Modal';
 import { ActionIconButton, Button } from '../ui/Buttons';
+import { toast } from 'sonner';
 
 export default function FileManagerScreen() {
     const [currentPath, setCurrentPath] = useState('');
@@ -23,8 +24,9 @@ export default function FileManagerScreen() {
     const [showHidden, setShowHidden] = useState(false);
     const [hasHydrated, setHasHydrated] = useState(false);
     const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-    const [viewingFile, setViewingFile] = useState<{ path: string, content: string, mode: 'head' | 'tail' } | null>(null);
+    const [viewingFile, setViewingFile] = useState<{ path: string, content: string, mode: 'head' | 'tail' | 'full', isEditing: boolean } | null>(null);
     const [loadingFile, setLoadingFile] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Persist View Settings
@@ -127,12 +129,53 @@ export default function FileManagerScreen() {
         setLoadingFile(path);
         try {
             const content = await DockerClient.getFileContent(path, mode);
-            setViewingFile({ path, content, mode });
+            setViewingFile({ path, content, mode, isEditing: false });
         } catch (e) {
             console.error(e);
-            alert('Failed to read file');
+            toast.error('Failed to read file');
         } finally {
             setLoadingFile(null);
+        }
+    };
+
+    const handleEdit = async (file: FileItem) => {
+        if (file.size > 1024 * 1024) {
+            toast.error('File too big to edit. Max size is 1MB.', {
+                description: `File size: ${formatSize(file.size)}`
+            });
+            return;
+        }
+
+        setLoadingFile(file.path);
+        try {
+            const content = await DockerClient.getFileContent(file.path, 'head', 1024 * 1024);
+            setViewingFile({ path: file.path, content, mode: 'full', isEditing: true });
+        } catch (e) {
+            console.error(e);
+            toast.error('Failed to read file for editing');
+        } finally {
+            setLoadingFile(null);
+        }
+    };
+
+    const handleSave = async () => {
+        if (!viewingFile || !viewingFile.isEditing) return;
+        setIsSaving(true);
+        const saveToastId = toast.loading('Saving changes...');
+        try {
+            const res = await DockerClient.saveFileContent(viewingFile.path, viewingFile.content);
+            if (res.success) {
+                toast.success('File saved successfully', { id: saveToastId });
+                setViewingFile(null);
+                loadFiles();
+            } else {
+                toast.error(res.message || 'Failed to save file', { id: saveToastId });
+            }
+        } catch (e) {
+            console.error(e);
+            toast.error('Error saving file', { id: saveToastId });
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -141,7 +184,7 @@ export default function FileManagerScreen() {
         setLoadingFile(viewingFile.path);
         try {
             const content = await DockerClient.getFileContent(viewingFile.path, mode);
-            setViewingFile({ ...viewingFile, content, mode });
+            setViewingFile({ ...viewingFile, content, mode, isEditing: false });
         } catch (e) {
             console.error(e);
         } finally {
@@ -434,6 +477,16 @@ export default function FileManagerScreen() {
                                             <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                 {!file.isDirectory && (
                                                     <button
+                                                        onClick={() => handleEdit(file)}
+                                                        className="p-1.5 hover:bg-amber-500/10 text-amber-500 rounded-md transition-all"
+                                                        title="Edit File"
+                                                    >
+                                                        {loadingFile === file.path ? <Loader2 className="animate-spin" size={16} /> : <Edit size={16} />}
+                                                    </button>
+                                                )}
+
+                                                {!file.isDirectory && (
+                                                    <button
                                                         onClick={() => handleView(file.path)}
                                                         className="p-1.5 hover:bg-emerald-500/10 text-emerald-500 rounded-md transition-all"
                                                         title="View Content"
@@ -518,6 +571,14 @@ export default function FileManagerScreen() {
 
                                     {/* Quick Actions Overlay */}
                                     <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
+                                        {!file.isDirectory && (
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleEdit(file); }}
+                                                className="p-1 bg-amber-500/80 text-white rounded-md hover:bg-amber-600 backdrop-blur-sm"
+                                            >
+                                                <Edit size={10} />
+                                            </button>
+                                        )}
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleDelete(file.path); }}
                                             className="p-1 bg-red-500/80 text-white rounded-md hover:bg-red-600 backdrop-blur-sm"
@@ -540,26 +601,39 @@ export default function FileManagerScreen() {
                 <Modal
                     onClose={() => setViewingFile(null)}
                     title={viewingFile.path}
-                    description="File Viewer"
-                    icon={<Eye size={24} />}
+                    description={viewingFile.isEditing ? "File Editor" : "File Viewer"}
+                    icon={viewingFile.isEditing ? <Edit size={24} /> : <Eye size={24} />}
                     maxWidth="max-w-5xl"
                     className="h-[80vh] flex flex-col"
                     headerActions={
                         <div className="bg-black/50 backdrop-blur rounded-lg p-1 flex gap-1 border border-white/10 shadow-xl">
-                            <button
-                                onClick={() => handleSwitchMode('head')}
-                                className={`p-1.5 rounded-md transition-all ${viewingFile.mode === 'head' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-white/10 text-gray-400'}`}
-                                title="View Top (Head)"
-                            >
-                                <ArrowUpToLine size={16} />
-                            </button>
-                            <button
-                                onClick={() => handleSwitchMode('tail')}
-                                className={`p-1.5 rounded-md transition-all ${viewingFile.mode === 'tail' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-white/10 text-gray-400'}`}
-                                title="View Bottom (Tail)"
-                            >
-                                <ArrowDownToLine size={16} />
-                            </button>
+                            {viewingFile.isEditing ? (
+                                <button
+                                    onClick={handleSave}
+                                    disabled={isSaving}
+                                    className="p-1.5 px-4 bg-primary text-on-primary rounded-md transition-all flex items-center gap-2 text-xs font-bold shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100"
+                                >
+                                    {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                    {isSaving ? 'SAVING...' : 'SAVE CHANGES'}
+                                </button>
+                            ) : (
+                                <>
+                                    <button
+                                        onClick={() => handleSwitchMode('head')}
+                                        className={`p-1.5 rounded-md transition-all ${viewingFile.mode === 'head' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-white/10 text-gray-400'}`}
+                                        title="View Top (Head)"
+                                    >
+                                        <ArrowUpToLine size={16} />
+                                    </button>
+                                    <button
+                                        onClick={() => handleSwitchMode('tail')}
+                                        className={`p-1.5 rounded-md transition-all ${viewingFile.mode === 'tail' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-white/10 text-gray-400'}`}
+                                        title="View Bottom (Tail)"
+                                    >
+                                        <ArrowDownToLine size={16} />
+                                    </button>
+                                </>
+                            )}
                         </div>
                     }
                 >
@@ -569,8 +643,9 @@ export default function FileManagerScreen() {
                             defaultLanguage={viewingFile.path.endsWith('.json') ? 'json' : viewingFile.path.endsWith('.yml') || viewingFile.path.endsWith('.yaml') ? 'yaml' : 'plaintext'}
                             theme="vs-dark"
                             value={viewingFile.content}
+                            onChange={(value) => viewingFile && setViewingFile({ ...viewingFile, content: value || '' })}
                             options={{
-                                readOnly: true,
+                                readOnly: !viewingFile.isEditing,
                                 minimap: { enabled: false },
                                 fontSize: 13,
                                 fontFamily: "'JetBrains Mono', monospace",

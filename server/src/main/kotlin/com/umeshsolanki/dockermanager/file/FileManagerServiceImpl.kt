@@ -190,6 +190,16 @@ class FileManagerServiceImpl : IFileManagerService {
             logger.error("Error reading file content $path", e)
             null
         }
+    override fun saveFileContent(path: String, content: String): Boolean {
+        return try {
+            val file = resolvePath(path)
+            file.parentFile.mkdirs()
+            file.writeText(content, Charsets.UTF_8)
+            true
+        } catch (e: Exception) {
+            logger.error("Error saving file content $path", e)
+            false
+        }
     }
 }
 
@@ -206,4 +216,5 @@ object FileService {
     fun getFile(path: String) = service.getFile(path)
     fun saveFile(path: String, inputStream: InputStream) = service.saveFile(path, inputStream)
     fun readFileContent(path: String, maxBytes: Long = 512 * 1024, startFromEnd: Boolean = false) = service.readFileContent(path, maxBytes, startFromEnd)
+    fun saveFileContent(path: String, content: String) = service.saveFileContent(path, content)
 }

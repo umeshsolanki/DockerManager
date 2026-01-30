@@ -292,6 +292,7 @@ export const DockerClient = {
 
     // --- File Manager ---
     getFileContent: (path: string, mode: 'head' | 'tail' = 'head', maxBytes = 512 * 1024) => req<{ content: string }>(`/files/content?path=${encodeURIComponent(path)}&mode=${mode}&maxBytes=${maxBytes}`, {}, { content: '' }).then(r => r.content),
+    saveFileContent: (path: string, content: string) => safeReq('/files/save-content', { method: 'POST', body: JSON.stringify({ path, content }) }),
     listFiles: (path = "") => req<FileItem[]>(`/files/list?path=${encodeURIComponent(path)}`, {}, []),
     deleteFile: (path: string) => apiFetch(`/files/delete?path=${encodeURIComponent(path)}`, { method: 'DELETE' }).then(r => r.ok),
     createDirectory: (path: string) => apiFetch(`/files/mkdir?path=${encodeURIComponent(path)}`, { method: 'POST' }).then(r => r.ok),

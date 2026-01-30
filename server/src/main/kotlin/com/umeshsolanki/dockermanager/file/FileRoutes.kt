@@ -134,5 +134,17 @@ fun Route.fileRoutes() {
                 call.respond(HttpStatusCode.NotFound, "File not found or unreadable")
             }
         }
+
+        post("/save-content") {
+            val body = call.receive<Map<String, String>>()
+            val path = body["path"] ?: return@post call.respond(HttpStatusCode.BadRequest, "Missing path")
+            val content = body["content"] ?: return@post call.respond(HttpStatusCode.BadRequest, "Missing content")
+
+            call.respondBooleanResult(
+                FileService.saveFileContent(path, content),
+                "File content saved successfully",
+                "Failed to save file content"
+            )
+        }
     }
 }
