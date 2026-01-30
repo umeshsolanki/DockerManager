@@ -637,5 +637,3 @@ export interface RedisConfigUpdateResult {
   message: string;
   connected: boolean;
 }
-
-

@@ -102,6 +102,8 @@ function HomeContent() {
     DockerClient.setAuthToken(null);
     setAuthToken(null);
     setIsAuthenticated(false);
+    // Force a full refresh to clear all residual state and redirect to login
+    window.location.href = '/';
   };
 
   if (isAuthenticated === null) {

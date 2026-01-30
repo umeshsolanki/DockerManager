@@ -506,4 +506,3 @@ object AppConfig {
         return IpFilterUtils.isLocalIp(ip)
     }
 }
-

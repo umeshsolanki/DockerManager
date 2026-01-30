@@ -1048,7 +1048,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                         value={kafkaGroupId}
                                         onChange={(e) => setKafkaGroupId(e.target.value)}
                                         placeholder="docker-manager-jailer"
-                                        className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-sm"
+                                        className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
                                     />
                                 </div>
 
@@ -1187,4 +1187,3 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
         </div>
     );
 }
-
