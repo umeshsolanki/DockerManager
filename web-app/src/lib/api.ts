@@ -10,7 +10,7 @@ import {
     UpdateUsernameRequest, TwoFactorSetupResponse, Enable2FARequest, EmailGroup, EmailUserDetail, JamesContainerStatus,
     FileItem, RedisConfig, RedisStatus, RedisTestResult, RedisConfigUpdateResult,
     DockerStack, StackService, StackTask, DeployStackRequest, MigrateComposeToStackRequest, StopStackRequest,
-    SaveProjectFileRequest, KafkaTopicInfo, KafkaMessage
+    SaveProjectFileRequest, KafkaTopicInfo, KafkaMessage, CreateNetworkRequest
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -119,6 +119,7 @@ export const DockerClient = {
     getProjectFileContent: (projectName: string, fileName: string) => textReq(`/compose/project-file?projectName=${encodeURIComponent(projectName)}&fileName=${encodeURIComponent(fileName)}`),
     backupCompose: (name: string) => req<BackupResult | null>(`/compose/${name}/backup`, { method: 'POST' }, null),
     backupAllCompose: () => req<BackupResult | null>('/compose/backup-all', { method: 'POST' }, null),
+    deleteComposeProject: (name: string) => safeReq<ComposeResult>(`/compose/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 
     // --- Docker Stack (Swarm) ---
     listStacks: () => req<DockerStack[]>('/compose/stack', {}, []),
@@ -141,7 +142,8 @@ export const DockerClient = {
 
     listNetworks: () => req<DockerNetwork[]>('/networks', {}, []),
     inspectNetwork: (id: string) => req<NetworkDetails | null>(`/networks/${id}`, {}, null),
-    removeNetwork: (id: string) => apiFetch(`/networks/${id}`, { method: 'DELETE' }),
+    createNetwork: (body: CreateNetworkRequest) => safeReq('/networks', { method: 'POST', body: JSON.stringify(body) }),
+    removeNetwork: (id: string) => apiFetch(`/networks/${id}`, { method: 'DELETE' }).then(r => r.ok),
 
     listVolumes: () => req<DockerVolume[]>('/volumes', {}, []),
     inspectVolume: (name: string) => req<VolumeDetails | null>(`/volumes/${name}/inspect`, {}, null),

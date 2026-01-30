@@ -190,6 +190,8 @@ class FileManagerServiceImpl : IFileManagerService {
             logger.error("Error reading file content $path", e)
             null
         }
+    }
+
     override fun saveFileContent(path: String, content: String): Boolean {
         return try {
             val file = resolvePath(path)

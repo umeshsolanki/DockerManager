@@ -139,6 +139,15 @@ export interface NetworkContainerDetails {
   ipv6Address: string;
 }
 
+export interface CreateNetworkRequest {
+  name: string;
+  driver?: string;
+  internal?: boolean;
+  attachable?: boolean;
+  checkDuplicate?: boolean;
+  labels?: Record<string, string>;
+}
+
 export interface DockerVolume {
   name: string;
   driver: string;

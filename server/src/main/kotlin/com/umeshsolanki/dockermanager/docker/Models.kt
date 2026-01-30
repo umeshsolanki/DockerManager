@@ -249,5 +249,15 @@ data class StopStackRequest(
     val stackName: String
 )
 
+@Serializable
+data class CreateNetworkRequest(
+    val name: String,
+    val driver: String = "bridge",
+    val internal: Boolean = false,
+    val attachable: Boolean = true,
+    val checkDuplicate: Boolean = true,
+    val labels: Map<String, String> = emptyMap()
+)
+
 
 

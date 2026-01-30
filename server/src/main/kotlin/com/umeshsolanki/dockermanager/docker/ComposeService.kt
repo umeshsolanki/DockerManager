@@ -33,6 +33,9 @@ interface IComposeService {
     
     // Migration
     fun migrateComposeToStack(composeFilePath: String, stackName: String): ComposeResult
+    
+    // Project Management
+    fun deleteComposeProject(projectName: String): ComposeResult
 }
 
 class ComposeServiceImpl : IComposeService {
@@ -807,6 +810,36 @@ class ComposeServiceImpl : IComposeService {
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()
+        }
+    }
+
+    override fun deleteComposeProject(projectName: String): ComposeResult {
+        return try {
+            val projectDir = File(composeDir, projectName)
+            if (!projectDir.exists()) return ComposeResult(false, "Project not found")
+
+            val composeFile = File(projectDir, "docker-compose.yml")
+            val composeYaml = File(projectDir, "docker-compose.yaml")
+            val finalComposeFile = if (composeFile.exists()) composeFile else if (composeYaml.exists()) composeYaml else null
+
+            if (finalComposeFile != null) {
+                // Try to stop the project first
+                logger.info("Stopping compose project '$projectName' before deletion")
+                composeDown(finalComposeFile.absolutePath, removeVolumes = true)
+            }
+
+            // Recursively delete the project directory
+            val deleted = projectDir.deleteRecursively()
+            if (deleted) {
+                logger.info("Successfully deleted compose project directory: ${projectDir.absolutePath}")
+                ComposeResult(true, "Project deleted successfully")
+            } else {
+                logger.error("Failed to delete compose project directory: ${projectDir.absolutePath}")
+                ComposeResult(false, "Failed to delete project directory")
+            }
+        } catch (e: Exception) {
+            logger.error("Error deleting compose project $projectName", e)
+            ComposeResult(false, "Error: ${e.message}")
         }
     }
 }

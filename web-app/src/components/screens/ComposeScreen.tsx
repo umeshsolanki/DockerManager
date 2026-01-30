@@ -207,6 +207,26 @@ export default function ComposeScreen() {
         }
     };
 
+    const handleDeleteProject = async (projectName: string) => {
+        if (!confirm(`Are you sure you want to delete project "${projectName}"?\n\nThis will stop all containers and PERMANENTLY delete the project files.`)) {
+            return;
+        }
+        setIsLoading(true);
+        try {
+            const result = await DockerClient.deleteComposeProject(projectName);
+            if (result.success) {
+                toast.success(`Project "${projectName}" deleted successfully`);
+                await fetchComposeFiles();
+            } else {
+                toast.error(result.message || 'Failed to delete project');
+            }
+        } catch (e) {
+            toast.error('Failed to delete project');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handleRestoreFromFile = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -563,6 +583,14 @@ export default function ComposeScreen() {
                                         title="Stop Compose"
                                     >
                                         <Square size={14} fill="currentColor" />
+                                    </button>
+                                    <div className="w-px h-6 bg-outline/10 mx-1" />
+                                    <button
+                                        onClick={() => handleDeleteProject(file.name)}
+                                        className="p-1.5 hover:bg-red-600/10 text-red-600 rounded-lg transition-colors opacity-40 group-hover:opacity-100"
+                                        title="Delete Project Files"
+                                    >
+                                        <Trash2 size={14} />
                                     </button>
                                 </div>
                             </div>

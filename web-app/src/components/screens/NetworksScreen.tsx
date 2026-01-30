@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { RefreshCw, Trash, Share2, Eye, Box } from 'lucide-react';
+import { RefreshCw, Trash, Share2, Eye, Box, Plus } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { DockerNetwork, NetworkDetails } from '@/lib/types';
 import { SearchInput } from '../ui/SearchInput';
@@ -12,6 +12,7 @@ export default function NetworksScreen() {
     const [isLoading, setIsLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [inspectNetworkId, setInspectNetworkId] = useState<string | null>(null);
+    const [showCreateModal, setShowCreateModal] = useState(false);
     const { trigger } = useActionTrigger();
 
     const fetchNetworks = async (showLoading = true) => {
@@ -51,6 +52,12 @@ export default function NetworksScreen() {
                         onClick={() => fetchNetworks()}
                         icon={<RefreshCw />}
                         title="Refresh"
+                    />
+                    <ActionIconButton
+                        onClick={() => setShowCreateModal(true)}
+                        icon={<Plus />}
+                        color="green"
+                        title="Create Network"
                     />
                 </div>
             </div>
@@ -104,6 +111,13 @@ export default function NetworksScreen() {
                 </div>
             )}
 
+            {showCreateModal && (
+                <CreateNetworkModal
+                    onClose={() => setShowCreateModal(false)}
+                    onSuccess={() => fetchNetworks(false)}
+                />
+            )}
+
             {inspectNetworkId && (
                 <NetworkInspectModal
                     networkId={inspectNetworkId}
@@ -111,6 +125,111 @@ export default function NetworksScreen() {
                 />
             )}
         </div>
+    );
+}
+
+function CreateNetworkModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+    const [name, setName] = useState('');
+    const [driver, setDriver] = useState('bridge');
+    const [internal, setInternal] = useState(false);
+    const [attachable, setAttachable] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const { trigger } = useActionTrigger();
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+        await trigger(
+            () => DockerClient.createNetwork({ name, driver, internal, attachable }),
+            {
+                onSuccess: () => {
+                    onSuccess();
+                    onClose();
+                }
+            }
+        );
+        setIsSubmitting(false);
+    };
+
+    return (
+        <Modal
+            onClose={onClose}
+            title="Create Network"
+            description="Configure a new Docker network"
+            icon={<Plus size={24} />}
+            maxWidth="max-w-md"
+        >
+            <form onSubmit={handleSubmit} className="space-y-6 pt-4">
+                <div className="space-y-4">
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest pl-1">Network Name</label>
+                        <input
+                            type="text"
+                            value={name}
+                            onChange={e => setName(e.target.value)}
+                            placeholder="my-network"
+                            required
+                            className="w-full bg-surface-variant/10 border border-outline/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50 transition-all font-bold"
+                        />
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest pl-1">Driver</label>
+                        <select
+                            value={driver}
+                            onChange={e => setDriver(e.target.value)}
+                            className="w-full bg-surface-variant/10 border border-outline/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50 transition-all font-bold appearance-none cursor-pointer"
+                        >
+                            <option value="bridge">bridge</option>
+                            <option value="host">host</option>
+                            <option value="overlay">overlay</option>
+                            <option value="macvlan">macvlan</option>
+                            <option value="none">none</option>
+                        </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 pt-2">
+                        <label className="flex items-center gap-3 p-3 bg-surface-variant/5 border border-outline/10 rounded-xl cursor-pointer hover:bg-white/5 transition-all group">
+                            <input
+                                type="checkbox"
+                                checked={internal}
+                                onChange={e => setInternal(e.target.checked)}
+                                className="w-4 h-4 rounded border-outline/20 text-primary bg-black/20 focus:ring-primary focus:ring-offset-0 transition-all"
+                            />
+                            <span className="text-xs font-bold text-on-surface group-hover:text-primary transition-colors">Internal</span>
+                        </label>
+
+                        <label className="flex items-center gap-3 p-3 bg-surface-variant/5 border border-outline/10 rounded-xl cursor-pointer hover:bg-white/5 transition-all group">
+                            <input
+                                type="checkbox"
+                                checked={attachable}
+                                onChange={e => setAttachable(e.target.checked)}
+                                className="w-4 h-4 rounded border-outline/20 text-primary bg-black/20 focus:ring-primary focus:ring-offset-0 transition-all"
+                            />
+                            <span className="text-xs font-bold text-on-surface group-hover:text-primary transition-colors">Attachable</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="flex-1 px-4 py-3 rounded-xl border border-outline/10 text-xs font-bold hover:bg-white/5 transition-all"
+                    >
+                        CANCEL
+                    </button>
+                    <button
+                        type="submit"
+                        disabled={isSubmitting || !name}
+                        className="flex-[2] bg-primary text-on-primary rounded-xl px-4 py-3 text-xs font-black uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:grayscale disabled:scale-100 flex items-center justify-center gap-2"
+                    >
+                        {isSubmitting ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
+                        CREATE NETWORK
+                    </button>
+                </div>
+            </form>
+        </Modal>
     );
 }
 

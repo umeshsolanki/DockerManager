@@ -69,6 +69,12 @@ fun Route.composeRoutes() {
             call.respond(result)
         }
 
+        delete("/{name}") {
+            val name = call.parameters["name"] ?: return@delete call.respondText("Missing Project Name", status = HttpStatusCode.BadRequest)
+            val result = DockerService.deleteComposeProject(name)
+            call.respond(result)
+        }
+
         // Docker Stack operations
         route("/stack") {
             get {

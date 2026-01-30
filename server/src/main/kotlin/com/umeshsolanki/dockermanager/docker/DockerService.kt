@@ -49,6 +49,7 @@ object DockerService {
     fun getProjectFileContent(projectName: String, fileName: String) = composeService.getProjectFileContent(projectName, fileName)
     fun backupCompose(name: String) = composeService.backupCompose(name)
     fun backupAllCompose() = composeService.backupAllCompose()
+    fun deleteComposeProject(projectName: String) = composeService.deleteComposeProject(projectName)
     
     // Docker Stack operations
     fun listStacks() = composeService.listStacks()
@@ -71,6 +72,7 @@ object DockerService {
     fun listNetworks() = networkService.listNetworks()
     fun removeNetwork(id: String) = networkService.removeNetwork(id)
     fun inspectNetwork(id: String) = networkService.inspectNetwork(id)
+    fun createNetwork(request: CreateNetworkRequest) = networkService.createNetwork(request)
 
     fun listVolumes() = volumeService.listVolumes()
     fun removeVolume(name: String) = volumeService.removeVolume(name)

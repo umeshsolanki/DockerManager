@@ -5,6 +5,7 @@ interface INetworkService {
     fun listNetworks(): List<DockerNetwork>
     fun removeNetwork(id: String): Boolean
     fun inspectNetwork(id: String): NetworkDetails?
+    fun createNetwork(request: CreateNetworkRequest): String?
 }
 
 class NetworkServiceImpl(private val dockerClient: com.github.dockerjava.api.DockerClient) : INetworkService {
@@ -67,6 +68,23 @@ class NetworkServiceImpl(private val dockerClient: com.github.dockerjava.api.Doc
                 labels = network.labels ?: emptyMap(),
                 createdAt = network.created?.toString()
             )
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    override fun createNetwork(request: CreateNetworkRequest): String? {
+        return try {
+            val response = dockerClient.createNetworkCmd()
+                .withName(request.name)
+                .withDriver(request.driver)
+                .withInternal(request.internal)
+                .withAttachable(request.attachable)
+                .withCheckDuplicate(request.checkDuplicate)
+                .withLabels(request.labels)
+                .exec()
+            response.id
         } catch (e: Exception) {
             e.printStackTrace()
             null
