@@ -10,7 +10,7 @@ import {
     UpdateUsernameRequest, TwoFactorSetupResponse, Enable2FARequest, EmailGroup, EmailUserDetail, JamesContainerStatus,
     FileItem, RedisConfig, RedisStatus, RedisTestResult, RedisConfigUpdateResult,
     DockerStack, StackService, StackTask, DeployStackRequest, MigrateComposeToStackRequest, StopStackRequest,
-    SaveProjectFileRequest, KafkaTopicInfo, KafkaMessage, CreateNetworkRequest
+    SaveProjectFileRequest, KafkaTopicInfo, KafkaMessage, CreateNetworkRequest, StorageInfo
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -165,6 +165,8 @@ export const DockerClient = {
         });
     },
     getIpRangeStats: () => req<{ totalRanges: number }>('/system/ip-ranges/stats', {}, { totalRanges: 0 }),
+    getStorageInfo: () => req<StorageInfo | null>('/system/storage', {}, null),
+    refreshStorageInfo: () => req<{ status: string; message: string }>('/system/storage/refresh', { method: 'POST' }, { status: 'error', message: 'Failed to trigger refresh' }),
 
     listSystemLogs: (path?: string) => req<SystemLog[]>(`/logs/system${path ? `?path=${encodeURIComponent(path)}` : ''}`, {}, []),
     getSystemLogContent: (path: string, tail = 100, filter?: string, since?: string, until?: string) => {

@@ -19,6 +19,14 @@ fun Route.systemRoutes() {
             SystemService.updateSystemConfig(request)
             call.respond(mapOf("success" to true))
         }
+        get("/storage") {
+            call.respond(SystemService.getStorageInfo())
+        }
+
+        post("/storage/refresh") {
+            SystemService.refreshStorageInfo()
+            call.respond(mapOf("status" to "success", "message" to "Storage sync triggered in background"))
+        }
         ipRangeRoutes()
     }
 }

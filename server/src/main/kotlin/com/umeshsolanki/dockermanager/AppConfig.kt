@@ -96,7 +96,11 @@ data class AppSettings(
     val dockerCliBuild: Boolean = true,
 
     // Kafka Settings
-    val kafkaSettings: KafkaSettings = KafkaSettings()
+    val kafkaSettings: KafkaSettings = KafkaSettings(),
+
+    // Storage Settings
+    val autoStorageRefresh: Boolean = false,
+    val autoStorageRefreshIntervalMinutes: Int = 15
 )
 
 object AppConfig {
@@ -271,6 +275,8 @@ object AppConfig {
         jamesWebAdminUrl: String,
         dockerBuildKit: Boolean = _settings.dockerBuildKit,
         dockerCliBuild: Boolean = _settings.dockerCliBuild,
+        autoStorageRefresh: Boolean = _settings.autoStorageRefresh,
+        autoStorageRefreshIntervalMinutes: Int = _settings.autoStorageRefreshIntervalMinutes,
         kafkaSettings: KafkaSettings = _settings.kafkaSettings
     ) {
         _settings = _settings.copy(
@@ -278,6 +284,8 @@ object AppConfig {
             jamesWebAdminUrl = jamesWebAdminUrl,
             dockerBuildKit = dockerBuildKit,
             dockerCliBuild = dockerCliBuild,
+            autoStorageRefresh = autoStorageRefresh,
+            autoStorageRefreshIntervalMinutes = autoStorageRefreshIntervalMinutes,
             kafkaSettings = kafkaSettings
         )
         saveSettings()

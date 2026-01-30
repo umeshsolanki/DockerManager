@@ -531,6 +531,8 @@ export interface SystemConfig {
   storageBackend: string;
   dockerBuildKit: boolean;
   dockerCliBuild: boolean;
+  autoStorageRefresh: boolean;
+  autoStorageRefreshIntervalMinutes: number;
   kafkaSettings: KafkaSettings;
 }
 
@@ -539,6 +541,8 @@ export interface UpdateSystemConfigRequest {
   jamesWebAdminUrl: string;
   dockerBuildKit?: boolean;
   dockerCliBuild?: boolean;
+  autoStorageRefresh?: boolean;
+  autoStorageRefreshIntervalMinutes?: number;
   kafkaSettings?: KafkaSettings;
 }
 
@@ -645,4 +649,29 @@ export interface RedisConfigUpdateResult {
   success: boolean;
   message: string;
   connected: boolean;
+}
+
+export interface DiskPartition {
+  path: string;
+  total: number;
+  free: number;
+  used: number;
+  usagePercentage: number;
+}
+
+export interface DockerStorageUsage {
+  imagesSize: number;
+  containersSize: number;
+  volumesSize: number;
+  buildCacheSize: number;
+}
+
+export interface StorageInfo {
+  total: number;
+  free: number;
+  used: number;
+  dataRootSize: number;
+  dataRootPath: string;
+  partitions: DiskPartition[];
+  dockerUsage: DockerStorageUsage | null;
 }

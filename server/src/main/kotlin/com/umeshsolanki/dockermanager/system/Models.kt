@@ -20,6 +20,8 @@ data class SystemConfig(
     val storageBackend: String,
     val dockerBuildKit: Boolean,
     val dockerCliBuild: Boolean,
+    val autoStorageRefresh: Boolean,
+    val autoStorageRefreshIntervalMinutes: Int,
     val kafkaSettings: KafkaSettings
 )
 
@@ -29,6 +31,8 @@ data class UpdateSystemConfigRequest(
     val jamesWebAdminUrl: String? = null,
     val dockerBuildKit: Boolean? = null,
     val dockerCliBuild: Boolean? = null,
+    val autoStorageRefresh: Boolean? = null,
+    val autoStorageRefreshIntervalMinutes: Int? = null,
     val kafkaSettings: KafkaSettings? = null
 )
 
@@ -37,7 +41,37 @@ data class BatteryStatus(
     val percentage: Int,
     val isCharging: Boolean,
     val source: String
-)@Serializable
+)
+
+@Serializable
+data class DiskPartition(
+    val path: String,
+    val total: Long,
+    val free: Long,
+    val used: Long,
+    val usagePercentage: Double
+)
+
+@Serializable
+data class DockerStorageUsage(
+    val imagesSize: Long,
+    val containersSize: Long,
+    val volumesSize: Long,
+    val buildCacheSize: Long
+)
+
+@Serializable
+data class StorageInfo(
+    val total: Long,
+    val free: Long,
+    val used: Long,
+    val dataRootSize: Long,
+    val dataRootPath: String,
+    val partitions: List<DiskPartition> = emptyList(),
+    val dockerUsage: DockerStorageUsage? = null
+)
+
+@Serializable
 data class IpFetchRequest(
     val provider: String,
     val url: String? = null,

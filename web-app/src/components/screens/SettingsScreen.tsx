@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, Save, CheckCircle, Info, Database, Server, Terminal, RefreshCw, Settings2, Globe, XCircle, ShieldCheck, Key, LogOut, Maximize2, Minimize2 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { SystemConfig, TwoFactorSetupResponse } from '@/lib/types';
+import { SystemConfig, TwoFactorSetupResponse, StorageInfo } from '@/lib/types';
 import dynamic from 'next/dynamic';
 import packageJson from '../../../package.json';
 
@@ -22,6 +22,8 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [jamesUrl, setJamesUrl] = useState('');
     const [dockerBuildKit, setDockerBuildKit] = useState(true);
     const [dockerCliBuild, setDockerCliBuild] = useState(true);
+    const [autoStorageRefresh, setAutoStorageRefresh] = useState(false);
+    const [autoStorageRefreshInterval, setAutoStorageRefreshInterval] = useState(15);
     const [kafkaEnabled, setKafkaEnabled] = useState(false);
     const [kafkaBootstrap, setKafkaBootstrap] = useState('localhost:9092');
     const [kafkaAdminHost, setKafkaAdminHost] = useState('localhost:9092');
@@ -32,6 +34,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [isShellOpen, setIsShellOpen] = useState(false);
+    const [storageInfo, setStorageInfo] = useState<StorageInfo | null>(null);
 
     // Auth & 2FA state
     const [currentPassword, setCurrentPassword] = useState('');
@@ -63,6 +66,8 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 setJamesUrl(data.jamesWebAdminUrl);
                 setDockerBuildKit(data.dockerBuildKit);
                 setDockerCliBuild(data.dockerCliBuild);
+                setAutoStorageRefresh(data.autoStorageRefresh);
+                setAutoStorageRefreshInterval(data.autoStorageRefreshIntervalMinutes);
                 if (data.kafkaSettings) {
                     setKafkaEnabled(data.kafkaSettings.enabled);
                     setKafkaBootstrap(data.kafkaSettings.bootstrapServers);
@@ -79,6 +84,10 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
             // Fetch DB statuses
             const statuses = await DockerClient.getDatabaseStatus();
             setDbStatuses(statuses);
+
+            // Fetch Storage Info
+            const storage = await DockerClient.getStorageInfo();
+            setStorageInfo(storage);
         } catch (e) {
             console.error(e);
         } finally {
@@ -105,6 +114,8 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 jamesWebAdminUrl: jamesUrl,
                 dockerBuildKit: dockerBuildKit,
                 dockerCliBuild: dockerCliBuild,
+                autoStorageRefresh: autoStorageRefresh,
+                autoStorageRefreshIntervalMinutes: autoStorageRefreshInterval,
                 kafkaSettings: {
                     enabled: kafkaEnabled,
                     bootstrapServers: kafkaBootstrap,
@@ -788,6 +799,164 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                             </div>
                         </div>
 
+                        {/* Disk Usage & Available Storage */}
+                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm lg:col-span-2">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="p-3 bg-amber-500/10 rounded-xl text-amber-500">
+                                    <Maximize2 size={20} />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-bold">Disk & Storage</h2>
+                                    <p className="text-xs text-on-surface-variant mt-0.5">Physical storage and data root usage</p>
+                                </div>
+                                <div className="flex-1" />
+                                <button
+                                    onClick={async () => {
+                                        const res = await DockerClient.refreshStorageInfo();
+                                        if (res.status === 'success') {
+                                            alert(res.message);
+                                            // Optional: trigger a re-fetch of current data after a short delay
+                                            setTimeout(async () => {
+                                                const storage = await DockerClient.getStorageInfo();
+                                                setStorageInfo(storage);
+                                            }, 2000);
+                                        } else {
+                                            alert(res.message);
+                                        }
+                                    }}
+                                    className="flex items-center gap-2 bg-on-surface/5 hover:bg-on-surface/10 text-on-surface px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all active:scale-95"
+                                >
+                                    <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                                    <span>Force Sync</span>
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                <div className="p-4 bg-surface/80 rounded-xl border border-outline/5 relative overflow-hidden group">
+                                    <div className="relative z-10">
+                                        <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-2">Total Capacity</p>
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-2xl font-black text-on-surface">
+                                                {storageInfo ? (storageInfo.total / (1024 * 1024 * 1024)).toFixed(1) : '0.0'}
+                                            </span>
+                                            <span className="text-sm font-bold text-on-surface-variant">GB</span>
+                                        </div>
+                                    </div>
+                                    <Server className="absolute -right-2 -bottom-2 text-on-surface/[0.03] rotate-12 transition-transform group-hover:scale-110" size={80} />
+                                </div>
+
+                                <div className="p-4 bg-surface/80 rounded-xl border border-outline/5 relative overflow-hidden group">
+                                    <div className="relative z-10">
+                                        <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-2">Available Space</p>
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-2xl font-black text-green-500">
+                                                {storageInfo ? (storageInfo.free / (1024 * 1024 * 1024)).toFixed(1) : '0.0'}
+                                            </span>
+                                            <span className="text-sm font-bold text-on-surface-variant">GB</span>
+                                        </div>
+                                    </div>
+                                    <CheckCircle className="absolute -right-2 -bottom-2 text-green-500/[0.05] rotate-12 transition-transform group-hover:scale-110" size={80} />
+                                </div>
+
+                                <div className="p-4 bg-surface/80 rounded-xl border border-outline/5 relative overflow-hidden group">
+                                    <div className="relative z-10">
+                                        <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-2">Data Root (DU)</p>
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-2xl font-black text-primary">
+                                                {storageInfo ? (storageInfo.dataRootSize / (1024 * 1024)).toFixed(1) : '0.0'}
+                                            </span>
+                                            <span className="text-sm font-bold text-on-surface-variant">MB</span>
+                                        </div>
+                                    </div>
+                                    <Database className="absolute -right-2 -bottom-2 text-primary/[0.05] rotate-12 transition-transform group-hover:scale-110" size={80} />
+                                </div>
+                            </div>
+
+                            {storageInfo && (
+                                <div className="space-y-4">
+                                    {/* Usage Bar */}
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-on-surface-variant px-1">
+                                            <span>Filesystem Usage</span>
+                                            <span className={((storageInfo.used / storageInfo.total) * 100) > 90 ? 'text-red-500' : ''}>
+                                                {((storageInfo.used / storageInfo.total) * 100).toFixed(1)}% Used
+                                            </span>
+                                        </div>
+                                        <div className="h-2.5 w-full bg-surface-variant/20 rounded-full overflow-hidden border border-outline/5">
+                                            <div
+                                                className={`h-full transition-all duration-1000 ${((storageInfo.used / storageInfo.total) * 100) > 90 ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.3)]' : 'bg-primary'
+                                                    }`}
+                                                style={{ width: `${(storageInfo.used / storageInfo.total) * 100}%` }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Path Info */}
+                                    <div className="flex items-center gap-2 p-3 bg-surface/40 rounded-xl border border-outline/5 font-mono text-[10px] text-on-surface-variant">
+                                        <Info size={12} className="shrink-0" />
+                                        <span className="truncate">Root Path: {storageInfo.dataRootPath}</span>
+                                    </div>
+
+                                    {/* System Disks List */}
+                                    {storageInfo.partitions.length > 0 && (
+                                        <div className="pt-4 border-t border-outline/10">
+                                            <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-3 px-1">Host Partitions</p>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                {storageInfo.partitions.map((p, idx) => (
+                                                    <div key={idx} className="p-3 bg-black/20 rounded-xl border border-outline/5 hover:border-outline/20 transition-all group">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <Server size={12} className="text-secondary" />
+                                                                <span className="text-xs font-bold font-mono text-on-surface group-hover:text-secondary transition-colors">{p.path}</span>
+                                                            </div>
+                                                            <span className={`text-[10px] font-bold ${p.usagePercentage > 90 ? 'text-red-500' : 'text-on-surface-variant'}`}>
+                                                                {p.usagePercentage.toFixed(1)}%
+                                                            </span>
+                                                        </div>
+                                                        <div className="h-1.5 w-full bg-surface-variant/20 rounded-full overflow-hidden mb-1.5">
+                                                            <div
+                                                                className={`h-full transition-all duration-700 ${p.usagePercentage > 90 ? 'bg-red-500' : 'bg-secondary'}`}
+                                                                style={{ width: `${p.usagePercentage}%` }}
+                                                            />
+                                                        </div>
+                                                        <div className="flex justify-between text-[9px] font-mono text-on-surface-variant/70">
+                                                            <span>{(p.used / (1024 * 1024 * 1024)).toFixed(1)} GB Used</span>
+                                                            <span>{(p.total / (1024 * 1024 * 1024)).toFixed(1)} GB Total</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Docker Usage Statistics */}
+                                    {storageInfo.dockerUsage && (
+                                        <div className="pt-4 border-t border-outline/10">
+                                            <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-3 px-1">Docker System Usage</p>
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                {[
+                                                    { label: 'Images', size: storageInfo.dockerUsage.imagesSize, color: 'text-blue-400', bg: 'bg-blue-400/10' },
+                                                    { label: 'Containers', size: storageInfo.dockerUsage.containersSize, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
+                                                    { label: 'Volumes', size: storageInfo.dockerUsage.volumesSize, color: 'text-amber-400', bg: 'bg-amber-400/10' },
+                                                    { label: 'Build Cache', size: storageInfo.dockerUsage.buildCacheSize, color: 'text-purple-400', bg: 'bg-purple-400/10' }
+                                                ].map((item, idx) => (
+                                                    <div key={idx} className={`p-3 rounded-xl border border-outline/5 ${item.bg} backdrop-blur-sm group hover:scale-[1.02] transition-transform`}>
+                                                        <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest mb-1">{item.label}</p>
+                                                        <div className="flex items-baseline gap-1">
+                                                            <span className={`text-sm font-black ${item.color}`}>
+                                                                {(item.size / (1024 * 1024)).toFixed(1)}
+                                                            </span>
+                                                            <span className="text-[9px] font-bold text-on-surface-variant/60 uppercase">MB</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
                         {/* Docker Build Settings Card */}
                         <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
                             <div className="flex items-center gap-3 mb-4">
@@ -840,6 +1009,67 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                 >
                                     {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
                                     <span>Update Build Settings</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Storage Sync Settings Card */}
+                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="p-3 bg-amber-500/10 rounded-xl text-amber-500">
+                                    <RefreshCw size={20} />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-bold">Storage Monitor</h2>
+                                    <p className="text-xs text-on-surface-variant mt-0.5">Background synchronization tasks</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:bg-surface-variant/20">
+                                    <div className="flex-1 pr-4">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <p className="text-sm font-bold text-on-surface">Automatic Background Sync</p>
+                                            <span className="text-[10px] font-bold bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded uppercase tracking-tighter">{autoStorageRefreshInterval} MIN INTERVAL</span>
+                                        </div>
+                                        <p className="text-xs text-on-surface-variant leading-relaxed">Periodically update disk and docker size stats in background</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setAutoStorageRefresh(!autoStorageRefresh)}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 flex-shrink-0 ${autoStorageRefresh ? 'bg-primary' : 'bg-surface border border-outline/30'}`}
+                                    >
+                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${autoStorageRefresh ? 'translate-x-6' : 'translate-x-1'}`} />
+                                    </button>
+                                </div>
+
+                                <div className="p-4 bg-surface/80 rounded-xl border border-outline/5">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label className="text-sm font-bold text-on-surface">Refresh Interval (Minutes)</label>
+                                        <span className="text-xs font-mono text-primary font-bold">{autoStorageRefreshInterval}m</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="1"
+                                        max="120"
+                                        step="1"
+                                        value={autoStorageRefreshInterval}
+                                        onChange={(e) => setAutoStorageRefreshInterval(parseInt(e.target.value))}
+                                        className="w-full h-1.5 bg-outline/20 rounded-lg appearance-none cursor-pointer accent-primary"
+                                    />
+                                    <div className="flex justify-between mt-2 text-[10px] text-on-surface-variant font-medium">
+                                        <span>1 min</span>
+                                        <span>60 min</span>
+                                        <span>120 min</span>
+                                    </div>
+                                </div>
+
+                                <button
+                                    onClick={handleSaveSystem}
+                                    disabled={saving || loading}
+                                    className="w-full flex items-center justify-center gap-2 bg-on-surface text-surface font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition-all active:scale-[0.98] disabled:opacity-50 text-sm mt-2"
+                                >
+                                    {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
+                                    <span>Save Monitor Settings</span>
                                 </button>
                             </div>
                         </div>
