@@ -15,6 +15,9 @@ export default function VolumesScreen() {
     const [inspectingVolume, setInspectingVolume] = useState<VolumeDetails | null>(null);
     const [browsingVolume, setBrowsingVolume] = useState<string | null>(null);
     const [backupResult, setBackupResult] = useState<BackupResult | null>(null);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [forceDelete, setForceDelete] = useState(false);
+    const [isBatchDeleting, setIsBatchDeleting] = useState(false);
     const { trigger } = useActionTrigger();
 
     const fetchVolumes = async (showLoading = true) => {
@@ -30,6 +33,43 @@ export default function VolumesScreen() {
 
     const handleAction = async (action: () => Promise<any>) => {
         await trigger(action, { onSuccess: () => fetchVolumes(false) });
+    };
+
+    const handleRemove = async (name: string, force = forceDelete) => {
+        if (!confirm(`Are you sure you want to remove volume "${name}"${force ? ' (FORCED)' : ''}?`)) return;
+        await trigger(() => DockerClient.removeVolume(name, force), { onSuccess: () => fetchVolumes(false) });
+    };
+
+    const handleBatchRemove = async () => {
+        if (selectedIds.size === 0) return;
+        if (!confirm(`Are you sure you want to remove ${selectedIds.size} volumes${forceDelete ? ' (FORCED)' : ''}?`)) return;
+
+        setIsBatchDeleting(true);
+        try {
+            await DockerClient.removeVolumes(Array.from(selectedIds), forceDelete);
+            setSelectedIds(new Set());
+            await fetchVolumes();
+        } finally {
+            setIsBatchDeleting(false);
+        }
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.size === filteredVolumes.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(filteredVolumes.map(v => v.name)));
+        }
+    };
+
+    const toggleSelect = (name: string) => {
+        const next = new Set(selectedIds);
+        if (next.has(name)) {
+            next.delete(name);
+        } else {
+            next.add(name);
+        }
+        setSelectedIds(next);
     };
 
     const handleInspect = async (name: string) => {
@@ -67,6 +107,31 @@ export default function VolumesScreen() {
                 />
                 <div className="flex items-center gap-2">
                     {isLoading && <RefreshCw className="animate-spin text-primary mr-2" size={20} />}
+
+                    <div className="flex items-center gap-2 bg-surface/50 border border-outline/10 rounded-xl p-1 px-2">
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                            <input
+                                type="checkbox"
+                                checked={forceDelete}
+                                onChange={(e) => setForceDelete(e.target.checked)}
+                                className="w-3.5 h-3.5 rounded border-outline/30 bg-surface text-primary focus:ring-primary/20"
+                            />
+                            <span className="text-[10px] font-bold text-on-surface-variant group-hover:text-red-400 transition-colors uppercase tracking-wider">Force</span>
+                        </label>
+                    </div>
+
+                    {selectedIds.size > 0 && (
+                        <Button
+                            onClick={handleBatchRemove}
+                            variant="danger"
+                            disabled={isLoading || isBatchDeleting}
+                            icon={<Trash size={16} />}
+                            className="bg-red-500/20 hover:bg-red-500/30 text-red-500 border-red-500/20"
+                        >
+                            Delete ({selectedIds.size})
+                        </Button>
+                    )}
+
                     <ActionIconButton
                         onClick={() => fetchVolumes()}
                         icon={<RefreshCw />}
@@ -86,53 +151,72 @@ export default function VolumesScreen() {
                     No volumes found
                 </div>
             ) : (
-                <div className="bg-surface/30 border border-outline/10 rounded-xl divide-y divide-outline/5 transition-all">
-                    {filteredVolumes.map(volume => (
-                        <div key={volume.name} className="p-3 flex items-center justify-between hover:bg-white/[0.02] transition-all group">
-                            <div className="flex items-center gap-3 min-w-0">
-                                <div className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0">
-                                    <HardDrive size={16} className="text-secondary" />
-                                </div>
-                                <div className="flex flex-col min-w-0">
-                                    <span className="text-sm font-bold truncate text-on-surface" title={volume.name}>
-                                        {volume.name}
-                                    </span>
-                                    <div className="flex items-center gap-2 text-[10px] text-on-surface-variant font-mono">
-                                        <span className="font-black uppercase text-[9px] bg-white/5 px-1.5 py-0.5 rounded tracking-tighter">{volume.driver}</span>
-                                        <span className="opacity-30">•</span>
-                                        <span className="truncate opacity-70">{volume.mountpoint}</span>
+                <div className="bg-surface/30 border border-outline/10 rounded-xl overflow-hidden transition-all">
+                    <div className="bg-surface/50 p-2 px-3 flex items-center justify-between border-b border-outline/10">
+                        <div className="flex items-center gap-3">
+                            <input
+                                type="checkbox"
+                                checked={filteredVolumes.length > 0 && selectedIds.size === filteredVolumes.length}
+                                onChange={toggleSelectAll}
+                                className="w-4 h-4 rounded border-outline/30 bg-surface text-primary focus:ring-primary/20 cursor-pointer"
+                            />
+                            <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Volumes ({filteredVolumes.length})</span>
+                        </div>
+                    </div>
+                    <div className="divide-y divide-outline/5">
+                        {filteredVolumes.map(volume => (
+                            <div key={volume.name} className={`p-3 flex items-center justify-between hover:bg-white/[0.02] transition-all group ${selectedIds.has(volume.name) ? 'bg-primary/[0.03]' : ''}`}>
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedIds.has(volume.name)}
+                                        onChange={() => toggleSelect(volume.name)}
+                                        className="w-4 h-4 rounded border-outline/30 bg-surface text-primary focus:ring-primary/20 cursor-pointer"
+                                    />
+                                    <div className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0">
+                                        <HardDrive size={16} className="text-secondary" />
+                                    </div>
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="text-sm font-bold truncate text-on-surface" title={volume.name}>
+                                            {volume.name}
+                                        </span>
+                                        <div className="flex items-center gap-2 text-[10px] text-on-surface-variant font-mono">
+                                            <span className="font-black uppercase text-[9px] bg-white/5 px-1.5 py-0.5 rounded tracking-tighter">{volume.driver}</span>
+                                            <span className="opacity-30">•</span>
+                                            <span className="truncate opacity-70">{volume.mountpoint}</span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-opacity">
-                                <ActionIconButton
-                                    onClick={() => handleInspect(volume.name)}
-                                    icon={<Info />}
-                                    color="blue"
-                                    title="Inspect"
-                                />
-                                <ActionIconButton
-                                    onClick={() => handleBackup(volume.name)}
-                                    icon={<Download />}
-                                    color="primary"
-                                    title="Backup"
-                                />
-                                <ActionIconButton
-                                    onClick={() => setBrowsingVolume(volume.name)}
-                                    icon={<Folder />}
-                                    color="yellow"
-                                    title="Browse Files"
-                                />
-                                <ActionIconButton
-                                    onClick={() => handleAction(() => DockerClient.removeVolume(volume.name))}
-                                    icon={<Trash />}
-                                    color="red"
-                                    title="Remove"
-                                />
+                                <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-opacity">
+                                    <ActionIconButton
+                                        onClick={() => handleInspect(volume.name)}
+                                        icon={<Info />}
+                                        color="blue"
+                                        title="Inspect"
+                                    />
+                                    <ActionIconButton
+                                        onClick={() => handleBackup(volume.name)}
+                                        icon={<Download />}
+                                        color="primary"
+                                        title="Backup"
+                                    />
+                                    <ActionIconButton
+                                        onClick={() => setBrowsingVolume(volume.name)}
+                                        icon={<Folder />}
+                                        color="yellow"
+                                        title="Browse Files"
+                                    />
+                                    <ActionIconButton
+                                        onClick={() => handleRemove(volume.name)}
+                                        icon={<Trash />}
+                                        color="red"
+                                        title="Remove"
+                                    />
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        ))}
+                    </div>
                 </div>
             )}
 

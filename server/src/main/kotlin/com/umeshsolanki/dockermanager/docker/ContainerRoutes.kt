@@ -2,7 +2,7 @@ package com.umeshsolanki.dockermanager.docker
 
 import com.umeshsolanki.dockermanager.*
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.request.receive
+import io.ktor.server.request.*
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.*
@@ -41,10 +41,17 @@ fun Route.containerRoutes() {
             call.respondText("Stopped")
         }
 
+        post("/batch-delete") {
+            val request = call.receive<BatchDeleteRequest>()
+            val results = DockerService.removeContainers(request.ids, request.force)
+          call.respond(results)
+        }
+
         delete("/{id}") {
             val id = call.requireParameter("id") ?: return@delete
-            DockerService.removeContainer(id)
-            call.respondText("Removed")
+            val force = call.request.queryParameters["force"]?.toBoolean() ?: false
+            val success = DockerService.removeContainer(id, force)
+            if (success) call.respondText("Removed") else call.respondText("Failed", status = HttpStatusCode.InternalServerError)
         }
 
         get("/{id}/logs") {

@@ -2,6 +2,7 @@ package com.umeshsolanki.dockermanager.docker
 
 import com.umeshsolanki.dockermanager.*
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.request.*
 import io.ktor.server.response.respond
 import io.ktor.server.routing.*
 
@@ -30,10 +31,17 @@ fun Route.volumeRoutes() {
             )
         }
         
+        post("/batch-delete") {
+            val request = call.receive<BatchDeleteRequest>()
+            val results = DockerService.removeVolumes(request.ids, request.force)
+            call.respond(results)
+        }
+
         delete("/{name}") {
             val name = call.requireParameter("name") ?: return@delete
+            val force = call.request.queryParameters["force"]?.toBoolean() ?: false
             call.respondBooleanResult(
-                DockerService.removeVolume(name),
+                DockerService.removeVolume(name, force),
                 "Volume removed",
                 "Failed to remove volume"
             )

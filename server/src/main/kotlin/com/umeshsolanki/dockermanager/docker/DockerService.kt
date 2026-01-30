@@ -28,7 +28,8 @@ object DockerService {
 
     fun startContainer(id: String) = containerService.startContainer(id)
     fun stopContainer(id: String) = containerService.stopContainer(id)
-    fun removeContainer(id: String) = containerService.removeContainer(id)
+    fun removeContainer(id: String, force: Boolean = false) = containerService.removeContainer(id, force)
+    fun removeContainers(ids: List<String>, force: Boolean = false) = containerService.removeContainers(ids, force)
     fun pruneContainers() = containerService.pruneContainers()
     fun inspectContainer(id: String) = containerService.inspectContainer(id)
     fun createContainer(request: CreateContainerRequest) = containerService.createContainer(request)
@@ -36,7 +37,8 @@ object DockerService {
 
     fun listImages() = imageService.listImages()
     fun pullImage(name: String) = imageService.pullImage(name)
-    fun removeImage(id: String) = imageService.removeImage(id)
+    fun removeImage(id: String, force: Boolean = false) = imageService.removeImage(id, force)
+    fun removeImages(ids: List<String>, force: Boolean = false) = imageService.removeImages(ids, force)
     fun pruneImages() = imageService.pruneImages()
 
     fun listComposeFiles() = composeService.listComposeFiles()
@@ -68,14 +70,17 @@ object DockerService {
     fun listSecrets() = secretService.listSecrets()
     fun createSecret(name: String, data: String) = secretService.createSecret(name, data)
     fun removeSecret(id: String) = secretService.removeSecret(id)
+    fun removeSecrets(ids: List<String>) = secretService.removeSecrets(ids)
 
     fun listNetworks() = networkService.listNetworks()
     fun removeNetwork(id: String) = networkService.removeNetwork(id)
+    fun removeNetworks(ids: List<String>) = networkService.removeNetworks(ids)
     fun inspectNetwork(id: String) = networkService.inspectNetwork(id)
     fun createNetwork(request: CreateNetworkRequest) = networkService.createNetwork(request)
 
     fun listVolumes() = volumeService.listVolumes()
-    fun removeVolume(name: String) = volumeService.removeVolume(name)
+    fun removeVolume(name: String, force: Boolean = false) = volumeService.removeVolume(name, force)
+    fun removeVolumes(names: List<String>, force: Boolean = false) = volumeService.removeVolumes(names, force)
     fun pruneVolumes() = volumeService.pruneVolumes()
     fun inspectVolume(name: String) = volumeService.inspectVolume(name)
     fun backupVolume(name: String) = volumeService.backupVolume(name)

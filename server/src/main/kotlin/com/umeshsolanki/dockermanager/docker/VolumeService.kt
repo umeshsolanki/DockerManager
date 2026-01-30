@@ -6,7 +6,8 @@ import java.io.File
 
 interface IVolumeService {
     fun listVolumes(): List<DockerVolume>
-    fun removeVolume(name: String): Boolean
+    fun removeVolume(name: String, force: Boolean = false): Boolean
+    fun removeVolumes(names: List<String>, force: Boolean = false): Map<String, Boolean>
     fun pruneVolumes(): Boolean
     fun inspectVolume(name: String): VolumeDetails?
     fun backupVolume(name: String): BackupResult
@@ -77,7 +78,7 @@ class VolumeServiceImpl(private val dockerClient: com.github.dockerjava.api.Dock
         }
     }
 
-    override fun removeVolume(name: String): Boolean {
+    override fun removeVolume(name: String, force: Boolean): Boolean {
         return try {
             dockerClient.removeVolumeCmd(name).exec()
             true
@@ -85,6 +86,14 @@ class VolumeServiceImpl(private val dockerClient: com.github.dockerjava.api.Dock
             e.printStackTrace()
             false
         }
+    }
+
+    override fun removeVolumes(names: List<String>, force: Boolean): Map<String, Boolean> {
+        val results = mutableMapOf<String, Boolean>()
+        names.forEach { name ->
+            results[name] = removeVolume(name, force)
+        }
+        return results
     }
 
     override fun pruneVolumes(): Boolean {

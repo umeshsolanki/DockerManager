@@ -1,6 +1,7 @@
 package com.umeshsolanki.dockermanager.docker
 
 import com.umeshsolanki.dockermanager.*
+import io.ktor.server.request.*
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.*
@@ -28,10 +29,17 @@ fun Route.imageRoutes() {
             )
         }
 
+        post("/batch-delete") {
+            val request = call.receive<BatchDeleteRequest>()
+            val results = DockerService.removeImages(request.ids, request.force)
+            call.respond(results)
+        }
+
         delete("/{id}") {
             val id = call.requireParameter("id") ?: return@delete
-            DockerService.removeImage(id)
-            call.respondText("Removed")
+            val force = call.request.queryParameters["force"]?.toBoolean() ?: false
+            val success = DockerService.removeImage(id, force)
+            if (success) call.respondText("Removed") else call.respondText("Failed", status = io.ktor.http.HttpStatusCode.InternalServerError)
         }
     }
 }

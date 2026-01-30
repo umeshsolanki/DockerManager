@@ -1,7 +1,7 @@
 package com.umeshsolanki.dockermanager.docker
 
 import com.umeshsolanki.dockermanager.*
-import io.ktor.server.request.receive
+import io.ktor.server.request.*
 import io.ktor.server.response.respond
 import io.ktor.server.routing.*
 
@@ -25,6 +25,12 @@ fun Route.networkRoutes() {
             val id = call.requireParameter("id") ?: return@get
             val details = DockerService.inspectNetwork(id)
             call.respondNullableResult(details)
+        }
+
+        post("/batch-delete") {
+            val request = call.receive<BatchDeleteRequest>()
+            val results = DockerService.removeNetworks(request.ids)
+            call.respond(results)
         }
 
         delete("/{id}") {

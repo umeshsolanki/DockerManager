@@ -259,5 +259,8 @@ data class CreateNetworkRequest(
     val labels: Map<String, String> = emptyMap()
 )
 
-
-
+@Serializable
+data class BatchDeleteRequest(
+    val ids: List<String>,
+    val force: Boolean = false
+)

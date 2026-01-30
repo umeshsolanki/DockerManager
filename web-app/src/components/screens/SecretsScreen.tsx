@@ -14,6 +14,8 @@ export default function SecretsScreen() {
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [newName, setNewName] = useState('');
     const [newData, setNewData] = useState('');
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [isBatchDeleting, setIsBatchDeleting] = useState(false);
 
     const fetchSecrets = async () => {
         setIsLoading(true);
@@ -37,9 +39,42 @@ export default function SecretsScreen() {
     };
 
     const handleRemove = async (id: string) => {
+        if (!confirm('Are you sure you want to remove this secret?')) return;
         setIsLoading(true);
         await DockerClient.removeSecret(id);
         await fetchSecrets();
+    };
+
+    const handleBatchRemove = async () => {
+        if (selectedIds.size === 0) return;
+        if (!confirm(`Are you sure you want to remove ${selectedIds.size} secrets?`)) return;
+
+        setIsBatchDeleting(true);
+        try {
+            await DockerClient.removeSecrets(Array.from(selectedIds));
+            setSelectedIds(new Set());
+            await fetchSecrets();
+        } finally {
+            setIsBatchDeleting(false);
+        }
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.size === filteredSecrets.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(filteredSecrets.map(s => s.id)));
+        }
+    };
+
+    const toggleSelect = (id: string) => {
+        const next = new Set(selectedIds);
+        if (next.has(id)) {
+            next.delete(id);
+        } else {
+            next.add(id);
+        }
+        setSelectedIds(next);
     };
 
     const filteredSecrets = useMemo(() => {
@@ -62,6 +97,19 @@ export default function SecretsScreen() {
                 {/* Actions */}
                 <div className="flex items-center gap-2">
                     {isLoading && <RefreshCw className="animate-spin text-primary mr-2" size={20} />}
+
+                    {selectedIds.size > 0 && (
+                        <Button
+                            onClick={handleBatchRemove}
+                            variant="danger"
+                            disabled={isLoading || isBatchDeleting}
+                            icon={<Trash2 size={16} />}
+                            className="bg-red-500/20 hover:bg-red-500/30 text-red-500 border-red-500/20"
+                        >
+                            Delete ({selectedIds.size})
+                        </Button>
+                    )}
+
                     <Button
                         onClick={() => setIsCreateOpen(true)}
                         icon={<Plus size={18} />}
@@ -82,14 +130,29 @@ export default function SecretsScreen() {
                     <span>No secrets found</span>
                 </div>
             ) : (
-                <div className="flex flex-col gap-3 pb-6">
-                    {filteredSecrets.map(secret => (
-                        <SecretCard
-                            key={secret.id}
-                            secret={secret}
-                            onRemove={handleRemove}
-                        />
-                    ))}
+                <div className="bg-surface/30 border border-outline/10 rounded-xl overflow-hidden transition-all">
+                    <div className="bg-surface/50 p-2 px-3 flex items-center justify-between border-b border-outline/10">
+                        <div className="flex items-center gap-3">
+                            <input
+                                type="checkbox"
+                                checked={filteredSecrets.length > 0 && selectedIds.size === filteredSecrets.length}
+                                onChange={toggleSelectAll}
+                                className="w-4 h-4 rounded border-outline/30 bg-surface text-primary focus:ring-primary/20 cursor-pointer"
+                            />
+                            <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Secrets ({filteredSecrets.length})</span>
+                        </div>
+                    </div>
+                    <div className="flex flex-col p-2 gap-2">
+                        {filteredSecrets.map(secret => (
+                            <SecretCard
+                                key={secret.id}
+                                secret={secret}
+                                onRemove={handleRemove}
+                                isSelected={selectedIds.has(secret.id)}
+                                onSelect={() => toggleSelect(secret.id)}
+                            />
+                        ))}
+                    </div>
                 </div>
             )}
 
@@ -147,18 +210,30 @@ export default function SecretsScreen() {
     );
 }
 
-function SecretCard({ secret, onRemove }: {
+function SecretCard({ secret, onRemove, isSelected, onSelect }: {
     secret: DockerSecret;
     onRemove: (id: string) => Promise<void>;
+    isSelected: boolean;
+    onSelect: () => void;
 }) {
     return (
-        <div className="bg-surface/50 border border-outline/10 rounded-xl p-4 flex items-center justify-between hover:bg-surface transition-colors">
+        <div className={`bg-surface/50 border border-outline/10 rounded-xl p-3 flex items-center justify-between hover:bg-surface transition-colors ${isSelected ? 'bg-primary/10 border-primary/30' : ''}`} onClick={(e) => {
+            if ((e.target as HTMLElement).closest('button')) return;
+            onSelect();
+        }}>
             <div className="flex items-center gap-4 flex-1 overflow-hidden">
-                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
-                    <Key size={20} />
+                <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={onSelect}
+                    className="w-4 h-4 rounded border-outline/30 bg-surface text-primary focus:ring-primary/20 cursor-pointer"
+                    onClick={(e) => e.stopPropagation()}
+                />
+                <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center text-primary shrink-0">
+                    <Key size={18} />
                 </div>
                 <div className="flex flex-col overflow-hidden">
-                    <span className="text-lg font-medium text-on-surface truncate">{secret.name}</span>
+                    <span className="text-md font-bold text-on-surface truncate">{secret.name}</span>
                     <div className="flex items-center gap-1.5 text-on-surface-variant font-mono text-[10px]">
                         <span>ID: {secret.id.substring(0, 12)}</span>
                         <span className="opacity-20">•</span>
@@ -168,11 +243,14 @@ function SecretCard({ secret, onRemove }: {
             </div>
 
             <button
-                onClick={() => onRemove(secret.id)}
-                className="p-3 hover:bg-red-500/10 text-red-500 rounded-xl transition-colors"
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onRemove(secret.id);
+                }}
+                className="p-2 hover:bg-red-500/10 text-red-500 rounded-xl transition-colors"
                 title="Remove Secret"
             >
-                <Trash2 size={22} />
+                <Trash2 size={20} />
             </button>
         </div>
     );

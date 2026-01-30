@@ -18,6 +18,9 @@ export default function ContainersScreen() {
     const [inspectingContainer, setInspectingContainer] = useState<ContainerDetails | null>(null);
     const [shellContainerId, setShellContainerId] = useState<string | null>(null);
     const [isWizardOpen, setIsWizardOpen] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [forceDelete, setForceDelete] = useState(false);
+    const [isBatchDeleting, setIsBatchDeleting] = useState(false);
     const { trigger, isLoading: isActionLoading } = useActionTrigger();
 
     const fetchContainers = async (showLoading = true) => {
@@ -33,6 +36,43 @@ export default function ContainersScreen() {
 
     const handleAction = async (action: () => Promise<any>) => {
         await trigger(action, { onSuccess: () => fetchContainers(false) });
+    };
+
+    const handleRemove = async (id: string, force = forceDelete) => {
+        if (!confirm(`Are you sure you want to remove this container${force ? ' (FORCED)' : ''}?`)) return;
+        await trigger(() => DockerClient.removeContainer(id, force), { onSuccess: () => fetchContainers(false) });
+    };
+
+    const handleBatchRemove = async () => {
+        if (selectedIds.size === 0) return;
+        if (!confirm(`Are you sure you want to remove ${selectedIds.size} containers${forceDelete ? ' (FORCED)' : ''}?`)) return;
+
+        setIsBatchDeleting(true);
+        try {
+            await DockerClient.removeContainers(Array.from(selectedIds), forceDelete);
+            setSelectedIds(new Set());
+            await fetchContainers();
+        } finally {
+            setIsBatchDeleting(false);
+        }
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.size === filteredContainers.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(filteredContainers.map(c => c.id)));
+        }
+    };
+
+    const toggleSelect = (id: string) => {
+        const next = new Set(selectedIds);
+        if (next.has(id)) {
+            next.delete(id);
+        } else {
+            next.add(id);
+        }
+        setSelectedIds(next);
     };
 
     const handleInspect = async (id: string) => {
@@ -64,6 +104,31 @@ export default function ContainersScreen() {
                 />
                 <div className="flex items-center gap-2">
                     {isLoading && <RefreshCw className="animate-spin text-primary mr-2" size={20} />}
+
+                    <div className="flex items-center gap-2 bg-surface/50 border border-outline/10 rounded-xl p-1 px-2">
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                            <input
+                                type="checkbox"
+                                checked={forceDelete}
+                                onChange={(e) => setForceDelete(e.target.checked)}
+                                className="w-3.5 h-3.5 rounded border-outline/30 bg-surface text-primary focus:ring-primary/20"
+                            />
+                            <span className="text-[10px] font-bold text-on-surface-variant group-hover:text-red-400 transition-colors uppercase tracking-wider">Force</span>
+                        </label>
+                    </div>
+
+                    {selectedIds.size > 0 && (
+                        <Button
+                            onClick={handleBatchRemove}
+                            variant="danger"
+                            disabled={isLoading || isBatchDeleting}
+                            icon={<Trash size={16} />}
+                            className="bg-red-500/20 hover:bg-red-500/30 text-red-500 border-red-500/20"
+                        >
+                            Delete ({selectedIds.size})
+                        </Button>
+                    )}
+
                     <Button onClick={() => setIsWizardOpen(true)} icon={<Plus size={18} />}>
                         New Container
                     </Button>
@@ -86,78 +151,101 @@ export default function ContainersScreen() {
                     No containers found
                 </div>
             ) : (
-                <div className="bg-surface/30 border border-outline/10 rounded-xl overflow-hidden divide-y divide-outline/5 transition-all">
-                    {filteredContainers.map(container => {
-                        const isRunning = container.state.toLowerCase().includes('running');
-                        return (
-                            <div key={container.id} className="p-3 flex items-center justify-between hover:bg-white/[0.02] transition-all group">
-                                <div className="flex items-center gap-3 min-w-0">
-                                    <div className={`w-2 h-2 rounded-full shrink-0 ${isRunning ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.3)]' : 'bg-gray-500/50 grayscale'}`} />
-                                    <div className="flex flex-col min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm font-bold truncate text-on-surface" title={container.names}>
-                                                {container.names}
-                                            </span>
-                                            <span className="text-[10px] text-on-surface-variant font-mono truncate opacity-60">
-                                                {container.image}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-2 text-[10px] text-on-surface-variant font-mono">
-                                            <span className={isRunning ? 'text-green-500/80 font-bold' : 'text-on-surface-variant/70'}>
-                                                {container.status}
-                                            </span>
-                                            {container.ipAddress && (
-                                                <>
-                                                    <span className="opacity-30">•</span>
-                                                    <span className="text-primary font-bold">{container.ipAddress}</span>
-                                                </>
-                                            )}
-                                            <span className="opacity-30">•</span>
-                                            <span className="truncate opacity-50">{container.id.substring(0, 12)}</span>
+                <div className="bg-surface/30 border border-outline/10 rounded-xl overflow-hidden transition-all">
+                    <div className="bg-surface/50 p-2 px-3 flex items-center justify-between border-b border-outline/10">
+                        <div className="flex items-center gap-3">
+                            <input
+                                type="checkbox"
+                                checked={filteredContainers.length > 0 && selectedIds.size === filteredContainers.length}
+                                onChange={toggleSelectAll}
+                                className="w-4 h-4 rounded border-outline/30 bg-surface text-primary focus:ring-primary/20 cursor-pointer"
+                            />
+                            <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Containers ({filteredContainers.length})</span>
+                        </div>
+                        <div className="flex items-center gap-8 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest px-12">
+                            <span>Status</span>
+                            <span className="w-24">ID</span>
+                        </div>
+                    </div>
+                    <div className="divide-y divide-outline/5">
+                        {filteredContainers.map(container => {
+                            const isRunning = container.state.toLowerCase().includes('running');
+                            return (
+                                <div key={container.id} className={`p-3 flex items-center justify-between hover:bg-white/[0.02] transition-all group ${selectedIds.has(container.id) ? 'bg-primary/[0.03]' : ''}`}>
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedIds.has(container.id)}
+                                            onChange={() => toggleSelect(container.id)}
+                                            className="w-4 h-4 rounded border-outline/30 bg-surface text-primary focus:ring-primary/20 cursor-pointer"
+                                        />
+                                        <div className={`w-2 h-2 rounded-full shrink-0 ${isRunning ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.3)]' : 'bg-gray-500/50 grayscale'}`} />
+                                        <div className="flex flex-col min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-bold truncate text-on-surface" title={container.names}>
+                                                    {container.names}
+                                                </span>
+                                                <span className="text-[10px] text-on-surface-variant font-mono truncate opacity-60">
+                                                    {container.image}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-2 text-[10px] text-on-surface-variant font-mono">
+                                                <span className={isRunning ? 'text-green-500/80 font-bold' : 'text-on-surface-variant/70'}>
+                                                    {container.status}
+                                                </span>
+                                                {container.ipAddress && (
+                                                    <>
+                                                        <span className="opacity-30">•</span>
+                                                        <span className="text-primary font-bold">{container.ipAddress}</span>
+                                                    </>
+                                                )}
+                                                <span className="opacity-30">•</span>
+                                                <span className="truncate opacity-50">{container.id.substring(0, 12)}</span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
 
-                                <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-opacity">
-                                    <ActionIconButton
-                                        onClick={() => handleInspect(container.id)}
-                                        icon={<Info />}
-                                        color="blue"
-                                        title="Inspect"
-                                    />
-                                    {isRunning ? (
+                                    <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-opacity">
                                         <ActionIconButton
-                                            onClick={() => handleAction(() => DockerClient.stopContainer(container.id))}
-                                            icon={<Square fill="currentColor" />}
+                                            onClick={() => handleInspect(container.id)}
+                                            icon={<Info />}
+                                            color="blue"
+                                            title="Inspect"
+                                        />
+                                        {isRunning ? (
+                                            <ActionIconButton
+                                                onClick={() => handleAction(() => DockerClient.stopContainer(container.id))}
+                                                icon={<Square fill="currentColor" />}
+                                                color="red"
+                                                title="Stop"
+                                            />
+                                        ) : (
+                                            <ActionIconButton
+                                                onClick={() => handleAction(() => DockerClient.startContainer(container.id))}
+                                                icon={<Play fill="currentColor" />}
+                                                color="green"
+                                                title="Start"
+                                            />
+                                        )}
+                                        <ActionIconButton
+                                            onClick={() => handleShell(container.id)}
+                                            icon={<Terminal />}
+                                            color="primary"
+                                            disabled={!isRunning}
+                                            title="Terminal Shell"
+                                        />
+                                        <ActionIconButton
+                                            onClick={() => handleRemove(container.id)}
+                                            icon={<Trash />}
                                             color="red"
-                                            title="Stop"
+                                            disabled={isRunning && !forceDelete}
+                                            title="Remove"
                                         />
-                                    ) : (
-                                        <ActionIconButton
-                                            onClick={() => handleAction(() => DockerClient.startContainer(container.id))}
-                                            icon={<Play fill="currentColor" />}
-                                            color="green"
-                                            title="Start"
-                                        />
-                                    )}
-                                    <ActionIconButton
-                                        onClick={() => handleShell(container.id)}
-                                        icon={<Terminal />}
-                                        color="primary"
-                                        disabled={!isRunning}
-                                        title="Terminal Shell"
-                                    />
-                                    <ActionIconButton
-                                        onClick={() => handleAction(() => DockerClient.removeContainer(container.id))}
-                                        icon={<Trash />}
-                                        color="red"
-                                        disabled={isRunning}
-                                        title="Remove"
-                                    />
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })}
+                    </div>
                 </div>
             )}
 

@@ -6,7 +6,8 @@ import java.util.concurrent.TimeUnit
 interface IImageService {
     fun listImages(): List<DockerImage>
     fun pullImage(name: String): Boolean
-    fun removeImage(id: String): Boolean
+    fun removeImage(id: String, force: Boolean = false): Boolean
+    fun removeImages(ids: List<String>, force: Boolean = false): Map<String, Boolean>
     fun pruneImages(): Boolean
 }
 
@@ -37,14 +38,22 @@ class ImageServiceImpl(private val dockerClient: com.github.dockerjava.api.Docke
         return true
     }
 
-    override fun removeImage(id: String): Boolean {
+    override fun removeImage(id: String, force: Boolean): Boolean {
         return try {
-            dockerClient.removeImageCmd(id).exec()
+            dockerClient.removeImageCmd(id).withForce(force).exec()
             true
         } catch (e: Exception) {
             e.printStackTrace()
             false
         }
+    }
+
+    override fun removeImages(ids: List<String>, force: Boolean): Map<String, Boolean> {
+        val results = mutableMapOf<String, Boolean>()
+        ids.forEach { id ->
+            results[id] = removeImage(id, force)
+        }
+        return results
     }
 
     override fun pruneImages(): Boolean {

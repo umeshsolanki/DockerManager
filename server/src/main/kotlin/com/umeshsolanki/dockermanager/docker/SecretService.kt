@@ -8,6 +8,7 @@ interface ISecretService {
     fun listSecrets(): List<DockerSecret>
     fun createSecret(name: String, data: String): Boolean
     fun removeSecret(id: String): Boolean
+    fun removeSecrets(ids: List<String>): Map<String, Boolean>
 }
 
 class SecretServiceImpl(private val dockerClient: com.github.dockerjava.api.DockerClient) : ISecretService {
@@ -48,5 +49,13 @@ class SecretServiceImpl(private val dockerClient: com.github.dockerjava.api.Dock
             e.printStackTrace()
             false
         }
+    }
+
+    override fun removeSecrets(ids: List<String>): Map<String, Boolean> {
+        val results = mutableMapOf<String, Boolean>()
+        ids.forEach { id ->
+            results[id] = removeSecret(id)
+        }
+        return results
     }
 }

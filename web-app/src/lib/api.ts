@@ -98,14 +98,34 @@ export const DockerClient = {
     createContainer: (body: CreateContainerRequest) => textReq('/containers', { method: 'POST', body: JSON.stringify(body) }, null as any),
     startContainer: (id: string) => apiFetch(`/containers/${id}/start`, { method: 'POST' }),
     stopContainer: (id: string) => apiFetch(`/containers/${id}/stop`, { method: 'POST' }),
-    removeContainer: (id: string) => apiFetch(`/containers/${id}`, { method: 'DELETE' }),
+    async removeContainer(id: string, force: boolean = false): Promise<boolean> {
+        const response = await apiFetch(`/containers/${id}?force=${force}`, { method: 'DELETE' });
+        return response.ok;
+    },
+    async removeContainers(ids: string[], force: boolean = false): Promise<Record<string, boolean>> {
+        const response = await apiFetch('/containers/batch-delete', {
+            method: 'POST',
+            body: JSON.stringify({ ids, force })
+        });
+        return await response.json();
+    },
     pruneContainers: () => apiFetch('/containers/prune', { method: 'POST' }),
     getContainerLogs: (id: string, tail = 100) => textReq(`/containers/${id}/logs?tail=${tail}`),
 
     // --- Images ---
     listImages: () => req<DockerImage[]>('/images', {}, []),
     pullImage: (name: string) => apiFetch(`/images/pull?image=${encodeURIComponent(name)}`, { method: 'POST' }),
-    removeImage: (id: string) => apiFetch(`/images/${id}`, { method: 'DELETE' }),
+    async removeImage(id: string, force: boolean = false): Promise<boolean> {
+        const response = await apiFetch(`/images/${id}?force=${force}`, { method: 'DELETE' });
+        return response.ok;
+    },
+    async removeImages(ids: string[], force: boolean = false): Promise<Record<string, boolean>> {
+        const response = await apiFetch('/images/batch-delete', {
+            method: 'POST',
+            body: JSON.stringify({ ids, force })
+        });
+        return await response.json();
+    },
     pruneImages: () => apiFetch('/images/prune', { method: 'POST' }),
 
     // --- Compose ---
@@ -139,15 +159,39 @@ export const DockerClient = {
     listSecrets: () => req<DockerSecret[]>('/secrets', {}, []),
     createSecret: (name: string, data: string) => apiFetch(`/secrets?name=${encodeURIComponent(name)}&data=${encodeURIComponent(data)}`, { method: 'POST' }),
     removeSecret: (id: string) => apiFetch(`/secrets/${id}`, { method: 'DELETE' }),
+    async removeSecrets(ids: string[]): Promise<Record<string, boolean>> {
+        const response = await apiFetch('/secrets/batch-delete', {
+            method: 'POST',
+            body: JSON.stringify({ ids })
+        });
+        return await response.json();
+    },
 
     listNetworks: () => req<DockerNetwork[]>('/networks', {}, []),
     inspectNetwork: (id: string) => req<NetworkDetails | null>(`/networks/${id}`, {}, null),
     createNetwork: (body: CreateNetworkRequest) => safeReq('/networks', { method: 'POST', body: JSON.stringify(body) }),
     removeNetwork: (id: string) => apiFetch(`/networks/${id}`, { method: 'DELETE' }).then(r => r.ok),
+    async removeNetworks(ids: string[]): Promise<Record<string, boolean>> {
+        const response = await apiFetch('/networks/batch-delete', {
+            method: 'POST',
+            body: JSON.stringify({ ids })
+        });
+        return await response.json();
+    },
 
     listVolumes: () => req<DockerVolume[]>('/volumes', {}, []),
     inspectVolume: (name: string) => req<VolumeDetails | null>(`/volumes/${name}/inspect`, {}, null),
-    removeVolume: (name: string) => apiFetch(`/volumes/${name}`, { method: 'DELETE' }),
+    async removeVolume(name: string, force: boolean = false): Promise<boolean> {
+        const response = await apiFetch(`/volumes/${name}?force=${force}`, { method: 'DELETE' });
+        return response.ok;
+    },
+    async removeVolumes(ids: string[], force: boolean = false): Promise<Record<string, boolean>> {
+        const response = await apiFetch('/volumes/batch-delete', {
+            method: 'POST',
+            body: JSON.stringify({ ids, force })
+        });
+        return await response.json();
+    },
     pruneVolumes: () => apiFetch('/volumes/prune', { method: 'POST' }),
     backupVolume: (name: string) => req<BackupResult | null>(`/volumes/${name}/backup`, { method: 'POST' }, null),
     listVolumeFiles: (name: string, path = "") => req<FileItem[]>(`/volumes/${name}/files?path=${encodeURIComponent(path)}`, {}, []),

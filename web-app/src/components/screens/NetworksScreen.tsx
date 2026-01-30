@@ -3,7 +3,7 @@ import { RefreshCw, Trash, Share2, Eye, Box, Plus } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { DockerNetwork, NetworkDetails } from '@/lib/types';
 import { SearchInput } from '../ui/SearchInput';
-import { ActionIconButton } from '../ui/Buttons';
+import { ActionIconButton, Button } from '../ui/Buttons';
 import { Modal } from '../ui/Modal';
 import { useActionTrigger } from '@/hooks/useActionTrigger';
 
@@ -13,6 +13,8 @@ export default function NetworksScreen() {
     const [searchQuery, setSearchQuery] = useState('');
     const [inspectNetworkId, setInspectNetworkId] = useState<string | null>(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [isBatchDeleting, setIsBatchDeleting] = useState(false);
     const { trigger } = useActionTrigger();
 
     const fetchNetworks = async (showLoading = true) => {
@@ -28,6 +30,43 @@ export default function NetworksScreen() {
 
     const handleAction = async (action: () => Promise<any>) => {
         await trigger(action, { onSuccess: () => fetchNetworks(false) });
+    };
+
+    const handleRemove = async (id: string, name: string) => {
+        if (!confirm(`Are you sure you want to remove network "${name}"?`)) return;
+        await trigger(() => DockerClient.removeNetwork(id), { onSuccess: () => fetchNetworks(false) });
+    };
+
+    const handleBatchRemove = async () => {
+        if (selectedIds.size === 0) return;
+        if (!confirm(`Are you sure you want to remove ${selectedIds.size} networks?`)) return;
+
+        setIsBatchDeleting(true);
+        try {
+            await DockerClient.removeNetworks(Array.from(selectedIds));
+            setSelectedIds(new Set());
+            await fetchNetworks();
+        } finally {
+            setIsBatchDeleting(false);
+        }
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.size === filteredNetworks.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(filteredNetworks.map(n => n.id)));
+        }
+    };
+
+    const toggleSelect = (id: string) => {
+        const next = new Set(selectedIds);
+        if (next.has(id)) {
+            next.delete(id);
+        } else {
+            next.add(id);
+        }
+        setSelectedIds(next);
     };
 
     const filteredNetworks = useMemo(() => {
@@ -48,6 +87,19 @@ export default function NetworksScreen() {
                 />
                 <div className="flex items-center gap-2">
                     {isLoading && <RefreshCw className="animate-spin text-primary mr-2" size={20} />}
+
+                    {selectedIds.size > 0 && (
+                        <Button
+                            onClick={handleBatchRemove}
+                            variant="danger"
+                            disabled={isLoading || isBatchDeleting}
+                            icon={<Trash size={16} />}
+                            className="bg-red-500/20 hover:bg-red-500/30 text-red-500 border-red-500/20 px-4 h-9"
+                        >
+                            Delete ({selectedIds.size})
+                        </Button>
+                    )}
+
                     <ActionIconButton
                         onClick={() => fetchNetworks()}
                         icon={<RefreshCw />}
@@ -67,47 +119,66 @@ export default function NetworksScreen() {
                     No networks found
                 </div>
             ) : (
-                <div className="bg-surface/30 border border-outline/10 rounded-xl divide-y divide-outline/5 transition-all">
-                    {filteredNetworks.map(network => (
-                        <div key={network.id} className="p-3 flex items-center justify-between hover:bg-white/[0.02] transition-all group">
-                            <div className="flex items-center gap-3 min-w-0">
-                                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                                    <Share2 size={16} className="text-primary" />
-                                </div>
-                                <div className="flex flex-col min-w-0">
-                                    <span className="text-sm font-bold truncate text-on-surface" title={network.name}>
-                                        {network.name}
-                                    </span>
-                                    <div className="flex items-center gap-2 text-[10px] text-on-surface-variant font-mono">
-                                        <span className="font-black uppercase text-[9px] bg-white/5 px-1.5 py-0.5 rounded tracking-tighter">{network.driver}</span>
-                                        <span className="opacity-30">•</span>
-                                        <span className="truncate opacity-70">{network.scope}</span>
-                                        {network.internal && (
-                                            <>
-                                                <span className="opacity-30">•</span>
-                                                <span className="text-[8px] bg-yellow-500/10 text-yellow-500 px-1.5 py-0.5 rounded uppercase font-black">Internal</span>
-                                            </>
-                                        )}
+                <div className="bg-surface/30 border border-outline/10 rounded-xl overflow-hidden transition-all">
+                    <div className="bg-surface/50 p-2 px-3 flex items-center justify-between border-b border-outline/10">
+                        <div className="flex items-center gap-3">
+                            <input
+                                type="checkbox"
+                                checked={filteredNetworks.length > 0 && selectedIds.size === filteredNetworks.length}
+                                onChange={toggleSelectAll}
+                                className="w-4 h-4 rounded border-outline/30 bg-surface text-primary focus:ring-primary/20 cursor-pointer"
+                            />
+                            <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Networks ({filteredNetworks.length})</span>
+                        </div>
+                    </div>
+                    <div className="divide-y divide-outline/5">
+                        {filteredNetworks.map(network => (
+                            <div key={network.id} className={`p-3 flex items-center justify-between hover:bg-white/[0.02] transition-all group ${selectedIds.has(network.id) ? 'bg-primary/[0.03]' : ''}`}>
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedIds.has(network.id)}
+                                        onChange={() => toggleSelect(network.id)}
+                                        className="w-4 h-4 rounded border-outline/30 bg-surface text-primary focus:ring-primary/20 cursor-pointer"
+                                    />
+                                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                                        <Share2 size={16} className="text-primary" />
+                                    </div>
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="text-sm font-bold truncate text-on-surface" title={network.name}>
+                                            {network.name}
+                                        </span>
+                                        <div className="flex items-center gap-2 text-[10px] text-on-surface-variant font-mono">
+                                            <span className="font-black uppercase text-[9px] bg-white/5 px-1.5 py-0.5 rounded tracking-tighter">{network.driver}</span>
+                                            <span className="opacity-30">•</span>
+                                            <span className="truncate opacity-70">{network.scope}</span>
+                                            {network.internal && (
+                                                <>
+                                                    <span className="opacity-30">•</span>
+                                                    <span className="text-[8px] bg-yellow-500/10 text-yellow-500 px-1.5 py-0.5 rounded uppercase font-black">Internal</span>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-opacity">
-                                <ActionIconButton
-                                    onClick={() => setInspectNetworkId(network.id)}
-                                    icon={<Eye />}
-                                    color="blue"
-                                    title="Inspect"
-                                />
-                                <ActionIconButton
-                                    onClick={() => handleAction(() => DockerClient.removeNetwork(network.id))}
-                                    icon={<Trash />}
-                                    color="red"
-                                    title="Remove"
-                                />
+                                <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-opacity">
+                                    <ActionIconButton
+                                        onClick={() => setInspectNetworkId(network.id)}
+                                        icon={<Eye />}
+                                        color="blue"
+                                        title="Inspect"
+                                    />
+                                    <ActionIconButton
+                                        onClick={() => handleRemove(network.id, network.name)}
+                                        icon={<Trash />}
+                                        color="red"
+                                        title="Remove"
+                                    />
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        ))}
+                    </div>
                 </div>
             )}
 

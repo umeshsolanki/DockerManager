@@ -11,7 +11,8 @@ interface IContainerService {
     fun listContainers(): List<DockerContainer>
     fun startContainer(id: String): Boolean
     fun stopContainer(id: String): Boolean
-    fun removeContainer(id: String): Boolean
+    fun removeContainer(id: String, force: Boolean = false): Boolean
+    fun removeContainers(ids: List<String>, force: Boolean = false): Map<String, Boolean>
     fun pruneContainers(): Boolean
     fun inspectContainer(id: String): ContainerDetails?
     fun createContainer(request: CreateContainerRequest): String?
@@ -276,14 +277,22 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
         }
     }
 
-    override fun removeContainer(id: String): Boolean {
+    override fun removeContainer(id: String, force: Boolean): Boolean {
         return try {
-            dockerClient.removeContainerCmd(id).exec()
+            dockerClient.removeContainerCmd(id).withForce(force).exec()
             true
         } catch (e: Exception) {
             e.printStackTrace()
             false
         }
+    }
+
+    override fun removeContainers(ids: List<String>, force: Boolean): Map<String, Boolean> {
+        val results = mutableMapOf<String, Boolean>()
+        ids.forEach { id ->
+            results[id] = removeContainer(id, force)
+        }
+        return results
     }
 
     override fun pruneContainers(): Boolean {

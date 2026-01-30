@@ -1,6 +1,7 @@
 package com.umeshsolanki.dockermanager.docker
 
 import com.umeshsolanki.dockermanager.*
+import io.ktor.server.request.*
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.*
@@ -19,6 +20,12 @@ fun Route.secretRoutes() {
                 "Created",
                 "Failed to create"
             )
+        }
+
+        post("/batch-delete") {
+            val request = call.receive<BatchDeleteRequest>()
+            val results = DockerService.removeSecrets(request.ids)
+            call.respond(results)
         }
 
         delete("/{id}") {

@@ -4,6 +4,7 @@ import com.umeshsolanki.dockermanager.*
 interface INetworkService {
     fun listNetworks(): List<DockerNetwork>
     fun removeNetwork(id: String): Boolean
+    fun removeNetworks(ids: List<String>): Map<String, Boolean>
     fun inspectNetwork(id: String): NetworkDetails?
     fun createNetwork(request: CreateNetworkRequest): String?
 }
@@ -30,6 +31,14 @@ class NetworkServiceImpl(private val dockerClient: com.github.dockerjava.api.Doc
             e.printStackTrace()
             false
         }
+    }
+
+    override fun removeNetworks(ids: List<String>): Map<String, Boolean> {
+        val results = mutableMapOf<String, Boolean>()
+        ids.forEach { id ->
+            results[id] = removeNetwork(id)
+        }
+        return results
     }
 
     override fun inspectNetwork(id: String): NetworkDetails? {
