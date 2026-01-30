@@ -113,14 +113,11 @@ export function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () 
                 <div className="flex-1 overflow-y-auto px-1 custom-scrollbar space-y-6">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-1.5">
-                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1 flex justify-between">
-                                <span>Domain Names</span>
-                                <span className="text-primary/60 lowercase tracking-normal">Space separated</span>
-                            </label>
+                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Domain Name</label>
                             <input
                                 required
                                 type="text"
-                                placeholder="e.g. example.com www.example.com"
+                                placeholder="e.g. app.example.com"
                                 value={domain}
                                 onChange={(e) => setDomain(e.target.value)}
                                 className="w-full bg-white/5 border border-outline/20 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary transition-all font-bold placeholder:font-normal"

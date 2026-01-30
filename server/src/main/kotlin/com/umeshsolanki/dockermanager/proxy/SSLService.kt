@@ -97,10 +97,12 @@ class SSLServiceImpl(
                 return false
             }
 
-            // Build domain arguments: support space-separated multiple domains for a single certificate
-            val domainList = host.domain.trim().split(Regex("\\s+"))
-            val domainsArg = domainList.joinToString(" ") { "-d \"$it\"" } +
-                if (host.isWildcard) " -d \"*.${domainList.first()}\"" else ""
+            // Build domain arguments: for wildcard, include both base and wildcard domains
+            val domainsArg = if (host.isWildcard) {
+                "-d \"${host.domain}\" -d \"*.${host.domain}\""
+            } else {
+                "-d \"${host.domain}\""
+            }
 
             // Email uses the domain directly
             val emailDomain = host.domain

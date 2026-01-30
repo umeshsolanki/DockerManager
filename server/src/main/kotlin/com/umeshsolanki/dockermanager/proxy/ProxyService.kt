@@ -460,11 +460,9 @@ class ProxyServiceImpl(
                 return false to "Target is required"
             }
 
-            // Validate domain format (allow multiple space-separated domains)
-            val domains = host.domain.trim().split(Regex("\\s+"))
-            val domainRegex = Regex("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
-            if (domains.any { !it.matches(domainRegex) }) {
-                return false to "Invalid domain format. Use space to separate multiple domains."
+            // Validate domain format (basic check)
+            if (!host.domain.matches(Regex("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"))) {
+                return false to "Invalid domain format"
             }
             if (host.domain.any { it.isISOControl() }) {
                 return false to "Domain contains invalid characters"
@@ -567,10 +565,8 @@ class ProxyServiceImpl(
                 return false to "Target is required"
             }
 
-            // Validate domain format (allow multiple space-separated domains)
-            val domains = host.domain.trim().split(Regex("\\s+"))
-            val domainRegex = Regex("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
-            if (domains.any { !it.matches(domainRegex) }) {
+            // Validate domain format (Strict check including avoiding control chars)
+            if (!host.domain.matches(Regex("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"))) {
                 return false to "Invalid domain format"
             }
             if (host.domain.any { it.isISOControl() }) {

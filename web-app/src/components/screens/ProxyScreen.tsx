@@ -89,32 +89,6 @@ export default function ProxyScreen() {
         h.target.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    const getRootDomain = (domain: string) => {
-        if (!domain) return 'unknown';
-        const parts = domain.split(/\s+/)[0].split('.');
-        if (parts.length <= 2) return domain.split(/\s+/)[0];
-        const lastTwo = parts.slice(-2).join('.');
-        const commonSLDs = [
-            'com.', 'co.', 'org.', 'net.', 'gov.', 'edu.', 'mil.', 'int.',
-            'ac.', 'io.', 'me.', 'biz.', 'info.', 'name.', 'pro.'
-        ];
-        const isDoubleTLD = commonSLDs.some(sld => lastTwo.startsWith(sld));
-        if (isDoubleTLD && parts.length >= 3) {
-            return parts.slice(-3).join('.');
-        }
-        return parts.slice(-2).join('.');
-    };
-
-    const groupedHosts = React.useMemo(() => {
-        const groups: Record<string, ProxyHost[]> = {};
-        filteredHosts.forEach(host => {
-            const root = getRootDomain(host.domain);
-            if (!groups[root]) groups[root] = [];
-            groups[root].push(host);
-        });
-        return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
-    }, [filteredHosts]);
-
     const tabs = [
         { id: 'domains', label: 'Domain Hosts', icon: <Globe size={18} /> },
         { id: 'dns', label: 'DNS Configs', icon: <Network size={18} /> },
@@ -173,113 +147,93 @@ export default function ProxyScreen() {
                             />
                         </div>
 
-                        <div className="space-y-8">
-                            {groupedHosts.map(([rootDomain, domainHosts]) => (
-                                <div key={rootDomain} className="space-y-3">
-                                    <div className="flex items-center gap-3 px-1">
-                                        <div className="h-px flex-1 bg-outline/10" />
-                                        <div className="flex items-center gap-2">
-                                            <Building2 size={12} className="text-on-surface-variant/40" />
-                                            <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-on-surface-variant/60">
-                                                {rootDomain}
-                                            </h2>
-                                            <span className="bg-surface border border-outline/10 px-2 py-0.5 rounded-full text-[9px] font-bold text-on-surface-variant/40">
-                                                {domainHosts.length}
-                                            </span>
-                                        </div>
-                                        <div className="h-px flex-1 bg-outline/10" />
-                                    </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                            {filteredHosts.map(host => (
+                                <div key={host.id} className="bg-surface/60 backdrop-blur-md border border-outline/10 rounded-2xl p-0 hover:border-primary/20 hover:shadow-lg transition-all group relative overflow-hidden flex flex-col">
+                                    <div className={`absolute top-0 left-0 w-1 h-full ${host.enabled ? 'bg-green-500' : 'bg-on-surface-variant/20'}`} />
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                                        {domainHosts.map(host => (
-                                            <div key={host.id} className="bg-surface/60 backdrop-blur-md border border-outline/10 rounded-2xl p-0 hover:border-primary/20 hover:shadow-lg transition-all group relative overflow-hidden flex flex-col">
-                                                <div className={`absolute top-0 left-0 w-1 h-full ${host.enabled ? 'bg-green-500' : 'bg-on-surface-variant/20'}`} />
-
-                                                <div className="p-4 flex-1">
-                                                    <div className="flex items-start justify-between gap-3 mb-3">
-                                                        <div className="flex gap-3 min-w-0">
-                                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 duration-300 shadow-inner ${host.enabled ? 'bg-primary/10 text-primary' : 'bg-on-surface/5 text-on-surface-variant'}`}>
-                                                                <Globe size={18} />
-                                                            </div>
-                                                            <div className="min-w-0 flex flex-col justify-center">
-                                                                <h3 className="text-sm font-black truncate tracking-tight text-on-surface">{host.domain}</h3>
-                                                                <div className="flex items-center gap-1.5 text-on-surface-variant/70 text-[10px] font-mono truncate mt-0.5">
-                                                                    <span className="text-primary/60">→</span>
-                                                                    <span className="truncate hover:text-primary transition-colors cursor-pointer" title={host.target}>{host.target}</span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex flex-col gap-1 items-end">
-                                                            {host.ssl && <span className="text-[9px] text-green-500 font-bold bg-green-500/10 px-1.5 py-0.5 rounded-md flex items-center gap-1"><Lock size={8} /> SSL</span>}
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="flex flex-wrap gap-1.5 mb-4">
-                                                        {!host.enabled && <span className="text-[9px] bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider border border-red-500/10">Disabled</span>}
-                                                        {host.hstsEnabled && <span className="text-[9px] bg-purple-500/10 text-purple-500 px-1.5 py-0.5 rounded-md font-bold uppercase border border-purple-500/10">HSTS</span>}
-                                                        {host.websocketEnabled && <span className="text-[9px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded-md font-bold uppercase border border-blue-500/10">WS</span>}
-                                                        {host.allowedIps && host.allowedIps.length > 0 && (
-                                                            <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded-md font-bold uppercase flex items-center gap-1 border border-amber-500/10">
-                                                                <ShieldCheck size={10} /> {host.allowedIps.length} IPS
-                                                            </span>
-                                                        )}
-                                                        {host.paths && host.paths.length > 0 && (
-                                                            <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase flex items-center gap-1 border ${host.paths.filter(p => p.enabled !== false).length === host.paths.length
-                                                                ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/10'
-                                                                : 'bg-orange-500/10 text-orange-500 border-orange-500/10'
-                                                                }`}>
-                                                                <Layers size={10} />
-                                                                {host.paths.filter(p => p.enabled !== false).length} Rules
-                                                            </span>
-                                                        )}
-                                                    </div>
+                                    <div className="p-4 flex-1">
+                                        <div className="flex items-start justify-between gap-3 mb-3">
+                                            <div className="flex gap-3 min-w-0">
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 duration-300 shadow-inner ${host.enabled ? 'bg-primary/10 text-primary' : 'bg-on-surface/5 text-on-surface-variant'}`}>
+                                                    <Globe size={18} />
                                                 </div>
-
-                                                <div className="flex items-center justify-between p-2 bg-black/20 border-t border-outline/5 mt-auto mb-0">
-                                                    <div className="flex gap-1">
-                                                        <button
-                                                            onClick={() => setEditingHost(host)}
-                                                            className="p-1.5 text-on-surface-variant hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-all active:scale-95"
-                                                            title="Edit"
-                                                        >
-                                                            <Pencil size={14} />
-                                                        </button>
-                                                        {!host.ssl && host.enabled && (
-                                                            <button
-                                                                onClick={() => handleRequestSSL(host.id)}
-                                                                className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-all active:scale-95"
-                                                                title="Request SSL"
-                                                            >
-                                                                <ShieldCheck size={14} />
-                                                            </button>
-                                                        )}
-                                                        <button
-                                                            onClick={() => handleDelete(host.id)}
-                                                            className="p-1.5 text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all active:scale-95"
-                                                            title="Delete"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
+                                                <div className="min-w-0 flex flex-col justify-center">
+                                                    <h3 className="text-sm font-black truncate tracking-tight text-on-surface">{host.domain}</h3>
+                                                    <div className="flex items-center gap-1.5 text-on-surface-variant/70 text-[10px] font-mono truncate mt-0.5">
+                                                        <span className="text-primary/60">→</span>
+                                                        <span className="truncate hover:text-primary transition-colors cursor-pointer" title={host.target}>{host.target}</span>
                                                     </div>
-
-                                                    <button
-                                                        onClick={() => handleToggle(host.id)}
-                                                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all font-bold text-[10px] active:scale-95 ${host.enabled
-                                                            ? 'bg-green-500/10 text-green-500 hover:bg-green-500/20'
-                                                            : 'bg-on-surface/5 text-on-surface-variant hover:bg-on-surface/10'}`}
-                                                    >
-                                                        <Power size={10} className={host.enabled ? 'text-green-500' : ''} />
-                                                        <span>{host.enabled ? 'ON' : 'OFF'}</span>
-                                                    </button>
                                                 </div>
                                             </div>
-                                        ))}
+                                            <div className="flex flex-col gap-1 items-end">
+                                                {host.ssl && <span className="text-[9px] text-green-500 font-bold bg-green-500/10 px-1.5 py-0.5 rounded-md flex items-center gap-1"><Lock size={8} /> SSL</span>}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-wrap gap-1.5 mb-4">
+                                            {!host.enabled && <span className="text-[9px] bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider border border-red-500/10">Disabled</span>}
+                                            {host.hstsEnabled && <span className="text-[9px] bg-purple-500/10 text-purple-500 px-1.5 py-0.5 rounded-md font-bold uppercase border border-purple-500/10">HSTS</span>}
+                                            {host.websocketEnabled && <span className="text-[9px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded-md font-bold uppercase border border-blue-500/10">WS</span>}
+                                            {host.allowedIps && host.allowedIps.length > 0 && (
+                                                <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded-md font-bold uppercase flex items-center gap-1 border border-amber-500/10">
+                                                    <ShieldCheck size={10} /> {host.allowedIps.length} IPS
+                                                </span>
+                                            )}
+                                            {host.paths && host.paths.length > 0 && (
+                                                <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase flex items-center gap-1 border ${host.paths.filter(p => p.enabled !== false).length === host.paths.length
+                                                    ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/10'
+                                                    : 'bg-orange-500/10 text-orange-500 border-orange-500/10'
+                                                    }`}>
+                                                    <Layers size={10} />
+                                                    {host.paths.filter(p => p.enabled !== false).length} Rules
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between p-2 bg-black/20 border-t border-outline/5 mt-auto mb-0">
+                                        <div className="flex gap-1">
+                                            <button
+                                                onClick={() => setEditingHost(host)}
+                                                className="p-1.5 text-on-surface-variant hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-all active:scale-95"
+                                                title="Edit"
+                                            >
+                                                <Pencil size={14} />
+                                            </button>
+                                            {!host.ssl && host.enabled && (
+                                                <button
+                                                    onClick={() => handleRequestSSL(host.id)}
+                                                    className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-all active:scale-95"
+                                                    title="Request SSL"
+                                                >
+                                                    <ShieldCheck size={14} />
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => handleDelete(host.id)}
+                                                className="p-1.5 text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all active:scale-95"
+                                                title="Delete"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+
+                                        <button
+                                            onClick={() => handleToggle(host.id)}
+                                            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all font-bold text-[10px] active:scale-95 ${host.enabled
+                                                ? 'bg-green-500/10 text-green-500 hover:bg-green-500/20'
+                                                : 'bg-on-surface/5 text-on-surface-variant hover:bg-on-surface/10'}`}
+                                        >
+                                            <Power size={10} className={host.enabled ? 'text-green-500' : ''} />
+                                            <span>{host.enabled ? 'ON' : 'OFF'}</span>
+                                        </button>
                                     </div>
                                 </div>
                             ))}
                         </div>
 
-                        {hosts.length === 0 && (
+                        {filteredHosts.length === 0 && (
                             <div className="flex flex-col items-center justify-center text-on-surface-variant py-20 opacity-30">
                                 <Globe size={80} className="mb-4" />
                                 <p className="italic text-xl">No proxy hosts configured</p>
