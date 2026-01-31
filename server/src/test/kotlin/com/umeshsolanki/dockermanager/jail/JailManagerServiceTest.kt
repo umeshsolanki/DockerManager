@@ -3,6 +3,8 @@ package com.umeshsolanki.dockermanager.jail
 import com.umeshsolanki.dockermanager.firewall.BlockIPRequest
 import com.umeshsolanki.dockermanager.firewall.FirewallRule
 import com.umeshsolanki.dockermanager.firewall.IFirewallService
+import com.umeshsolanki.dockermanager.ip.IIpInfoService
+import com.umeshsolanki.dockermanager.ip.IpInfo
 import io.mockk.*
 import org.junit.After
 import org.junit.Before
@@ -24,12 +26,14 @@ import kotlin.test.assertTrue
 class JailManagerServiceTest {
 
     private lateinit var mockFirewallService: IFirewallService
+    private lateinit var mockIpInfoService: IIpInfoService
     private lateinit var jailManagerService: JailManagerServiceImpl
 
     @Before
     fun setup() {
         mockFirewallService = mockk<IFirewallService>(relaxed = true)
-        jailManagerService = JailManagerServiceImpl(mockFirewallService)
+        mockIpInfoService = mockk<IIpInfoService>(relaxed = true)
+        jailManagerService = JailManagerServiceImpl(mockFirewallService, mockIpInfoService)
         
         // Mock the firewall list to return empty by default
         every { mockFirewallService.listRules() } returns emptyList()
@@ -253,12 +257,22 @@ class JailManagerServiceTest {
 
     @Test
     fun `test getCountryCode returns a value`() {
+        // Mock IP info for the test IP
+        val testIp = "8.8.8.8"
+        every { mockIpInfoService.getIpInfo(testIp) } returns IpInfo(
+            ip = testIp,
+            countryCode = "US",
+            country = "United States",
+            region = "CA",
+            city = "Mountain View",
+            isp = "Google"
+        )
+
         // Test the getCountryCode method
-        val result = jailManagerService.getCountryCode("8.8.8.8")
+        val result = jailManagerService.getCountryCode(testIp)
         
-        // Should return a non-empty country code
-        assertTrue(result.isNotEmpty())
-        assertEquals(2, result.length)
+        // Should return the mocked country code
+        assertEquals("US", result)
     }
 }
 

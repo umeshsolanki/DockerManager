@@ -227,7 +227,7 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
                     val port = specParts[0].toIntOrNull() ?: 0
                     val proto = if (specParts.size > 1) specParts[1] else "tcp"
                     
-                    if (bindings is JsonNull || bindings == null) {
+                    if (bindings is JsonNull) {
                         listOf(PortMapping(port, 0, proto))
                     } else {
                         bindings.jsonArray.map { b ->

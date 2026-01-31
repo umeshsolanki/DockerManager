@@ -137,7 +137,7 @@ class SSLServiceImpl(
                         // Create auth script
                         val authScript = File(confDir, "dns-auth.sh")
                         val authContent = if (hasScripts) {
-                            effectiveAuthScript ?: ""
+                            effectiveAuthScript
                         } else if (hasHost && effectiveAuthUrl == null) {
                             // Default GET template for auth (add)
                             val template =

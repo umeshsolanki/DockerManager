@@ -2,6 +2,7 @@ package com.umeshsolanki.dockermanager.file
 
 import com.umeshsolanki.dockermanager.*
 import com.umeshsolanki.dockermanager.auth.AuthService
+import kotlinx.serialization.Serializable
 import io.ktor.http.*
 import io.ktor.http.content.*
 import io.ktor.server.application.*
@@ -20,6 +21,18 @@ val PathTokenPlugin = createRouteScopedPlugin(name = "PathTokenPlugin") {
         }
     }
 }
+
+@Serializable
+data class BulkZipRequest(
+    val paths: List<String>,
+    val target: String = "archive.zip"
+)
+
+@Serializable
+data class SaveContentRequest(
+    val path: String,
+    val content: String
+)
 
 fun Route.fileRoutes() {
     route("/files") {
@@ -100,10 +113,8 @@ fun Route.fileRoutes() {
         }
 
         post("/zip-bulk") {
-            val body = call.receive<Map<String, Any>>()
-            val paths = body["paths"] as? List<String> ?: return@post call.respond(HttpStatusCode.BadRequest, "Missing paths")
-            val target = body["target"] as? String ?: "archive.zip"
-            val zipFile = FileService.zipMultipleFiles(paths, target)
+            val request = call.receive<BulkZipRequest>()
+            val zipFile = FileService.zipMultipleFiles(request.paths, request.target)
             if (zipFile != null) {
                 call.respond(HttpStatusCode.OK, "Files zipped successfully: ${zipFile.name}")
             } else {
@@ -136,12 +147,10 @@ fun Route.fileRoutes() {
         }
 
         post("/save-content") {
-            val body = call.receive<Map<String, String>>()
-            val path = body["path"] ?: return@post call.respond(HttpStatusCode.BadRequest, "Missing path")
-            val content = body["content"] ?: return@post call.respond(HttpStatusCode.BadRequest, "Missing content")
+            val request = call.receive<SaveContentRequest>()
 
             call.respondBooleanResult(
-                FileService.saveFileContent(path, content),
+                FileService.saveFileContent(request.path, request.content),
                 "File content saved successfully",
                 "Failed to save file content"
             )
