@@ -888,15 +888,6 @@ function SqlConsoleTab() {
                     </div>
                 )}
 
-                {error && (
-                    <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-sm font-mono flex gap-2">
-                        <XCircle size={18} className="shrink-0 mt-0.5" />
-                        <div>
-                            <p className="font-bold">Execution Error</p>
-                            <p>{error}</p>
-                        </div>
-                    </div>
-                )}
             </div>
 
             <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] overflow-hidden min-h-[400px] flex flex-col">
@@ -939,6 +930,14 @@ function SqlConsoleTab() {
                                 ))}
                             </tbody>
                         </table>
+                    ) : error ? (
+                        <div className="flex flex-col items-center justify-center h-full text-red-500 py-20 px-4 animate-in fade-in zoom-in-95">
+                            <XCircle size={48} className="mb-4 opacity-50" />
+                            <h3 className="font-bold text-lg mb-2">Query Execution Failed</h3>
+                            <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 font-mono text-sm max-w-full overflow-auto text-center select-text">
+                                {error}
+                            </div>
+                        </div>
                     ) : (
                         <div className="flex flex-col items-center justify-center h-full text-on-surface-variant/30 py-20">
                             <Zap size={64} className="mb-4 opacity-10" />
@@ -972,7 +971,7 @@ function SqlConsoleTab() {
                     </div>
                 </div>
             )}
-        </div>
+        </div >
     );
 }
 
