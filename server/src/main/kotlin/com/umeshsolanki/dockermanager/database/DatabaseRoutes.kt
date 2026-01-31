@@ -4,7 +4,9 @@ import com.umeshsolanki.dockermanager.AppConfig
 import com.umeshsolanki.dockermanager.docker.DockerService
 import com.umeshsolanki.dockermanager.utils.ResourceLoader
 import com.umeshsolanki.dockermanager.utils.StringUtils
+import com.umeshsolanki.dockermanager.ServiceContainer
 import com.umeshsolanki.dockermanager.utils.executeCommand
+import com.umeshsolanki.dockermanager.kafka.SqlAuditLog
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
@@ -14,6 +16,11 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
+import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
 import java.security.SecureRandom
 
@@ -21,6 +28,17 @@ import java.security.SecureRandom
 data class SwitchStorageResponse(
     val success: Boolean,
     val message: String
+)
+
+@Serializable
+data class SqlQueryRequest(
+    val sql: String,
+    val externalDbId: String? = null
+)
+
+@Serializable
+data class ExternalDbTestRequest(
+    val config: ExternalDbConfig
 )
 
 @Serializable
@@ -342,6 +360,139 @@ fun Route.databaseRoutes() {
              } catch (e: Exception) {
                  call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Failed to query table")))
              }
+        }
+
+        post("/query") {
+            var request: SqlQueryRequest? = null
+            try {
+                request = call.receive<SqlQueryRequest>()
+                var externalConfig: ExternalDbConfig? = null
+                
+                if (request.externalDbId != null) {
+                    val configs = getExternalConfigs()
+                    externalConfig = configs.find { it.id == request.externalDbId }
+                    if (externalConfig == null) {
+                        call.respond(HttpStatusCode.NotFound, "External database configuration not found")
+                        return@post
+                    }
+                }
+                
+                val results = SqlService.executeQuery(request.sql, externalConfig)
+                
+                // Audit to Kafka
+                ServiceContainer.kafkaService.publishSqlAudit(
+                    SqlAuditLog(
+                        timestamp = System.currentTimeMillis(),
+                        sql = request.sql,
+                        externalDbId = externalConfig?.id,
+                        externalDbName = externalConfig?.name,
+                        status = if (results.isNotEmpty() && results[0].containsKey("error")) "ERROR" else "SUCCESS",
+                        error = if (results.isNotEmpty()) results[0]["error"] else null
+                    )
+                )
+
+                call.respond(results)
+            } catch (e: Exception) {
+                request?.let { req ->
+                    ServiceContainer.kafkaService.publishSqlAudit(
+                        SqlAuditLog(
+                            timestamp = System.currentTimeMillis(),
+                            sql = req.sql,
+                            externalDbId = req.externalDbId,
+                            externalDbName = null,
+                            status = "FAIL",
+                            error = e.message
+                        )
+                    )
+                }
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "SQL execution failed")))
+            }
+        }
+
+        get("/external/list") {
+            try {
+                call.respond(getExternalConfigs())
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Failed to list external databases")))
+            }
+        }
+
+        post("/external/test") {
+            try {
+                val request = call.receive<ExternalDbTestRequest>()
+                val (success, message) = SqlService.testConnection(request.config)
+                call.respond(mapOf("success" to success, "message" to message))
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Connection test failed")))
+            }
+        }
+
+        post("/external/save") {
+            try {
+                val config = call.receive<ExternalDbConfig>()
+                val configs = getExternalConfigs().toMutableList()
+                
+                val index = configs.indexOfFirst { it.id == config.id }
+                if (index != -1) {
+                    configs[index] = config
+                } else {
+                    configs.add(config)
+                }
+                
+                saveExternalConfigs(configs)
+                call.respond(mapOf("success" to true))
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Failed to save configuration")))
+            }
+        }
+
+        post("/external/delete/{id}") {
+            try {
+                val id = call.parameters["id"]
+                if (id != null) {
+                    SqlService.removeDataSource(id)
+                }
+                val configs = getExternalConfigs().filter { it.id != id }
+                saveExternalConfigs(configs)
+                call.respond(mapOf("success" to true))
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Failed to delete configuration")))
+            }
+        }
+    }
+}
+
+private fun getExternalConfigs(): List<ExternalDbConfig> {
+    return try {
+        org.jetbrains.exposed.sql.transactions.transaction {
+            val json = SettingsTable.selectAll().where { SettingsTable.key eq "EXTERNAL_DBS" }
+                .singleOrNull()?.get(SettingsTable.value)
+            if (json != null) {
+                AppConfig.json.decodeFromString<List<ExternalDbConfig>>(json)
+            } else {
+                emptyList()
+            }
+        }
+    } catch (e: Exception) {
+        emptyList()
+    }
+}
+
+private fun saveExternalConfigs(configs: List<ExternalDbConfig>) {
+    val jsonString = AppConfig.json.encodeToString(configs)
+    transaction {
+        val existing = SettingsTable.selectAll().where { SettingsTable.key eq "EXTERNAL_DBS" }.singleOrNull()
+        if (existing != null) {
+            SettingsTable.update({ SettingsTable.key eq "EXTERNAL_DBS" }) { stmt ->
+                stmt[SettingsTable.value] = jsonString
+                stmt[SettingsTable.updatedAt] = java.time.LocalDateTime.now()
+            }
+        } else {
+            SettingsTable.insert { stmt ->
+                stmt[SettingsTable.key] = "EXTERNAL_DBS"
+                stmt[SettingsTable.value] = jsonString
+                stmt[SettingsTable.updatedAt] = java.time.LocalDateTime.now()
+            }
         }
     }
 }

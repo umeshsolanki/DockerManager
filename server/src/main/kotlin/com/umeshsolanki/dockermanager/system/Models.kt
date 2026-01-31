@@ -22,7 +22,8 @@ data class SystemConfig(
     val dockerCliBuild: Boolean,
     val autoStorageRefresh: Boolean,
     val autoStorageRefreshIntervalMinutes: Int,
-    val kafkaSettings: KafkaSettings
+    val kafkaSettings: KafkaSettings,
+    val dbPersistenceLogsEnabled: Boolean
 )
 
 @Serializable
@@ -33,7 +34,8 @@ data class UpdateSystemConfigRequest(
     val dockerCliBuild: Boolean? = null,
     val autoStorageRefresh: Boolean? = null,
     val autoStorageRefreshIntervalMinutes: Int? = null,
-    val kafkaSettings: KafkaSettings? = null
+    val kafkaSettings: KafkaSettings? = null,
+    val dbPersistenceLogsEnabled: Boolean? = null
 )
 
 @Serializable

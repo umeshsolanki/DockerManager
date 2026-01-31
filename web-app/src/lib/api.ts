@@ -10,7 +10,8 @@ import {
     UpdateUsernameRequest, TwoFactorSetupResponse, Enable2FARequest, EmailGroup, EmailUserDetail, JamesContainerStatus,
     FileItem, RedisConfig, RedisStatus, RedisTestResult, RedisConfigUpdateResult,
     DockerStack, StackService, StackTask, DeployStackRequest, MigrateComposeToStackRequest, StopStackRequest,
-    SaveProjectFileRequest, KafkaTopicInfo, KafkaMessage, CreateNetworkRequest, StorageInfo
+    SaveProjectFileRequest, KafkaTopicInfo, KafkaMessage, CreateNetworkRequest, StorageInfo,
+    ExternalDbConfig, SqlQueryRequest
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -282,6 +283,11 @@ export const DockerClient = {
         if (orderBy) url += `&orderBy=${encodeURIComponent(orderBy)}&orderDir=${orderDir}`;
         return req<{ rows: any[] }>(url, {}, { rows: [] }).then(r => r.rows);
     },
+    executeSqlQuery: (request: SqlQueryRequest) => req<any[]>('/database/query', { method: 'POST', body: JSON.stringify(request) }, []),
+    listExternalDbs: () => req<ExternalDbConfig[]>('/database/external/list', {}, []),
+    testExternalDb: (config: ExternalDbConfig) => safeReq('/database/external/test', { method: 'POST', body: JSON.stringify({ config }) }),
+    saveExternalDb: (config: ExternalDbConfig) => safeReq('/database/external/save', { method: 'POST', body: JSON.stringify(config) }),
+    deleteExternalDb: (id: string) => safeReq(`/database/external/delete/${id}`, { method: 'POST' }),
 
     getProxySecuritySettings: () => req<SystemConfig | null>('/proxy/security/settings', {}, null),
     updateProxySecuritySettings: (body: Partial<SystemConfig>) => safeReq('/proxy/security/settings', { method: 'POST', body: JSON.stringify(body) }),

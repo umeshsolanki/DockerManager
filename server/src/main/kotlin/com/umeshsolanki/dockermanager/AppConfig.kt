@@ -100,7 +100,10 @@ data class AppSettings(
 
     // Storage Settings
     val autoStorageRefresh: Boolean = false,
-    val autoStorageRefreshIntervalMinutes: Int = 15
+    val autoStorageRefreshIntervalMinutes: Int = 15,
+
+    // Logging Settings
+    val dbPersistenceLogsEnabled: Boolean = true
 )
 
 object AppConfig {
@@ -334,6 +337,13 @@ object AppConfig {
     fun updateProxyDefaultBehavior(return404: Boolean) {
         _settings = _settings.copy(
             proxyDefaultReturn404 = return404
+        )
+        saveSettings()
+    }
+
+    fun updateLoggingSettings(dbPersistenceLogsEnabled: Boolean) {
+        _settings = _settings.copy(
+            dbPersistenceLogsEnabled = dbPersistenceLogsEnabled
         )
         saveSettings()
     }

@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { Button, ActionIconButton } from '../ui/Buttons';
 import { StatCard } from '../ui/StatCard';
 
-type DatabaseTab = 'Redis' | 'Postgres';
+type DatabaseTab = 'Redis' | 'Postgres' | 'Console' | 'External';
 
 export default function DatabaseScreen() {
     const [activeTab, setActiveTab] = useState<DatabaseTab>('Redis');
@@ -39,12 +39,16 @@ export default function DatabaseScreen() {
                     onInstalled={fetchStatuses}
                     status={dbStatuses.find(s => s.type.toLowerCase() === 'postgres')}
                 />;
+            case 'Console': return <SqlConsoleTab />;
+            case 'External': return <ExternalDbsTab />;
         }
     };
 
     const tabs: { id: DatabaseTab; label: string; icon: React.ElementType }[] = [
         { id: 'Redis', label: 'Redis Cache', icon: Zap },
         { id: 'Postgres', label: 'PostgreSQL', icon: Database },
+        { id: 'Console', label: 'SQL Console', icon: Globe },
+        { id: 'External', label: 'External DBs', icon: Server },
     ];
 
     return (
@@ -694,6 +698,386 @@ function PostgresDataBrowser() {
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function SqlConsoleTab() {
+    const [sql, setSql] = useState('SELECT * FROM settings LIMIT 10;');
+    const [results, setResults] = useState<any[]>([]);
+    const [externalDbs, setExternalDbs] = useState<any[]>([]);
+    const [selectedDb, setSelectedDb] = useState<string>('primary');
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        DockerClient.listExternalDbs().then(setExternalDbs);
+    }, []);
+
+    const handleExecute = async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const request = {
+                sql,
+                externalDbId: selectedDb === 'primary' ? undefined : selectedDb
+            };
+            const data = await DockerClient.executeSqlQuery(request);
+            if (data && (data as any).error) {
+                setError((data as any).error);
+                setResults([]);
+            } else {
+                setResults(Array.isArray(data) ? data : []);
+            }
+        } catch (e: any) {
+            setError(e.message || 'Execution failed');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="flex flex-col gap-6">
+            <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] p-6">
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-bold flex items-center gap-2">
+                        <Globe size={20} className="text-primary" /> SQL Console
+                    </h2>
+                    <div className="flex items-center gap-4">
+                        <select
+                            value={selectedDb}
+                            onChange={(e) => setSelectedDb(e.target.value)}
+                            className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:border-primary/50"
+                        >
+                            <option value="primary">Primary Database (Local)</option>
+                            {externalDbs.map(db => (
+                                <option key={db.id} value={db.id}>{db.name} ({db.host})</option>
+                            ))}
+                        </select>
+                        <Button
+                            onClick={handleExecute}
+                            disabled={isLoading}
+                            className="bg-primary text-on-primary px-6 py-2 rounded-xl font-bold flex items-center gap-2"
+                        >
+                            {isLoading ? <RefreshCw className="animate-spin" size={18} /> : <Zap size={18} />}
+                            Execute SQL
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="relative group">
+                    <textarea
+                        value={sql}
+                        onChange={(e) => setSql(e.target.value)}
+                        placeholder="Enter SQL command here..."
+                        className="w-full h-40 bg-black/60 border border-white/10 rounded-2xl p-4 font-mono text-sm text-green-400 focus:outline-none focus:border-primary/50 transition-all resize-none shadow-inner"
+                    />
+                    <div className="absolute top-2 right-2 opacity-30 group-hover:opacity-100 transition-opacity">
+                        <Table size={16} />
+                    </div>
+                </div>
+
+                {error && (
+                    <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-sm font-mono flex gap-2">
+                        <XCircle size={18} className="shrink-0 mt-0.5" />
+                        <div>
+                            <p className="font-bold">Execution Error</p>
+                            <p>{error}</p>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] overflow-hidden min-h-[400px] flex flex-col">
+                <div className="p-4 border-b border-white/5 bg-white/5 flex items-center justify-between">
+                    <h3 className="font-bold text-sm">Results {results.length > 0 && `(${results.length} rows)`}</h3>
+                    {results.length > 0 && (
+                        <Button onClick={() => setResults([])} className="px-2 py-1 text-[10px] bg-white/5 hover:bg-white/10">Clear Results</Button>
+                    )}
+                </div>
+
+                <div className="flex-1 overflow-auto">
+                    {results.length > 0 ? (
+                        <table className="w-full text-left text-xs border-collapse">
+                            <thead className="sticky top-0 bg-[#252525] z-10 shadow-lg">
+                                <tr>
+                                    {Object.keys(results[0]).map(k => (
+                                        <th key={k} className="p-3 border-b border-white/10 font-bold text-on-surface whitespace-nowrap bg-[#2a2a2a]">
+                                            {k}
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {results.map((row, i) => (
+                                    <tr key={i} className="hover:bg-white/5 font-mono text-on-surface-variant border-b border-white/5 last:border-0">
+                                        {Object.values(row).map((v: any, j) => (
+                                            <td key={j} className="p-2 max-w-[300px] truncate" title={String(v)}>
+                                                {v === null ? <span className="text-white/20">NULL</span> : String(v)}
+                                            </td>
+                                        ))}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-on-surface-variant/30 py-20">
+                            <Zap size={64} className="mb-4 opacity-10" />
+                            <p className="font-medium italic">No results to display. Execute a query to see data.</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ExternalDbsTab() {
+    const [dbs, setDbs] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isTesting, setIsTesting] = useState<string | null>(null);
+    const [isEditing, setIsEditing] = useState<any | null>(null);
+
+    const fetchDbs = async () => {
+        setIsLoading(true);
+        try {
+            const data = await DockerClient.listExternalDbs();
+            setDbs(data);
+        } catch (e) {
+            toast.error('Failed to fetch external databases');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchDbs();
+    }, []);
+
+    const handleDelete = async (id: string) => {
+        if (!confirm('Are you sure you want to remove this connection?')) return;
+        try {
+            const res = await DockerClient.deleteExternalDb(id);
+            if (res.success) {
+                toast.success('Database connection removed');
+                fetchDbs();
+            } else {
+                toast.error(res.message || 'Failed to delete');
+            }
+        } catch (e) {
+            toast.error('Network error while deleting');
+        }
+    };
+
+    const handleTest = async (config: any) => {
+        setIsTesting(config.id);
+        try {
+            const res = await DockerClient.testExternalDb(config);
+            if (res.success) {
+                toast.success('Connection successful!');
+            } else {
+                toast.error(res.message || 'Connection failed');
+            }
+        } catch (e) {
+            toast.error('Test failed with error');
+        } finally {
+            setIsTesting(null);
+        }
+    };
+
+    const handleSave = async (config: any) => {
+        try {
+            const res = await DockerClient.saveExternalDb(config);
+            if (res.success) {
+                toast.success('Database connection saved');
+                setIsEditing(null);
+                fetchDbs();
+            } else {
+                toast.error(res.message || 'Failed to save');
+            }
+        } catch (e) {
+            toast.error('Network error while saving');
+        }
+    };
+
+    if (isLoading) return <div className="flex justify-center p-10"><RefreshCw className="animate-spin text-primary" size={32} /></div>;
+
+    return (
+        <div className="flex flex-col gap-6">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="text-xl font-bold">External Database Connections</h2>
+                    <p className="text-sm text-on-surface-variant">Manage connections to third-party databases for querying</p>
+                </div>
+                <Button
+                    onClick={() => setIsEditing({
+                        id: 'db_' + Date.now(),
+                        name: 'New Database',
+                        type: 'postgres',
+                        host: '',
+                        port: 5432,
+                        database: '',
+                        user: '',
+                        password: '',
+                        ssl: false
+                    })}
+                    className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl font-bold"
+                >
+                    <Plus size={18} /> Add Connection
+                </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {dbs.map(db => (
+                    <div key={db.id} className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] p-6 hover:border-primary/30 transition-all flex flex-col group">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="w-12 h-12 bg-surface-variant/20 rounded-2xl flex items-center justify-center">
+                                <Server size={24} className="text-on-surface" />
+                            </div>
+                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <ActionIconButton onClick={() => setIsEditing(db)} icon={<Save size={14} />} title="Edit" />
+                                <ActionIconButton onClick={() => handleDelete(db.id)} icon={<Trash2 size={14} />} title="Delete" className="text-red-500 hover:bg-red-500/10" />
+                            </div>
+                        </div>
+                        <h3 className="font-bold text-lg mb-1">{db.name}</h3>
+                        <p className="text-xs font-mono text-on-surface-variant mb-4">{db.type.toUpperCase()} • {db.host}:{db.port}</p>
+
+                        <div className="mt-auto pt-4 flex items-center gap-2">
+                            <Button
+                                onClick={() => handleTest(db)}
+                                disabled={isTesting === db.id}
+                                className="flex-1 bg-white/5 hover:bg-white/10 text-[10px] font-bold py-2 rounded-lg transition-colors border border-white/5"
+                            >
+                                {isTesting === db.id ? <RefreshCw className="animate-spin" size={12} /> : <Zap size={12} />}
+                                <span className="ml-1.5">{isTesting === db.id ? 'Testing...' : 'Test Connection'}</span>
+                            </Button>
+                        </div>
+                    </div>
+                ))}
+
+                {dbs.length === 0 && !isEditing && (
+                    <div className="col-span-full py-20 text-center border-2 border-dashed border-white/5 rounded-[32px]">
+                        <Server size={48} className="mx-auto mb-4 opacity-10" />
+                        <p className="text-on-surface-variant italic">No external database connections found.</p>
+                    </div>
+                )}
+            </div>
+
+            {isEditing && (
+                <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+                    <div className="bg-surface border border-outline/10 rounded-[40px] w-full max-w-2xl shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="p-8">
+                            <div className="flex items-center justify-between mb-8">
+                                <h3 className="text-2xl font-bold flex items-center gap-3">
+                                    <Server size={24} className="text-primary" />
+                                    {isEditing.name === 'New Database' ? 'Add External DB' : 'Edit Connection'}
+                                </h3>
+                                <button onClick={() => setIsEditing(null)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+                                    <Plus className="rotate-45" size={24} />
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="space-y-1.5 col-span-2">
+                                    <label className="text-[10px] font-black uppercase text-on-surface-variant tracking-wider px-1">Friendly Name</label>
+                                    <input
+                                        type="text"
+                                        value={isEditing.name}
+                                        onChange={e => setIsEditing({ ...isEditing, name: e.target.value })}
+                                        className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-3 text-sm focus:outline-none focus:border-primary/40 transition-all font-bold"
+                                        placeholder="Production Analytics"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase text-on-surface-variant tracking-wider px-1">DB Type</label>
+                                    <select
+                                        value={isEditing.type}
+                                        onChange={e => setIsEditing({ ...isEditing, type: e.target.value })}
+                                        className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-3 text-sm focus:outline-none focus:border-primary/40 transition-all font-bold"
+                                    >
+                                        <option value="postgres">PostgreSQL</option>
+                                        <option value="mysql">MySQL</option>
+                                        <option value="mariadb">MariaDB</option>
+                                        <option value="sqlite">SQLite (Path as Host)</option>
+                                    </select>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase text-on-surface-variant tracking-wider px-1">Host / IP</label>
+                                    <input
+                                        type="text"
+                                        value={isEditing.host}
+                                        onChange={e => setIsEditing({ ...isEditing, host: e.target.value })}
+                                        className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-3 text-sm focus:outline-none focus:border-primary/40 transition-all font-mono"
+                                        placeholder="db.example.com"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase text-on-surface-variant tracking-wider px-1">Port</label>
+                                    <input
+                                        type="number"
+                                        value={isEditing.port}
+                                        onChange={e => setIsEditing({ ...isEditing, port: parseInt(e.target.value) || 0 })}
+                                        className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-3 text-sm focus:outline-none focus:border-primary/40 transition-all font-mono"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase text-on-surface-variant tracking-wider px-1">Database Name</label>
+                                    <input
+                                        type="text"
+                                        value={isEditing.database}
+                                        onChange={e => setIsEditing({ ...isEditing, database: e.target.value })}
+                                        className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-3 text-sm focus:outline-none focus:border-primary/40 transition-all font-mono"
+                                        placeholder="main_db"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase text-on-surface-variant tracking-wider px-1">Username</label>
+                                    <input
+                                        type="text"
+                                        value={isEditing.user}
+                                        onChange={e => setIsEditing({ ...isEditing, user: e.target.value })}
+                                        className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-3 text-sm focus:outline-none focus:border-primary/40 transition-all font-mono"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase text-on-surface-variant tracking-wider px-1">Password</label>
+                                    <div className="relative">
+                                        <input
+                                            type="password"
+                                            value={isEditing.password}
+                                            onChange={e => setIsEditing({ ...isEditing, password: e.target.value })}
+                                            className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-3 text-sm focus:outline-none focus:border-primary/40 transition-all font-mono pr-10"
+                                        />
+                                        <Lock className="absolute right-3 top-3.5 opacity-20" size={16} />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-8 flex items-center justify-between pt-6 border-t border-white/5">
+                                <label className="flex items-center gap-3 cursor-pointer group">
+                                    <input
+                                        type="checkbox"
+                                        checked={isEditing.ssl}
+                                        onChange={e => setIsEditing({ ...isEditing, ssl: e.target.checked })}
+                                        className="w-5 h-5 rounded accent-primary bg-black"
+                                    />
+                                    <span className="text-sm font-bold group-hover:text-primary transition-colors">Require SSL (TLS)</span>
+                                </label>
+                                <div className="flex gap-3">
+                                    <Button onClick={() => setIsEditing(null)} className="px-6 py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 font-bold transition-all">Cancel</Button>
+                                    <Button onClick={() => handleSave(isEditing)} className="px-8 py-2.5 rounded-2xl bg-primary text-on-primary font-bold shadow-lg shadow-primary/20 transition-all">Save Connection</Button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

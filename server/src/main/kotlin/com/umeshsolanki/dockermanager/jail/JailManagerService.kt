@@ -5,11 +5,14 @@ import com.umeshsolanki.dockermanager.ServiceContainer
 import com.umeshsolanki.dockermanager.constants.TimeoutConstants
 import com.umeshsolanki.dockermanager.firewall.IFirewallService
 import com.umeshsolanki.dockermanager.firewall.BlockIPRequest
+import com.umeshsolanki.dockermanager.firewall.FirewallRule
 import com.umeshsolanki.dockermanager.proxy.ProxyJailRuleType
 import com.umeshsolanki.dockermanager.fcm.FcmService
 import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
+import com.umeshsolanki.dockermanager.ip.IIpInfoService
+import com.umeshsolanki.dockermanager.ip.IpInfo
 
 interface IJailManagerService {
     fun listJails(): List<JailedIP>
@@ -27,7 +30,8 @@ interface IJailManagerService {
 }
 
 class JailManagerServiceImpl(
-    private val firewallService: IFirewallService
+    private val firewallService: IFirewallService,
+    private val ipInfoService: com.umeshsolanki.dockermanager.ip.IIpInfoService
 ) : IJailManagerService {
     private val logger = LoggerFactory.getLogger(JailManagerServiceImpl::class.java)
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -36,6 +40,9 @@ class JailManagerServiceImpl(
     
     // Failed login attempt tracking (for BtmpService)
     private val failedAttemptsInWindow = ConcurrentHashMap<String, Int>()
+    
+    // Channel for queuing specific IPs that need immediate enrichment (optional, but good for responsiveness)
+    // For now, periodic scan is sufficient as requested.
 
     init {
         startUnjailWorker()
@@ -74,27 +81,42 @@ class JailManagerServiceImpl(
         val now = System.currentTimeMillis()
         return firewallService.listRules().filter { rule ->
             rule.expiresAt?.let { it > now } ?: false
-        }.mapNotNull { rule ->
-            rule.expiresAt?.let { expiresAt ->
+        }.map { rule -> // Removed mapNotNull + side-effect logic
+             rule.expiresAt?.let { expiresAt ->
                 JailedIP(
                     ip = rule.ip,
-                    country = rule.country ?: getCountryCode(rule.ip),
+                    country = rule.country ?: "??",
+                    city = rule.city,
+                    isp = rule.isp,
+                    lat = rule.lat,
+                    lon = rule.lon,
                     reason = rule.comment ?: "Auto-jailed",
                     expiresAt = expiresAt,
                     createdAt = rule.createdAt
                 )
             }
-        }
+        }.filterNotNull()
     }
 
     override fun jailIP(ip: String, durationMinutes: Int, reason: String): Boolean {
         val expiresAt = System.currentTimeMillis() + (durationMinutes * 60_000L)
-        val country = getCountryCode(ip)
+        
+        // Fast path: Check DB cache only. DO NOT block on network here.
+        // If missing, proper enrichment will happen in the background worker.
+        val cached = ipInfoService.getIpInfo(ip)
+        
         return firewallService.blockIP(BlockIPRequest(
             ip = ip,
             comment = reason,
             expiresAt = expiresAt,
-            country = country
+            country = cached?.countryCode,
+            city = cached?.city,
+            isp = cached?.isp,
+            lat = cached?.lat,
+            lon = cached?.lon,
+            timezone = cached?.timezone,
+            zip = cached?.zip,
+            region = cached?.region
         ))
     }
 
@@ -103,19 +125,7 @@ class JailManagerServiceImpl(
     }
 
     override fun getCountryCode(ip: String): String {
-        if (AppConfig.isLocalIP(ip)) return "LOC"
-        
-        return countryCache.computeIfAbsent(ip) { _ ->
-            try {
-                val url = java.net.URI("http://ip-api.com/json/$ip?fields=countryCode").toURL()
-                val jsonBody = url.readText()
-                val match = "\"countryCode\":\"([^\"]+)\"".toRegex().find(jsonBody)
-                match?.groupValues?.get(1) ?: "??"
-            } catch (e: Exception) {
-                logger.debug("Failed to fetch country code for $ip: ${e.message}")
-                "??"
-            }
-        }
+        return ipInfoService.getIpInfo(ip)?.countryCode ?: "??"
     }
     
     override fun isIPJailed(ip: String): Boolean {
@@ -350,5 +360,8 @@ object JailManagerService {
     fun clearFailedAttempts(ip: String) = service.clearFailedAttempts(ip)
     fun checkProxySecurityViolation(ip: String, userAgent: String, method: String, path: String, status: Int, errorCount: Long) = 
         service.checkProxySecurityViolation(ip, userAgent, method, path, status, errorCount)
+        
+    // Access to underlying IP DB
+    // fun getIpInfo(ip: String) = (service as JailManagerServiceImpl).ipInfoService.getIpInfo(ip) // Accessor if needed
 }
 

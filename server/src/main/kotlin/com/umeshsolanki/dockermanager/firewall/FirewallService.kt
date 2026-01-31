@@ -18,6 +18,7 @@ interface IFirewallService {
     fun getIptablesRaw(): String
     fun getNftablesVisualisation(): String
     fun getNftablesJson(): String
+    fun updateRule(rule: FirewallRule): Boolean
 }
 
 class FirewallServiceImpl : IFirewallService {
@@ -34,7 +35,10 @@ class FirewallServiceImpl : IFirewallService {
     )
     private val commandExecutor = CommandExecutor(loggerName = FirewallServiceImpl::class.java.name)
     private val lock = java.util.concurrent.locks.ReentrantLock()
-
+    
+    // In-memory cache for rules to avoid frequent file reads
+    @Volatile
+    private var cachedRules: MutableList<FirewallRule>? = null
 
     init {
         // Initialize ipset
@@ -50,11 +54,33 @@ class FirewallServiceImpl : IFirewallService {
 
 
     private fun loadRules(): MutableList<FirewallRule> {
-        return jsonPersistence.load().toMutableList()
+        val current = cachedRules
+        if (current != null) return current.toMutableList() // Return copy to protect cache integrity if caller modifies it
+        
+        lock.lock()
+        try {
+            // Check again under lock
+            if (cachedRules != null) return cachedRules!!.toMutableList()
+            
+            val loaded = jsonPersistence.load().toMutableList()
+            cachedRules = loaded
+            return loaded.toMutableList()
+        } finally {
+            lock.unlock()
+        }
     }
 
     private fun saveRules(rules: List<FirewallRule>) {
-        jsonPersistence.save(rules)
+        lock.lock()
+        try {
+            // Update cache
+            // We store a copy or the list itself. Since MutableList is used, let's keep it clean.
+            // Ideally we should start using immutable lists but the codebase uses MutableList heavily here.
+            cachedRules = rules.toMutableList()
+            jsonPersistence.save(rules)
+        } finally {
+            lock.unlock()
+        }
     }
 
     override fun listRules(): List<FirewallRule> = loadRules()
@@ -83,7 +109,14 @@ class FirewallServiceImpl : IFirewallService {
                 protocol = request.protocol,
                 comment = request.comment,
                 expiresAt = request.expiresAt,
-                country = request.country
+                country = request.country,
+                city = request.city,
+                isp = request.isp,
+                lat = request.lat,
+                lon = request.lon,
+                timezone = request.timezone,
+                zip = request.zip,
+                region = request.region
             )
 
             // Execute system command
@@ -321,6 +354,26 @@ class FirewallServiceImpl : IFirewallService {
         }
     }
 
+    override fun updateRule(rule: FirewallRule): Boolean {
+        lock.lock()
+        return try {
+            val rules = loadRules()
+            val index = rules.indexOfFirst { it.id == rule.id }
+            if (index != -1) {
+                rules[index] = rule
+                saveRules(rules)
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            logger.error("Exception in updateRule", e)
+            false
+        } finally {
+            lock.unlock()
+        }
+    }
+
 }
 
 // Service object for easy access
@@ -335,6 +388,7 @@ object FirewallService {
     fun getIptablesRaw() = service.getIptablesRaw()
     fun getNftablesVisualisation() = service.getNftablesVisualisation()
     fun getNftablesJson() = service.getNftablesJson()
+    fun updateRule(rule: com.umeshsolanki.dockermanager.firewall.FirewallRule) = service.updateRule(rule)
 }
 
 

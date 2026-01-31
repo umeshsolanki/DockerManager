@@ -29,6 +29,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [kafkaAdminHost, setKafkaAdminHost] = useState('localhost:9092');
     const [kafkaTopic, setKafkaTopic] = useState('ip-blocking-requests');
     const [kafkaGroupId, setKafkaGroupId] = useState('docker-manager-jailer');
+    const [dbPersistenceLogsEnabled, setDbPersistenceLogsEnabled] = useState(true);
     const [message, setMessage] = useState('');
     const [config, setConfig] = useState<SystemConfig | null>(null);
     const [loading, setLoading] = useState(false);
@@ -75,6 +76,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                     setKafkaTopic(data.kafkaSettings.topic);
                     setKafkaGroupId(data.kafkaSettings.groupId);
                 }
+                setDbPersistenceLogsEnabled(data.dbPersistenceLogsEnabled ?? true);
             }
 
             // Also fetch IP ranges count
@@ -122,7 +124,8 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                     adminHost: kafkaAdminHost,
                     topic: kafkaTopic,
                     groupId: kafkaGroupId
-                }
+                },
+                dbPersistenceLogsEnabled: dbPersistenceLogsEnabled
             });
             if (result.success) {
                 setMessage('System settings updated successfully!');
@@ -795,6 +798,56 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                 >
                                     <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
                                     <span>Sync Settings</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Logging Configuration */}
+                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="p-3 bg-blue-500/10 rounded-xl text-blue-500">
+                                    <Terminal size={20} />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-bold">Logging Configuration</h2>
+                                    <p className="text-xs text-on-surface-variant mt-0.5">Control log data persistence</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:border-primary/20">
+                                    <div>
+                                        <p className="text-sm font-semibold text-on-surface">Database Log Persistence</p>
+                                        <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">Only suspicious/error proxy logs will be stored in the database</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setDbPersistenceLogsEnabled(!dbPersistenceLogsEnabled)}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ring-2 ring-offset-2 ring-offset-surface ring-transparent active:ring-primary/20 ${dbPersistenceLogsEnabled ? 'bg-primary' : 'bg-surface-variant'}`}
+                                    >
+                                        <span
+                                            className={`${dbPersistenceLogsEnabled ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+                                        />
+                                    </button>
+                                </div>
+
+                                <div className="p-4 bg-primary/5 rounded-xl border border-primary/10">
+                                    <div className="flex items-start gap-3">
+                                        <div className="p-1.5 bg-primary/10 rounded-lg text-primary mt-0.5">
+                                            <Info size={14} />
+                                        </div>
+                                        <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                                            Disabling persistence only affects database storage for proxy events. Visualizations and real-time statistics will remain active in memory as long as the server is running.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <button
+                                    onClick={handleSaveSystem}
+                                    disabled={saving || loading}
+                                    className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition-all active:scale-[0.98] shadow-md shadow-primary/20 disabled:opacity-50 text-sm"
+                                >
+                                    {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
+                                    <span>Save Logging Settings</span>
                                 </button>
                             </div>
                         </div>

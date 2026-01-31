@@ -41,6 +41,17 @@ data class KafkaTopicInfo(
     val replicationFactor: Int
 )
 
+@Serializable
+data class SqlAuditLog(
+    val timestamp: Long,
+    val sql: String,
+    val externalDbId: String?,
+    val externalDbName: String?,
+    val user: String? = "admin", // Placeholder for actual auth user
+    val status: String,
+    val error: String? = null
+)
+
 interface IKafkaService {
     fun start()
     fun stop()
@@ -52,6 +63,10 @@ interface IKafkaService {
     
     // Message Review
     fun getMessages(topic: String, limit: Int): List<KafkaMessage>
+    
+    // Producers
+    fun publishMessage(topic: String, key: String?, value: String)
+    fun publishSqlAudit(audit: SqlAuditLog)
 }
 
 class KafkaServiceImpl(
@@ -61,6 +76,28 @@ class KafkaServiceImpl(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var job: Job? = null
     private var consumer: KafkaConsumer<String, String>? = null
+    private var producer: org.apache.kafka.clients.producer.KafkaProducer<String, String>? = null
+
+    private fun getProducer(): org.apache.kafka.clients.producer.KafkaProducer<String, String>? {
+        val settings = AppConfig.settings.kafkaSettings
+        if (!settings.enabled) return null
+        
+        if (producer == null) {
+            val props = Properties()
+            props[org.apache.kafka.clients.producer.ProducerConfig.BOOTSTRAP_SERVERS_CONFIG] = settings.bootstrapServers
+            props[org.apache.kafka.clients.producer.ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG] = org.apache.kafka.common.serialization.StringSerializer::class.java.name
+            props[org.apache.kafka.clients.producer.ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG] = org.apache.kafka.common.serialization.StringSerializer::class.java.name
+            props[org.apache.kafka.clients.producer.ProducerConfig.ACKS_CONFIG] = "1"
+            props[org.apache.kafka.clients.producer.ProducerConfig.RETRIES_CONFIG] = 3
+            
+            try {
+                producer = org.apache.kafka.clients.producer.KafkaProducer(props)
+            } catch (e: Exception) {
+                logger.error("Failed to create Kafka producer", e)
+            }
+        }
+        return producer
+    }
 
     override fun start() {
         val settings = AppConfig.settings.kafkaSettings
@@ -123,7 +160,8 @@ class KafkaServiceImpl(
     override fun stop() {
         job?.cancel()
         consumer?.close()
-        logger.info("Kafka consumer stopped")
+        producer?.close()
+        logger.info("Kafka services stopped")
     }
 
     private fun getAdminClient(): AdminClient {
@@ -226,5 +264,20 @@ class KafkaServiceImpl(
             logger.error("Error fetching messages from Kafka topic: $topic", e)
             emptyList()
         }
+    }
+    override fun publishMessage(topic: String, key: String?, value: String) {
+        val prod = getProducer() ?: return
+        scope.launch {
+            try {
+                prod.send(org.apache.kafka.clients.producer.ProducerRecord(topic, key, value)).get()
+            } catch (e: Exception) {
+                logger.error("Failed to publish message to topic $topic", e)
+            }
+        }
+    }
+
+    override fun publishSqlAudit(audit: SqlAuditLog) {
+        val json = AppConfig.json.encodeToString(audit)
+        publishMessage("sql-audit-log", audit.externalDbId ?: "primary", json)
     }
 }

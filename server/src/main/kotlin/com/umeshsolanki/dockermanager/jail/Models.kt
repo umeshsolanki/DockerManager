@@ -8,6 +8,10 @@ import kotlinx.serialization.Serializable
 data class JailedIP(
     val ip: String,
     val country: String,
+    val city: String?,
+    val isp: String?,
+    val lat: Double?,
+    val lon: Double?,
     val reason: String,
     val expiresAt: Long,
     val createdAt: Long

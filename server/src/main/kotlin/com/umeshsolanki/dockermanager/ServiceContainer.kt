@@ -19,8 +19,13 @@ object ServiceContainer {
     // Core services
     val firewallService: IFirewallService = FirewallServiceImpl()
     
+    val ipInfoService: com.umeshsolanki.dockermanager.ip.IIpInfoService = com.umeshsolanki.dockermanager.ip.IpInfoServiceImpl()
+    
     // Dependent services
-    val jailManagerService: IJailManagerService = JailManagerServiceImpl(firewallService)
+    val jailManagerService: IJailManagerService = JailManagerServiceImpl(firewallService, ipInfoService)
+
+    // Workers
+    val ipEnrichmentWorker = com.umeshsolanki.dockermanager.jail.IpEnrichmentWorker(firewallService, ipInfoService)
 
     val sslService: ISSLService = SSLServiceImpl { command ->
          val executor = CommandExecutor(loggerName = "SSLServiceImpl")
@@ -39,6 +44,7 @@ object ServiceContainer {
         // Services are initialized lazily when accessed
         // This method can be used for any initialization logic if needed
         kafkaService.start()
+        ipEnrichmentWorker.start()
     }
 }
 

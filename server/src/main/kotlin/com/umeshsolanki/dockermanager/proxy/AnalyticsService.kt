@@ -488,8 +488,8 @@ class AnalyticsServiceImpl(
                 lastProcessedOffset = raf.filePointer
             }
             
-            // Batch insert ONLY suspicious logs into Database if active
-            if (AppConfig.storageBackend == "database" && hitsToInsert.isNotEmpty()) {
+            // Batch insert ONLY suspicious logs into Database if active AND persistence is enabled
+            if (AppConfig.storageBackend == "database" && settings.dbPersistenceLogsEnabled && hitsToInsert.isNotEmpty()) {
                 try {
                     transaction {
                         ProxyLogsTable.batchInsert(hitsToInsert) { hit ->

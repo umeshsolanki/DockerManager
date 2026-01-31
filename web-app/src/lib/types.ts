@@ -534,6 +534,7 @@ export interface SystemConfig {
   autoStorageRefresh: boolean;
   autoStorageRefreshIntervalMinutes: number;
   kafkaSettings: KafkaSettings;
+  dbPersistenceLogsEnabled: boolean;
 }
 
 export interface UpdateSystemConfigRequest {
@@ -544,6 +545,7 @@ export interface UpdateSystemConfigRequest {
   autoStorageRefresh?: boolean;
   autoStorageRefreshIntervalMinutes?: number;
   kafkaSettings?: KafkaSettings;
+  dbPersistenceLogsEnabled?: boolean;
 }
 
 export interface JamesContainerStatus {
@@ -674,4 +676,21 @@ export interface StorageInfo {
   dataRootPath: string;
   partitions: DiskPartition[];
   dockerUsage: DockerStorageUsage | null;
+}
+
+export interface ExternalDbConfig {
+  id: string;
+  name: string;
+  type: string;
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  password: string;
+  ssl: boolean;
+}
+
+export interface SqlQueryRequest {
+  sql: string;
+  externalDbId?: string;
 }

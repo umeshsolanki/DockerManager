@@ -13,6 +13,13 @@ data class FirewallRule(
     val comment: String? = null,
     val expiresAt: Long? = null,
     val country: String? = null,
+    val city: String? = null,
+    val isp: String? = null,
+    val lat: Double? = null,
+    val lon: Double? = null,
+    val timezone: String? = null,
+    val zip: String? = null,
+    val region: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -23,7 +30,14 @@ data class BlockIPRequest(
     val protocol: String = "ALL",
     val comment: String? = null,
     val expiresAt: Long? = null,
-    val country: String? = null
+    val country: String? = null,
+    val city: String? = null,
+    val isp: String? = null,
+    val lat: Double? = null,
+    val lon: Double? = null,
+    val timezone: String? = null,
+    val zip: String? = null,
+    val region: String? = null
 )
 
 @Serializable

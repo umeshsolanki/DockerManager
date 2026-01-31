@@ -108,7 +108,8 @@ object SystemService {
         dockerCliBuild = AppConfig.settings.dockerCliBuild,
         autoStorageRefresh = AppConfig.settings.autoStorageRefresh,
         autoStorageRefreshIntervalMinutes = AppConfig.settings.autoStorageRefreshIntervalMinutes,
-        kafkaSettings = AppConfig.settings.kafkaSettings
+        kafkaSettings = AppConfig.settings.kafkaSettings,
+        dbPersistenceLogsEnabled = AppConfig.settings.dbPersistenceLogsEnabled
     )
     
     fun updateSystemConfig(request: UpdateSystemConfigRequest) {
@@ -121,6 +122,10 @@ object SystemService {
             autoStorageRefreshIntervalMinutes = request.autoStorageRefreshIntervalMinutes ?: AppConfig.settings.autoStorageRefreshIntervalMinutes,
             kafkaSettings = request.kafkaSettings ?: AppConfig.settings.kafkaSettings
         )
+
+        request.dbPersistenceLogsEnabled?.let {
+            AppConfig.updateLoggingSettings(it)
+        }
         // Refresh Docker client to use new settings
         DockerClientProvider.refreshClient()
         DockerService.refreshServices()
