@@ -1,97 +1,72 @@
 package com.umeshsolanki.dockermanager.kafka
 
-import com.umeshsolanki.dockermanager.AppConfig
-import com.umeshsolanki.dockermanager.jail.IJailManagerService
 import kotlinx.coroutines.*
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.apache.kafka.clients.admin.AdminClient
 import org.apache.kafka.clients.admin.AdminClientConfig
 import org.apache.kafka.clients.admin.NewTopic
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.consumer.KafkaConsumer
+import org.apache.kafka.clients.producer.KafkaProducer
+import org.apache.kafka.clients.producer.ProducerConfig
+import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization.StringDeserializer
+import org.apache.kafka.common.serialization.StringSerializer
 import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.util.*
-import kotlin.jvm.optionals.getOrNull
 
-@Serializable
-data class IpBlockRequest(
-    val ip: String,
-    val durationMinutes: Int = 30,
-    val reason: String = "Blocked via Kafka request from external app"
-)
-
-@Serializable
-data class KafkaMessage(
-    val topic: String,
-    val partition: Int,
-    val offset: Long,
-    val key: String?,
-    val value: String,
-    val timestamp: Long
-)
-
-@Serializable
-data class KafkaTopicInfo(
-    val name: String,
-    val partitions: Int,
-    val replicationFactor: Int
-)
-
-@Serializable
-data class SqlAuditLog(
-    val timestamp: Long,
-    val sql: String,
-    val externalDbId: String?,
-    val externalDbName: String?,
-    val user: String? = "admin", // Placeholder for actual auth user
-    val status: String,
-    val error: String? = null
-)
+interface KafkaMessageHandler {
+    fun canHandle(topic: String): Boolean
+    fun handle(topic: String, key: String?, value: String)
+}
 
 interface IKafkaService {
-    fun start()
+    fun start(settings: KafkaSettings)
     fun stop()
     
     // Topic Management
-    fun listTopics(): List<KafkaTopicInfo>
-    fun createTopic(name: String, partitions: Int, replicationFactor: Short): Result<Unit>
-    fun deleteTopic(name: String): Result<Unit>
+    fun listTopics(settings: KafkaSettings): List<KafkaTopicInfo>
+    fun createTopic(settings: KafkaSettings, name: String, partitions: Int, replicationFactor: Short): Result<Unit>
+    fun deleteTopic(settings: KafkaSettings, name: String): Result<Unit>
     
     // Message Review
-    fun getMessages(topic: String, limit: Int): List<KafkaMessage>
+    fun getMessages(settings: KafkaSettings, topic: String, limit: Int): List<KafkaMessage>
     
     // Producers
-    fun publishMessage(topic: String, key: String?, value: String)
-    fun publishSqlAudit(audit: SqlAuditLog)
+    fun publishMessage(settings: KafkaSettings, topic: String, key: String?, value: String)
+    fun publishSqlAudit(settings: KafkaSettings, audit: SqlAuditLog)
+    
+    // Handlers
+    fun registerHandler(handler: KafkaMessageHandler)
 }
 
-class KafkaServiceImpl(
-    private val jailManagerService: IJailManagerService
-) : IKafkaService {
+class KafkaServiceImpl : IKafkaService {
     private val logger = LoggerFactory.getLogger(KafkaServiceImpl::class.java)
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var job: Job? = null
     private var consumer: KafkaConsumer<String, String>? = null
-    private var producer: org.apache.kafka.clients.producer.KafkaProducer<String, String>? = null
+    private var producer: KafkaProducer<String, String>? = null
+    private val handlers = mutableListOf<KafkaMessageHandler>()
 
-    private fun getProducer(): org.apache.kafka.clients.producer.KafkaProducer<String, String>? {
-        val settings = AppConfig.settings.kafkaSettings
+    override fun registerHandler(handler: KafkaMessageHandler) {
+        handlers.add(handler)
+    }
+
+    private fun getProducer(settings: KafkaSettings): KafkaProducer<String, String>? {
         if (!settings.enabled) return null
         
         if (producer == null) {
             val props = Properties()
-            props[org.apache.kafka.clients.producer.ProducerConfig.BOOTSTRAP_SERVERS_CONFIG] = settings.bootstrapServers
-            props[org.apache.kafka.clients.producer.ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG] = org.apache.kafka.common.serialization.StringSerializer::class.java.name
-            props[org.apache.kafka.clients.producer.ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG] = org.apache.kafka.common.serialization.StringSerializer::class.java.name
-            props[org.apache.kafka.clients.producer.ProducerConfig.ACKS_CONFIG] = "1"
-            props[org.apache.kafka.clients.producer.ProducerConfig.RETRIES_CONFIG] = 3
+            props[ProducerConfig.BOOTSTRAP_SERVERS_CONFIG] = settings.bootstrapServers
+            props[ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG] = StringSerializer::class.java.name
+            props[ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG] = StringSerializer::class.java.name
+            props[ProducerConfig.ACKS_CONFIG] = "1"
+            props[ProducerConfig.RETRIES_CONFIG] = 3
             
             try {
-                producer = org.apache.kafka.clients.producer.KafkaProducer(props)
+                producer = KafkaProducer(props)
             } catch (e: Exception) {
                 logger.error("Failed to create Kafka producer", e)
             }
@@ -99,8 +74,7 @@ class KafkaServiceImpl(
         return producer
     }
 
-    override fun start() {
-        val settings = AppConfig.settings.kafkaSettings
+    override fun start(settings: KafkaSettings) {
         if (!settings.enabled) {
             logger.info("Kafka consumer is disabled")
             return
@@ -126,27 +100,21 @@ class KafkaServiceImpl(
                     while (isActive) {
                         val records = consumer?.poll(Duration.ofMillis(1000)) ?: break
                         for (record in records) {
-                            try {
-                                val request = Json.decodeFromString<IpBlockRequest>(record.value())
-                                logger.info("Received IP block request via Kafka: $request")
-                                
-                                val success = jailManagerService.jailIP(
-                                    ip = request.ip,
-                                    durationMinutes = request.durationMinutes,
-                                    reason = request.reason
-                                )
-                                
-                                if (success) {
-                                    logger.info("Successfully blocked IP ${request.ip} via Kafka")
-                                } else {
-                                    logger.warn("Failed to block IP ${request.ip} via Kafka")
+                            val topic = record.topic()
+                            val key = record.key()
+                            val value = record.value()
+                            
+                            handlers.filter { it.canHandle(topic) }.forEach { 
+                                try {
+                                    it.handle(topic, key, value)
+                                } catch (e: Exception) {
+                                    logger.error("Error in Kafka handler for topic $topic", e)
                                 }
-                            } catch (e: Exception) {
-                                logger.error("Error processing Kafka message: ${record.value()}", e)
                             }
                         }
                     }
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     logger.error("Error in Kafka consumer loop, restarting in 30 seconds", e)
                     consumer?.close()
                     delay(30000)
@@ -164,8 +132,7 @@ class KafkaServiceImpl(
         logger.info("Kafka services stopped")
     }
 
-    private fun getAdminClient(): AdminClient {
-        val settings = AppConfig.settings.kafkaSettings
+    private fun getAdminClient(settings: KafkaSettings): AdminClient {
         val props = Properties()
         props[AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG] = settings.adminHost
         props[AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG] = 5000
@@ -173,9 +140,9 @@ class KafkaServiceImpl(
         return AdminClient.create(props)
     }
 
-    override fun listTopics(): List<KafkaTopicInfo> {
+    override fun listTopics(settings: KafkaSettings): List<KafkaTopicInfo> {
         return try {
-            getAdminClient().use { admin ->
+            getAdminClient(settings).use { admin ->
                 val topicNames = admin.listTopics().names().get()
                 val descriptions = admin.describeTopics(topicNames).allTopicNames().get()
                 
@@ -193,9 +160,9 @@ class KafkaServiceImpl(
         }
     }
 
-    override fun createTopic(name: String, partitions: Int, replicationFactor: Short): Result<Unit> {
+    override fun createTopic(settings: KafkaSettings, name: String, partitions: Int, replicationFactor: Short): Result<Unit> {
         return try {
-            getAdminClient().use { admin ->
+            getAdminClient(settings).use { admin ->
                 admin.createTopics(listOf(NewTopic(name, partitions, replicationFactor))).all().get()
                 Result.success(Unit)
             }
@@ -206,9 +173,9 @@ class KafkaServiceImpl(
         }
     }
 
-    override fun deleteTopic(name: String): Result<Unit> {
+    override fun deleteTopic(settings: KafkaSettings, name: String): Result<Unit> {
         return try {
-            getAdminClient().use { admin ->
+            getAdminClient(settings).use { admin ->
                 admin.deleteTopics(listOf(name)).all().get()
                 Result.success(Unit)
             }
@@ -219,8 +186,7 @@ class KafkaServiceImpl(
         }
     }
 
-    override fun getMessages(topic: String, limit: Int): List<KafkaMessage> {
-        val settings = AppConfig.settings.kafkaSettings
+    override fun getMessages(settings: KafkaSettings, topic: String, limit: Int): List<KafkaMessage> {
         val props = Properties()
         props[ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG] = settings.bootstrapServers
         props[ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG] = StringDeserializer::class.java.name
@@ -240,7 +206,7 @@ class KafkaServiceImpl(
 
                 val messages = mutableListOf<KafkaMessage>()
                 var count = 0
-                val maxWait = System.currentTimeMillis() + 5000 // 5 seconds timeout
+                val maxWait = System.currentTimeMillis() + 5000 
                 
                 while (count < limit * partitions.size && System.currentTimeMillis() < maxWait) {
                     val records = consumer.poll(Duration.ofMillis(500))
@@ -265,19 +231,20 @@ class KafkaServiceImpl(
             emptyList()
         }
     }
-    override fun publishMessage(topic: String, key: String?, value: String) {
-        val prod = getProducer() ?: return
+
+    override fun publishMessage(settings: KafkaSettings, topic: String, key: String?, value: String) {
+        val prod = getProducer(settings) ?: return
         scope.launch {
             try {
-                prod.send(org.apache.kafka.clients.producer.ProducerRecord(topic, key, value)).get()
+                prod.send(ProducerRecord(topic, key, value)).get()
             } catch (e: Exception) {
                 logger.error("Failed to publish message to topic $topic", e)
             }
         }
     }
 
-    override fun publishSqlAudit(audit: SqlAuditLog) {
-        val json = AppConfig.json.encodeToString(audit)
-        publishMessage("sql-audit-log", audit.externalDbId ?: "primary", json)
+    override fun publishSqlAudit(settings: KafkaSettings, audit: SqlAuditLog) {
+        val json = kotlinx.serialization.json.Json.encodeToString(SqlAuditLog.serializer(), audit)
+        publishMessage(settings, "sql-audit-log", audit.externalDbId ?: "primary", json)
     }
 }

@@ -66,6 +66,7 @@ gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 mysql = { module = "com.mysql:mysql-connector-j", version.ref = "mysql" }
 mariadb = { module = "org.mariadb.jdbc:mariadb-java-client", version.ref = "mariadb" }
 sqlite = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite" }
+kafka-clients = { module = "org.apache.kafka:kafka-clients", version = "3.7.0" }
 
 [plugins]
 shadowJar = { id = "com.gradleup.shadow", version.ref = "shadow" }

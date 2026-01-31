@@ -8,8 +8,8 @@ import com.umeshsolanki.dockermanager.proxy.*
 import com.umeshsolanki.dockermanager.utils.CommandExecutor
 import com.umeshsolanki.dockermanager.proxy.ProxyServiceImpl
 import com.umeshsolanki.dockermanager.proxy.SSLServiceImpl
-import com.umeshsolanki.dockermanager.kafka.IKafkaService
-import com.umeshsolanki.dockermanager.kafka.KafkaServiceImpl
+import com.umeshsolanki.dockermanager.kafka.*
+import kotlinx.serialization.json.Json
 
 /**
  * Service container for dependency injection.
@@ -34,7 +34,23 @@ object ServiceContainer {
 
     val proxyService: IProxyService = ProxyServiceImpl(jailManagerService, sslService)
     
-    val kafkaService: IKafkaService = KafkaServiceImpl(jailManagerService)
+    val kafkaService: IKafkaService = KafkaServiceImpl().apply {
+        registerHandler(object : KafkaMessageHandler {
+            override fun canHandle(topic: String): Boolean = topic == AppConfig.settings.kafkaSettings.topic
+            override fun handle(topic: String, key: String?, value: String) {
+                try {
+                    val request = AppConfig.json.decodeFromString<IpBlockRequest>(value)
+                    jailManagerService.jailIP(
+                        ip = request.ip,
+                        durationMinutes = request.durationMinutes,
+                        reason = request.reason
+                    )
+                } catch (e: Exception) {
+                    org.slf4j.LoggerFactory.getLogger("KafkaHandler").error("Failed to process block request", e)
+                }
+            }
+        })
+    }
     
     /**
      * Initialize all services.
@@ -43,7 +59,7 @@ object ServiceContainer {
     fun initialize() {
         // Services are initialized lazily when accessed
         // This method can be used for any initialization logic if needed
-        kafkaService.start()
+        kafkaService.start(AppConfig.settings.kafkaSettings)
         ipEnrichmentWorker.start()
     }
 }

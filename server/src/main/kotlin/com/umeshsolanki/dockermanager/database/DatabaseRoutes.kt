@@ -381,6 +381,7 @@ fun Route.databaseRoutes() {
                 
                 // Audit to Kafka
                 ServiceContainer.kafkaService.publishSqlAudit(
+                    AppConfig.settings.kafkaSettings,
                     SqlAuditLog(
                         timestamp = System.currentTimeMillis(),
                         sql = request.sql,
@@ -395,6 +396,7 @@ fun Route.databaseRoutes() {
             } catch (e: Exception) {
                 request?.let { req ->
                     ServiceContainer.kafkaService.publishSqlAudit(
+                        AppConfig.settings.kafkaSettings,
                         SqlAuditLog(
                             timestamp = System.currentTimeMillis(),
                             sql = req.sql,

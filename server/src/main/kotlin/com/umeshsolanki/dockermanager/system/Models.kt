@@ -1,6 +1,6 @@
 package com.umeshsolanki.dockermanager.system
 
-import com.umeshsolanki.dockermanager.KafkaSettings
+import com.umeshsolanki.dockermanager.kafka.KafkaSettings
 import kotlinx.serialization.Serializable
 
 // ========== System Models ==========

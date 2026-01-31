@@ -10,6 +10,7 @@ import com.umeshsolanki.dockermanager.database.DatabaseFactory
 import com.umeshsolanki.dockermanager.database.SettingsTable
 import com.umeshsolanki.dockermanager.email.AlertConfig
 import com.umeshsolanki.dockermanager.proxy.ProxyJailRuleType
+import com.umeshsolanki.dockermanager.kafka.KafkaSettings
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -55,14 +56,7 @@ val DEFAULT_PROXY_JAIL_RULES = listOf(
     ProxyJailRule(type = ProxyJailRuleType.METHOD, pattern = "^(?!GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD$).*", description = "Non-standard HTTP method")
 )
 
-@Serializable
-data class KafkaSettings(
-    val enabled: Boolean = false,
-    val bootstrapServers: String = "localhost:9092",
-    val adminHost: String = "localhost:9092",
-    val topic: String = "ip-blocking-requests",
-    val groupId: String = "docker-manager-jailer"
-)
+// KafkaSettings removed and moved to shared module
 
 @Serializable
 data class AppSettings(

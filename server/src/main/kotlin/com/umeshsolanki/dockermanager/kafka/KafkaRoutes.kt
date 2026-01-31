@@ -16,7 +16,7 @@ fun Route.kafkaRoutes() {
     route("/kafka") {
         get("/topics") {
             try {
-                call.respond(kafkaService.listTopics())
+                call.respond(kafkaService.listTopics(AppConfig.settings.kafkaSettings))
             } catch (e: Exception) {
                 logger.error("Error listing topics", e)
                 call.respond(HttpStatusCode.InternalServerError, KafkaActionResult(success = false, message = e.message ?: "Unknown error"))
@@ -33,6 +33,7 @@ fun Route.kafkaRoutes() {
             
             logger.info("Creating Kafka topic: ${request.name}")
             val result = kafkaService.createTopic(
+                AppConfig.settings.kafkaSettings,
                 request.name,
                 request.partitions,
                 request.replicationFactor.toShort()
@@ -52,7 +53,7 @@ fun Route.kafkaRoutes() {
 
         delete("/topics/{name}") {
             val name = call.parameters["name"] ?: return@delete call.respond(HttpStatusCode.BadRequest)
-            val result = kafkaService.deleteTopic(name)
+            val result = kafkaService.deleteTopic(AppConfig.settings.kafkaSettings, name)
             if (result.isSuccess) {
                 call.respond(HttpStatusCode.OK, KafkaActionResult(success = true))
             } else {
@@ -66,7 +67,7 @@ fun Route.kafkaRoutes() {
         get("/topics/{name}/messages") {
             val name = call.parameters["name"] ?: return@get call.respond(HttpStatusCode.BadRequest)
             val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 50
-            call.respond(kafkaService.getMessages(name, limit))
+            call.respond(kafkaService.getMessages(AppConfig.settings.kafkaSettings, name, limit))
         }
     }
 }

@@ -132,7 +132,7 @@ object SystemService {
         
         // Refresh Kafka service
         ServiceContainer.kafkaService.stop()
-        ServiceContainer.kafkaService.start()
+        ServiceContainer.kafkaService.start(AppConfig.settings.kafkaSettings)
     }
 
     fun getStorageInfo(): StorageInfo {
