@@ -4,6 +4,7 @@ import com.github.dockerjava.api.DockerClient
 import com.github.dockerjava.api.async.ResultCallback
 import com.umeshsolanki.dockermanager.AppConfig
 import kotlinx.serialization.json.*
+import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 
@@ -267,12 +268,14 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
         }
     }
 
+    private val logger = LoggerFactory.getLogger(ContainerServiceImpl::class.java)
+
     override fun stopContainer(id: String): Boolean {
         return try {
             dockerClient.stopContainerCmd(id).exec()
             true
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger.error("Failed to stop container $id", e)
             false
         }
     }
@@ -281,8 +284,11 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
         return try {
             dockerClient.removeContainerCmd(id).withForce(force).exec()
             true
+        } catch (e: com.github.dockerjava.api.exception.NotFoundException) {
+            logger.info("Container $id already removed or not found (404)")
+            true
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger.error("Failed to remove container $id (force=$force)", e)
             false
         }
     }
