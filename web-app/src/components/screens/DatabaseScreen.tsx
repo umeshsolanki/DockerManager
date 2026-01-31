@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Database, Zap, RefreshCw, CheckCircle, XCircle, Server, Globe, Lock, Trash2, Save, TestTube, Info, Plus, Table, ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
+import { Database, Zap, RefreshCw, CheckCircle, XCircle, Server, Globe, Lock, Trash2, Save, TestTube, Info, Plus, Table, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Download, Bookmark } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { RedisConfig, RedisStatus } from '@/lib/types';
 import { toast } from 'sonner';
@@ -714,9 +714,21 @@ function SqlConsoleTab() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const [savedQueries, setSavedQueries] = useState<{ name: string; sql: string }[]>([]);
+    const [showSaveModal, setShowSaveModal] = useState(false);
+    const [newQueryName, setNewQueryName] = useState('');
+
     useEffect(() => {
         DockerClient.listExternalDbs().then(setExternalDbs);
+        const storedQueries = localStorage.getItem('savedSqlQueries');
+        if (storedQueries) {
+            setSavedQueries(JSON.parse(storedQueries));
+        }
     }, []);
+
+    useEffect(() => {
+        localStorage.setItem('savedSqlQueries', JSON.stringify(savedQueries));
+    }, [savedQueries]);
 
     const handleExecute = async () => {
         setIsLoading(true);
@@ -738,6 +750,70 @@ function SqlConsoleTab() {
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const handleSaveQuery = () => {
+        setNewQueryName('');
+        setShowSaveModal(true);
+    };
+
+    const confirmSaveQuery = () => {
+        if (!newQueryName.trim()) {
+            toast.error('Query name cannot be empty.');
+            return;
+        }
+        if (savedQueries.some(q => q.name === newQueryName.trim())) {
+            toast.error('A query with this name already exists.');
+            return;
+        }
+        setSavedQueries([...savedQueries, { name: newQueryName.trim(), sql }]);
+        toast.success(`Query "${newQueryName.trim()}" saved!`);
+        setShowSaveModal(false);
+    };
+
+    const handleDeleteQuery = (index: number, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent triggering the parent button's onClick
+        if (confirm('Are you sure you want to delete this saved query?')) {
+            const updatedQueries = savedQueries.filter((_, i) => i !== index);
+            setSavedQueries(updatedQueries);
+            toast.success('Query deleted.');
+        }
+    };
+
+    const handleExportCSV = () => {
+        if (results.length === 0) {
+            toast.info('No data to export.');
+            return;
+        }
+        const headers = Object.keys(results[0]);
+        const csv = [
+            headers.join(','),
+            ...results.map(row => headers.map(fieldName => JSON.stringify(row[fieldName])).join(','))
+        ].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute('download', 'query_results.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success('CSV exported successfully!');
+    };
+
+    const handleExportJSON = () => {
+        if (results.length === 0) {
+            toast.info('No data to export.');
+            return;
+        }
+        const json = JSON.stringify(results, null, 2);
+        const blob = new Blob([json], { type: 'application/json;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute('download', 'query_results.json');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success('JSON exported successfully!');
     };
 
     return (
@@ -769,17 +845,48 @@ function SqlConsoleTab() {
                     </div>
                 </div>
 
-                <div className="relative group">
+                <div className="relative group mb-4">
                     <textarea
                         value={sql}
                         onChange={(e) => setSql(e.target.value)}
                         placeholder="Enter SQL command here..."
                         className="w-full h-40 bg-black/60 border border-white/10 rounded-2xl p-4 font-mono text-sm text-green-400 focus:outline-none focus:border-primary/50 transition-all resize-none shadow-inner"
                     />
-                    <div className="absolute top-2 right-2 opacity-30 group-hover:opacity-100 transition-opacity">
-                        <Table size={16} />
+                    <div className="absolute top-2 right-2 opacity-30 group-hover:opacity-100 transition-opacity flex gap-2">
+                        <button
+                            onClick={handleSaveQuery}
+                            className="p-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors"
+                            title="Save Query"
+                        >
+                            <Save size={16} />
+                        </button>
                     </div>
                 </div>
+
+                {savedQueries.length > 0 && (
+                    <div className="mb-4">
+                        <h4 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2 flex items-center gap-2">
+                            <Bookmark size={12} /> Saved Queries
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                            {savedQueries.map((q, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => setSql(q.sql)}
+                                    className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg text-xs font-medium flex items-center gap-2 group transition-all"
+                                >
+                                    {q.name}
+                                    <span
+                                        onClick={(e) => handleDeleteQuery(i, e)}
+                                        className="opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity"
+                                    >
+                                        <XCircle size={12} />
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {error && (
                     <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-sm font-mono flex gap-2">
@@ -796,7 +903,15 @@ function SqlConsoleTab() {
                 <div className="p-4 border-b border-white/5 bg-white/5 flex items-center justify-between">
                     <h3 className="font-bold text-sm">Results {results.length > 0 && `(${results.length} rows)`}</h3>
                     {results.length > 0 && (
-                        <Button onClick={() => setResults([])} className="px-2 py-1 text-[10px] bg-white/5 hover:bg-white/10">Clear Results</Button>
+                        <div className="flex gap-2">
+                            <Button onClick={handleExportCSV} className="px-2 py-1 text-[10px] bg-white/5 hover:bg-white/10 flex items-center gap-1">
+                                <Download size={12} /> CSV
+                            </Button>
+                            <Button onClick={handleExportJSON} className="px-2 py-1 text-[10px] bg-white/5 hover:bg-white/10 flex items-center gap-1">
+                                <Download size={12} /> JSON
+                            </Button>
+                            <Button onClick={() => setResults([])} className="px-2 py-1 text-[10px] bg-red-500/10 text-red-500 hover:bg-red-500/20">Clear</Button>
+                        </div>
                     )}
                 </div>
 
@@ -832,6 +947,31 @@ function SqlConsoleTab() {
                     )}
                 </div>
             </div>
+
+            {showSaveModal && (
+                <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+                    <div className="bg-surface border border-outline/10 rounded-[32px] w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="p-6">
+                            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                                <Save size={20} className="text-primary" /> Save Query
+                            </h3>
+                            <input
+                                autoFocus
+                                type="text"
+                                value={newQueryName}
+                                onChange={(e) => setNewQueryName(e.target.value)}
+                                placeholder="Query Name (e.g., 'Recent Users')"
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary/50 mb-6"
+                                onKeyDown={(e) => e.key === 'Enter' && confirmSaveQuery()}
+                            />
+                            <div className="flex gap-2 justify-end">
+                                <Button onClick={() => setShowSaveModal(false)} className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-bold">Cancel</Button>
+                                <Button onClick={confirmSaveQuery} className="px-6 py-2 bg-primary text-on-primary rounded-xl text-xs font-bold">Save</Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
