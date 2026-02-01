@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Globe, Plus, Activity, Lock, FileKey, ShieldCheck, Network, Pencil, Trash2 } from 'lucide-react';
+import { Globe, Plus, Activity, Lock, FileKey, ShieldCheck, Network, Pencil, Trash2, FolderCode, Server } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { ProxyHost, PathRoute, SSLCertificate, DnsConfig } from '@/lib/types';
 import { toast } from 'sonner';
@@ -41,6 +41,7 @@ export function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () 
     const [rateLimitPeriod, setRateLimitPeriod] = useState<'s' | 'm'>(initialHost?.rateLimit?.period || 's');
     const [rateLimitBurst, setRateLimitBurst] = useState(initialHost?.rateLimit?.burst?.toString() || '20');
     const [rateLimitNodelay, setRateLimitNodelay] = useState(initialHost?.rateLimit?.nodelay ?? true);
+    const [isStatic, setIsStatic] = useState(initialHost?.isStatic || false);
 
     // DNS Config Dropdown
     const [dnsConfigId, setDnsConfigId] = useState(initialHost?.dnsConfigId || '');
@@ -83,7 +84,8 @@ export function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () 
                 period: rateLimitPeriod,
                 burst: parseInt(rateLimitBurst) || 20,
                 nodelay: rateLimitNodelay
-            } : undefined
+            } : undefined,
+            isStatic
         };
 
         const result = initialHost
@@ -111,6 +113,26 @@ export function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () 
         >
             <form onSubmit={handleSubmit} className="mt-4 flex-1 flex flex-col min-h-0">
                 <div className="flex-1 overflow-y-auto px-1 custom-scrollbar space-y-6">
+                    {/* Host Type Selector */}
+                    <div className="flex bg-black/20 p-1.5 rounded-2xl border border-outline/10">
+                        <button
+                            type="button"
+                            onClick={() => setIsStatic(false)}
+                            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all ${!isStatic ? 'bg-primary text-on-primary shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}
+                        >
+                            <Server size={14} />
+                            Proxy (Forward)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setIsStatic(true)}
+                            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all ${isStatic ? 'bg-primary text-on-primary shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}
+                        >
+                            <FolderCode size={14} />
+                            Static (Files)
+                        </button>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-1.5">
                             <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Domain Name</label>
@@ -124,11 +146,13 @@ export function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () 
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Target URL</label>
+                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                                {isStatic ? 'Static Directory Path' : 'Target URL'}
+                            </label>
                             <input
                                 required
                                 type="text"
-                                placeholder="e.g. http://localhost:8080"
+                                placeholder={isStatic ? "/var/www/html/site" : "e.g. http://localhost:8080"}
                                 value={target}
                                 onChange={(e) => setTarget(e.target.value)}
                                 className="w-full bg-white/5 border border-outline/20 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary transition-all font-mono font-bold placeholder:font-normal"
@@ -731,6 +755,7 @@ function PathRouteModal({
     const [rateLimitPeriod, setRateLimitPeriod] = useState<'s' | 'm'>(initialPath?.rateLimit?.period || 's');
     const [rateLimitBurst, setRateLimitBurst] = useState(initialPath?.rateLimit?.burst?.toString() || '20');
     const [rateLimitNodelay, setRateLimitNodelay] = useState(initialPath?.rateLimit?.nodelay ?? true);
+    const [isStatic, setIsStatic] = useState(initialPath?.isStatic || false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -753,7 +778,8 @@ function PathRouteModal({
                 period: rateLimitPeriod,
                 burst: parseInt(rateLimitBurst) || 20,
                 nodelay: rateLimitNodelay
-            } : undefined
+            } : undefined,
+            isStatic
         };
 
         await onSave(pathData);
@@ -773,6 +799,24 @@ function PathRouteModal({
         >
             <div className="flex-1 overflow-y-auto mt-4 px-1 custom-scrollbar">
                 <form onSubmit={handleSubmit} className="space-y-6">
+                    {/* Path Type Selector */}
+                    <div className="flex bg-black/20 p-1 rounded-xl border border-outline/10">
+                        <button
+                            type="button"
+                            onClick={() => setIsStatic(false)}
+                            className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${!isStatic ? 'bg-primary text-on-primary' : 'text-on-surface-variant'}`}
+                        >
+                            Proxy
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setIsStatic(true)}
+                            className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${isStatic ? 'bg-primary text-on-primary' : 'text-on-surface-variant'}`}
+                        >
+                            Static
+                        </button>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-1.5">
                             <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Path Prefix</label>
@@ -786,11 +830,13 @@ function PathRouteModal({
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Target Internal Address</label>
+                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                                {isStatic ? 'Static Directory' : 'Target Address'}
+                            </label>
                             <input
                                 required
                                 type="text"
-                                placeholder="e.g. http://127.0.0.1:3000"
+                                placeholder={isStatic ? "/var/www/html/dist" : "e.g. http://127.0.0.1:3000"}
                                 value={target}
                                 onChange={(e) => setTarget(e.target.value)}
                                 className="w-full bg-white/5 border border-outline/20 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary transition-all font-mono font-bold placeholder:font-normal"

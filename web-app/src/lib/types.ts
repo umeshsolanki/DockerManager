@@ -292,6 +292,7 @@ export interface PathRoute {
   name?: string;
   order?: number;
   rateLimit?: RateLimit;
+  isStatic?: boolean;
 }
 
 export interface DnsConfig {
@@ -330,6 +331,7 @@ export interface ProxyHost {
   dnsAuthScript?: string;
   dnsCleanupScript?: string;
   rateLimit?: RateLimit;
+  isStatic?: boolean;
 }
 
 export interface SSLCertificate {

@@ -25,7 +25,8 @@ data class PathRoute(
     val enabled: Boolean = true, // Enable/disable this path route
     val name: String? = null, // Optional name/description for UI display
     val order: Int = 0, // Order/priority for path matching (higher = more priority)
-    val rateLimit: RateLimit? = null
+    val rateLimit: RateLimit? = null,
+    val isStatic: Boolean = false
 )
 
 @Serializable
@@ -66,7 +67,8 @@ data class ProxyHost(
     val dnsCleanupUrl: String? = null, // Custom HTTP API URL to remove TXT record
     val dnsAuthScript: String? = null, // Full custom script for auth hook
     val dnsCleanupScript: String? = null, // Full custom script for cleanup hook
-    val rateLimit: RateLimit? = null
+    val rateLimit: RateLimit? = null,
+    val isStatic: Boolean = false
 ) {
     // Computed property to get upstream, defaulting to target if not provided
     val effectiveUpstream: String get() = upstream ?: target

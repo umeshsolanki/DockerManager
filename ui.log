@@ -3,7 +3,7 @@ npm warn Unknown user config "//registry". This will stop working in the next ma
 npm warn Unknown user config "always-auth". This will stop working in the next major version of npm.
 npm warn Unknown user config "email". This will stop working in the next major version of npm.
 
-> web-app@4.0.1 dev
+> web-app@4.0.3 dev
 > next dev
 
 ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
@@ -16,22 +16,12 @@ npm warn Unknown user config "email". This will stop working in the next major v
 
 ▲ Next.js 16.1.1 (Turbopack)
 - Local:         http://localhost:3000
-- Network:       http://172.16.127.6:3000
+- Network:       http://192.168.1.6:3000
 
 ✓ Starting...
-✓ Ready in 1248ms
+✓ Ready in 1322ms
+○ Compiling /_not-found/page ...
+ GET / 404 in 3.7s (compile: 3.3s, render: 445ms)
 ○ Compiling / ...
- GET / 200 in 4.1s (compile: 3.8s, render: 281ms)
- GET /?screen=Kafka 200 in 42ms (compile: 6ms, render: 36ms)
- GET /?screen=Docker 200 in 83ms (compile: 39ms, render: 45ms)
- GET /?screen=Docker&tab=Secrets 200 in 17ms (compile: 3ms, render: 14ms)
- GET /?screen=Kafka&tab=Secrets 200 in 32ms (compile: 10ms, render: 22ms)
- GET /?screen=Kafka&tab=Secrets 200 in 181ms (compile: 40ms, render: 141ms)
- GET /?screen=Settings&tab=Secrets 200 in 34ms (compile: 9ms, render: 25ms)
- GET /?screen=Docker&tab=Secrets 200 in 76ms (compile: 22ms, render: 53ms)
- GET / 200 in 61ms (compile: 4ms, render: 57ms)
- GET /?screen=Docker 200 in 22ms (compile: 6ms, render: 16ms)
- GET /?screen=Docker&tab=Compose 200 in 19ms (compile: 4ms, render: 14ms)
- GET /?screen=Docker&tab=Containers 200 in 29ms (compile: 8ms, render: 21ms)
- GET /?screen=Docker&tab=Containers 200 in 25ms (compile: 5ms, render: 20ms)
-[?25h
+ GET / 200 in 5.4s (compile: 5.2s, render: 162ms)
+ GET /?screen=Proxy 200 in 29ms (compile: 4ms, render: 25ms)

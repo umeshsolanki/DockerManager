@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Globe, Plus, Search, RefreshCw, Trash2, Power, Server, ExternalLink, FileKey, Pencil, Layers, Database, Lock, Network, Activity, ShieldCheck, Copy, CheckCircle2, Calendar, Building2, AlertTriangle } from 'lucide-react';
+import { Globe, Plus, Search, RefreshCw, Trash2, Power, Server, ExternalLink, FileKey, Pencil, Layers, Database, Lock, Network, Activity, ShieldCheck, Copy, CheckCircle2, Calendar, Building2, AlertTriangle, FolderCode } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { ProxyHost, PathRoute, SSLCertificate, DnsConfig } from '@/lib/types';
 import { toast } from 'sonner';
@@ -160,7 +160,7 @@ export default function ProxyScreen() {
                                             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-inner shrink-0 transition-all duration-300 ${host.enabled
                                                 ? 'bg-gradient-to-br from-primary/20 to-primary/5 text-primary border border-primary/10 group-hover:scale-110'
                                                 : 'bg-white/5 text-on-surface-variant border border-white/5 grayscale'}`}>
-                                                <Globe size={20} className={host.enabled ? "animate-pulse-slow" : ""} />
+                                                {host.isStatic ? <FolderCode size={20} className={host.enabled ? "animate-pulse-slow" : ""} /> : <Globe size={20} className={host.enabled ? "animate-pulse-slow" : ""} />}
                                             </div>
                                             <div className="min-w-0">
                                                 <h3 className="text-base font-bold truncate tracking-tight text-on-surface group-hover:text-primary transition-colors">{host.domain}</h3>
@@ -186,7 +186,7 @@ export default function ProxyScreen() {
                                     {/* Middle: Target Flow */}
                                     <div className="relative z-10 bg-black/20 rounded-xl p-3 border border-white/5 mb-4 group-hover:border-white/10 transition-colors">
                                         <div className="flex items-center gap-2 mb-1">
-                                            <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Proxy Target</span>
+                                            <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">{host.isStatic ? "Static Path" : "Proxy Target"}</span>
                                         </div>
                                         <div className="flex items-center gap-2 text-xs font-mono text-on-surface overflow-hidden">
                                             <Server size={12} className="text-primary shrink-0" />
@@ -196,7 +196,7 @@ export default function ProxyScreen() {
 
                                     {/* Badges */}
                                     <div className="flex flex-wrap gap-1.5 mb-6 relative z-10 flex-1 content-start">
-                                        {host.ssl && (
+                                         {host.isStatic && (<span className="inline-flex items-center gap-1 text-[9px] bg-amber-500/10 text-amber-500 px-2 py-1 rounded-lg font-bold uppercase border border-amber-500/10 shadow-[0_0_10px_rgba(245,158,11,0.1)]"><FolderCode size={8} /> Static Content</span>)} {host.ssl && (
                                             <span className="inline-flex items-center gap-1 text-[9px] bg-green-500/10 text-green-500 px-2 py-1 rounded-lg font-bold uppercase border border-green-500/10 shadow-[0_0_10px_rgba(34,197,94,0.1)]">
                                                 <Lock size={8} /> SSL Secured
                                             </span>

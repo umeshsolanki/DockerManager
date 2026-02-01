@@ -421,21 +421,52 @@ class ProxyServiceImpl(
 
     override fun listHosts(): List<ProxyHost> = loadHosts()
 
+    private fun String.sanitizeNginx(): String {
+        return this.replace(";", "").replace("{", "").replace("}", "").replace("\n", "").replace("\r", "").replace("#", "")
+    }
+
     private fun validatePathRoute(pathRoute: PathRoute): Pair<Boolean, String> {
-        if (pathRoute.path.isBlank ()) {
+        if (pathRoute.path.isBlank()) {
             return false to "Path cannot be empty"
         }
         if (pathRoute.target.isBlank()) {
-            return false to "Target URL cannot be empty"
+            return false to "Target cannot be empty"
         }
-        // Validate target URL format
-        try {
-            val uri = java.net.URI(pathRoute.target)
-            if (uri.scheme == null || uri.host == null) {
-                return false to "Target URL must include scheme and host (e.g., http://backend:8080)"
+
+        // Prevent path traversal and risky characters in the path itself
+        if (pathRoute.path.contains("..") || pathRoute.path.contains(";") || pathRoute.path.contains("{")) {
+            return false to "Invalid characters in path"
+        }
+
+        if (pathRoute.isStatic) {
+            // Validate as local path
+            if (pathRoute.target.contains(";") || pathRoute.target.contains("{") || pathRoute.target.contains("\n")) {
+                return false to "Invalid characters in static path"
             }
-        } catch (e: Exception) {
-            return false to "Invalid target URL format: ${e.message}"
+            // Basic path traversal check for static paths
+            if (pathRoute.target.contains("..")) {
+                return false to "Path traversal not allowed in static path"
+            }
+        } else {
+            // Validate target URL format only for PROXY routes
+            try {
+                val uri = java.net.URI(pathRoute.target)
+                if (uri.scheme == null || uri.host == null) {
+                    return false to "Target URL must include scheme and host (e.g., http://backend:8080)"
+                }
+                if (pathRoute.target.contains("\n") || pathRoute.target.contains("\r")) {
+                    return false to "Newlines not allowed in target URL"
+                }
+            } catch (e: Exception) {
+                return false to "Invalid target URL format: ${e.message}"
+            }
+            
+            // Validate custom Nginx config if present
+            if (!pathRoute.customConfig.isNullOrBlank()) {
+                 if (pathRoute.customConfig.contains("include ") || pathRoute.customConfig.contains("lua_file")) {
+                     return false to "Include/Lua not allowed in custom config"
+                 }
+            }
         }
         return true to ""
     }
@@ -468,30 +499,40 @@ class ProxyServiceImpl(
                 return false to "Domain contains invalid characters"
             }
 
-            // Validate upstream/target URL format (upstream defaults to target if not provided)
-            val effectiveUpstream = host.effectiveUpstream
-            if (effectiveUpstream.any { it.isISOControl() }) {
-                return false to "Upstream URL contains invalid characters"
-            }
-            try {
-                val upstreamUri = java.net.URI(effectiveUpstream)
-                if (upstreamUri.scheme == null || upstreamUri.host == null) {
-                    return false to "Upstream must include scheme and host (e.g., http://backend:8080)"
+            // Validate target
+            if (host.isStatic) {
+                if (host.target.contains(";") || host.target.contains("{") || host.target.contains("\n")) {
+                    return false to "Invalid characters in static path"
                 }
-            } catch (e: Exception) {
-                return false to "Invalid upstream URL format: ${e.message}"
-            }
+                if (host.target.contains("..")) {
+                    return false to "Path traversal not allowed in static path"
+                }
+            } else {
+                // Validate upstream/target URL format (upstream defaults to target if not provided)
+                val effectiveUpstream = host.effectiveUpstream
+                if (effectiveUpstream.any { it.isISOControl() || it == '\n' || it == '\r' }) {
+                    return false to "Upstream URL contains invalid characters"
+                }
+                try {
+                    val upstreamUri = java.net.URI(effectiveUpstream)
+                    if (upstreamUri.scheme == null || upstreamUri.host == null) {
+                        return false to "Upstream must include scheme and host (e.g., http://backend:8080)"
+                    }
+                } catch (e: Exception) {
+                    return false to "Invalid upstream URL format: ${e.message}"
+                }
 
-            if (host.target.any { it.isISOControl() }) {
-                 return false to "Target URL contains invalid characters"
-            }
-            try {
-                val targetUri = java.net.URI(host.target)
-                if (targetUri.scheme == null || targetUri.host == null) {
-                    return false to "Target must include scheme and host (e.g., http://backend:8080)"
+                if (host.target.any { it.isISOControl() || it == '\n' || it == '\r' }) {
+                    return false to "Target URL contains invalid characters"
                 }
-            } catch (e: Exception) {
-                return false to "Invalid target URL format: ${e.message}"
+                try {
+                    val targetUri = java.net.URI(host.target)
+                    if (targetUri.scheme == null || targetUri.host == null) {
+                        return false to "Target must include scheme and host (e.g., http://backend:8080)"
+                    }
+                } catch (e: Exception) {
+                    return false to "Invalid target URL format: ${e.message}"
+                }
             }
 
             // Validate paths
@@ -573,30 +614,40 @@ class ProxyServiceImpl(
                 return false to "Domain contains invalid characters"
             }
 
-            // Validate upstream/target URL format (Prevent CRLF Injection)
-            val effectiveUpstream = host.effectiveUpstream
-            if (effectiveUpstream.any { it.isISOControl() }) {
-                return false to "Upstream URL contains invalid characters"
-            }
-            try {
-                val upstreamUri = java.net.URI(effectiveUpstream)
-                if (upstreamUri.scheme == null || upstreamUri.host == null) {
-                    return false to "Upstream must include scheme and host (e.g., http://backend:8080)"
+            // Validate target
+            if (host.isStatic) {
+                if (host.target.contains(";") || host.target.contains("{") || host.target.contains("\n")) {
+                    return false to "Invalid characters in static path"
                 }
-            } catch (e: Exception) {
-                return false to "Invalid upstream URL format: ${e.message}"
-            }
+                if (host.target.contains("..")) {
+                    return false to "Path traversal not allowed in static path"
+                }
+            } else {
+                // Validate upstream/target URL format (Prevent CRLF Injection)
+                val effectiveUpstream = host.effectiveUpstream
+                if (effectiveUpstream.any { it.isISOControl() || it == '\n' || it == '\r' }) {
+                    return false to "Upstream URL contains invalid characters"
+                }
+                try {
+                    val upstreamUri = java.net.URI(effectiveUpstream)
+                    if (upstreamUri.scheme == null || upstreamUri.host == null) {
+                        return false to "Upstream must include scheme and host (e.g., http://backend:8080)"
+                    }
+                } catch (e: Exception) {
+                    return false to "Invalid upstream URL format: ${e.message}"
+                }
 
-            if (host.target.any { it.isISOControl() }) {
-                 return false to "Target URL contains invalid characters"
-            }
-            try {
-                val targetUri = java.net.URI(host.target)
-                if (targetUri.scheme == null || targetUri.host == null) {
-                    return false to "Target must include scheme and host (e.g., http://backend:8080)"
+                if (host.target.any { it.isISOControl() || it == '\n' || it == '\r' }) {
+                    return false to "Target URL contains invalid characters"
                 }
-            } catch (e: Exception) {
-                return false to "Invalid target URL format: ${e.message}"
+                try {
+                    val targetUri = java.net.URI(host.target)
+                    if (targetUri.scheme == null || targetUri.host == null) {
+                        return false to "Target must include scheme and host (e.g., http://backend:8080)"
+                    }
+                } catch (e: Exception) {
+                    return false to "Invalid target URL format: ${e.message}"
+                }
             }
 
             // Validate paths
@@ -771,6 +822,55 @@ class ProxyServiceImpl(
         // Generate path-based location blocks
         val pathLocations = generatePathLocations(host.paths, wsConfig)
 
+        // Generate Main Location Config (for /)
+        fun generateMainLocationConfig(isHttps: Boolean, redirect: String = ""): String {
+            val safeTarget = host.target.sanitizeNginx()
+            if (host.isStatic) {
+                return """
+                    |        ${redirect}root ${safeTarget.trimEnd('/')};
+                    |        index index.html index.htm;
+                    |        try_files ${'$'}uri ${'$'}uri/ =404;
+                    |        ${ipConfig}
+                """.trimMargin().trim()
+            } else {
+                if (isHttps) {
+                    return """
+                        |        proxy_pass ${safeTarget};
+                        |        
+                        |        # Upstream Keepalive & Websocket Support
+                        |        proxy_http_version 1.1;
+                        |        proxy_set_header Upgrade ${'$'}http_upgrade;
+                        |        proxy_set_header Connection ${'$'}connection_upgrade;
+                        |        
+                        |        # Proxy Headers
+                        |        proxy_set_header Host ${'$'}host;
+                        |        proxy_set_header X-Real-IP ${'$'}remote_addr;
+                        |        proxy_set_header X-Forwarded-For ${'$'}proxy_add_x_forwarded_for;
+                        |        proxy_set_header X-Forwarded-Proto ${'$'}scheme;
+                        |
+                        |        # Performance Tuning
+                        |        proxy_buffers 8 16k;
+                        |        proxy_buffer_size 32k;
+                        |
+                        |        ${wsConfig}
+                        |        ${ipConfig}
+                    """.trimMargin().trim()
+                } else {
+                    val proxyTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/http-proxy-config.conf")
+                    val proxyContent = ResourceLoader.replacePlaceholders(
+                        proxyTemplate, mapOf(
+                            "target" to safeTarget,
+                            "websocketConfig" to wsConfig,
+                            "ipRestrictions" to ipConfig,
+                            "rateLimitConfig" to ""
+                        )
+                    )
+                    val indentedProxy = proxyContent.lines().joinToString("\n") { if (it.isBlank()) it else "        $it" }.trim()
+                    return if (redirect.isNotEmpty()) "${redirect}${indentedProxy}" else indentedProxy
+                }
+            }
+        }
+
         // Generate HTTPS server block if SSL is enabled
         val sslConfig = if (host.ssl) {
             val (hostCert, hostKey) = resolveSslCertPaths(host)
@@ -806,7 +906,8 @@ class ProxyServiceImpl(
                     "websocketConfig" to wsConfig,
                     "ipRestrictions" to ipConfig,
                     "pathLocations" to pathLocations,
-                    "rateLimitConfig" to (if (host.paths.isEmpty()) serverRateLimit else "") // Apply server-level rate limit only if no paths defined
+                    "rateLimitConfig" to (if (host.paths.isEmpty()) serverRateLimit else ""),
+                    "mainLocationConfig" to generateMainLocationConfig(true)
                 )
             )
         } else ""
@@ -816,29 +917,13 @@ class ProxyServiceImpl(
             "        return 301 https://\$host\$request_uri;\n"
         } else ""
 
-        val httpProxyConfig = if (!host.ssl) {
-            val proxyTemplate =
-                ResourceLoader.loadResourceOrThrow("templates/proxy/http-proxy-config.conf")
-            val proxyContent = ResourceLoader.replacePlaceholders(
-                proxyTemplate, mapOf(
-                    "target" to host.target,
-                    "websocketConfig" to wsConfig,
-                    "ipRestrictions" to ipConfig,
-                    "rateLimitConfig" to "" // Rate limit handled at server or path level, not here
-                )
-            )
-            // Indent each line (8 spaces for location block)
-            proxyContent.lines().joinToString("\n") { if (it.isBlank()) it else "        $it" }
-        } else ""
-
         val httpTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/server-http.conf")
         val httpConfig = ResourceLoader.replacePlaceholders(
             httpTemplate, mapOf(
                 "domain" to host.domain,
-                "httpRedirect" to httpRedirect,
-                "httpProxyConfig" to httpProxyConfig,
                 "pathLocations" to pathLocations,
-                "rateLimitConfig" to (if (host.ssl || host.paths.isNotEmpty()) "" else serverRateLimit) // Apply server-level rate limit only if no paths defined and not SSL (SSL block handles it)
+                "rateLimitConfig" to (if (host.ssl || host.paths.isNotEmpty()) "" else serverRateLimit),
+                "mainLocationConfig" to generateMainLocationConfig(false, httpRedirect)
             )
         )
 
@@ -870,17 +955,11 @@ class ProxyServiceImpl(
             normalizedPaths.sortedWith(compareByDescending<PathRoute> { it.order }.thenByDescending { it.path.length })
 
         return sortedPaths.joinToString("\n\n") { pathRoute ->
-            // Load websocket config if enabled for this path
-            val wsConfigRaw = if (pathRoute.websocketEnabled) {
-                ResourceLoader.loadResourceOrThrow("templates/proxy/websocket-config.conf")
-            } else ""
-
-            val wsConfig = if (wsConfigRaw.isNotEmpty()) {
-                wsConfigRaw.lines().joinToString("\n        ") { it.trim() }
-            } else ""
+            val safePath = pathRoute.path.sanitizeNginx()
+            val safeTarget = pathRoute.target.sanitizeNginx()
 
             val ipConfig = if (pathRoute.allowedIps.isNotEmpty()) {
-                pathRoute.allowedIps.joinToString("\n        ") { "allow $it;" } + "\n        deny all;"
+                pathRoute.allowedIps.joinToString("\n        ") { "allow ${it.sanitizeNginx()};" } + "\n        deny all;"
             } else ""
 
             // Generate Rate Limiting config for this path (indented 8 spaces)
@@ -891,36 +970,55 @@ class ProxyServiceImpl(
                 } else ""
             } ?: ""
 
-            // Determine proxy_pass directive
-            val proxyPass = if (pathRoute.stripPrefix) {
-                // Remove the path prefix before forwarding
-                // e.g., /api -> http://backend:8080 (removes /api prefix)
-                val targetUrl = pathRoute.target.trimEnd('/')
-                "proxy_pass $targetUrl/;"
-            } else {
-                // Keep the path prefix
-                // e.g., /api -> http://backend:8080/api (keeps /api prefix)
-                val targetUrl = pathRoute.target.trimEnd('/')
-                "proxy_pass $targetUrl\$request_uri;"
-            }
-
             // Custom config for this path
             val customConfig = pathRoute.customConfig?.let { config ->
                 config.lines().joinToString("\n        ") { it.trim() }
             } ?: ""
 
-            val locationTemplate =
-                ResourceLoader.loadResourceOrThrow("templates/proxy/location-block.conf")
-            ResourceLoader.replacePlaceholders(
-                locationTemplate, mapOf(
-                    "path" to pathRoute.path,
-                    "proxyPass" to proxyPass,
-                    "websocketConfig" to wsConfig,
-                    "ipRestrictions" to ipConfig,
-                    "customConfig" to customConfig,
-                    "rateLimitConfig" to rateLimitConfig
+            if (pathRoute.isStatic) {
+                val staticTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/static-location-block.conf")
+                ResourceLoader.replacePlaceholders(
+                    staticTemplate, mapOf(
+                        "path" to safePath,
+                        "staticPath" to safeTarget.trimEnd('/'),
+                        "ipRestrictions" to ipConfig,
+                        "customConfig" to customConfig,
+                        "rateLimitConfig" to rateLimitConfig
+                    )
                 )
-            )
+            } else {
+                // Load websocket config if enabled for this path
+                val wsConfigRaw = if (pathRoute.websocketEnabled) {
+                    ResourceLoader.loadResourceOrThrow("templates/proxy/websocket-config.conf")
+                } else ""
+
+                val wsConfig = if (wsConfigRaw.isNotEmpty()) {
+                    wsConfigRaw.lines().joinToString("\n        ") { it.trim() }
+                } else ""
+
+                // Determine proxy_pass directive
+                val proxyPass = if (pathRoute.stripPrefix) {
+                    // Remove the path prefix before forwarding
+                    val targetUrl = safeTarget.trimEnd('/')
+                    "proxy_pass $targetUrl/;"
+                } else {
+                    // Keep the path prefix
+                    val targetUrl = safeTarget.trimEnd('/')
+                    "proxy_pass $targetUrl\$request_uri;"
+                }
+
+                val locationTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/location-block.conf")
+                ResourceLoader.replacePlaceholders(
+                    locationTemplate, mapOf(
+                        "path" to safePath,
+                        "proxyPass" to proxyPass,
+                        "websocketConfig" to wsConfig,
+                        "ipRestrictions" to ipConfig,
+                        "customConfig" to customConfig,
+                        "rateLimitConfig" to rateLimitConfig
+                    )
+                )
+            }
         }
     }
 
