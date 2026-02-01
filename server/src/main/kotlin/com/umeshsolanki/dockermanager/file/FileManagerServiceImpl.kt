@@ -74,8 +74,18 @@ class FileManagerServiceImpl : IFileManagerService {
     }
 
     override fun zipMultiple(paths: List<String>, targetName: String): File? {
+        if (paths.isEmpty()) return null
         return try {
-            val zipFile = resolvePath(targetName.let { if (it.endsWith(".zip")) it else "$it.zip" })
+            val firstSourceFile = resolvePath(paths.first())
+            val resolvedTargetName = if (!targetName.contains("/") && !targetName.contains(File.separator)) {
+                val parentDir = firstSourceFile.parentFile
+                val relParentPath = parentDir.absolutePath.removePrefix(baseDir.absolutePath).removePrefix(File.separator)
+                if (relParentPath.isEmpty()) targetName else if (relParentPath.endsWith(File.separator) || relParentPath.endsWith("/")) "$relParentPath$targetName" else "$relParentPath/$targetName"
+            } else {
+                targetName
+            }
+
+            val zipFile = resolvePath(resolvedTargetName.let { if (it.endsWith(".zip")) it else "$it.zip" })
             
             ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
                 paths.forEach { sourcePath ->
