@@ -19,9 +19,5 @@ npm warn Unknown user config "email". This will stop working in the next major v
 - Network:       http://192.168.1.6:3000
 
 ✓ Starting...
-✓ Ready in 1322ms
-○ Compiling /_not-found/page ...
- GET / 404 in 3.7s (compile: 3.3s, render: 445ms)
-○ Compiling / ...
- GET / 200 in 5.4s (compile: 5.2s, render: 162ms)
- GET /?screen=Proxy 200 in 29ms (compile: 4ms, render: 25ms)
+✓ Ready in 740ms
+ GET /?screen=Proxy 200 in 2.8s (compile: 2.5s, render: 260ms)
