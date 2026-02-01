@@ -203,6 +203,26 @@ class FileManagerServiceImpl : IFileManagerService {
             false
         }
     }
+
+    override fun renameFile(path: String, newName: String): Boolean {
+        return try {
+            val file = resolvePath(path)
+            if (!file.exists()) return false
+
+            if (newName.contains(File.separator) || newName.contains("/")) {
+                throw SecurityException("New name cannot contain path separators")
+            }
+
+            val newFile = File(file.parentFile, newName)
+            
+            if (newFile.exists()) return false
+            
+            file.renameTo(newFile)
+        } catch (e: Exception) {
+            logger.error("Error renaming file $path to $newName", e)
+            false
+        }
+    }
 }
 
 // Service object for easy access
@@ -219,4 +239,5 @@ object FileService {
     fun saveFile(path: String, inputStream: InputStream) = service.saveFile(path, inputStream)
     fun readFileContent(path: String, maxBytes: Long = 512 * 1024, startFromEnd: Boolean = false) = service.readFileContent(path, maxBytes, startFromEnd)
     fun saveFileContent(path: String, content: String) = service.saveFileContent(path, content)
+    fun renameFile(path: String, newName: String) = service.renameFile(path, newName)
 }

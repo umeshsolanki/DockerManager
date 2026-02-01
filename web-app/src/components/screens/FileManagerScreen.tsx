@@ -5,7 +5,7 @@ import {
     File, Folder, Download, Upload, Trash2,
     ArrowLeft, Plus, Archive, ExternalLink,
     Search, RefreshCcw, Eye, EyeOff, Loader2, LayoutList, Grid2X2,
-    ArrowUpToLine, ArrowDownToLine, Edit, Save
+    ArrowUpToLine, ArrowDownToLine, Edit, Save, Star, Pencil, X
 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { FileItem } from '@/lib/types';
@@ -27,6 +27,7 @@ export default function FileManagerScreen() {
     const [viewingFile, setViewingFile] = useState<{ path: string, content: string, mode: 'head' | 'tail' | 'full', isEditing: boolean } | null>(null);
     const [loadingFile, setLoadingFile] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [bookmarks, setBookmarks] = useState<string[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Persist View Settings
@@ -37,6 +38,10 @@ export default function FileManagerScreen() {
         if (savedViewMode) setViewMode(savedViewMode);
         if (savedSort) setSortConfig(JSON.parse(savedSort));
         if (savedShowHidden) setShowHidden(savedShowHidden === 'true');
+
+        // Load bookmarks from server
+        DockerClient.getBookmarks().then(setBookmarks);
+
         setHasHydrated(true);
     }, []);
 
@@ -46,6 +51,11 @@ export default function FileManagerScreen() {
         localStorage.setItem('fm_sortConfig', JSON.stringify(sortConfig));
         localStorage.setItem('fm_showHidden', String(showHidden));
     }, [viewMode, sortConfig, showHidden, hasHydrated]);
+
+    const updateBookmarks = async (newBookmarks: string[]) => {
+        setBookmarks(newBookmarks);
+        await DockerClient.updateBookmarks(newBookmarks);
+    };
 
     const loadFiles = async () => {
         setLoading(true);
@@ -114,6 +124,15 @@ export default function FileManagerScreen() {
         if (target !== null) {
             const success = await DockerClient.unzipFile(path, target === '.' ? currentPath : target);
             if (success) loadFiles();
+        }
+    };
+
+    const handleRename = async (path: string, currentName: string) => {
+        const newName = prompt('Enter new name:', currentName);
+        if (newName && newName !== currentName) {
+            const success = await DockerClient.renameFile(path, newName);
+            if (success) loadFiles();
+            else toast.error('Failed to rename file');
         }
     };
 
@@ -389,9 +408,42 @@ export default function FileManagerScreen() {
                                 />
                             </>
                         )}
+
+                        <div className="w-px h-4 bg-outline/10 mx-1" />
+
+                        <button
+                            onClick={() => {
+                                if (bookmarks.includes(currentPath)) {
+                                    updateBookmarks(bookmarks.filter(b => b !== currentPath));
+                                } else {
+                                    updateBookmarks([...bookmarks, currentPath]);
+                                }
+                            }}
+                            className={`p-1.5 rounded-lg transition-all ${bookmarks.includes(currentPath) ? 'text-yellow-500 bg-yellow-500/10' : 'text-on-surface-variant hover:bg-white/5'}`}
+                            title={bookmarks.includes(currentPath) ? "Remove Bookmark" : "Bookmark this location"}
+                        >
+                            <Star size={16} className={bookmarks.includes(currentPath) ? "fill-current" : ""} />
+                        </button>
                     </div>
                 </div>
             </div>
+
+            {/* Bookmarks Bar */}
+            {bookmarks.length > 0 && (
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide px-4 shrink-0">
+                    {bookmarks.map((b) => (
+                        <div key={b} className="flex items-center gap-1 bg-surface border border-outline/10 rounded-lg pr-1 pl-2.5 py-1 text-xs font-medium group cursor-pointer hover:border-primary/30 transition-all shrink-0">
+                            <span onClick={() => setCurrentPath(b)} className="truncate max-w-[150px]">{b || 'root'}</span>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); updateBookmarks(bookmarks.filter(Bm => Bm !== b)); }}
+                                className="p-0.5 text-on-surface-variant hover:text-red-500 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                                <X size={12} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {/* File List / Grid */}
             <div className="flex-1 bg-surface border border-outline/10 rounded-xl overflow-hidden flex flex-col">
@@ -475,6 +527,14 @@ export default function FileManagerScreen() {
                                         </td>
                                         <td className="px-4 py-2 text-right">
                                             <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={() => handleRename(file.path, file.name)}
+                                                    className="p-1.5 hover:bg-white/10 text-on-surface-variant rounded-md transition-all"
+                                                    title="Rename"
+                                                >
+                                                    <Pencil size={16} />
+                                                </button>
+
                                                 {!file.isDirectory && (
                                                     <button
                                                         onClick={() => handleEdit(file)}
@@ -569,8 +629,14 @@ export default function FileManagerScreen() {
                                         {file.isDirectory ? 'Dir' : formatSize(file.size)}
                                     </span>
 
-                                    {/* Quick Actions Overlay */}
                                     <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleRename(file.path, file.name); }}
+                                            className="p-1 bg-black/60 text-white rounded-md hover:bg-black/80 backdrop-blur-sm"
+                                            title="Rename"
+                                        >
+                                            <Pencil size={10} />
+                                        </button>
                                         {!file.isDirectory && (
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); handleEdit(file); }}
@@ -597,64 +663,66 @@ export default function FileManagerScreen() {
                     </div>
                 )}
             </div>
-            {viewingFile && (
-                <Modal
-                    onClose={() => setViewingFile(null)}
-                    title={viewingFile.path}
-                    description={viewingFile.isEditing ? "File Editor" : "File Viewer"}
-                    icon={viewingFile.isEditing ? <Edit size={24} /> : <Eye size={24} />}
-                    maxWidth="max-w-5xl"
-                    className="h-[80vh] flex flex-col"
-                    headerActions={
-                        <div className="bg-black/50 backdrop-blur rounded-lg p-1 flex gap-1 border border-white/10 shadow-xl">
-                            {viewingFile.isEditing ? (
-                                <button
-                                    onClick={handleSave}
-                                    disabled={isSaving}
-                                    className="p-1.5 px-4 bg-primary text-on-primary rounded-md transition-all flex items-center gap-2 text-xs font-bold shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100"
-                                >
-                                    {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                    {isSaving ? 'SAVING...' : 'SAVE CHANGES'}
-                                </button>
-                            ) : (
-                                <>
+            {
+                viewingFile && (
+                    <Modal
+                        onClose={() => setViewingFile(null)}
+                        title={viewingFile.path}
+                        description={viewingFile.isEditing ? "File Editor" : "File Viewer"}
+                        icon={viewingFile.isEditing ? <Edit size={24} /> : <Eye size={24} />}
+                        maxWidth="max-w-5xl"
+                        className="h-[80vh] flex flex-col"
+                        headerActions={
+                            <div className="bg-black/50 backdrop-blur rounded-lg p-1 flex gap-1 border border-white/10 shadow-xl">
+                                {viewingFile.isEditing ? (
                                     <button
-                                        onClick={() => handleSwitchMode('head')}
-                                        className={`p-1.5 rounded-md transition-all ${viewingFile.mode === 'head' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-white/10 text-gray-400'}`}
-                                        title="View Top (Head)"
+                                        onClick={handleSave}
+                                        disabled={isSaving}
+                                        className="p-1.5 px-4 bg-primary text-on-primary rounded-md transition-all flex items-center gap-2 text-xs font-bold shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100"
                                     >
-                                        <ArrowUpToLine size={16} />
+                                        {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                        {isSaving ? 'SAVING...' : 'SAVE CHANGES'}
                                     </button>
-                                    <button
-                                        onClick={() => handleSwitchMode('tail')}
-                                        className={`p-1.5 rounded-md transition-all ${viewingFile.mode === 'tail' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-white/10 text-gray-400'}`}
-                                        title="View Bottom (Tail)"
-                                    >
-                                        <ArrowDownToLine size={16} />
-                                    </button>
-                                </>
-                            )}
+                                ) : (
+                                    <>
+                                        <button
+                                            onClick={() => handleSwitchMode('head')}
+                                            className={`p-1.5 rounded-md transition-all ${viewingFile.mode === 'head' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-white/10 text-gray-400'}`}
+                                            title="View Top (Head)"
+                                        >
+                                            <ArrowUpToLine size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleSwitchMode('tail')}
+                                            className={`p-1.5 rounded-md transition-all ${viewingFile.mode === 'tail' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-white/10 text-gray-400'}`}
+                                            title="View Bottom (Tail)"
+                                        >
+                                            <ArrowDownToLine size={16} />
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        }
+                    >
+                        <div className="flex-1 flex flex-col min-h-0 mt-4 -mx-6 -mb-6 relative">
+                            <Editor
+                                height="100%"
+                                defaultLanguage={viewingFile.path.endsWith('.json') ? 'json' : viewingFile.path.endsWith('.yml') || viewingFile.path.endsWith('.yaml') ? 'yaml' : 'plaintext'}
+                                theme="vs-dark"
+                                value={viewingFile.content}
+                                onChange={(value) => viewingFile && setViewingFile({ ...viewingFile, content: value || '' })}
+                                options={{
+                                    readOnly: !viewingFile.isEditing,
+                                    minimap: { enabled: false },
+                                    fontSize: 13,
+                                    fontFamily: "'JetBrains Mono', monospace",
+                                    scrollBeyondLastLine: false,
+                                }}
+                            />
                         </div>
-                    }
-                >
-                    <div className="flex-1 flex flex-col min-h-0 mt-4 -mx-6 -mb-6 relative">
-                        <Editor
-                            height="100%"
-                            defaultLanguage={viewingFile.path.endsWith('.json') ? 'json' : viewingFile.path.endsWith('.yml') || viewingFile.path.endsWith('.yaml') ? 'yaml' : 'plaintext'}
-                            theme="vs-dark"
-                            value={viewingFile.content}
-                            onChange={(value) => viewingFile && setViewingFile({ ...viewingFile, content: value || '' })}
-                            options={{
-                                readOnly: !viewingFile.isEditing,
-                                minimap: { enabled: false },
-                                fontSize: 13,
-                                fontFamily: "'JetBrains Mono', monospace",
-                                scrollBeyondLastLine: false,
-                            }}
-                        />
-                    </div>
-                </Modal>
-            )}
-        </div>
+                    </Modal>
+                )
+            }
+        </div >
     );
 }

@@ -97,7 +97,10 @@ data class AppSettings(
     val autoStorageRefreshIntervalMinutes: Int = 15,
 
     // Logging Settings
-    val dbPersistenceLogsEnabled: Boolean = true
+    val dbPersistenceLogsEnabled: Boolean = true,
+    
+    // File Manager
+    val fileBookmarks: List<String> = emptyList()
 )
 
 object AppConfig {
@@ -338,6 +341,13 @@ object AppConfig {
     fun updateLoggingSettings(dbPersistenceLogsEnabled: Boolean) {
         _settings = _settings.copy(
             dbPersistenceLogsEnabled = dbPersistenceLogsEnabled
+        )
+        saveSettings()
+    }
+
+    fun updateFileBookmarks(bookmarks: List<String>) {
+        _settings = _settings.copy(
+            fileBookmarks = bookmarks
         )
         saveSettings()
     }

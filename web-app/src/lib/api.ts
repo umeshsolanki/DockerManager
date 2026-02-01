@@ -348,6 +348,7 @@ export const DockerClient = {
     getFileContent: (path: string, mode: 'head' | 'tail' = 'head', maxBytes = 512 * 1024) => req<{ content: string }>(`/files/content?path=${encodeURIComponent(path)}&mode=${mode}&maxBytes=${maxBytes}`, {}, { content: '' }).then(r => r.content),
     saveFileContent: (path: string, content: string) => safeReq('/files/save-content', { method: 'POST', body: JSON.stringify({ path, content }) }),
     listFiles: (path = "") => req<FileItem[]>(`/files/list?path=${encodeURIComponent(path)}`, {}, []),
+    renameFile: (path: string, newName: string) => apiFetch(`/files/rename?path=${encodeURIComponent(path)}&newName=${encodeURIComponent(newName)}`, { method: 'POST' }).then(r => r.ok),
     deleteFile: (path: string) => apiFetch(`/files/delete?path=${encodeURIComponent(path)}`, { method: 'DELETE' }).then(r => r.ok),
     createDirectory: (path: string) => apiFetch(`/files/mkdir?path=${encodeURIComponent(path)}`, { method: 'POST' }).then(r => r.ok),
     zipFile: (path: string, target: string) => apiFetch(`/files/zip?path=${encodeURIComponent(path)}&target=${encodeURIComponent(target)}`, { method: 'POST' }).then(r => r.ok),
@@ -365,6 +366,8 @@ export const DockerClient = {
         }).then(r => r.ok);
     },
     downloadFileUrl: (path: string) => `${DockerClient.getServerUrl()}/files/download?path=${encodeURIComponent(path)}&token=${DockerClient.getAuthToken()}`,
+    getBookmarks: () => req<string[]>('/files/bookmarks', {}, []),
+    updateBookmarks: (bookmarks: string[]) => safeReq('/files/bookmarks', { method: 'POST', body: JSON.stringify(bookmarks) }),
 
     // --- Kafka Management ---
     listKafkaTopics: () => req<KafkaTopicInfo[]>('/kafka/topics', {}, []),

@@ -15,4 +15,5 @@ interface IFileManagerService {
     fun saveFile(path: String, inputStream: InputStream): Boolean
     fun readFileContent(path: String, maxBytes: Long = 512 * 1024, startFromEnd: Boolean = false): String?
     fun saveFileContent(path: String, content: String): Boolean
+    fun renameFile(path: String, newName: String): Boolean
 }

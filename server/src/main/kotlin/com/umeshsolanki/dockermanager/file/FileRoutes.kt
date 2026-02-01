@@ -155,5 +155,26 @@ fun Route.fileRoutes() {
                 "Failed to save file content"
             )
         }
+
+        post("/rename") {
+            val path = call.requireQueryParameter("path") ?: return@post
+            val newName = call.requireQueryParameter("newName") ?: return@post
+            
+            call.respondBooleanResult(
+                FileService.renameFile(path, newName),
+                "File renamed successfully",
+                "Failed to rename file"
+            )
+        }
+
+        get("/bookmarks") {
+            call.respond(AppConfig.settings.fileBookmarks)
+        }
+
+        post("/bookmarks") {
+            val bookmarks = call.receive<List<String>>()
+            AppConfig.updateFileBookmarks(bookmarks)
+            call.respond(HttpStatusCode.OK, "Bookmarks updated")
+        }
     }
 }
