@@ -332,6 +332,7 @@ export interface ProxyHost {
   dnsCleanupScript?: string;
   rateLimit?: RateLimit;
   isStatic?: boolean;
+  silentDrop?: boolean;
 }
 
 export interface SSLCertificate {
@@ -500,6 +501,25 @@ export interface KafkaTopicInfo {
   name: string;
   partitions: number;
   replicationFactor: number;
+}
+
+export interface KafkaRule {
+  id: string;
+  name: string;
+  topic: string;
+  condition: string;
+  transformations: Record<string, string>;
+  storeInDb: boolean;
+  enabled: boolean;
+}
+
+export interface KafkaProcessedEvent {
+  id: string;
+  originalTopic: string;
+  timestamp: number;
+  originalValue: string;
+  processedValue: string;
+  appliedRules: string[];
 }
 
 export interface KafkaMessage {

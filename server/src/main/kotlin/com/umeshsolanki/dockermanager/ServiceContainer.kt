@@ -10,6 +10,8 @@ import com.umeshsolanki.dockermanager.proxy.ProxyServiceImpl
 import com.umeshsolanki.dockermanager.proxy.SSLServiceImpl
 import com.umeshsolanki.dockermanager.kafka.*
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.*
+import org.jetbrains.exposed.sql.insert
 
 /**
  * Service container for dependency injection.
@@ -36,17 +38,48 @@ object ServiceContainer {
     
     val kafkaService: IKafkaService = KafkaServiceImpl().apply {
         registerHandler(object : KafkaMessageHandler {
-            override fun canHandle(topic: String): Boolean = topic == AppConfig.settings.kafkaSettings.topic
+            override fun canHandle(topic: String): Boolean = true // Handle all topics to check rules
             override fun handle(topic: String, key: String?, value: String) {
                 try {
-                    val request = AppConfig.json.decodeFromString<IpBlockRequest>(value)
-                    jailManagerService.jailIP(
-                        ip = request.ip,
-                        durationMinutes = request.durationMinutes,
-                        reason = request.reason
-                    )
+                    val settings = AppConfig.settings
+                    val processedEvent = KafkaRuleProcessor.process(topic, value, settings.kafkaRules)
+                    
+                    // Store in DB if any rule says so (default is true for now)
+                    if (processedEvent.appliedRules.isNotEmpty() || topic == settings.kafkaSettings.topic) {
+                         // Save to database
+                         kotlinx.coroutines.GlobalScope.launch {
+                             try {
+                                 com.umeshsolanki.dockermanager.database.DatabaseFactory.dbQuery {
+                                     com.umeshsolanki.dockermanager.database.KafkaProcessedEventsTable.insert {
+                                         it[id] = processedEvent.id
+                                         it[originalTopic] = processedEvent.originalTopic
+                                         it[timestamp] = java.time.LocalDateTime.now()
+                                         it[originalValue] = processedEvent.originalValue
+                                         it[processedValue] = processedEvent.processedValue
+                                         it[appliedRules] = processedEvent.appliedRules.joinToString(",")
+                                     }
+                                 }
+                             } catch (e: Exception) {
+                                 org.slf4j.LoggerFactory.getLogger("KafkaHandler").error("Failed to store processed event", e)
+                             }
+                         }
+                    }
+
+                    // Original IP blocking logic if topic match
+                    if (topic == settings.kafkaSettings.topic) {
+                        try {
+                            val request = AppConfig.json.decodeFromString<IpBlockRequest>(processedEvent.processedValue)
+                            jailManagerService.jailIP(
+                                ip = request.ip,
+                                durationMinutes = request.durationMinutes,
+                                reason = request.reason
+                            )
+                        } catch (e: Exception) {
+                            org.slf4j.LoggerFactory.getLogger("KafkaHandler").error("Failed to process block request", e)
+                        }
+                    }
                 } catch (e: Exception) {
-                    org.slf4j.LoggerFactory.getLogger("KafkaHandler").error("Failed to process block request", e)
+                    org.slf4j.LoggerFactory.getLogger("KafkaHandler").error("Failed to process kafka message with rules", e)
                 }
             }
         })

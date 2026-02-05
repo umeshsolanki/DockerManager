@@ -7,6 +7,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.*
+import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.SortOrder
 
 private val logger = org.slf4j.LoggerFactory.getLogger("KafkaRoutes")
 
@@ -68,6 +70,42 @@ fun Route.kafkaRoutes() {
             val name = call.parameters["name"] ?: return@get call.respond(HttpStatusCode.BadRequest)
             val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 50
             call.respond(kafkaService.getMessages(AppConfig.settings.kafkaSettings, name, limit))
+        }
+
+        get("/rules") {
+            call.respond(AppConfig.settings.kafkaRules)
+        }
+
+        post("/rules") {
+            val rules = try {
+                call.receive<List<KafkaRule>>()
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("success" to false, "message" to "Invalid rules format"))
+                return@post
+            }
+            AppConfig.updateKafkaRules(rules)
+            call.respond(HttpStatusCode.OK, mapOf("success" to true))
+        }
+
+        get("/events") {
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 100
+            val events = com.umeshsolanki.dockermanager.database.DatabaseFactory.dbQuery {
+                com.umeshsolanki.dockermanager.database.KafkaProcessedEventsTable
+                    .selectAll()
+                    .orderBy(com.umeshsolanki.dockermanager.database.KafkaProcessedEventsTable.timestamp, org.jetbrains.exposed.sql.SortOrder.DESC)
+                    .limit(limit)
+                    .map {
+                        KafkaProcessedEvent(
+                            id = it[com.umeshsolanki.dockermanager.database.KafkaProcessedEventsTable.id],
+                            originalTopic = it[com.umeshsolanki.dockermanager.database.KafkaProcessedEventsTable.originalTopic],
+                            timestamp = it[com.umeshsolanki.dockermanager.database.KafkaProcessedEventsTable.timestamp].atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                            originalValue = it[com.umeshsolanki.dockermanager.database.KafkaProcessedEventsTable.originalValue],
+                            processedValue = it[com.umeshsolanki.dockermanager.database.KafkaProcessedEventsTable.processedValue],
+                            appliedRules = it[com.umeshsolanki.dockermanager.database.KafkaProcessedEventsTable.appliedRules].split(",").filter { s -> s.isNotBlank() }
+                        )
+                    }
+            }
+            call.respond(events)
         }
     }
 }

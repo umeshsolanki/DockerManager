@@ -11,6 +11,7 @@ import com.umeshsolanki.dockermanager.database.SettingsTable
 import com.umeshsolanki.dockermanager.email.AlertConfig
 import com.umeshsolanki.dockermanager.proxy.ProxyJailRuleType
 import com.umeshsolanki.dockermanager.kafka.KafkaSettings
+import com.umeshsolanki.dockermanager.kafka.KafkaRule
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -98,6 +99,9 @@ data class AppSettings(
 
     // Logging Settings
     val dbPersistenceLogsEnabled: Boolean = true,
+    
+    // Kafka Rules
+    val kafkaRules: List<KafkaRule> = emptyList(),
     
     // File Manager
     val fileBookmarks: List<String> = emptyList()
@@ -348,6 +352,13 @@ object AppConfig {
     fun updateFileBookmarks(bookmarks: List<String>) {
         _settings = _settings.copy(
             fileBookmarks = bookmarks
+        )
+        saveSettings()
+    }
+
+    fun updateKafkaRules(rules: List<KafkaRule>) {
+        _settings = _settings.copy(
+            kafkaRules = rules
         )
         saveSettings()
     }

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Globe, Plus, Activity, Lock, FileKey, ShieldCheck, Network, Pencil, Trash2, FolderCode, Server } from 'lucide-react';
+import { Globe, Plus, Activity, Lock, FileKey, ShieldCheck, Network, Pencil, Trash2, FolderCode, Server, SquareSlash } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { ProxyHost, PathRoute, SSLCertificate, DnsConfig } from '@/lib/types';
 import { toast } from 'sonner';
@@ -42,6 +42,7 @@ export function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () 
     const [rateLimitBurst, setRateLimitBurst] = useState(initialHost?.rateLimit?.burst?.toString() || '20');
     const [rateLimitNodelay, setRateLimitNodelay] = useState(initialHost?.rateLimit?.nodelay ?? true);
     const [isStatic, setIsStatic] = useState(initialHost?.isStatic || false);
+    const [silentDrop, setSilentDrop] = useState(initialHost?.silentDrop || false);
 
     // DNS Config Dropdown
     const [dnsConfigId, setDnsConfigId] = useState(initialHost?.dnsConfigId || '');
@@ -85,7 +86,8 @@ export function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () 
                 burst: parseInt(rateLimitBurst) || 20,
                 nodelay: rateLimitNodelay
             } : undefined,
-            isStatic
+            isStatic,
+            silentDrop
         };
 
         const result = initialHost
@@ -195,6 +197,23 @@ export function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () 
                                     checked={sslEnabled}
                                     onChange={(e) => setSslEnabled(e.target.checked)}
                                     className="w-5 h-5 rounded-lg border-outline/20 bg-white/5 checked:bg-green-500 accent-green-500"
+                                />
+                            </label>
+
+                            {/* Silent Drop Toggle */}
+                            <label className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-outline/10 cursor-pointer hover:border-red-500/30 transition-all group sm:col-span-2 md:col-span-1">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${silentDrop ? 'bg-red-500/20 text-red-500' : 'bg-white/5 text-on-surface-variant'}`}>
+                                    <SquareSlash size={18} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-bold text-on-surface">Silent Drop</div>
+                                    <div className="text-[10px] text-on-surface-variant font-medium">Return 444 (No Response) on 403</div>
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    checked={silentDrop}
+                                    onChange={(e) => setSilentDrop(e.target.checked)}
+                                    className="w-5 h-5 rounded-lg border-outline/20 bg-white/5 checked:bg-red-500 accent-red-500"
                                 />
                             </label>
                         </div>

@@ -45,3 +45,23 @@ data class SqlAuditLog(
     val status: String,
     val error: String? = null
 )
+@Serializable
+data class KafkaRule(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String,
+    val topic: String,
+    val condition: String, // e.g. "ip == '1.2.3.4'"
+    val transformations: Map<String, String> = emptyMap(), // e.g. "durationMinutes" -> "500"
+    val storeInDb: Boolean = true,
+    val enabled: Boolean = true
+)
+
+@Serializable
+data class KafkaProcessedEvent(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val originalTopic: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val originalValue: String,
+    val processedValue: String,
+    val appliedRules: List<String> = emptyList()
+)

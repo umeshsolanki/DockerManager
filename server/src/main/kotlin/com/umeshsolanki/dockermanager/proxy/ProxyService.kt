@@ -871,6 +871,16 @@ class ProxyServiceImpl(
             }
         }
 
+        val silentDropConfig = if (host.silentDrop) {
+            """
+            |    # Silent Drop for Blocked IPs/Forbidden Requests
+            |    error_page 403 @silent_drop;
+            |    location @silent_drop {
+            |        return 444;
+            |    }
+            """.trimMargin()
+        } else ""
+
         // Generate HTTPS server block if SSL is enabled
         val sslConfig = if (host.ssl) {
             val (hostCert, hostKey) = resolveSslCertPaths(host)
@@ -894,6 +904,8 @@ class ProxyServiceImpl(
                 "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;"
             } else ""
 
+
+
             val httpsTemplate =
                 ResourceLoader.loadResourceOrThrow("templates/proxy/server-https.conf")
             ResourceLoader.replacePlaceholders(
@@ -907,7 +919,9 @@ class ProxyServiceImpl(
                     "ipRestrictions" to ipConfig,
                     "pathLocations" to pathLocations,
                     "rateLimitConfig" to (if (host.paths.isEmpty()) serverRateLimit else ""),
-                    "mainLocationConfig" to generateMainLocationConfig(true)
+                    "rateLimitConfig" to (if (host.paths.isEmpty()) serverRateLimit else ""),
+                    "mainLocationConfig" to generateMainLocationConfig(true),
+                    "silentDropConfig" to silentDropConfig
                 )
             )
         } else ""
@@ -923,7 +937,9 @@ class ProxyServiceImpl(
                 "domain" to host.domain,
                 "pathLocations" to pathLocations,
                 "rateLimitConfig" to (if (host.ssl || host.paths.isNotEmpty()) "" else serverRateLimit),
-                "mainLocationConfig" to generateMainLocationConfig(false, httpRedirect)
+                "rateLimitConfig" to (if (host.ssl || host.paths.isNotEmpty()) "" else serverRateLimit),
+                "mainLocationConfig" to generateMainLocationConfig(false, httpRedirect),
+                "silentDropConfig" to silentDropConfig
             )
         )
 

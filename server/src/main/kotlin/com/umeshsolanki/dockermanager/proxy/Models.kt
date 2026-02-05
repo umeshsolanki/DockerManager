@@ -68,7 +68,8 @@ data class ProxyHost(
     val dnsAuthScript: String? = null, // Full custom script for auth hook
     val dnsCleanupScript: String? = null, // Full custom script for cleanup hook
     val rateLimit: RateLimit? = null,
-    val isStatic: Boolean = false
+    val isStatic: Boolean = false,
+    val silentDrop: Boolean = false // If true, returns 444 for blocked requests
 ) {
     // Computed property to get upstream, defaulting to target if not provided
     val effectiveUpstream: String get() = upstream ?: target

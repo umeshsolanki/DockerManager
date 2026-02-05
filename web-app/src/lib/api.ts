@@ -11,7 +11,7 @@ import {
     FileItem, RedisConfig, RedisStatus, RedisTestResult, RedisConfigUpdateResult,
     DockerStack, StackService, StackTask, DeployStackRequest, MigrateComposeToStackRequest, StopStackRequest,
     SaveProjectFileRequest, KafkaTopicInfo, KafkaMessage, CreateNetworkRequest, StorageInfo,
-    ExternalDbConfig, SqlQueryRequest
+    ExternalDbConfig, SqlQueryRequest, KafkaRule, KafkaProcessedEvent
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -116,6 +116,7 @@ export const DockerClient = {
     // --- Images ---
     listImages: () => req<DockerImage[]>('/images', {}, []),
     pullImage: (name: string) => apiFetch(`/images/pull?image=${encodeURIComponent(name)}`, { method: 'POST' }),
+
     async removeImage(id: string, force: boolean = false): Promise<boolean> {
         const response = await apiFetch(`/images/${id}?force=${force}`, { method: 'DELETE' });
         return response.ok;
@@ -374,4 +375,7 @@ export const DockerClient = {
     createKafkaTopic: (body: KafkaTopicInfo) => safeReq('/kafka/topics', { method: 'POST', body: JSON.stringify(body) }),
     deleteKafkaTopic: (name: string) => safeReq(`/kafka/topics/${name}`, { method: 'DELETE' }),
     getKafkaMessages: (topic: string, limit = 50) => req<KafkaMessage[]>(`/kafka/topics/${topic}/messages?limit=${limit}`, {}, []),
+    getKafkaRules: () => req<KafkaRule[]>('/kafka/rules', {}, []),
+    updateKafkaRules: (rules: KafkaRule[]) => safeReq<{ success: boolean }>('/kafka/rules', { method: 'POST', body: JSON.stringify(rules) }),
+    getKafkaEvents: (limit = 100) => req<KafkaProcessedEvent[]>(`/kafka/events?limit=${limit}`, {}, []),
 };
