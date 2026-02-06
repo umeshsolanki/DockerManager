@@ -44,6 +44,14 @@ data class DnsConfig(
 )
 
 @Serializable
+data class CustomPage(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val title: String,
+    val content: String, // HTML content
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Serializable
 data class ProxyHost(
     val id: String = "",
     val domain: String,
@@ -69,7 +77,9 @@ data class ProxyHost(
     val dnsCleanupScript: String? = null, // Full custom script for cleanup hook
     val rateLimit: RateLimit? = null,
     val isStatic: Boolean = false,
-    val silentDrop: Boolean = false // If true, returns 444 for blocked requests
+    val silentDrop: Boolean = false, // If true, returns 444 for blocked requests
+    val underConstruction: Boolean = false,
+    val underConstructionPageId: String? = null
 ) {
     // Computed property to get upstream, defaulting to target if not provided
     val effectiveUpstream: String get() = upstream ?: target

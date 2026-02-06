@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Globe, Plus, Search, RefreshCw, Trash2, Power, Server, ExternalLink, FileKey, Pencil, Layers, Database, Lock, Network, Activity, ShieldCheck, Copy, CheckCircle2, Calendar, Building2, AlertTriangle, FolderCode } from 'lucide-react';
+import { Globe, Plus, Search, RefreshCw, Trash2, Power, Server, ExternalLink, FileKey, Pencil, Layers, Database, Lock, Network, Activity, ShieldCheck, Copy, CheckCircle2, Calendar, Building2, AlertTriangle, FolderCode, Construction } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { ProxyHost, PathRoute, SSLCertificate, DnsConfig } from '@/lib/types';
+import { ProxyHost, PathRoute, SSLCertificate, DnsConfig, CustomPage } from '@/lib/types';
 import { toast } from 'sonner';
 import Editor from '@monaco-editor/react';
 import { Modal } from '../ui/Modal';
@@ -20,25 +20,30 @@ export default function ProxyScreen() {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [editingHost, setEditingHost] = useState<ProxyHost | null>(null);
 
-    const [activeTab, setActiveTab] = useState<'domains' | 'container' | 'certs' | 'dns'>('domains');
+    const [activeTab, setActiveTab] = useState<'domains' | 'container' | 'certs' | 'dns' | 'pages'>('domains');
     const [certs, setCerts] = useState<SSLCertificate[]>([]);
     const [dnsConfigs, setDnsConfigs] = useState<DnsConfig[]>([]);
     const [isAddDnsModalOpen, setIsAddDnsModalOpen] = useState(false);
     const [editingDnsConfig, setEditingDnsConfig] = useState<DnsConfig | null>(null);
     const [isComposeModalOpen, setIsComposeModalOpen] = useState(false);
+    const [customPages, setCustomPages] = useState<CustomPage[]>([]);
+    const [isAddPageModalOpen, setIsAddPageModalOpen] = useState(false);
+    const [editingPage, setEditingPage] = useState<CustomPage | null>(null);
 
     const fetchData = async () => {
         setIsLoading(true);
-        const [hostsData, containerStatusData, certsData, dnsConfigsData] = await Promise.all([
+        const [hostsData, containerStatusData, certsData, dnsConfigsData, customPagesData] = await Promise.all([
             DockerClient.listProxyHosts(),
             DockerClient.getProxyContainerStatus(),
             DockerClient.listProxyCertificates(),
-            DockerClient.listDnsConfigs()
+            DockerClient.listDnsConfigs(),
+            DockerClient.listCustomPages()
         ]);
         setHosts(hostsData);
         setContainerStatus(containerStatusData);
         setCerts(certsData);
         setDnsConfigs(dnsConfigsData);
+        setCustomPages(customPagesData);
         setIsLoading(false);
     };
 
@@ -91,6 +96,7 @@ export default function ProxyScreen() {
 
     const tabs = [
         { id: 'domains', label: 'Domain Hosts', icon: <Globe size={18} /> },
+        { id: 'pages', label: 'Custom Pages', icon: <Construction size={18} /> },
         { id: 'dns', label: 'DNS Configs', icon: <Network size={18} /> },
         { id: 'container', label: 'Infrastructure', icon: <Server size={18} /> },
         { id: 'certs', label: 'Certificates', icon: <FileKey size={18} /> }
@@ -103,13 +109,13 @@ export default function ProxyScreen() {
                     <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-on-surface to-on-surface-variant bg-clip-text text-transparent">Reverse Proxy</h1>
                     {isLoading && <RefreshCw className="animate-spin text-primary shrink-0" size={20} />}
                 </div>
-                {activeTab === 'domains' && (
+                {(activeTab === 'domains' || activeTab === 'pages') && (
                     <button
-                        onClick={() => setIsAddModalOpen(true)}
+                        onClick={() => activeTab === 'domains' ? setIsAddModalOpen(true) : setIsAddPageModalOpen(true)}
                         className="flex items-center justify-center gap-2 bg-primary text-on-primary px-5 py-2.5 rounded-2xl hover:opacity-90 transition-all shadow-lg active:scale-95 text-sm font-bold"
                     >
                         <Plus size={18} />
-                        <span>Add Host</span>
+                        <span>{activeTab === 'domains' ? 'Add Host' : 'Create Page'}</span>
                     </button>
                 )}
             </div>
@@ -196,7 +202,7 @@ export default function ProxyScreen() {
 
                                     {/* Badges */}
                                     <div className="flex flex-wrap gap-1.5 mb-6 relative z-10 flex-1 content-start">
-                                         {host.isStatic && (<span className="inline-flex items-center gap-1 text-[9px] bg-amber-500/10 text-amber-500 px-2 py-1 rounded-lg font-bold uppercase border border-amber-500/10 shadow-[0_0_10px_rgba(245,158,11,0.1)]"><FolderCode size={8} /> Static Content</span>)} {host.ssl && (
+                                        {host.isStatic && (<span className="inline-flex items-center gap-1 text-[9px] bg-amber-500/10 text-amber-500 px-2 py-1 rounded-lg font-bold uppercase border border-amber-500/10 shadow-[0_0_10px_rgba(245,158,11,0.1)]"><FolderCode size={8} /> Static Content</span>)} {host.ssl && (
                                             <span className="inline-flex items-center gap-1 text-[9px] bg-green-500/10 text-green-500 px-2 py-1 rounded-lg font-bold uppercase border border-green-500/10 shadow-[0_0_10px_rgba(34,197,94,0.1)]">
                                                 <Lock size={8} /> SSL Secured
                                             </span>
@@ -260,6 +266,79 @@ export default function ProxyScreen() {
                             <div className="flex flex-col items-center justify-center text-on-surface-variant py-20 opacity-30">
                                 <Globe size={80} className="mb-4" />
                                 <p className="italic text-xl">No proxy hosts configured</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+                {activeTab === 'pages' && (
+                    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pb-20">
+                            {customPages.map(page => (
+                                <div key={page.id} className="group relative bg-[#0a0a0a]/40 backdrop-blur-xl border border-white/5 rounded-[24px] p-6 hover:border-primary/20 transition-all duration-500 hover:-translate-y-1 hover:shadow-2xl hover:shadow-primary/5 flex flex-col h-full overflow-hidden">
+                                    {/* Ambient Background Gradient */}
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 blur-3xl rounded-full -mr-16 -mt-16 pointer-events-none transition-opacity opacity-50 group-hover:opacity-100" />
+
+                                    <div className="flex items-start justify-between mb-4 relative z-10">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner">
+                                                <Construction size={24} />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-lg font-bold text-on-surface group-hover:text-primary transition-colors">{page.title}</h3>
+                                                <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-wider mt-1">Created {new Date(page.createdAt).toLocaleDateString()}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-1">
+                                            <button
+                                                onClick={() => setEditingPage(page)}
+                                                className="p-2 text-on-surface-variant/50 hover:text-on-surface hover:bg-white/10 rounded-xl transition-all"
+                                            >
+                                                <Pencil size={16} />
+                                            </button>
+                                            <button
+                                                onClick={async () => {
+                                                    if (confirm('Delete this custom page?')) {
+                                                        const success = await DockerClient.deleteCustomPage(page.id);
+                                                        if (success) {
+                                                            toast.success('Page deleted');
+                                                            fetchData();
+                                                        }
+                                                    }
+                                                }}
+                                                className="p-2 text-on-surface-variant/50 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-black/20 rounded-2xl p-4 border border-white/5 mb-4 max-h-40 overflow-hidden relative z-10 group-hover:border-white/10 transition-colors">
+                                        <div className="text-[10px] font-mono text-on-surface-variant whitespace-pre-wrap opacity-60">
+                                            {page.content}
+                                        </div>
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none" />
+                                    </div>
+
+                                    <div className="flex items-center justify-between mt-auto pt-4 border-t border-white/5 relative z-10">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[9px] font-black px-2 py-1 rounded-lg bg-primary/10 text-primary uppercase tracking-widest border border-primary/10">HTML5</span>
+                                            <span className="text-[9px] font-black px-2 py-1 rounded-lg bg-white/5 text-on-surface-variant uppercase tracking-widest border border-white/5">ID: {page.id.substring(0, 8)}</span>
+                                        </div>
+                                        {hosts.some(h => h.underConstruction && h.underConstructionPageId === page.id) && (
+                                            <span className="text-[9px] font-black text-green-500 uppercase flex items-center gap-1">
+                                                <CheckCircle2 size={10} /> In Use
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {customPages.length === 0 && (
+                            <div className="flex flex-col items-center justify-center text-on-surface-variant py-20 opacity-30">
+                                <Construction size={80} className="mb-4" />
+                                <p className="italic text-xl">No custom pages created</p>
+                                <p className="text-sm mt-2">Create a page to use for site maintenance</p>
                             </div>
                         )}
                     </div>
@@ -385,6 +464,21 @@ export default function ProxyScreen() {
                                 </div>
                                 <div className="scale-100 origin-top-left w-full">
                                     <DefaultBehaviorToggle />
+                                </div>
+                            </div>
+
+                            <div className="bg-surface/30 backdrop-blur-md border border-white/5 rounded-2xl p-5 flex flex-col justify-center hover:border-primary/20 transition-all">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
+                                        <Layers size={20} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-bold text-on-surface">Remote Logging (Rsyslog)</h3>
+                                        <p className="text-xs text-on-surface-variant">Send proxy logs to internal syslog server</p>
+                                    </div>
+                                </div>
+                                <div className="scale-100 origin-top-left w-full">
+                                    <RsyslogToggle />
                                 </div>
                             </div>
 
@@ -619,6 +713,21 @@ export default function ProxyScreen() {
                     onSaved={() => { setEditingDnsConfig(null); fetchData(); }}
                 />
             )}
+
+            {isAddPageModalOpen && (
+                <CustomPageModal
+                    onClose={() => setIsAddPageModalOpen(false)}
+                    onSaved={() => { setIsAddPageModalOpen(false); fetchData(); }}
+                />
+            )}
+
+            {editingPage && (
+                <CustomPageModal
+                    initialPage={editingPage}
+                    onClose={() => setEditingPage(null)}
+                    onSaved={() => { setEditingPage(null); fetchData(); }}
+                />
+            )}
         </div>
     );
 }
@@ -681,6 +790,71 @@ function DefaultBehaviorToggle() {
                     <div>
                         <p className="font-semibold text-sm text-on-surface">Return 404 Not Found</p>
                         <p className="text-xs text-on-surface-variant">Return a generic 404 error code for unmatched requests</p>
+                    </div>
+                </div>
+            </div>
+
+            {loading && <div className="text-xs text-center text-primary animate-pulse">Updating Nginx configuration...</div>}
+        </div>
+    );
+}
+
+function RsyslogToggle() {
+    const [config, setConfig] = useState<any>(null);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        DockerClient.getProxySecuritySettings().then(setConfig);
+    }, []);
+
+    const handleToggle = async (enabled: boolean) => {
+        setLoading(true);
+        try {
+            const result = await DockerClient.updateProxyRsyslogSettings(enabled);
+            if (result.success) {
+                toast.success('Rsyslog settings updated');
+                const newConfig = await DockerClient.getProxySecuritySettings();
+                setConfig(newConfig);
+            } else {
+                toast.error(result.message || 'Failed to update rsyslog settings');
+            }
+        } catch (e) {
+            toast.error('Failed to update rsyslog settings');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!config) return <div className="animate-pulse h-10 bg-surface/50 rounded-xl" />;
+
+    return (
+        <div className="flex flex-col gap-3">
+            <div
+                className={`p-4 rounded-xl border border-outline/10 transition-all cursor-pointer ${config.proxyRsyslogEnabled ? 'bg-primary/10 border-primary/30 ring-1 ring-primary/30' : 'bg-surface/50 hover:bg-surface/80'}`}
+                onClick={() => !loading && handleToggle(true)}
+            >
+                <div className="flex items-center gap-3">
+                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${config.proxyRsyslogEnabled ? 'border-primary bg-primary text-white' : 'border-outline/30'}`}>
+                        {config.proxyRsyslogEnabled && <div className="w-2 h-2 rounded-full bg-white" />}
+                    </div>
+                    <div>
+                        <p className="font-semibold text-sm text-on-surface">Stream to Internal Syslog</p>
+                        <p className="text-xs text-on-surface-variant">Real-time log transmission to local UDP ingestion server</p>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                className={`p-4 rounded-xl border border-outline/10 transition-all cursor-pointer ${!config.proxyRsyslogEnabled ? 'bg-primary/10 border-primary/30 ring-1 ring-primary/30' : 'bg-surface/50 hover:bg-surface/80'}`}
+                onClick={() => !loading && handleToggle(false)}
+            >
+                <div className="flex items-center gap-3">
+                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${!config.proxyRsyslogEnabled ? 'border-primary bg-primary text-white' : 'border-outline/30'}`}>
+                        {!config.proxyRsyslogEnabled && <div className="w-2 h-2 rounded-full bg-white" />}
+                    </div>
+                    <div>
+                        <p className="font-semibold text-sm text-on-surface">Local Standard Logging Only</p>
+                        <p className="text-xs text-on-surface-variant">Store logs only in local /var/log/nginx files</p>
                     </div>
                 </div>
             </div>
@@ -794,6 +968,95 @@ function CertificateCard({ cert, hosts, onRenew }: { cert: SSLCertificate, hosts
                 </div>
             )}
         </div>
+    );
+}
+
+function CustomPageModal({ initialPage, onClose, onSaved }: { initialPage?: CustomPage, onClose: () => void, onSaved: () => void }) {
+    const [title, setTitle] = useState(initialPage?.title || '');
+    const [content, setContent] = useState(initialPage?.content || '<!DOCTYPE html>\n<html>\n<head>\n    <title>Under Construction</title>\n    <style>\n        body { font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0f172a; color: white; text-align: center; }\n        .container { padding: 2rem; }\n        h1 { font-size: 3rem; margin-bottom: 1rem; }\n        p { opacity: 0.7; }\n    </style>\n</head>\n<body>\n    <div className="container">\n        <h1>Coming Soon</h1>\n        <p>This site is currently under construction. Please check back later.</p>\n    </div>\n</body>\n</html>');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+
+        const pageData: CustomPage = {
+            id: initialPage?.id || '',
+            title,
+            content,
+            createdAt: initialPage?.createdAt || Date.now()
+        };
+
+        const result = initialPage
+            ? await DockerClient.updateCustomPage(pageData)
+            : await DockerClient.createCustomPage(pageData);
+
+        if (result.success) {
+            toast.success(result.message);
+            onSaved();
+        } else {
+            toast.error(result.message);
+        }
+        setIsSubmitting(false);
+    };
+
+    return (
+        <Modal
+            onClose={onClose}
+            title={initialPage ? 'Edit Custom Page' : 'Create Custom Page'}
+            description="Create a custom maintenance page for your proxy hosts"
+            icon={<Construction size={24} />}
+            maxWidth="max-w-4xl"
+        >
+            <form onSubmit={handleSubmit} className="space-y-6 mt-4">
+                <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Page Title</label>
+                    <input
+                        required
+                        type="text"
+                        placeholder="e.g. Maintenance Page"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        className="w-full bg-white/5 border border-outline/20 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-primary transition-all font-bold"
+                    />
+                </div>
+
+                <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">HTML Content</label>
+                    <div className="rounded-2xl overflow-hidden border border-outline/20">
+                        <Editor
+                            height="400px"
+                            language="html"
+                            theme="vs-dark"
+                            value={content}
+                            onChange={(v) => setContent(v || '')}
+                            options={{
+                                minimap: { enabled: false },
+                                fontSize: 13,
+                                wordWrap: 'on'
+                            }}
+                        />
+                    </div>
+                </div>
+
+                <div className="flex gap-2 pt-4">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="flex-1 px-4 py-3 rounded-2xl border border-outline/20 hover:bg-white/5 text-sm font-bold transition-all"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="flex-1 bg-primary text-on-primary px-4 py-3 rounded-2xl font-bold text-sm shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all"
+                    >
+                        {initialPage ? 'Save Changes' : 'Create Page'}
+                    </button>
+                </div>
+            </form>
+        </Modal>
     );
 }
 

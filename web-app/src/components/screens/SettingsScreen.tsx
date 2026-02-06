@@ -30,6 +30,9 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [kafkaTopic, setKafkaTopic] = useState('ip-blocking-requests');
     const [kafkaGroupId, setKafkaGroupId] = useState('docker-manager-jailer');
     const [dbPersistenceLogsEnabled, setDbPersistenceLogsEnabled] = useState(true);
+    const [syslogEnabled, setSyslogEnabled] = useState(false);
+    const [syslogPort, setSyslogPort] = useState(514);
+    const [proxyRsyslogEnabled, setProxyRsyslogEnabled] = useState(false);
     const [message, setMessage] = useState('');
     const [config, setConfig] = useState<SystemConfig | null>(null);
     const [loading, setLoading] = useState(false);
@@ -77,6 +80,9 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                     setKafkaGroupId(data.kafkaSettings.groupId);
                 }
                 setDbPersistenceLogsEnabled(data.dbPersistenceLogsEnabled ?? true);
+                setSyslogEnabled(data.syslogEnabled);
+                setSyslogPort(data.syslogPort);
+                setProxyRsyslogEnabled(data.proxyRsyslogEnabled);
             }
 
             // Also fetch IP ranges count
@@ -125,7 +131,10 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                     topic: kafkaTopic,
                     groupId: kafkaGroupId
                 },
-                dbPersistenceLogsEnabled: dbPersistenceLogsEnabled
+                dbPersistenceLogsEnabled: dbPersistenceLogsEnabled,
+                syslogEnabled: syslogEnabled,
+                syslogPort: syslogPort,
+                proxyRsyslogEnabled: proxyRsyslogEnabled
             });
             if (result.success) {
                 setMessage('System settings updated successfully!');
@@ -493,6 +502,91 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                 >
                                     {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
                                     <span>Apply Settings</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Syslog Server Configuration */}
+                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm mt-6">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="p-3 bg-primary/10 rounded-xl text-primary">
+                                    <Terminal size={20} />
+                                </div>
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                        <h2 className="text-lg font-bold">Syslog Ingestion</h2>
+                                        {config?.syslogIsRunning && (
+                                            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-black uppercase">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                                Live
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-on-surface-variant mt-0.5">Collect logs from remote devices & Nginx</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:bg-surface-variant/20">
+                                    <div className="flex-1 pr-4">
+                                        <p className="text-sm font-bold text-on-surface">Enable UDP Server</p>
+                                        <p className="text-xs text-on-surface-variant leading-relaxed">Start local syslog listener on UDP port</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setSyslogEnabled(!syslogEnabled)}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 flex-shrink-0 ${syslogEnabled ? 'bg-primary' : 'bg-surface border border-outline/30'}`}
+                                    >
+                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${syslogEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                                    </button>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-xs font-semibold text-on-surface-variant px-1">Syslog Port (UDP)</label>
+                                    <input
+                                        type="number"
+                                        value={syslogPort}
+                                        onChange={(e) => setSyslogPort(parseInt(e.target.value))}
+                                        placeholder="514"
+                                        className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
+                                    />
+                                </div>
+
+                                <div className="pt-4 border-t border-outline/10">
+                                    <div className="flex items-center justify-between p-4 bg-primary/5 rounded-xl border border-primary/20 transition-all hover:bg-primary/10">
+                                        <div className="flex-1 pr-4">
+                                            <p className="text-sm font-bold text-on-surface">Proxy Remote Logging (Rsyslog)</p>
+                                            <p className="text-xs text-on-surface-variant leading-relaxed">Stream Nginx logs to this server automatically</p>
+                                        </div>
+                                        <button
+                                            onClick={() => setProxyRsyslogEnabled(!proxyRsyslogEnabled)}
+                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 flex-shrink-0 ${proxyRsyslogEnabled ? 'bg-primary' : 'bg-surface border border-outline/30'}`}
+                                        >
+                                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${proxyRsyslogEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="p-4 bg-blue-500/5 rounded-xl border border-blue-500/10">
+                                    <div className="flex items-start gap-3">
+                                        <Info size={16} className="text-blue-400 mt-0.5 shrink-0" />
+                                        <div className="space-y-1">
+                                            <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                                                Enabling this server allows the Reverse Proxy to stream access and error logs directly to Docker Manager analytics.
+                                            </p>
+                                            <p className="text-[10px] text-blue-400 font-bold uppercase">
+                                                Tip: Run 'nc -u -z -v localhost {syslogPort}' to test connectivity.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button
+                                    onClick={handleSaveSystem}
+                                    disabled={saving || loading}
+                                    className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition-all active:scale-[0.98] shadow-md shadow-primary/20 disabled:opacity-50 text-sm mt-2"
+                                >
+                                    {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
+                                    <span>Update Syslog Configuration</span>
                                 </button>
                             </div>
                         </div>

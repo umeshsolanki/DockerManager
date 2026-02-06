@@ -11,7 +11,8 @@ import {
     FileItem, RedisConfig, RedisStatus, RedisTestResult, RedisConfigUpdateResult,
     DockerStack, StackService, StackTask, DeployStackRequest, MigrateComposeToStackRequest, StopStackRequest,
     SaveProjectFileRequest, KafkaTopicInfo, KafkaMessage, CreateNetworkRequest, StorageInfo,
-    ExternalDbConfig, SqlQueryRequest, KafkaRule, KafkaProcessedEvent
+    ExternalDbConfig, SqlQueryRequest, KafkaRule, KafkaProcessedEvent, CustomPage,
+    SyslogLogEntry, SyslogConfig
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -223,10 +224,26 @@ export const DockerClient = {
         return textReq(url);
     },
 
+    getJournalLogs: (tail = 100, unit?: string, filter?: string, since?: string, until?: string) => {
+        let url = `/logs/system/journal?tail=${tail}`;
+        if (unit) url += `&unit=${encodeURIComponent(unit)}`;
+        if (filter) url += `&filter=${encodeURIComponent(filter)}`;
+        if (since) url += `&since=${since}`;
+        if (until) url += `&until=${until}`;
+        return textReq(url);
+    },
+
+    getSyslogLogs: (tail = 100, filter?: string) => {
+        let url = `/logs/system/syslog?tail=${tail}`;
+        if (filter) url += `&filter=${encodeURIComponent(filter)}`;
+        return textReq(url);
+    },
+
     getBtmpStats: () => req<BtmpStats | null>('/logs/system/btmp-stats', {}, null),
     refreshBtmpStats: () => req<BtmpStats | null>('/logs/system/btmp-stats/refresh', { method: 'POST' }, null),
     updateAutoJailSettings: (e: boolean, t: number, d: number) => apiFetch(`/logs/system/btmp-stats/auto-jail?enabled=${e}&threshold=${t}&duration=${d}`, { method: 'POST' }).then(r => r.ok),
     updateBtmpMonitoring: (a: boolean, i: number) => apiFetch(`/logs/system/btmp-stats/monitoring?active=${a}&interval=${i}`, { method: 'POST' }).then(r => r.ok),
+
 
     listFirewallRules: () => req<FirewallRule[]>('/firewall/rules', {}, []),
     blockIP: (body: BlockIPRequest) => apiFetch('/firewall/block', { method: 'POST', body: JSON.stringify(body) }).then(r => r.ok),
@@ -293,6 +310,7 @@ export const DockerClient = {
     getProxySecuritySettings: () => req<SystemConfig | null>('/proxy/security/settings', {}, null),
     updateProxySecuritySettings: (body: Partial<SystemConfig>) => safeReq('/proxy/security/settings', { method: 'POST', body: JSON.stringify(body) }),
     updateProxyDefaultBehavior: (return404: boolean) => safeReq('/proxy/settings/default-behavior', { method: 'POST', body: JSON.stringify({ return404 }) }),
+    updateProxyRsyslogSettings: (enabled: boolean) => safeReq('/proxy/settings/rsyslog', { method: 'POST', body: JSON.stringify({ enabled }) }),
     listProxyCertificates: () => req<SSLCertificate[]>('/proxy/certificates', {}, []),
 
     // DNS Config Management
@@ -300,6 +318,11 @@ export const DockerClient = {
     createDnsConfig: (body: Partial<DnsConfig>) => safeReq('/proxy/dns-configs', { method: 'POST', body: JSON.stringify(body) }),
     updateDnsConfig: (body: DnsConfig) => safeReq(`/proxy/dns-configs/${body.id}`, { method: 'PUT', body: JSON.stringify(body) }),
     deleteDnsConfig: (id: string) => safeReq(`/proxy/dns-configs/${id}`, { method: 'DELETE' }),
+    // Custom Pages Management
+    listCustomPages: () => req<CustomPage[]>('/proxy/custom-pages', {}, []),
+    createCustomPage: (body: Partial<CustomPage>) => safeReq('/proxy/custom-pages', { method: 'POST', body: JSON.stringify(body) }),
+    updateCustomPage: (body: CustomPage) => safeReq(`/proxy/custom-pages/${body.id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    deleteCustomPage: (id: string) => safeReq(`/proxy/custom-pages/${id}`, { method: 'DELETE' }),
 
     getProxyContainerStatus: () => safeReq('/proxy/container/status'),
     buildProxyImage: () => safeReq('/proxy/container/build', { method: 'POST' }),

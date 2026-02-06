@@ -104,7 +104,12 @@ data class AppSettings(
     val kafkaRules: List<KafkaRule> = emptyList(),
     
     // File Manager
-    val fileBookmarks: List<String> = emptyList()
+    val fileBookmarks: List<String> = emptyList(),
+    
+    // Syslog Ingestion
+    val syslogEnabled: Boolean = false,
+    val syslogPort: Int = 514,
+    val proxyRsyslogEnabled: Boolean = false
 )
 
 object AppConfig {
@@ -359,6 +364,21 @@ object AppConfig {
     fun updateKafkaRules(rules: List<KafkaRule>) {
         _settings = _settings.copy(
             kafkaRules = rules
+        )
+        saveSettings()
+    }
+
+    fun updateSyslogSettings(enabled: Boolean, port: Int) {
+        _settings = _settings.copy(
+            syslogEnabled = enabled,
+            syslogPort = port
+        )
+        saveSettings()
+    }
+
+    fun updateProxyRsyslogSettings(enabled: Boolean) {
+        _settings = _settings.copy(
+            proxyRsyslogEnabled = enabled
         )
         saveSettings()
     }

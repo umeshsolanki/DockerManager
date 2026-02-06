@@ -484,8 +484,47 @@ export default function ComposeScreen() {
                                                 );
                                             })()}
                                         </div>
-                                        <div className="flex items-center gap-1.5 text-[10px] text-on-surface-variant font-mono truncate">
-                                            <span className="truncate">{file.path}</span>
+                                        {/* <div className="flex items-center gap-1.5 text-[10px] text-on-surface-variant font-mono truncate">
+                                            <span className="truncate">{file.path.split('/').pop()}</span>
+                                        </div> */}
+                                        <div className="flex flex-wrap gap-1.5 mt-2">
+                                            {/* Primary Compose File */}
+                                            <button
+                                                onClick={() => handleEdit(file)}
+                                                className="text-[8px] sm:text-[9px] px-2 py-0.5 rounded-md border border-primary/20 bg-primary/5 text-primary hover:bg-primary/10 transition-all font-bold flex items-center gap-1"
+                                                title="Edit Main Compose File"
+                                            >
+                                                <Edit2 size={8} />
+                                                {file.path.split('/').pop()}
+                                            </button>
+
+                                            {/* Other Project Files */}
+                                            {file.otherFiles?.map(other => (
+                                                <button
+                                                    key={other}
+                                                    onClick={() => handleEdit(file, other)}
+                                                    className="text-[8px] sm:text-[9px] px-2 py-0.5 rounded-md border border-outline/10 bg-surface text-on-surface-variant hover:bg-white/5 transition-all font-bold flex items-center gap-1"
+                                                    title={`Edit ${other}`}
+                                                >
+                                                    <Edit2 size={8} />
+                                                    {other}
+                                                </button>
+                                            ))}
+
+                                            {/* Add New File Button */}
+                                            <button
+                                                onClick={() => {
+                                                    const fileName = prompt('Enter new file name (e.g. env, conf, sh, json):');
+                                                    if (fileName) {
+                                                        handleEdit(file, fileName.trim());
+                                                    }
+                                                }}
+                                                className="text-[8px] sm:text-[9px] px-2 py-0.5 rounded-md border border-dashed border-outline/20 text-on-surface-variant hover:border-primary/40 hover:text-primary transition-all font-bold flex items-center gap-1"
+                                                title="Add New File to Project"
+                                            >
+                                                <Plus size={8} />
+                                                New File
+                                            </button>
                                         </div>
                                     </div>
                                 </div>

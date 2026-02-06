@@ -15,6 +15,7 @@ import com.umeshsolanki.dockermanager.file.fileRoutes
 import com.umeshsolanki.dockermanager.firewall.firewallRoutes
 import com.umeshsolanki.dockermanager.kafka.kafkaRoutes
 import com.umeshsolanki.dockermanager.proxy.analyticsRoutes
+import com.umeshsolanki.dockermanager.proxy.customPageRoutes
 import com.umeshsolanki.dockermanager.proxy.proxyRoutes
 import com.umeshsolanki.dockermanager.system.systemRoutes
 import io.ktor.server.application.Application
@@ -47,6 +48,7 @@ fun Application.configureRouting() {
             logRoutes()
             firewallRoutes()
             proxyRoutes()
+            customPageRoutes()
             analyticsRoutes()
             emailRoutes()
             cacheRoutes()

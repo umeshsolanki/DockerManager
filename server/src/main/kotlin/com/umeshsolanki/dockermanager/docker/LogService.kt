@@ -7,6 +7,8 @@ import java.util.concurrent.TimeUnit
 interface ILogService {
     fun listSystemLogs(subPath: String = ""): List<SystemLog>
     fun getLogContent(path: String, tail: Int = 100, filter: String? = null, since: String? = null, until: String? = null): String
+    fun getJournalLogs(tail: Int = 100, unit: String? = null, filter: String? = null, since: String? = null, until: String? = null): String
+    fun getSystemSyslogLogs(tail: Int = 100, filter: String? = null): String
 }
 
 class LogServiceImpl : ILogService {
@@ -119,5 +121,76 @@ class LogServiceImpl : ILogService {
             logger.error("Error reading log content from $path", e)
             "Error reading log: ${e.message}"
         }
+    }
+
+    override fun getJournalLogs(tail: Int, unit: String?, filter: String?, since: String?, until: String?): String {
+        return try {
+            val isLinux = System.getProperty("os.name").lowercase().contains("linux")
+            if (!isLinux) {
+                return "Journalctl is only available on Linux systems. (Current OS: ${System.getProperty("os.name")})"
+            }
+
+            val command = StringBuilder("journalctl")
+            
+            if (!unit.isNullOrBlank()) {
+                command.append(" -u $unit")
+            }
+            
+            if (!since.isNullOrBlank()) {
+                command.append(" --since \"$since\"")
+            }
+            
+            if (!until.isNullOrBlank()) {
+                command.append(" --until \"$until\"")
+            }
+            
+            command.append(" -n $tail")
+            
+            if (!filter.isNullOrBlank()) {
+                if (filter.startsWith("|")) {
+                    command.append(" $filter")
+                } else {
+                    command.append(" | awk $filter")
+                }
+            }
+
+            val processBuilder = ProcessBuilder("sh", "-c", "timeout 15s $command")
+            val process = processBuilder.start()
+            val output = process.inputStream.bufferedReader().use { it.readText() }
+            val error = process.errorStream.bufferedReader().use { it.readText() }
+            val completed = process.waitFor(10, TimeUnit.SECONDS)
+
+            if (!completed) {
+                process.destroyForcibly()
+                return "Journalctl command timed out"
+            }
+
+            if (output.isBlank() && error.isNotBlank()) {
+                "Error reading journal: $error"
+            } else {
+                output.ifBlank { "No journal entries found" }
+            }
+        } catch (e: Exception) {
+            logger.error("Error reading journal logs", e)
+            "Error reading journal: ${e.message}"
+        }
+    }
+
+    override fun getSystemSyslogLogs(tail: Int, filter: String?): String {
+        val isLinux = System.getProperty("os.name").lowercase().contains("linux")
+        if (!isLinux) {
+            return "Rsyslog logs are only available on Linux systems."
+        }
+
+        val syslogFile = File(baseLogDir, "syslog").takeIf { it.exists() }
+            ?: File(baseLogDir, "messages").takeIf { it.exists() }
+            ?: File("/var/log/syslog").takeIf { it.exists() }
+            ?: File("/var/log/messages").takeIf { it.exists() }
+
+        if (syslogFile == null) {
+            return "Could not find rsyslog file (syslog or messages) in ${baseLogDir.absolutePath}"
+        }
+
+        return getLogContent(syslogFile.absolutePath, tail, filter)
     }
 }

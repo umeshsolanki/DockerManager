@@ -9,7 +9,7 @@ import com.umeshsolanki.dockermanager.utils.CommandExecutor
 import com.umeshsolanki.dockermanager.proxy.ProxyServiceImpl
 import com.umeshsolanki.dockermanager.proxy.SSLServiceImpl
 import com.umeshsolanki.dockermanager.kafka.*
-import kotlinx.serialization.json.Json
+import com.umeshsolanki.dockermanager.docker.*
 import kotlinx.coroutines.*
 import org.jetbrains.exposed.sql.insert
 
@@ -34,7 +34,11 @@ object ServiceContainer {
          executor.execute(command).output
     }
 
+    val customPageService: ICustomPageService = CustomPageServiceImpl()
+
     val proxyService: IProxyService = ProxyServiceImpl(jailManagerService, sslService)
+    
+    val syslogService: ISyslogService = SyslogServiceImpl()
     
     val kafkaService: IKafkaService = KafkaServiceImpl().apply {
         registerHandler(object : KafkaMessageHandler {
@@ -93,6 +97,7 @@ object ServiceContainer {
         // Services are initialized lazily when accessed
         // This method can be used for any initialization logic if needed
         kafkaService.start(AppConfig.settings.kafkaSettings)
+        syslogService.start()
         ipEnrichmentWorker.start()
     }
 }

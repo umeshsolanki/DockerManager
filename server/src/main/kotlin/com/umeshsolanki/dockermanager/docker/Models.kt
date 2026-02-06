@@ -194,7 +194,8 @@ data class SaveProjectFileRequest(
 data class ComposeFile(
     val path: String,
     val name: String,
-    val status: String
+    val status: String,
+    val otherFiles: List<String> = emptyList()
 )
 
 @Serializable
@@ -263,4 +264,17 @@ data class CreateNetworkRequest(
 data class BatchDeleteRequest(
     val ids: List<String>,
     val force: Boolean = false
+)
+
+@Serializable
+data class SyslogLogEntry(
+    val id: Long = 0,
+    val timestamp: String,
+    val facility: Int?,
+    val severity: Int?,
+    val host: String?,
+    val appName: String?,
+    val procId: String?,
+    val messageId: String?,
+    val message: String
 )

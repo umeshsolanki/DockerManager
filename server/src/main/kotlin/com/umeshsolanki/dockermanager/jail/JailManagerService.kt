@@ -5,14 +5,11 @@ import com.umeshsolanki.dockermanager.ServiceContainer
 import com.umeshsolanki.dockermanager.constants.TimeoutConstants
 import com.umeshsolanki.dockermanager.firewall.IFirewallService
 import com.umeshsolanki.dockermanager.firewall.BlockIPRequest
-import com.umeshsolanki.dockermanager.firewall.FirewallRule
 import com.umeshsolanki.dockermanager.proxy.ProxyJailRuleType
 import com.umeshsolanki.dockermanager.fcm.FcmService
 import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
-import com.umeshsolanki.dockermanager.ip.IIpInfoService
-import com.umeshsolanki.dockermanager.ip.IpInfo
 
 interface IJailManagerService {
     fun listJails(): List<JailedIP>

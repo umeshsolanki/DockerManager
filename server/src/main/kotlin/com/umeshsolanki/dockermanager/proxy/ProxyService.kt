@@ -59,6 +59,7 @@ interface IProxyService {
     fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null)
     fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>)
     fun updateDefaultBehavior(return404: Boolean): Pair<Boolean, String>
+    fun updateRsyslogSettings(enabled: Boolean): Pair<Boolean, String>
 
     // Analytics History
     fun getHistoricalStats(date: String): DailyProxyStats?
@@ -66,6 +67,7 @@ interface IProxyService {
     fun getStatsForDateRange(startDate: String, endDate: String): List<DailyProxyStats>
     fun forceReprocessLogs(date: String): DailyProxyStats?
     fun updateStatsForAllDaysInCurrentLog(): Map<String, Boolean>
+    
 }
 
 class ProxyServiceImpl(
@@ -80,6 +82,7 @@ class ProxyServiceImpl(
         defaultContent = emptyList(),
         loggerName = ProxyServiceImpl::class.java.name
     )
+    
 
     val proxyDockerComposeDir: File
         get() {
@@ -123,6 +126,25 @@ class ProxyServiceImpl(
             true to "Default behavior updated successfully"
         } catch (e: Exception) {
             logger.error("Failed to update default behavior", e)
+            false to "Failed to update: ${e.message}"
+        }
+    }
+
+    override fun updateRsyslogSettings(enabled: Boolean): Pair<Boolean, String> {
+        return try {
+            AppConfig.updateProxyRsyslogSettings(enabled)
+            ensureNginxMainConfig(forceOverwrite = true)
+            
+            val reloadResult = reloadNginx()
+            if (!reloadResult.first) {
+                if (reloadResult.second.contains("Proxy container is not running", ignoreCase = true)) {
+                    return true to "Rsyslog settings saved (Proxy not running)"
+                }
+                return false to "Settings saved but failed to reload Nginx: ${reloadResult.second}"
+            }
+            true to "Rsyslog settings updated successfully"
+        } catch (e: Exception) {
+            logger.error("Failed to update Rsyslog settings", e)
             false to "Failed to update: ${e.message}"
         }
     }
@@ -824,6 +846,16 @@ class ProxyServiceImpl(
 
         // Generate Main Location Config (for /)
         fun generateMainLocationConfig(isHttps: Boolean, redirect: String = ""): String {
+            if (host.underConstruction) {
+                val pageId = host.underConstructionPageId ?: ""
+                return """
+                    |        ${redirect}root /var/www/html;
+                    |        index pages/${pageId}.html;
+                    |        try_files /pages/${pageId}.html =404;
+                    |        ${ipConfig}
+                """.trimMargin().trim()
+            }
+            
             val safeTarget = host.target.sanitizeNginx()
             if (host.isStatic) {
                 return """
@@ -1417,8 +1449,8 @@ class ProxyServiceImpl(
         if (!shouldUpdate) {
             val content = nginxConf.readText()
             // Check for critical new definitions that might be missing in old configs
-            if (!content.contains("\$is_allowed") || !content.contains("\$connection_upgrade")) {
-                logger.info("Critical variables missing in nginx.conf (migration needed)")
+            if (!content.contains("\$is_allowed") || !content.contains("\$connection_upgrade") || !content.contains("syslog:server")) {
+                logger.info("Critical variables or syslog missing in nginx.conf (migration needed)")
                 shouldUpdate = true
             }
         }
@@ -1436,7 +1468,23 @@ class ProxyServiceImpl(
     }
 
     private fun getDefaultNginxConfig(): String {
-        return ResourceLoader.loadResourceOrThrow("templates/proxy/nginx.conf")
+        val template = ResourceLoader.loadResourceOrThrow("templates/proxy/nginx.conf")
+        val rsyslogEnabled = AppConfig.settings.proxyRsyslogEnabled
+        val syslogServer = "127.0.0.1:${AppConfig.settings.syslogPort}"
+        
+        val loggingConfig = StringBuilder()
+        loggingConfig.append("    access_log  /usr/local/openresty/nginx/logs/access.log  main;\n")
+        loggingConfig.append("    error_log   /usr/local/openresty/nginx/logs/error.log warn;")
+        
+        if (rsyslogEnabled) {
+            loggingConfig.append("\n\n    # Rsyslog remote logging\n")
+            loggingConfig.append("    access_log syslog:server=$syslogServer,tag=nginx_access,severity=info main;\n")
+            loggingConfig.append("    error_log  syslog:server=$syslogServer,tag=nginx_error,severity=warn;")
+        }
+        
+        return ResourceLoader.replacePlaceholders(template, mapOf(
+            "loggingConfig" to loggingConfig.toString()
+        ))
     }
 
     /**
@@ -1620,6 +1668,7 @@ class ProxyServiceImpl(
             false to "Error deleting DNS config: ${e.message}"
         }
     }
+
 }
 
 // Service object for easy access
@@ -1662,6 +1711,8 @@ object ProxyService {
 
     fun updateDefaultBehavior(return404: Boolean) = service.updateDefaultBehavior(return404)
 
+    fun updateRsyslogSettings(enabled: Boolean) = service.updateRsyslogSettings(enabled)
+
     fun getProxySecuritySettings() = AppConfig.settings
 
     // Analytics History
@@ -1672,5 +1723,6 @@ object ProxyService {
 
     fun forceReprocessLogs(date: String) = service.forceReprocessLogs(date)
     fun updateStatsForAllDaysInCurrentLog() = service.updateStatsForAllDaysInCurrentLog()
+
 }
 

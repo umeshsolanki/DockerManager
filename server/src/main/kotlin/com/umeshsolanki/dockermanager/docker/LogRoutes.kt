@@ -8,6 +8,8 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import com.umeshsolanki.dockermanager.ServiceContainer
+import com.umeshsolanki.dockermanager.AppConfig
 
 fun Route.logRoutes() {
     route("/logs") {
@@ -26,6 +28,23 @@ fun Route.logRoutes() {
             val since = call.request.queryParameters["since"]
             val until = call.request.queryParameters["until"]
             val content = DockerService.getSystemLogContent(path, tail, filter, since, until)
+            call.respondText(content)
+        }
+
+        get("/system/journal") {
+            val tail = call.request.queryParameters["tail"]?.toIntOrNull() ?: 100
+            val unit = call.request.queryParameters["unit"]
+            val filter = call.request.queryParameters["filter"]
+            val since = call.request.queryParameters["since"]
+            val until = call.request.queryParameters["until"]
+            val content = DockerService.getJournalLogs(tail, unit, filter, since, until)
+            call.respondText(content)
+        }
+
+        get("/system/syslog") {
+            val tail = call.request.queryParameters["tail"]?.toIntOrNull() ?: 100
+            val filter = call.request.queryParameters["filter"]
+            val content = DockerService.getSystemSyslogLogs(tail, filter)
             call.respondText(content)
         }
         get("/system/btmp-stats") {
@@ -47,5 +66,6 @@ fun Route.logRoutes() {
             BtmpService.updateMonitoringSettings(active, interval)
             call.respond(HttpStatusCode.OK)
         }
+
     }
 }

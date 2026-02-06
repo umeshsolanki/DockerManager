@@ -90,5 +90,10 @@ object DockerService {
     fun listSystemLogs(subPath: String = "") = logService.listSystemLogs(subPath)
     fun getSystemLogContent(path: String, tail: Int = 100, filter: String? = null, since: String? = null, until: String? = null) = 
         logService.getLogContent(path, tail, filter, since, until)
-}
 
+    fun getJournalLogs(tail: Int = 100, unit: String? = null, filter: String? = null, since: String? = null, until: String? = null) =
+        logService.getJournalLogs(tail, unit, filter, since, until)
+
+    fun getSystemSyslogLogs(tail: Int = 100, filter: String? = null) =
+        logService.getSystemSyslogLogs(tail, filter)
+}

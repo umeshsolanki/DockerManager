@@ -23,7 +23,12 @@ data class SystemConfig(
     val autoStorageRefresh: Boolean,
     val autoStorageRefreshIntervalMinutes: Int,
     val kafkaSettings: KafkaSettings,
-    val dbPersistenceLogsEnabled: Boolean
+    val dbPersistenceLogsEnabled: Boolean,
+    val osName: String,
+    val syslogEnabled: Boolean,
+    val syslogPort: Int,
+    val syslogIsRunning: Boolean,
+    val proxyRsyslogEnabled: Boolean
 )
 
 @Serializable
@@ -35,7 +40,10 @@ data class UpdateSystemConfigRequest(
     val autoStorageRefresh: Boolean? = null,
     val autoStorageRefreshIntervalMinutes: Int? = null,
     val kafkaSettings: KafkaSettings? = null,
-    val dbPersistenceLogsEnabled: Boolean? = null
+    val dbPersistenceLogsEnabled: Boolean? = null,
+    val syslogEnabled: Boolean? = null,
+    val syslogPort: Int? = null,
+    val proxyRsyslogEnabled: Boolean? = null
 )
 
 @Serializable

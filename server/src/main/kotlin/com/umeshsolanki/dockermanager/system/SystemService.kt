@@ -109,7 +109,12 @@ object SystemService {
         autoStorageRefresh = AppConfig.settings.autoStorageRefresh,
         autoStorageRefreshIntervalMinutes = AppConfig.settings.autoStorageRefreshIntervalMinutes,
         kafkaSettings = AppConfig.settings.kafkaSettings,
-        dbPersistenceLogsEnabled = AppConfig.settings.dbPersistenceLogsEnabled
+        dbPersistenceLogsEnabled = AppConfig.settings.dbPersistenceLogsEnabled,
+        osName = osName,
+        syslogEnabled = AppConfig.settings.syslogEnabled,
+        syslogPort = AppConfig.settings.syslogPort,
+        syslogIsRunning = ServiceContainer.syslogService.isRunning(),
+        proxyRsyslogEnabled = AppConfig.settings.proxyRsyslogEnabled
     )
     
     fun updateSystemConfig(request: UpdateSystemConfigRequest) {
@@ -126,6 +131,25 @@ object SystemService {
         request.dbPersistenceLogsEnabled?.let {
             AppConfig.updateLoggingSettings(it)
         }
+        
+        // Handle Syslog Settings
+        val syslogPort = request.syslogPort ?: AppConfig.settings.syslogPort
+        val syslogEnabled = request.syslogEnabled ?: AppConfig.settings.syslogEnabled
+        
+        val syslogChanged = syslogPort != AppConfig.settings.syslogPort || syslogEnabled != AppConfig.settings.syslogEnabled
+        
+        if (syslogChanged) {
+            AppConfig.updateSyslogSettings(syslogEnabled, syslogPort)
+            ServiceContainer.syslogService.stop()
+            if (syslogEnabled) {
+                ServiceContainer.syslogService.start()
+            }
+        }
+        
+        request.proxyRsyslogEnabled?.let {
+            ServiceContainer.proxyService.updateRsyslogSettings(it)
+        }
+
         // Refresh Docker client to use new settings
         DockerClientProvider.refreshClient()
         DockerService.refreshServices()

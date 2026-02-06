@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Globe, Plus, Activity, Lock, FileKey, ShieldCheck, Network, Pencil, Trash2, FolderCode, Server, SquareSlash } from 'lucide-react';
+import { Globe, Plus, Activity, Lock, FileKey, ShieldCheck, Network, Pencil, Trash2, FolderCode, Server, SquareSlash, Construction } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { ProxyHost, PathRoute, SSLCertificate, DnsConfig } from '@/lib/types';
+import { ProxyHost, PathRoute, SSLCertificate, DnsConfig, CustomPage } from '@/lib/types';
 import { toast } from 'sonner';
 import Editor from '@monaco-editor/react';
 import { Modal } from '../ui/Modal';
@@ -48,9 +48,15 @@ export function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () 
     const [dnsConfigId, setDnsConfigId] = useState(initialHost?.dnsConfigId || '');
     const [savedDnsConfigs, setSavedDnsConfigs] = useState<DnsConfig[]>([]);
 
+    // Under Construction State
+    const [underConstruction, setUnderConstruction] = useState(initialHost?.underConstruction || false);
+    const [underConstructionPageId, setUnderConstructionPageId] = useState(initialHost?.underConstructionPageId || '');
+    const [customPages, setCustomPages] = useState<CustomPage[]>([]);
+
     useEffect(() => {
         DockerClient.listProxyCertificates().then(setCerts);
         DockerClient.listDnsConfigs().then(setSavedDnsConfigs);
+        DockerClient.listCustomPages().then(setCustomPages);
     }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -87,7 +93,9 @@ export function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () 
                 nodelay: rateLimitNodelay
             } : undefined,
             isStatic,
-            silentDrop
+            silentDrop,
+            underConstruction,
+            underConstructionPageId: underConstructionPageId || undefined
         };
 
         const result = initialHost
@@ -216,7 +224,51 @@ export function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () 
                                     className="w-5 h-5 rounded-lg border-outline/20 bg-white/5 checked:bg-red-500 accent-red-500"
                                 />
                             </label>
+
+                            {/* Under Construction Toggle */}
+                            <label className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-outline/10 cursor-pointer hover:border-amber-500/30 transition-all group">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${underConstruction ? 'bg-amber-500/20 text-amber-500' : 'bg-white/5 text-on-surface-variant'}`}>
+                                    <Construction size={18} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-bold text-on-surface">Construction Mode</div>
+                                    <div className="text-[10px] text-on-surface-variant font-medium">Show maintenance page</div>
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    checked={underConstruction}
+                                    onChange={(e) => setUnderConstruction(e.target.checked)}
+                                    className="w-5 h-5 rounded-lg border-outline/20 bg-white/5 checked:bg-amber-500 accent-amber-500"
+                                />
+                            </label>
                         </div>
+
+                        {/* Under Construction Options */}
+                        {underConstruction && (
+                            <div className="p-5 rounded-3xl bg-amber-500/5 border border-amber-500/10 space-y-4 animate-in slide-in-from-top-4 duration-300">
+                                <div className="space-y-1.5">
+                                    <label className="block text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1">Select Maintenance Page</label>
+                                    <select
+                                        required
+                                        value={underConstructionPageId}
+                                        onChange={(e) => setUnderConstructionPageId(e.target.value)}
+                                        className="w-full bg-white/5 border border-amber-500/20 rounded-2xl px-4 py-3 appearance-none focus:outline-none focus:border-amber-500 text-sm font-bold"
+                                    >
+                                        <option value="">Select a page...</option>
+                                        {customPages.map(page => (
+                                            <option key={page.id} value={page.id}>
+                                                {page.title}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {customPages.length === 0 && (
+                                        <p className="text-[10px] text-amber-500/60 mt-1 italic">
+                                            No custom pages found. Create one in Proxy Settings.
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
 
                         {/* SSL Options - Only visible when SSL is enabled */}
                         {sslEnabled && (

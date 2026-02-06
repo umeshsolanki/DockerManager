@@ -40,6 +40,7 @@ export interface ComposeFile {
   path: string;
   name: string;
   status: string; // active, inactive
+  otherFiles?: string[];
 }
 
 export interface DockerStack {
@@ -295,6 +296,13 @@ export interface PathRoute {
   isStatic?: boolean;
 }
 
+export interface CustomPage {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: number;
+}
+
 export interface DnsConfig {
   id: string;
   name: string;
@@ -333,6 +341,8 @@ export interface ProxyHost {
   rateLimit?: RateLimit;
   isStatic?: boolean;
   silentDrop?: boolean;
+  underConstruction?: boolean;
+  underConstructionPageId?: string;
 }
 
 export interface SSLCertificate {
@@ -557,6 +567,11 @@ export interface SystemConfig {
   autoStorageRefreshIntervalMinutes: number;
   kafkaSettings: KafkaSettings;
   dbPersistenceLogsEnabled: boolean;
+  osName: string;
+  syslogEnabled: boolean;
+  syslogPort: number;
+  syslogIsRunning: boolean;
+  proxyRsyslogEnabled: boolean;
 }
 
 export interface UpdateSystemConfigRequest {
@@ -568,6 +583,9 @@ export interface UpdateSystemConfigRequest {
   autoStorageRefreshIntervalMinutes?: number;
   kafkaSettings?: KafkaSettings;
   dbPersistenceLogsEnabled?: boolean;
+  syslogEnabled?: boolean;
+  syslogPort?: number;
+  proxyRsyslogEnabled?: boolean;
 }
 
 export interface JamesContainerStatus {
@@ -715,4 +733,22 @@ export interface ExternalDbConfig {
 export interface SqlQueryRequest {
   sql: string;
   externalDbId?: string;
+}
+
+export interface SyslogLogEntry {
+  id: number;
+  timestamp: string;
+  facility: number | null;
+  severity: number | null;
+  host: string | null;
+  appName: string | null;
+  procId: string | null;
+  messageId: string | null;
+  message: string;
+}
+
+export interface SyslogConfig {
+  enabled: boolean;
+  port: number;
+  isRunning: boolean;
 }

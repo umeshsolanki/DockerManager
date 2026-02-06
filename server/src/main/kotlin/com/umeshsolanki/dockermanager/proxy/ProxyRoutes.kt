@@ -228,6 +228,13 @@ fun Route.proxyRoutes() {
             call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.InternalServerError)
         }
 
+        post("/settings/rsyslog") {
+            val request = call.receive<Map<String, Boolean>>()
+            val enabled = request["enabled"] ?: false
+            val result = ProxyService.updateRsyslogSettings(enabled)
+            call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.InternalServerError)
+        }
+
         get("/certificates") {
             call.respond(ProxyService.listCertificates())
         }
@@ -306,5 +313,6 @@ fun Route.proxyRoutes() {
                 ProxyActionResult(result.first, result.second)
             )
         }
+
     }
 }

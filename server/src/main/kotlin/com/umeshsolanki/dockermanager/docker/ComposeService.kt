@@ -49,50 +49,61 @@ class ComposeServiceImpl : IComposeService {
     }
 
     override fun listComposeFiles(): List<ComposeFile> {
-        if (!composeDir.exists()) composeDir.mkdirs()
+        // List all subdirectories as potential projects
+        val projectDirs = composeDir.listFiles { it.isDirectory } ?: emptyArray()
 
-        return composeDir.walk()
-            .filter { it.isFile && (it.name == "docker-compose.yml" || it.name == "docker-compose.yaml") }
-            .map { file ->
-                val projectName = file.parentFile.name
-                val status = checkComposeStatus(file.absolutePath, projectName)
-                ComposeFile(
-                    path = file.absolutePath, name = projectName, status = status
-                )
-            }.toList()
+        return projectDirs.map { parentDir ->
+            val allFiles = parentDir.walk()
+                .filter { it.isFile }
+                .toList()
+            
+            // Prioritize docker-compose.yml/yaml as the primary file
+            // Fallback to any file if none of the standards exist
+            val primaryFile = allFiles.find { it.name == "docker-compose.yml" || it.name == "docker-compose.yaml" }
+                ?: allFiles.firstOrNull()
+                ?: File(parentDir, "docker-compose.yml")
+            
+            val projectName = parentDir.name
+            val status = if (primaryFile.exists() && (primaryFile.name.endsWith(".yml") || primaryFile.name.endsWith(".yaml"))) {
+                checkComposeStatus(primaryFile.absolutePath, projectName)
+            } else {
+                "inactive"
+            }
+            
+            val otherFiles = allFiles.filter { 
+                it.absolutePath != primaryFile.absolutePath 
+            }.map { it.relativeTo(parentDir).path }
+
+            ComposeFile(
+                path = primaryFile.absolutePath, 
+                name = projectName, 
+                status = status,
+                otherFiles = otherFiles
+            )
+        }.toList()
     }
 
     private fun checkComposeStatus(filePath: String, projectName: String): String {
         return try {
             // Check if containers from this compose project are running
-            // Docker Compose sets labels like com.docker.compose.project=projectName
-            val process = ProcessBuilder(
-                AppConfig.dockerCommand,
-                "ps",
-                "--filter", "label=com.docker.compose.project=$projectName",
-                "--format", "{{.State}}"
-            )
-                .redirectErrorStream(true)
-                .start()
+            val output = runProcess(
+                listOf(AppConfig.dockerCommand, "compose", "-f", filePath, "ps", "--format", "{{.State}}"),
+                timeoutSeconds = 5
+            ).message
             
-            val output = process.inputStream.bufferedReader().readText()
-            val success = process.waitFor(5, TimeUnit.SECONDS) && process.exitValue() == 0
-            
-            if (!success || output.isBlank()) {
+            if (output.isBlank() || output.contains("error", ignoreCase = true)) {
                 // Check if any containers exist (stopped)
-                val processAll = ProcessBuilder(
-                    AppConfig.dockerCommand,
-                    "ps", "-a",
-                    "--filter", "label=com.docker.compose.project=$projectName",
-                    "--format", "{{.State}}"
-                )
-                    .redirectErrorStream(true)
-                    .start()
+                val outputAll = runProcess(
+                    listOf(
+                        AppConfig.dockerCommand,
+                        "ps", "-a",
+                        "--filter", "label=com.docker.compose.project=$projectName",
+                        "--format", "{{.State}}"
+                    ),
+                    timeoutSeconds = 5
+                ).message
                 
-                val outputAll = processAll.inputStream.bufferedReader().readText()
-                val successAll = processAll.waitFor(5, TimeUnit.SECONDS) && processAll.exitValue() == 0
-                
-                if (successAll && outputAll.isNotBlank()) {
+                if (outputAll.isNotBlank() && !outputAll.contains("error", ignoreCase = true)) {
                     "stopped"
                 } else {
                     "inactive"
@@ -102,16 +113,14 @@ class ComposeServiceImpl : IComposeService {
                 val runningCount = states.count { it == "running" }
                 val totalCount = states.size
                 
-                if (runningCount == 0) {
-                    "stopped"
-                } else if (runningCount == totalCount) {
-                    "active"
-                } else {
-                    "partial"
+                when {
+                    runningCount == 0 -> "stopped"
+                    runningCount == totalCount -> "active"
+                    else -> "partial"
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger.error("Error checking compose status for $projectName", e)
             "unknown"
         }
     }
@@ -126,55 +135,33 @@ class ComposeServiceImpl : IComposeService {
     override fun checkStackStatus(stackName: String): String {
         return try {
             val stacks = listStacks()
-            val stack = stacks.find { it.name == stackName }
-            if (stack == null) {
-                "not found"
-            } else if (stack.services > 0) {
-                // Check services first - more reliable indicator
+            val stack = stacks.find { it.name == stackName } ?: return "not found"
+            
+            if (stack.services > 0) {
                 val services = listStackServices(stackName)
                 if (services.isEmpty()) {
-                    // Fallback to tasks if services list is empty
                     val tasks = listStackTasks(stackName)
-                    val runningTasks = tasks.count { 
-                        it.currentState.equals("Running", ignoreCase = true) || 
-                        it.currentState.equals("running", ignoreCase = true)
-                    }
+                    val runningTasks = tasks.count { it.currentState.contains("running", ignoreCase = true) }
                     return if (runningTasks > 0) "active" else "stopped"
                 }
                 
-                // Check if any service has running replicas
                 val hasRunningReplicas = services.any { service ->
                     val replicas = service.replicas.split("/")
                     if (replicas.size == 2) {
                         val running = replicas[0].trim().toIntOrNull() ?: 0
                         val desired = replicas[1].trim().toIntOrNull() ?: 0
                         running > 0 && desired > 0
-                    } else {
-                        false
-                    }
+                    } else false
                 }
                 
-                if (hasRunningReplicas) {
-                    "active"
-                } else {
-                    // Double-check with tasks as fallback
-                    val tasks = listStackTasks(stackName)
-                    val runningTasks = tasks.count { 
-                        val state = it.currentState.lowercase()
-                        state == "running" || state.contains("running")
-                    }
-                    if (runningTasks > 0) {
-                        "active"
-                    } else {
-                        "stopped"
-                    }
-                }
-            } else {
-                "stopped"
+                if (hasRunningReplicas) return "active"
+
+                val tasks = listStackTasks(stackName)
+                return if (tasks.any { it.currentState.contains("running", ignoreCase = true) }) "active" else "stopped"
             }
+            "stopped"
         } catch (e: Exception) {
             logger.error("Error checking stack status for $stackName", e)
-            e.printStackTrace()
             "unknown"
         }
     }
@@ -213,154 +200,75 @@ class ComposeServiceImpl : IComposeService {
     }
 
     override fun composeUp(filePath: String): ComposeResult {
-        val file = File(filePath)
-        if (!file.exists()) return ComposeResult(false, "File not found: $filePath")
-
         return try {
-            // Use AppConfig.dockerComposeCommand which handles different compose command formats
-            val composeCmd = AppConfig.dockerComposeCommand
-            val pb = if (composeCmd.contains(" ")) {
-                val parts = composeCmd.split(" ").filter { it.isNotBlank() }.toMutableList()
-                parts.addAll(listOf("-f", filePath, "up", "-d"))
-                ProcessBuilder(parts)
-            } else {
-                ProcessBuilder(composeCmd, "-f", filePath, "up", "-d")
-            }
-                .directory(file.parentFile)
-                .redirectErrorStream(true)
-            
-            pb.environment()["DOCKER_BUILDKIT"] = if (AppConfig.settings.dockerBuildKit) "1" else "0"
-            pb.environment()["COMPOSE_DOCKER_CLI_BUILD"] = if (AppConfig.settings.dockerCliBuild) "1" else "0"
-            
-            val process = pb.start()
-            
-            val output = process.inputStream.bufferedReader().readText()
-            val success = process.waitFor(5, TimeUnit.MINUTES) && process.exitValue() == 0
-
-            ComposeResult(success, output.ifBlank { if (success) "Up" else "Failed to start" })
+            val file = File(filePath)
+            if (!file.exists()) return ComposeResult(false, "File not found: $filePath")
+            runComposeCommand(listOf("-f", filePath, "up", "-d"), file.parentFile, getDockerBuildEnv())
         } catch (e: Exception) {
-            e.printStackTrace()
-            ComposeResult(false, "Error: ${e.message ?: "Unknown error"}. Command: ${AppConfig.dockerComposeCommand}")
+            logger.error("Error in compose up for $filePath", e)
+            ComposeResult(false, "Error: ${e.message}")
         }
     }
 
     override fun composeBuild(filePath: String): ComposeResult {
-        val file = File(filePath)
-        if (!file.exists()) return ComposeResult(false, "File not found: $filePath")
-        val projectDir = file.parentFile
-        val projectName = projectDir.name.lowercase()
-
-        val buildKit = if (AppConfig.settings.dockerBuildKit) "1" else "0"
-        val cliBuild = if (AppConfig.settings.dockerCliBuild) "1" else "0"
-
         return try {
-            val dockerfile = File(projectDir, "Dockerfile")
-            if (dockerfile.exists()) {
-                // Build using Dockerfile with buildx
-                val pb = ProcessBuilder(AppConfig.dockerCommand, "buildx", "build", "--load", "-t", "$projectName:latest", ".")
-                    .directory(projectDir)
-                    .redirectErrorStream(true)
-                
-                pb.environment()["DOCKER_BUILDKIT"] = buildKit
-                
-                val process = pb.start()
-                
-                val output = process.inputStream.bufferedReader().readText()
-                val success = process.waitFor(20, TimeUnit.MINUTES) && process.exitValue() == 0
+            val file = File(filePath)
+            if (!file.exists()) return ComposeResult(false, "File not found: $filePath")
+            val projectDir = file.parentFile
+            val projectName = projectDir.name.lowercase()
+            val env = getDockerBuildEnv()
 
-                ComposeResult(success, output.ifBlank { if (success) "Image Built Successfully: $projectName:latest" else "Failed to build image" })
-            } else {
-                // Build using docker-compose
-                val composeCmd = AppConfig.dockerComposeCommand
-                val pb = if (composeCmd.contains(" ")) {
-                    val parts = composeCmd.split(" ").filter { it.isNotBlank() }.toMutableList()
-                    parts.addAll(listOf("-f", filePath, "build"))
-                    ProcessBuilder(parts)
-                } else {
-                    ProcessBuilder(composeCmd, "-f", filePath, "build")
+            if (File(projectDir, "Dockerfile").exists()) {
+                runProcess(
+                    listOf(AppConfig.dockerCommand, "buildx", "build", "--load", "-t", "$projectName:latest", "."),
+                    projectDir,
+                    env,
+                    20
+                ).let { 
+                    it.copy(message = it.message.ifBlank { if (it.success) "Image Built Successfully: $projectName:latest" else "Failed to build image" })
                 }
-                    .directory(projectDir)
-                    .redirectErrorStream(true)
-                
-                pb.environment()["DOCKER_BUILDKIT"] = buildKit
-                pb.environment()["COMPOSE_DOCKER_CLI_BUILD"] = cliBuild
-                
-                val process = pb.start()
-                
-                val output = process.inputStream.bufferedReader().readText()
-                val success = process.waitFor(20, TimeUnit.MINUTES) && process.exitValue() == 0
-
-                ComposeResult(success, output.ifBlank { if (success) "Build Successful" else "Failed to build" })
+            } else {
+                runComposeCommand(listOf("-f", filePath, "build"), projectDir, env, 20)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
-            ComposeResult(false, "Error: ${e.message ?: "Unknown error"}")
+            logger.error("Error in compose build for $filePath", e)
+            ComposeResult(false, "Error: ${e.message}")
         }
     }
 
     override fun composeDown(filePath: String, removeVolumes: Boolean): ComposeResult {
-        val file = File(filePath)
-        if (!file.exists()) return ComposeResult(false, "File not found")
-
         return try {
-            val composeCmd = AppConfig.dockerComposeCommand
-            val commandList = if (composeCmd.contains(" ")) {
-                composeCmd.split(" ").filter { it.isNotBlank() }.toMutableList()
-            } else {
-                mutableListOf(composeCmd)
-            }
-            commandList.addAll(listOf("-f", filePath, "down"))
-            if (removeVolumes) {
-                commandList.add("-v")
-            }
-            
-            val process = ProcessBuilder(commandList)
-                .directory(file.parentFile)
-                .redirectErrorStream(true)
-                .start()
-            
-            val output = process.inputStream.bufferedReader().readText()
-            val success = process.waitFor(2, TimeUnit.MINUTES) && process.exitValue() == 0
+            val file = File(filePath)
+            if (!file.exists()) return ComposeResult(false, "File not found")
 
-            ComposeResult(success, output.ifBlank { if (success) "Down" else "Failed to stop" })
+            val args = mutableListOf("-f", filePath, "down")
+            if (removeVolumes) args.add("-v")
+
+            runComposeCommand(args, file.parentFile)
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger.error("Error in compose down for $filePath", e)
             ComposeResult(false, e.message ?: "Unknown error")
         }
     }
 
     override fun saveComposeFile(name: String, content: String): Boolean {
-        return try {
-            if (!composeDir.exists()) composeDir.mkdirs()
-            val projectDir = File(composeDir, name)
-            if (!projectDir.exists()) projectDir.mkdirs()
-
-            val file = File(projectDir, "docker-compose.yml")
-            file.writeText(content)
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
-        }
+        return saveProjectFile(name, "docker-compose.yml", content)
     }
 
     override fun saveProjectFile(projectName: String, fileName: String, content: String): Boolean {
         return try {
-            if (!composeDir.exists()) composeDir.mkdirs()
-            val projectDir = File(composeDir, projectName)
-            if (!projectDir.exists()) projectDir.mkdirs()
-
-            // Block directory traversal and sensitive files
             if (fileName.contains("..") || fileName.startsWith("/") || fileName.contains("\\")) {
-                logger.warn("Attempt to write to invalid path: $fileName")
+                logger.warn("Attempt to write to invalid path: $fileName in project $projectName")
                 return false
             }
 
-            val file = File(projectDir, fileName)
+            val file = File(File(composeDir, projectName), fileName).absoluteFile
+            logger.info("Saving project file: ${file.absolutePath}")
+            file.parentFile?.mkdirs()
             file.writeText(content)
             true
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger.error("Failed to save project file: $fileName for project: $projectName", e)
             false
         }
     }
@@ -368,122 +276,36 @@ class ComposeServiceImpl : IComposeService {
     override fun getComposeFileContent(filePath: String): String {
         return try {
             val file = File(filePath)
-            if (file.exists()) {
-                file.readText()
-            } else {
-                ""
-            }
+            if (file.exists()) file.readText() else ""
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger.error("Error reading compose file: $filePath", e)
             ""
         }
     }
 
     override fun getProjectFileContent(projectName: String, fileName: String): String {
-        return try {
-            val projectDir = File(composeDir, projectName)
-            // Block directory traversal and sensitive files
-            if (fileName.contains("..") || fileName.startsWith("/") || fileName.contains("\\")) {
-                logger.warn("Attempt to read from invalid path: $fileName")
-                return ""
-            }
-            
-            val file = File(projectDir, fileName)
-            if (file.exists()) {
-                file.readText()
-            } else {
-                ""
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            ""
-        }
+        val projectDir = File(composeDir, projectName).absoluteFile
+        val file = File(projectDir, fileName).absoluteFile
+        return getComposeFileContent(file.absolutePath)
     }
 
     override fun backupCompose(name: String): BackupResult {
-        return try {
-            val projectDir = File(composeDir, name)
-            if (!projectDir.exists()) return BackupResult(false, null, null, "Project not found")
-
-            val fileName = "compose_${name}_${System.currentTimeMillis()}.tar.gz"
-            val fullPath = File(backupDir, fileName).absolutePath
-
-            val process =
-                ProcessBuilder("tar", "-czf", fullPath, "-C", projectDir.parent, name).start()
-            val exitCode = process.waitFor()
-
-            if (exitCode == 0) {
-                BackupResult(true, fileName, fullPath, "Backup created successfully")
-            } else {
-                BackupResult(false, null, null, "Failed to create backup")
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            BackupResult(false, null, null, "Error: ${e.message}")
-        }
+        val projectDir = File(composeDir, name)
+        if (!projectDir.exists()) return BackupResult(false, null, null, "Project not found")
+        return createCompressedBackup("compose_$name", projectDir.parentFile, name)
     }
 
     override fun backupAllCompose(): BackupResult {
-        return try {
-            if (!composeDir.exists()) return BackupResult(
-                false,
-                null,
-                null,
-                "No compose projects found"
-            )
-
-            val fileName = "compose_all_${System.currentTimeMillis()}.tar.gz"
-            val fullPath = File(backupDir, fileName).absolutePath
-
-            val process = ProcessBuilder(
-                "tar",
-                "-czf",
-                fullPath,
-                "-C",
-                composeDir.parent,
-                composeDir.name
-            ).start()
-            val exitCode = process.waitFor()
-
-            if (exitCode == 0) {
-                BackupResult(true, fileName, fullPath, "Full backup created successfully")
-            } else {
-                BackupResult(false, null, null, "Failed to create full backup")
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            BackupResult(false, null, null, "Error: ${e.message}")
-        }
+        if (!composeDir.exists()) return BackupResult(false, null, null, "No compose projects found")
+        return createCompressedBackup("compose_all", composeDir.parentFile, composeDir.name)
     }
 
     override fun listStacks(): List<DockerStack> {
-        return try {
-            val process = ProcessBuilder(AppConfig.dockerCommand, "stack", "ls", "--format", "{{.Name}}\t{{.Services}}")
-                .redirectErrorStream(true)
-                .start()
-            
-            val output = process.inputStream.bufferedReader().readText()
-            val success = process.waitFor(30, TimeUnit.SECONDS) && process.exitValue() == 0
-            
-            if (!success) return emptyList()
-            
-            output.lines()
-                .filter { it.isNotBlank() && !it.startsWith("NAME") }
-                .map { line ->
-                    val parts = line.split("\t")
-                    if (parts.size >= 2) {
-                        DockerStack(
-                            name = parts[0].trim(),
-                            services = parts[1].trim().toIntOrNull() ?: 0
-                        )
-                    } else {
-                        DockerStack(name = parts[0].trim())
-                    }
-                }
-                .toList()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
+        return parseDockerOutput(listOf(AppConfig.dockerCommand, "stack", "ls", "--format", "{{.Name}}\t{{.Services}}"), "NAME") { parts ->
+            DockerStack(
+                name = parts[0],
+                services = parts.getOrNull(1)?.toIntOrNull() ?: 0
+            )
         }
     }
 
@@ -688,29 +510,15 @@ class ComposeServiceImpl : IComposeService {
 
     override fun removeStack(stackName: String): ComposeResult {
         return try {
-            val process = ProcessBuilder(AppConfig.dockerCommand, "stack", "rm", stackName)
-                .redirectErrorStream(true)
-                .start()
-            
-            val output = process.inputStream.bufferedReader().readText()
-            val success = process.waitFor(2, TimeUnit.MINUTES) && process.exitValue() == 0
-
-            ComposeResult(success, output.ifBlank { if (success) "Stack removed successfully" else "Failed to remove stack" })
+            runProcess(listOf(AppConfig.dockerCommand, "stack", "rm", stackName), timeoutMinutes = 2)
         } catch (e: Exception) {
-            e.printStackTrace()
-            ComposeResult(false, "Error: ${e.message ?: "Unknown error"}")
+            logger.error("Error removing stack $stackName", e)
+            ComposeResult(false, "Error: ${e.message}")
         }
     }
 
-    override fun startStack(stackName: String, composeFile: String): ComposeResult {
-        // Start is the same as deploy - it creates or updates the stack
-        return deployStack(stackName, composeFile)
-    }
-
-    override fun stopStack(stackName: String): ComposeResult {
-        // Stop is the same as remove - it stops and removes the stack
-        return removeStack(stackName)
-    }
+    override fun startStack(stackName: String, composeFile: String): ComposeResult = deployStack(stackName, composeFile)
+    override fun stopStack(stackName: String): ComposeResult = removeStack(stackName)
 
     override fun restartStack(stackName: String, composeFile: String): ComposeResult {
         return try {
@@ -744,72 +552,35 @@ class ComposeServiceImpl : IComposeService {
         }
     }
 
-    override fun updateStack(stackName: String, composeFile: String): ComposeResult {
-        // Update is the same as deploy - docker stack deploy updates existing stacks
-        return deployStack(stackName, composeFile)
-    }
+    override fun updateStack(stackName: String, composeFile: String): ComposeResult = deployStack(stackName, composeFile)
 
     override fun listStackServices(stackName: String): List<StackService> {
-        return try {
-            val process = ProcessBuilder(AppConfig.dockerCommand, "stack", "services", stackName, "--format", "{{.ID}}\t{{.Name}}\t{{.Image}}\t{{.Mode}}\t{{.Replicas}}\t{{.Ports}}")
-                .redirectErrorStream(true)
-                .start()
-            
-            val output = process.inputStream.bufferedReader().readText()
-            val success = process.waitFor(30, TimeUnit.SECONDS) && process.exitValue() == 0
-            
-            if (!success) return emptyList()
-            
-            output.lines()
-                .filter { it.isNotBlank() && !it.startsWith("ID") && !it.startsWith("NAME") }
-                .map { line ->
-                    val parts = line.split("\t")
-                    StackService(
-                        id = parts.getOrNull(0)?.trim() ?: "",
-                        name = parts.getOrNull(1)?.trim() ?: "",
-                        image = parts.getOrNull(2)?.trim() ?: "",
-                        mode = parts.getOrNull(3)?.trim() ?: "",
-                        replicas = parts.getOrNull(4)?.trim() ?: "0/0",
-                        ports = parts.getOrNull(5)?.trim()?.takeIf { it.isNotBlank() }
-                    )
-                }
-                .toList()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
+        val cmd = listOf(AppConfig.dockerCommand, "stack", "services", stackName, "--format", "{{.ID}}\t{{.Name}}\t{{.Image}}\t{{.Mode}}\t{{.Replicas}}\t{{.Ports}}")
+        return parseDockerOutput(cmd, "ID") { parts ->
+            StackService(
+                id = parts[0],
+                name = parts.getOrNull(1) ?: "",
+                image = parts.getOrNull(2) ?: "",
+                mode = parts.getOrNull(3) ?: "",
+                replicas = parts.getOrNull(4) ?: "0/0",
+                ports = parts.getOrNull(5)?.takeIf { it.isNotBlank() }
+            )
         }
     }
 
     override fun listStackTasks(stackName: String): List<StackTask> {
-        return try {
-            val process = ProcessBuilder(AppConfig.dockerCommand, "stack", "ps", stackName, "--format", "{{.ID}}\t{{.Name}}\t{{.Image}}\t{{.Node}}\t{{.DesiredState}}\t{{.CurrentState}}\t{{.Error}}\t{{.Ports}}")
-                .redirectErrorStream(true)
-                .start()
-            
-            val output = process.inputStream.bufferedReader().readText()
-            val success = process.waitFor(30, TimeUnit.SECONDS) && process.exitValue() == 0
-            
-            if (!success) return emptyList()
-            
-            output.lines()
-                .filter { it.isNotBlank() && !it.startsWith("ID") }
-                .map { line ->
-                    val parts = line.split("\t")
-                    StackTask(
-                        id = parts.getOrNull(0)?.trim() ?: "",
-                        name = parts.getOrNull(1)?.trim() ?: "",
-                        image = parts.getOrNull(2)?.trim() ?: "",
-                        node = parts.getOrNull(3)?.trim() ?: "",
-                        desiredState = parts.getOrNull(4)?.trim() ?: "",
-                        currentState = parts.getOrNull(5)?.trim() ?: "",
-                        error = parts.getOrNull(6)?.trim()?.takeIf { it.isNotBlank() && it != "<none>" },
-                        ports = parts.getOrNull(7)?.trim()?.takeIf { it.isNotBlank() && it != "<none>" }
-                    )
-                }
-                .toList()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
+        val cmd = listOf(AppConfig.dockerCommand, "stack", "ps", stackName, "--format", "{{.ID}}\t{{.Name}}\t{{.Image}}\t{{.Node}}\t{{.DesiredState}}\t{{.CurrentState}}\t{{.Error}}\t{{.Ports}}")
+        return parseDockerOutput(cmd, "ID") { parts ->
+            StackTask(
+                id = parts[0],
+                name = parts.getOrNull(1) ?: "",
+                image = parts.getOrNull(2) ?: "",
+                node = parts.getOrNull(3) ?: "",
+                desiredState = parts.getOrNull(4) ?: "",
+                currentState = parts.getOrNull(5) ?: "",
+                error = parts.getOrNull(6)?.takeIf { it.isNotBlank() },
+                ports = parts.getOrNull(7)?.takeIf { it.isNotBlank() }
+            )
         }
     }
 
@@ -817,21 +588,14 @@ class ComposeServiceImpl : IComposeService {
         return try {
             val projectDir = File(composeDir, projectName)
             if (!projectDir.exists()) return ComposeResult(false, "Project not found")
-
-            val composeFile = File(projectDir, "docker-compose.yml")
-            val composeYaml = File(projectDir, "docker-compose.yaml")
-            val finalComposeFile = if (composeFile.exists()) composeFile else if (composeYaml.exists()) composeYaml else null
-
-            if (finalComposeFile != null) {
-                // Try to stop the project first
-                logger.info("Stopping compose project '$projectName' before deletion")
-                composeDown(finalComposeFile.absolutePath, removeVolumes = true)
+            
+            // Check if any containers are running for this project
+            val status = checkComposeFileStatus(File(projectDir, "docker-compose.yml").absolutePath)
+            if (status == "active" || status == "partial") {
+                return ComposeResult(false, "Cannot delete project while containers are running. Please stop it first.")
             }
-
-            // Recursively delete the project directory
-            val deleted = projectDir.deleteRecursively()
-            if (deleted) {
-                logger.info("Successfully deleted compose project directory: ${projectDir.absolutePath}")
+            
+            if (projectDir.deleteRecursively()) {
                 ComposeResult(true, "Project deleted successfully")
             } else {
                 logger.error("Failed to delete compose project directory: ${projectDir.absolutePath}")
@@ -840,6 +604,83 @@ class ComposeServiceImpl : IComposeService {
         } catch (e: Exception) {
             logger.error("Error deleting compose project $projectName", e)
             ComposeResult(false, "Error: ${e.message}")
+        }
+    }
+
+    private fun getDockerBuildEnv() = mapOf(
+        "DOCKER_BUILDKIT" to if (AppConfig.settings.dockerBuildKit) "1" else "0",
+        "COMPOSE_DOCKER_CLI_BUILD" to if (AppConfig.settings.dockerCliBuild) "1" else "0"
+    )
+
+    private fun <T> parseDockerOutput(cmd: List<String>, headerToSkip: String, mapper: (List<String>) -> T): List<T> {
+        return try {
+            val res = runProcess(cmd)
+            if (!res.success) return emptyList()
+            res.message.lines()
+                .filter { it.isNotBlank() && !it.startsWith(headerToSkip) && !it.startsWith("NAME") }
+                .map { line -> mapper(line.split("\t").map { it.trim() }) }
+        } catch (e: Exception) {
+            logger.error("Error parsing docker output for command: ${cmd.joinToString(" ")}", e)
+            emptyList()
+        }
+    }
+
+    private fun createCompressedBackup(prefix: String, baseDir: File, targetName: String): BackupResult {
+        return try {
+            val fileName = "${prefix}_${System.currentTimeMillis()}.tar.gz"
+            val fullPath = File(backupDir, fileName).absolutePath
+            val res = runProcess(listOf("tar", "-czf", fullPath, "-C", baseDir.absolutePath, targetName))
+            if (res.success) BackupResult(true, fileName, fullPath, "Backup created successfully")
+            else BackupResult(false, null, null, "Failed to create backup: ${res.message}")
+        } catch (e: Exception) {
+            logger.error("Error creating backup for $targetName", e)
+            BackupResult(false, null, null, "Error: ${e.message}")
+        }
+    }
+
+    private fun runComposeCommand(
+        args: List<String>, 
+        directory: File? = null, 
+        env: Map<String, String> = emptyMap(),
+        timeoutMinutes: Long = 5
+    ): ComposeResult {
+        val composeCmd = AppConfig.dockerComposeCommand
+        val command = if (composeCmd.contains(" ")) {
+            composeCmd.split(" ").filter { it.isNotBlank() }.toMutableList().apply { addAll(args) }
+        } else {
+            mutableListOf(composeCmd).apply { addAll(args) }
+        }
+        return runProcess(command, directory, env, timeoutMinutes)
+    }
+
+    private fun runProcess(
+        command: List<String>,
+        directory: File? = null,
+        env: Map<String, String> = emptyMap(),
+        timeoutMinutes: Long = 5,
+        timeoutSeconds: Long? = null
+    ): ComposeResult {
+        return try {
+            val pb = ProcessBuilder(command).apply {
+                directory?.let { directory(it) }
+                redirectErrorStream(true)
+                environment().putAll(env)
+            }
+            
+            val process = pb.start()
+            val output = process.inputStream.bufferedReader().readText()
+            val finished = if (timeoutSeconds != null) {
+                process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+            } else {
+                process.waitFor(timeoutMinutes, TimeUnit.MINUTES)
+            }
+            
+            val success = finished && process.exitValue() == 0
+            ComposeResult(success, output.trim())
+        } catch (e: Exception) {
+            val cmdStr = command.joinToString(" ")
+            logger.error("Process execution failed: $cmdStr", e)
+            ComposeResult(false, "Execution failed: ${e.message}")
         }
     }
 }
