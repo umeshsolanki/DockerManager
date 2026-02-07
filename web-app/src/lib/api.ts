@@ -297,13 +297,21 @@ export const DockerClient = {
             return text;
         }
     }),
-    getPostgresTables: () => req<{ tables: string[] }>('/database/postgres/tables', {}, { tables: [] }).then(r => r.tables),
-    queryPostgresTable: (table: string, orderBy?: string, orderDir: 'ASC' | 'DESC' = 'ASC', limit = 100, offset = 0) => {
+    getPostgresTables: async () => {
+        const res = await apiFetch('/database/postgres/tables');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to list tables');
+        return data.tables || [];
+    },
+    queryPostgresTable: async (table: string, orderBy?: string, orderDir: 'ASC' | 'DESC' = 'ASC', limit = 100, offset = 0) => {
         let url = `/database/postgres/query?table=${encodeURIComponent(table)}&limit=${limit}&offset=${offset}`;
         if (orderBy) url += `&orderBy=${encodeURIComponent(orderBy)}&orderDir=${orderDir}`;
-        return req<{ rows: any[] }>(url, {}, { rows: [] }).then(r => r.rows);
+        const res = await apiFetch(url);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to query table');
+        return data.rows || [];
     },
-    executeSqlQuery: (request: SqlQueryRequest) => req<any[]>('/database/query', { method: 'POST', body: JSON.stringify(request) }, []),
+    executeSqlQuery: (request: SqlQueryRequest) => safeReq<any>('/database/query', { method: 'POST', body: JSON.stringify(request) }),
     listExternalDbs: () => req<ExternalDbConfig[]>('/database/external/list', {}, []),
     testExternalDb: (config: ExternalDbConfig) => safeReq('/database/external/test', { method: 'POST', body: JSON.stringify({ config }) }),
     saveExternalDb: (config: ExternalDbConfig) => safeReq('/database/external/save', { method: 'POST', body: JSON.stringify(config) }),

@@ -497,9 +497,9 @@ function PostgresDataBrowser() {
         try {
             const tabs = await DockerClient.getPostgresTables();
             setTables(tabs.sort());
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            setError('Failed to fetch tables');
+            setError(e.message || 'Failed to fetch tables');
         } finally {
             setIsLoading(false);
         }
@@ -512,9 +512,9 @@ function PostgresDataBrowser() {
             const offset = p * pageSize;
             const data = await DockerClient.queryPostgresTable(table, sort, dir, pageSize, offset);
             setTableData(data);
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            setError(`Failed to fetch data for ${table}`);
+            setError(e.message || `Failed to fetch data for ${table}`);
         } finally {
             setIsLoading(false);
         }
@@ -741,13 +741,32 @@ function SqlConsoleTab() {
                 externalDbId: selectedDb === 'primary' ? undefined : selectedDb
             };
             const data = await DockerClient.executeSqlQuery(request);
-            if (data && (data as any).error) {
-                setError((data as any).error);
-            } else {
+
+            // Check for error in object format (returned by System Console for primary DB errors)
+            if (data && !Array.isArray(data) && data.error) {
+                setError(data.error);
+                setResults([]);
+                toast.error(`Query Error: ${data.error}`);
+            }
+            // Check for error in array format (returned by SqlService for external DB errors)
+            else if (Array.isArray(data) && data.length === 1 && data[0].error) {
+                setError(data[0].error);
+                setResults([]);
+                toast.error(`Query Error: ${data[0].error}`);
+            }
+            else {
                 setResults(Array.isArray(data) ? data : []);
+                if (Array.isArray(data) && data.length > 0) {
+                    toast.success(`Query executed successfully: ${data.length} rows returned`);
+                } else if (Array.isArray(data)) {
+                    toast.success('Query executed successfully');
+                }
             }
         } catch (e: any) {
-            setError(e.message || 'Execution failed');
+            const msg = e.message || 'Execution failed';
+            setError(msg);
+            setResults([]);
+            toast.error(msg);
         } finally {
             setIsLoading(false);
         }
