@@ -904,6 +904,7 @@ class ProxyServiceImpl(
         val settings = AppConfig.settings
         val rsyslogEnabled = settings.proxyRsyslogEnabled
         val syslogServer = "${settings.syslogServer}:${settings.syslogPort}"
+        val syslogTag = tag.replace(".", "_")
 
         val standardLoggingConfig = run {
             val template = getCachedTemplate("templates/proxy/standard-logging.conf")
@@ -915,7 +916,7 @@ class ProxyServiceImpl(
             val template = getCachedTemplate("templates/proxy/rsyslog-config.conf")
             val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
                 "syslogServer" to syslogServer,
-                "tag" to tag
+                "tag" to syslogTag
             ))
             snippet.lines().joinToString("\n    ") { it }
         } else ""
@@ -924,7 +925,7 @@ class ProxyServiceImpl(
             val template = getCachedTemplate("templates/proxy/danger-logging.conf")
             val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
                 "syslogServer" to syslogServer,
-                "tag" to tag
+                "tag" to syslogTag
             ))
             snippet.lines().joinToString("\n    ") { it }
         }
@@ -933,7 +934,7 @@ class ProxyServiceImpl(
             val template = getCachedTemplate("templates/proxy/burst-logging.conf")
             val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
                 "syslogServer" to syslogServer,
-                "tag" to tag
+                "tag" to syslogTag
             ))
             snippet.lines().joinToString("\n    ") { it }
         }
