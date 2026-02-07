@@ -746,3 +746,10 @@ export interface IpReputation {
   reasons: string[];
   country?: string;
 }
+
+export interface SavedQuery {
+  id: number;
+  name: string;
+  sql: string;
+  createdAt?: string;
+}

@@ -61,6 +61,14 @@ data class DatabaseStatus(
     val port: Int? = null,
     val isInstalled: Boolean = false
 )
+@Serializable
+data class SavedQuery(
+    val id: Int = 0,
+    val name: String,
+    val sql: String,
+    val createdAt: String? = null
+)
+
 
 
 
@@ -459,6 +467,55 @@ fun Route.databaseRoutes() {
                 call.respond(mapOf("success" to true))
             } catch (e: Exception) {
                 call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Failed to delete configuration")))
+            }
+        }
+
+        get("/queries/saved") {
+            try {
+                val queries = transaction {
+                    SavedQueriesTable.selectAll().orderBy(SavedQueriesTable.createdAt to SortOrder.DESC).map {
+                        SavedQuery(
+                            id = it[SavedQueriesTable.id].value,
+                            name = it[SavedQueriesTable.name],
+                            sql = it[SavedQueriesTable.sql],
+                            createdAt = it[SavedQueriesTable.createdAt].toString()
+                        )
+                    }
+                }
+                call.respond(queries)
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Failed to list saved queries")))
+            }
+        }
+
+        post("/queries/save") {
+            try {
+                val query = call.receive<SavedQuery>()
+                transaction {
+                    SavedQueriesTable.insert {
+                        it[name] = query.name
+                        it[sql] = query.sql
+                    }
+                }
+                call.respond(mapOf("success" to true))
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Failed to save query")))
+            }
+        }
+
+        post("/queries/delete/{id}") {
+            try {
+                val id = call.parameters["id"]?.toIntOrNull()
+                if (id != null) {
+                    transaction {
+                        SavedQueriesTable.deleteWhere { SavedQueriesTable.id eq id }
+                    }
+                    call.respond(mapOf("success" to true))
+                } else {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid ID"))
+                }
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Failed to delete query")))
             }
         }
     }

@@ -16,6 +16,7 @@ class JsonPersistence<T : Any>(
     private val file: File,
     private val defaultContent: T,
     private val serializer: KSerializer<T>,
+    private val json: kotlinx.serialization.json.Json = AppConfig.json,
     private val loggerName: String = JsonPersistence::class.java.name
 ) {
     companion object Companion {
@@ -26,18 +27,19 @@ class JsonPersistence<T : Any>(
         inline fun <reified T : Any> create(
             file: File,
             defaultContent: T,
+            json: kotlinx.serialization.json.Json = AppConfig.json,
             loggerName: String = JsonPersistence::class.java.name
         ): JsonPersistence<T> {
             return JsonPersistence(
                 file = file,
                 defaultContent = defaultContent,
-                serializer = serializer<T>(),
+                serializer = kotlinx.serialization.serializer<T>(),
+                json = json,
                 loggerName = loggerName
             )
         }
     }
     private val logger = LoggerFactory.getLogger(loggerName)
-    private val json = AppConfig.json
 
     init {
         ensureFileExists()

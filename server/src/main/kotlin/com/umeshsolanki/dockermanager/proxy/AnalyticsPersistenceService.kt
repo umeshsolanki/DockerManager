@@ -4,16 +4,12 @@ import com.umeshsolanki.dockermanager.AppConfig
 import com.umeshsolanki.dockermanager.database.ProxyLogsTable
 import com.umeshsolanki.dockermanager.utils.JsonPersistence
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
 import org.jetbrains.exposed.sql.*
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.javatime.date
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
@@ -39,7 +35,7 @@ data class DailyProxyStats(
 
 class AnalyticsPersistenceService {
     private val logger = LoggerFactory.getLogger(AnalyticsPersistenceService::class.java)
-    private val analyticsDir = File(AppConfig.proxyLogFile, "analytics").apply {
+    private val analyticsDir = File(AppConfig.nginxLogDir, "analytics").apply {
         if (!exists()) mkdirs()
     }
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")

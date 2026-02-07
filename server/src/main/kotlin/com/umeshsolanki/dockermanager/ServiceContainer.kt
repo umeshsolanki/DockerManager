@@ -19,12 +19,14 @@ import org.jetbrains.exposed.sql.insert
  */
 object ServiceContainer {
     // Core services
-    val firewallService: IFirewallService = FirewallServiceImpl()
+    val ipReputationService: com.umeshsolanki.dockermanager.ip.IIpReputationService = com.umeshsolanki.dockermanager.ip.IpReputationServiceImpl()
+    
+    val firewallService: IFirewallService = FirewallServiceImpl(ipReputationService)
     
     val ipInfoService: com.umeshsolanki.dockermanager.ip.IIpInfoService = com.umeshsolanki.dockermanager.ip.IpInfoServiceImpl()
     
     // Dependent services
-    val jailManagerService: IJailManagerService = JailManagerServiceImpl(firewallService, ipInfoService)
+    val jailManagerService: IJailManagerService = JailManagerServiceImpl(firewallService, ipInfoService, ipReputationService)
 
     // Workers
     val ipEnrichmentWorker = com.umeshsolanki.dockermanager.jail.IpEnrichmentWorker(firewallService, ipInfoService)

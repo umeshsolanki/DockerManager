@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Database, Zap, RefreshCw, CheckCircle, XCircle, Server, Globe, Lock, Trash2, Save, TestTube, Info, Plus, Table, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Download, Bookmark } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { RedisConfig, RedisStatus } from '@/lib/types';
+import { RedisConfig, RedisStatus, SavedQuery } from '@/lib/types';
 import { toast } from 'sonner';
 import { Button, ActionIconButton } from '../ui/Buttons';
 import { StatCard } from '../ui/StatCard';
@@ -714,21 +714,23 @@ function SqlConsoleTab() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const [savedQueries, setSavedQueries] = useState<{ name: string; sql: string }[]>([]);
+    const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([]);
     const [showSaveModal, setShowSaveModal] = useState(false);
     const [newQueryName, setNewQueryName] = useState('');
 
     useEffect(() => {
         DockerClient.listExternalDbs().then(setExternalDbs);
-        const storedQueries = localStorage.getItem('savedSqlQueries');
-        if (storedQueries) {
-            setSavedQueries(JSON.parse(storedQueries));
-        }
+        fetchSavedQueries();
     }, []);
 
-    useEffect(() => {
-        localStorage.setItem('savedSqlQueries', JSON.stringify(savedQueries));
-    }, [savedQueries]);
+    const fetchSavedQueries = async () => {
+        try {
+            const queries = await DockerClient.listSavedQueries();
+            setSavedQueries(queries);
+        } catch (error) {
+            console.error('Failed to fetch saved queries', error);
+        }
+    };
 
     const handleExecute = async () => {
         setIsLoading(true);
@@ -741,7 +743,6 @@ function SqlConsoleTab() {
             const data = await DockerClient.executeSqlQuery(request);
             if (data && (data as any).error) {
                 setError((data as any).error);
-                setResults([]);
             } else {
                 setResults(Array.isArray(data) ? data : []);
             }
@@ -757,7 +758,7 @@ function SqlConsoleTab() {
         setShowSaveModal(true);
     };
 
-    const confirmSaveQuery = () => {
+    const confirmSaveQuery = async () => {
         if (!newQueryName.trim()) {
             toast.error('Query name cannot be empty.');
             return;
@@ -766,17 +767,35 @@ function SqlConsoleTab() {
             toast.error('A query with this name already exists.');
             return;
         }
-        setSavedQueries([...savedQueries, { name: newQueryName.trim(), sql }]);
-        toast.success(`Query "${newQueryName.trim()}" saved!`);
-        setShowSaveModal(false);
+
+        try {
+            const res = await DockerClient.saveQuery({ id: 0, name: newQueryName.trim(), sql });
+            if (res.success) {
+                toast.success(`Query "${newQueryName.trim()}" saved!`);
+                setShowSaveModal(false);
+                fetchSavedQueries();
+            } else {
+                toast.error(res.message || 'Failed to save query');
+            }
+        } catch (e) {
+            toast.error('Network error while saving query');
+        }
     };
 
-    const handleDeleteQuery = (index: number, e: React.MouseEvent) => {
+    const handleDeleteQuery = async (id: number, e: React.MouseEvent) => {
         e.stopPropagation(); // Prevent triggering the parent button's onClick
         if (confirm('Are you sure you want to delete this saved query?')) {
-            const updatedQueries = savedQueries.filter((_, i) => i !== index);
-            setSavedQueries(updatedQueries);
-            toast.success('Query deleted.');
+            try {
+                const res = await DockerClient.deleteQuery(id);
+                if (res.success) {
+                    toast.success('Query deleted.');
+                    fetchSavedQueries();
+                } else {
+                    toast.error(res.message || 'Failed to delete query');
+                }
+            } catch (error) {
+                toast.error('Network error while deleting query');
+            }
         }
     };
 
@@ -869,15 +888,15 @@ function SqlConsoleTab() {
                             <Bookmark size={12} /> Saved Queries
                         </h4>
                         <div className="flex flex-wrap gap-2">
-                            {savedQueries.map((q, i) => (
+                            {savedQueries.map((q) => (
                                 <button
-                                    key={i}
+                                    key={q.id}
                                     onClick={() => setSql(q.sql)}
                                     className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg text-xs font-medium flex items-center gap-2 group transition-all"
                                 >
                                     {q.name}
                                     <span
-                                        onClick={(e) => handleDeleteQuery(i, e)}
+                                        onClick={(e) => handleDeleteQuery(q.id, e)}
                                         className="opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity"
                                     >
                                         <XCircle size={12} />
@@ -905,6 +924,13 @@ function SqlConsoleTab() {
                         </div>
                     )}
                 </div>
+
+                {error && results.length > 0 && (
+                    <div className="bg-red-500/10 border-b border-red-500/20 p-3 px-4 text-red-500 text-xs font-bold font-mono flex items-center gap-2 animate-in slide-in-from-top-2">
+                        <XCircle size={14} />
+                        {error}
+                    </div>
+                )}
 
                 <div className="flex-1 overflow-auto">
                     {results.length > 0 ? (

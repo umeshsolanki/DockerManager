@@ -53,11 +53,6 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [verificationCode, setVerificationCode] = useState('');
     const [configuring2FA, setConfiguring2FA] = useState(false);
 
-    // IP Geolocation state
-    const [ipRangesCount, setIpRangesCount] = useState(0);
-    const [showIpImportModal, setShowIpImportModal] = useState(false);
-    const [ipCsv, setIpCsv] = useState('');
-    const [importingIpRanges, setImportingIpRanges] = useState(false);
     const [dbStatuses, setDbStatuses] = useState<any[]>([]);
 
     const fetchConfig = async () => {
@@ -85,9 +80,6 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 setProxyRsyslogEnabled(data.proxyRsyslogEnabled);
             }
 
-            // Also fetch IP ranges count
-            const ipStats = await DockerClient.getIpRangeStats();
-            setIpRangesCount(ipStats.totalRanges);
 
             // Fetch DB statuses
             const statuses = await DockerClient.getDatabaseStatus();
@@ -1221,112 +1213,6 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                             </div>
                         </div>
 
-                        {/* IP Geolocation Card */}
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm mt-6">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-secondary/10 rounded-xl text-secondary">
-                                    <Globe size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold">IP Geolocation Data</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">Identify visitor country and ISP</p>
-                                </div>
-                            </div>
-
-                            <div className="p-4 bg-surface/80 rounded-xl border border-outline/5 flex items-center justify-between mb-4">
-                                <div>
-                                    <p className="text-sm font-semibold text-on-surface">Imported Ranges</p>
-                                    <p className="text-xs text-on-surface-variant mt-1">Total identified IP blocks in database</p>
-                                </div>
-                                <div className="bg-secondary/10 px-3 py-1.5 rounded-lg border border-secondary/20">
-                                    <span className="text-sm font-bold text-secondary">
-                                        {ipRangesCount.toLocaleString()}
-                                    </span>
-                                </div>
-                            </div>
-
-                            <button
-                                className="w-full flex items-center justify-center gap-2 bg-on-surface text-surface py-2.5 rounded-xl font-semibold text-sm hover:opacity-90 transition-all active:scale-[0.98] mb-4"
-                                onClick={() => setShowIpImportModal(true)}
-                            >
-                                <Save size={16} />
-                                <span>Paste & Import CSV</span>
-                            </button>
-
-                            <div className="pt-4 border-t border-outline/5">
-                                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-3">Auto-Fetch Public Cloud Ranges</p>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {[
-                                        { id: 'cloudflare', name: 'Cloudflare', color: 'bg-orange-500/10 text-orange-500 border-orange-500/20' },
-                                        { id: 'aws', name: 'AWS', color: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' },
-                                        { id: 'google', name: 'Google', color: 'bg-blue-500/10 text-blue-500 border-blue-500/20' },
-                                        { id: 'digitalocean', name: 'DO', color: 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20' }
-                                    ].map((provider) => (
-                                        <button
-                                            key={provider.id}
-                                            disabled={importingIpRanges}
-                                            onClick={async () => {
-                                                setImportingIpRanges(true);
-                                                try {
-                                                    const res = await DockerClient.fetchIpRanges(provider.id as any) as any;
-                                                    if (res.status === 'success') {
-                                                        alert(`Successfully fetched ${res.imported} ranges from ${provider.name}!`);
-                                                        fetchConfig();
-                                                    } else {
-                                                        alert(res.error || `Failed to fetch ${provider.name} ranges`);
-                                                    }
-                                                } catch (e) {
-                                                    console.error(e);
-                                                    alert(`Error fetching ${provider.name} ranges`);
-                                                } finally {
-                                                    setImportingIpRanges(false);
-                                                }
-                                            }}
-                                            className={`flex items-center justify-center py-2 px-1 rounded-lg border text-[10px] font-bold transition-all active:scale-95 disabled:opacity-50 ${provider.color}`}
-                                        >
-                                            {provider.name}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="pt-4 mt-4 border-t border-outline/5">
-                                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-3">Fetch from Custom CSV URL</p>
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        placeholder="https://example.com/ips.csv"
-                                        className="flex-1 bg-surface border border-outline/10 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-secondary transition-all"
-                                        id="custom-ip-url"
-                                    />
-                                    <button
-                                        onClick={async () => {
-                                            const url = (document.getElementById('custom-ip-url') as HTMLInputElement).value;
-                                            if (!url) return alert('Please enter a URL');
-                                            setImportingIpRanges(true);
-                                            try {
-                                                const res = await DockerClient.fetchIpRanges('custom', url) as any;
-                                                if (res.status === 'success') {
-                                                    alert(`Successfully fetched ${res.imported} ranges!`);
-                                                    fetchConfig();
-                                                } else {
-                                                    alert(res.error || 'Failed to fetch custom ranges');
-                                                }
-                                            } catch (e) {
-                                                console.error(e);
-                                                alert('Error fetching custom ranges');
-                                            } finally {
-                                                setImportingIpRanges(false);
-                                            }
-                                        }}
-                                        disabled={importingIpRanges}
-                                        className="bg-secondary text-on-secondary px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 transition-all active:scale-95 disabled:opacity-50"
-                                    >
-                                        Fetch
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 )}
 
@@ -1490,77 +1376,6 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 </Modal>
             )}
 
-            {/* IP Import Modal */}
-            {showIpImportModal && (
-                <Modal
-                    onClose={() => setShowIpImportModal(false)}
-                    title="Import IP Range Data"
-                    description="CSV: cidr, country_code, country_name, provider, type"
-                    icon={<Globe size={24} />}
-                    maxWidth="max-w-2xl"
-                    className="flex flex-col"
-                >
-                    <div className="flex-1 overflow-y-auto mt-4 pr-2 custom-scrollbar">
-                        <div className="mb-4">
-                            <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">
-                                CSV Content (One range per line)
-                            </label>
-                            <textarea
-                                className="w-full h-80 bg-on-surface/5 border border-outline/10 rounded-2xl p-4 text-sm font-mono focus:outline-none focus:border-secondary/50 focus:bg-on-surface/[0.08] transition-all resize-none"
-                                placeholder="8.8.8.0/24, US, United States, Google, hosting&#10;1.1.1.0/24, AU, Australia, Cloudflare, hosting"
-                                value={ipCsv}
-                                onChange={(e) => setIpCsv(e.target.value)}
-                            />
-                        </div>
-
-                        <div className="flex items-center gap-3 bg-secondary/5 p-4 rounded-2xl border border-secondary/10 mb-6 text-on-surface-variant">
-                            <Info size={20} className="text-secondary shrink-0" />
-                            <p className="text-xs leading-relaxed">
-                                IPv4 and IPv6 CIDR notations are supported. The system will skip empty or invalid lines. Large imports may take a moment.
-                            </p>
-                        </div>
-
-                        <div className="flex items-center gap-3 pb-2">
-                            <button
-                                className="flex-1 bg-on-surface text-surface py-3.5 rounded-2xl font-bold text-sm hover:opacity-90 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                                disabled={importingIpRanges || !ipCsv.trim()}
-                                onClick={async () => {
-                                    setImportingIpRanges(true);
-                                    try {
-                                        const res = await DockerClient.importIpRanges(ipCsv) as any;
-                                        if (res.status === 'success') {
-                                            alert(`Successfully imported ${res.imported} ranges!`);
-                                            setShowIpImportModal(false);
-                                            setIpCsv('');
-                                            fetchConfig();
-                                        } else {
-                                            alert(res.error || 'Failed to import ranges');
-                                        }
-                                    } catch (e) {
-                                        console.error(e);
-                                        alert('An error occurred during import');
-                                    } finally {
-                                        setImportingIpRanges(false);
-                                    }
-                                }}
-                            >
-                                {importingIpRanges ? (
-                                    <RefreshCw size={18} className="animate-spin" />
-                                ) : (
-                                    <Save size={18} />
-                                )}
-                                <span>{importingIpRanges ? 'Importing...' : 'Confirm Import'}</span>
-                            </button>
-                            <button
-                                className="px-6 py-3.5 bg-on-surface/5 text-on-surface rounded-2xl font-bold text-sm hover:bg-on-surface/10 transition-all"
-                                onClick={() => setShowIpImportModal(false)}
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                </Modal>
-            )}
         </div>
     );
 }

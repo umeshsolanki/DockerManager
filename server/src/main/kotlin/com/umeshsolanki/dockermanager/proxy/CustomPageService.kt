@@ -17,7 +17,7 @@ interface ICustomPageService {
 
 class CustomPageServiceImpl : ICustomPageService {
     private val logger = LoggerFactory.getLogger(CustomPageServiceImpl::class.java)
-    private val configDir = AppConfig.proxyConfigDir
+    private val configDir = AppConfig.nginxConfigDir
     private val customPagesFile = File(configDir, "custom-pages.json")
     
     private val customPagesPersistence = JsonPersistence.create<List<CustomPage>>(
@@ -84,7 +84,7 @@ class CustomPageServiceImpl : ICustomPageService {
             pages.remove(page)
             customPagesPersistence.save(pages)
             
-            val pageFile = File(AppConfig.proxyDir, "www/html/pages/${id}.html")
+            val pageFile = File(AppConfig.nginxDir, "www/html/pages/${id}.html")
             if (pageFile.exists()) pageFile.delete()
             
             true
@@ -96,7 +96,7 @@ class CustomPageServiceImpl : ICustomPageService {
 
     private fun writeCustomPageFile(page: CustomPage) {
         try {
-            val pagesDir = File(AppConfig.proxyDir, "www/html/pages")
+            val pagesDir = File(AppConfig.nginxDir, "www/html/pages")
             if (!pagesDir.exists()) pagesDir.mkdirs()
             
             val pageFile = File(pagesDir, "${page.id}.html")

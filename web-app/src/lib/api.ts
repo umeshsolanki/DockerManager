@@ -12,7 +12,7 @@ import {
     DockerStack, StackService, StackTask, DeployStackRequest, MigrateComposeToStackRequest, StopStackRequest,
     SaveProjectFileRequest, KafkaTopicInfo, KafkaMessage, CreateNetworkRequest, StorageInfo,
     ExternalDbConfig, SqlQueryRequest, KafkaRule, KafkaProcessedEvent, CustomPage,
-    IpReputation
+    IpReputation, SavedQuery
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -308,6 +308,10 @@ export const DockerClient = {
     testExternalDb: (config: ExternalDbConfig) => safeReq('/database/external/test', { method: 'POST', body: JSON.stringify({ config }) }),
     saveExternalDb: (config: ExternalDbConfig) => safeReq('/database/external/save', { method: 'POST', body: JSON.stringify(config) }),
     deleteExternalDb: (id: string) => safeReq(`/database/external/delete/${id}`, { method: 'POST' }),
+    listSavedQueries: () => req<SavedQuery[]>('/database/queries/saved', {}, []),
+    saveQuery: (query: SavedQuery) => safeReq('/database/queries/save', { method: 'POST', body: JSON.stringify(query) }),
+    deleteQuery: (id: number) => safeReq(`/database/queries/delete/${id}`, { method: 'POST' }),
+
 
     getProxySecuritySettings: () => req<SystemConfig | null>('/proxy/security/settings', {}, null),
     updateProxySecuritySettings: (body: Partial<SystemConfig>) => safeReq('/proxy/security/settings', { method: 'POST', body: JSON.stringify(body) }),

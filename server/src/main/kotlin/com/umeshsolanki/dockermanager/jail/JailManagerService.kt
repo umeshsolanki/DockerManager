@@ -28,7 +28,8 @@ interface IJailManagerService {
 
 class JailManagerServiceImpl(
     private val firewallService: IFirewallService,
-    private val ipInfoService: com.umeshsolanki.dockermanager.ip.IIpInfoService
+    private val ipInfoService: com.umeshsolanki.dockermanager.ip.IIpInfoService,
+    private val ipReputationService: com.umeshsolanki.dockermanager.ip.IIpReputationService
 ) : IJailManagerService {
     private val logger = LoggerFactory.getLogger(JailManagerServiceImpl::class.java)
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -78,8 +79,8 @@ class JailManagerServiceImpl(
         val now = System.currentTimeMillis()
         return firewallService.listRules().filter { rule ->
             rule.expiresAt?.let { it > now } ?: false
-        }.map { rule -> // Removed mapNotNull + side-effect logic
-             rule.expiresAt?.let { expiresAt ->
+        }.mapNotNull { rule -> // Removed mapNotNull + side-effect logic
+            rule.expiresAt?.let { expiresAt ->
                 JailedIP(
                     ip = rule.ip,
                     country = rule.country ?: "??",
@@ -92,7 +93,7 @@ class JailManagerServiceImpl(
                     createdAt = rule.createdAt
                 )
             }
-        }.filterNotNull()
+        }
     }
 
     override fun jailIP(ip: String, durationMinutes: Int, reason: String): Boolean {
@@ -132,6 +133,15 @@ class JailManagerServiceImpl(
     
     override fun recordFailedLoginAttempt(ip: String) {
         if (ip.isBlank() || AppConfig.isLocalIP(ip)) return
+        
+        // Record activity in reputation service
+        scope.launch {
+            try {
+                ipReputationService.recordActivity(ip)
+            } catch(e: Exception) {
+                logger.error("Failed to record activity", e)
+            }
+        }
         
         val settings = AppConfig.settings
         if (!settings.jailEnabled) return
@@ -238,6 +248,15 @@ class JailManagerServiceImpl(
     override fun checkProxySecurityViolation(ip: String, userAgent: String, method: String, path: String, status: Int, errorCount: Long) {
         if (ip.isBlank() || AppConfig.isLocalIP(ip)) return
         
+        // Record activity in reputation service
+        scope.launch {
+            try {
+                ipReputationService.recordActivity(ip)
+            } catch(e: Exception) {
+                logger.error("Failed to record activity", e)
+            }
+        }
+        
         val secSettings = AppConfig.settings
         if (!secSettings.proxyJailEnabled) return
         
@@ -251,18 +270,16 @@ class JailManagerServiceImpl(
         var reason = ""
         
         // 1. Check Composite Rules (PATH + STATUS) - Most specific, check first
-        if (!shouldJail) {
-            for (cached in cachedCompositeRules) {
-                val pathMatches = cached.regex?.containsMatchIn(path) == true
-                val statusMatches = cached.rule.statusCodePattern?.let { 
-                    it.toRegex().containsMatchIn(status.toString())
-                } ?: true // If no status pattern, just check path
-                
-                if (pathMatches && statusMatches) {
-                    shouldJail = true
-                    reason = "Matched COMPOSITE rule: ${cached.rule.description ?: cached.rule.pattern}"
-                    break
-                }
+        for (cached in cachedCompositeRules) {
+            val pathMatches = cached.regex?.containsMatchIn(path) == true
+            val statusMatches = cached.rule.statusCodePattern?.let {
+                it.toRegex().containsMatchIn(status.toString())
+            } ?: true // If no status pattern, just check path
+
+            if (pathMatches && statusMatches) {
+                shouldJail = true
+                reason = "Matched COMPOSITE rule: ${cached.rule.description ?: cached.rule.pattern}"
+                break
             }
         }
 

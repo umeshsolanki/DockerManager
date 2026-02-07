@@ -8,10 +8,11 @@ import io.ktor.client.call.*
 import io.ktor.client.engine.java.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
+import io.ktor.http.*
 import kotlinx.serialization.json.*
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.batchInsert
+import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.LoggerFactory
 import java.math.BigDecimal
@@ -94,9 +95,13 @@ object IpRangeFetchService {
                     val cn = countryName
                     val p = "DigitalOcean"
                     val t = "hosting"
+                    val cidr = cidr
                 }
             }
             
+            // Clear old ranges for this provider first
+            IpRangesTable.deleteWhere { IpRangesTable.provider eq "DigitalOcean" }
+
             IpRangesTable.batchInsert(batch) { item ->
                 this[IpRangesTable.startIp] = BigDecimal(item.start)
                 this[IpRangesTable.endIp] = BigDecimal(item.end)
@@ -104,6 +109,7 @@ object IpRangeFetchService {
                 this[IpRangesTable.countryName] = item.cn
                 this[IpRangesTable.provider] = item.p
                 this[IpRangesTable.type] = item.t
+                this[IpRangesTable.cidr] = item.cidr
             }
             imported = batch.size
         }
@@ -114,34 +120,95 @@ object IpRangeFetchService {
     suspend fun fetchFromCustomCsvUrl(url: String, provider: String): Int {
         logger.info("Fetching IP ranges from custom URL: $url")
         val response = client.get(url).bodyAsText()
-        val lines = response.lines().filter { it.isNotBlank() }
         
-        // Assume format: cidr,countryCode,countryName,provider,type
-        // Or just cidr
+        // 1. Try JSON First
+        if (response.trimStart().startsWith("{")) {
+            try {
+                val json = AppConfig.json.parseToJsonElement(response).jsonObject
+                val cidrs = mutableListOf<String>()
+                
+                // Strategy A: "prefixes" array (AWS, Google)
+                val prefixes = json["prefixes"]?.jsonArray
+                if (prefixes != null) {
+                    prefixes.forEach { 
+                        // AWS: ip_prefix, ipv6_prefix
+                        // Google: ipv4Prefix, ipv6Prefix
+                        val p = it.jsonObject
+                        p["ip_prefix"]?.jsonPrimitive?.content?.let { c -> cidrs.add(c) }
+                        p["ipv6_prefix"]?.jsonPrimitive?.content?.let { c -> cidrs.add(c) }
+                        p["ipv4Prefix"]?.jsonPrimitive?.content?.let { c -> cidrs.add(c) }
+                        p["ipv6Prefix"]?.jsonPrimitive?.content?.let { c -> cidrs.add(c) }
+                        // Generic "cidr" or "ip" field
+                        p["cidr"]?.jsonPrimitive?.content?.let { c -> cidrs.add(c) }
+                        p["ip"]?.jsonPrimitive?.content?.let { c -> cidrs.add(c) }
+                    }
+                }
+                
+                // Strategy B: "ipv6_prefixes" (AWS specific separate array)
+                json["ipv6_prefixes"]?.jsonArray?.forEach {
+                    it.jsonObject["ipv6_prefix"]?.jsonPrimitive?.content?.let { c -> cidrs.add(c) }
+                }
+
+                // Strategy C: "items" or "ranges"
+                (json["items"]?.jsonArray ?: json["ranges"]?.jsonArray)?.forEach {
+                     val p = it.jsonObject
+                     p["cidr"]?.jsonPrimitive?.content?.let { c -> cidrs.add(c) }
+                     p["val"]?.jsonPrimitive?.content?.let { c -> cidrs.add(c) }
+                }
+
+                if (cidrs.isNotEmpty()) {
+                    logger.info("Parsed ${cidrs.size} ranges from JSON")
+                    return importCidrs(cidrs, provider, "custom-json")
+                }
+            } catch (e: Exception) {
+                logger.warn("Failed to parse custom URL as JSON, falling back to line-based parsing", e)
+            }
+        }
+
+        // 2. Fallback to Line-based (CSV / Plain list)
+        val lines = response.lines().filter { it.isNotBlank() && !it.trim().startsWith("#") && !it.trim().startsWith("//") }
+        
         var imported = 0
         transaction {
             val batch = lines.mapNotNull { line ->
-                val parts = line.split(",")
-                val cidr = parts[0].trim()
+                val parts = line.split(",").map { it.trim() }
+                // Try to find first valid CIDR in parts
+                val cidrIndex = parts.indexOfFirst { IpUtils.cidrToRange(it) != null }
+                
+                if (cidrIndex == -1) return@mapNotNull null
+                
+                val cidr = parts[cidrIndex]
                 val range = IpUtils.cidrToRange(cidr) ?: return@mapNotNull null
+                
+                // Attempt to deduce metadata
+                // If CSV: cidr, cc, name
+                val cc = if (parts.size > 1 && cidrIndex == 0) parts[1].take(2).uppercase() else "GL"
+                val cn = if (parts.size > 2 && cidrIndex == 0) parts[2] else "Global"
                 
                 object {
                     val start = range.first
                     val end = range.second
-                    val cc = parts.getOrNull(1)?.trim() ?: "GLOBAL"
-                    val cn = parts.getOrNull(2)?.trim() ?: "Global"
-                    val p = parts.getOrNull(3)?.trim() ?: provider
-                    val t = parts.getOrNull(4)?.trim() ?: "unknown"
+                    val ccVal = cc
+                    val cnVal = cn
+                    val p = provider
+                    val t = "custom"
+                    val cidrVal = cidr
                 }
             }
             
+            // Clear old ranges for this provider
+            if (provider != "Custom") {
+                 IpRangesTable.deleteWhere { IpRangesTable.provider eq provider }
+            }
+
             IpRangesTable.batchInsert(batch) { item ->
                 this[IpRangesTable.startIp] = BigDecimal(item.start)
                 this[IpRangesTable.endIp] = BigDecimal(item.end)
-                this[IpRangesTable.countryCode] = item.cc
-                this[IpRangesTable.countryName] = item.cn
+                this[IpRangesTable.countryCode] = item.ccVal
+                this[IpRangesTable.countryName] = item.cnVal
                 this[IpRangesTable.provider] = item.p
                 this[IpRangesTable.type] = item.t
+                this[IpRangesTable.cidr] = item.cidrVal
             }
             imported = batch.size
         }
@@ -159,9 +226,13 @@ object IpRangeFetchService {
                     val end = range.second
                     val p = provider
                     val t = type
+                    val c = cidr
                 }
             }
             
+            // Clear old ranges for this provider first
+            IpRangesTable.deleteWhere { IpRangesTable.provider eq provider }
+
             IpRangesTable.batchInsert(batch) { item ->
                 this[IpRangesTable.startIp] = BigDecimal(item.start)
                 this[IpRangesTable.endIp] = BigDecimal(item.end)
@@ -169,6 +240,7 @@ object IpRangeFetchService {
                 this[IpRangesTable.countryName] = "Global / Multiple"
                 this[IpRangesTable.provider] = item.p
                 this[IpRangesTable.type] = item.t
+                this[IpRangesTable.cidr] = item.c
             }
             imported = batch.size
         }

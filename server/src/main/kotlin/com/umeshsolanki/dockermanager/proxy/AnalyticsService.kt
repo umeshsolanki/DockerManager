@@ -39,7 +39,7 @@ class AnalyticsServiceImpl(
     private val jailManagerService: IJailManagerService,
 ) : IAnalyticsService {
     private val logger = LoggerFactory.getLogger(AnalyticsServiceImpl::class.java)
-    private val logFile = AppConfig.proxyLogFile
+    private val logFile = AppConfig.nginxAccessLogFile
     private val analyticsPersistence = AnalyticsPersistenceService()
     private val commandExecutor = CommandExecutor(loggerName = AnalyticsServiceImpl::class.java.name)
 

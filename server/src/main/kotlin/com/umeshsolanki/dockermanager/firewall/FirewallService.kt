@@ -14,7 +14,9 @@ import java.io.File
 import java.util.UUID
 import kotlin.concurrent.withLock
 
-class FirewallServiceImpl : IFirewallService {
+class FirewallServiceImpl(
+    private val ipReputationService: com.umeshsolanki.dockermanager.ip.IIpReputationService
+) : IFirewallService {
     private val logger = org.slf4j.LoggerFactory.getLogger(FirewallServiceImpl::class.java)
     private val dataDir = AppConfig.firewallDataDir
     private val iptablesCmd = AppConfig.iptablesCmd
@@ -109,7 +111,7 @@ class FirewallServiceImpl : IFirewallService {
                 // Record to Reputation DB asynchronously
                 reputationScope.launch {
                     try {
-                        com.umeshsolanki.dockermanager.ip.IpReputationService.recordBlock(
+                        ipReputationService.recordBlock(
                             ipAddress = request.ip,
                             reason = request.comment ?: "Manual Block",
                             countryCode = request.country

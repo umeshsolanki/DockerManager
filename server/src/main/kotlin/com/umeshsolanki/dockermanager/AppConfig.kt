@@ -12,7 +12,6 @@ import com.umeshsolanki.dockermanager.email.AlertConfig
 import com.umeshsolanki.dockermanager.proxy.ProxyJailRuleType
 import com.umeshsolanki.dockermanager.kafka.KafkaSettings
 import com.umeshsolanki.dockermanager.kafka.KafkaRule
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -480,10 +479,11 @@ object AppConfig {
     }
 
     // Proxy Service Configs
-    val proxyDir: File get() = File(dataRoot, FileConstants.NGINX)
-    val proxyConfigDir: File get() = File(proxyDir, FileConstants.CONFIG_D)
-    val proxyLogFile: File get() = File(proxyDir, "${FileConstants.LOGS}/${FileConstants.ACCESS_LOG}")
-    val proxyHostsFile: File get() = File(dataRoot, "${FileConstants.PROXY}/${FileConstants.HOSTS_JSON}")
+    val nginxDir: File get() = File(dataRoot, FileConstants.NGINX)
+    val nginxLogDir: File get() = File(nginxDir, FileConstants.LOGS)
+    val nginxAccessLogFile: File get() = File(nginxDir, "${FileConstants.LOGS}/${FileConstants.ACCESS_LOG}")
+    val nginxConfigDir: File get() = File(nginxDir, FileConstants.CONFIG_D)
+    val nginxHostsFile: File get() = File(dataRoot, "${FileConstants.PROXY}/${FileConstants.HOSTS_JSON}")
 
     // Log Service Configs
     val systemLogDir: File get() = if (isDocker) File(SystemConstants.HOST_VAR_LOG) else File(SystemConstants.VAR_LOG)

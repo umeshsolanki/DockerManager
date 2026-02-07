@@ -15,7 +15,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
@@ -75,8 +74,8 @@ class ProxyServiceImpl(
     private val sslService: ISSLService
 ) : IProxyService {
     private val logger = org.slf4j.LoggerFactory.getLogger(ProxyServiceImpl::class.java)
-    private val configDir = AppConfig.proxyConfigDir
-    private val hostsFile = AppConfig.proxyHostsFile
+    private val configDir = AppConfig.nginxConfigDir
+    private val hostsFile = AppConfig.nginxHostsFile
     private val jsonPersistence = JsonPersistence.create<List<ProxyHost>>(
         file = hostsFile,
         defaultContent = emptyList(),
@@ -94,7 +93,7 @@ class ProxyServiceImpl(
             }
         }
 
-    private val nginxPath = AppConfig.proxyDir.absolutePath
+    private val nginxPath = AppConfig.nginxDir.absolutePath
     private val certbotPath = AppConfig.certbotDir.absolutePath
     private val customCertsPath = AppConfig.customCertDir.absolutePath
 
@@ -409,7 +408,7 @@ class ProxyServiceImpl(
     }
 
     private fun generateZonesConfig(hosts: List<ProxyHost>) {
-        val zonesFile = File(AppConfig.proxyDir, "zones.conf")
+        val zonesFile = File(AppConfig.nginxDir, "zones.conf")
         val sb = StringBuilder()
         sb.append("# Auto-generated zones configuration for rate limiting\n")
 
@@ -1239,7 +1238,7 @@ class ProxyServiceImpl(
     }
 
     private fun ensureProxyDirectories() {
-        val nginxDir = AppConfig.proxyDir
+        val nginxDir = AppConfig.nginxDir
         val certbotDir = AppConfig.certbotDir
 
         nginxDir.mkdirs()
@@ -1443,7 +1442,7 @@ class ProxyServiceImpl(
     }
 
     private fun ensureNginxMainConfig(forceOverwrite: Boolean = false) {
-        val nginxConf = File(AppConfig.proxyDir, "nginx.conf")
+        val nginxConf = File(AppConfig.nginxDir, "nginx.conf")
         var shouldUpdate = forceOverwrite || !nginxConf.exists()
 
         if (!shouldUpdate) {
@@ -1461,7 +1460,7 @@ class ProxyServiceImpl(
         }
 
         // Always ensure zones.conf exists, even if empty
-        val zonesFile = File(AppConfig.proxyDir, "zones.conf")
+        val zonesFile = File(AppConfig.nginxDir, "zones.conf")
         if (!zonesFile.exists()) {
             generateZonesConfig(loadHosts())
         }

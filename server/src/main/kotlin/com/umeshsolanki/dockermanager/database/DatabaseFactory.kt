@@ -54,6 +54,7 @@ object DatabaseFactory {
             SchemaUtils.create(FcmTokensTable)
             SchemaUtils.create(KafkaProcessedEventsTable)
             SchemaUtils.create(IpReputationTable)
+            SchemaUtils.create(SavedQueriesTable)
         }
     }
 

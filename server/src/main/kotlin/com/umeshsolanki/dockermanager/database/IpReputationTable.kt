@@ -14,6 +14,9 @@ object IpReputationTable : Table("ip_reputation") {
     val lastBlocked = datetime("last_blocked").nullable()
     val reasons = text("reasons").default("[]") // JSON array of unique reasons
     val country = varchar("country", 5).nullable()
+    val isp = varchar("isp", 255).nullable()
+    val tag = text("tag").nullable()
+    val range = varchar("range", 50).nullable()
 
     override val primaryKey = PrimaryKey(ip)
 }
@@ -27,5 +30,8 @@ data class IpReputation(
     val blockedTimes: Int = 0,
     val lastBlocked: String? = null,
     val reasons: List<String> = emptyList(),
-    val country: String? = null
+    val country: String? = null,
+    val isp: String? = null,
+    val tags: List<String> = emptyList(),
+    val range: String? = null
 )

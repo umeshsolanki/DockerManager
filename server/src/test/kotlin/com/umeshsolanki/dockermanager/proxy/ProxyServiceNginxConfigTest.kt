@@ -1,18 +1,15 @@
 package com.umeshsolanki.dockermanager.proxy
 
 import com.umeshsolanki.dockermanager.AppConfig
-import com.umeshsolanki.dockermanager.jail.JailManagerService
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
-import java.io.File
 import java.nio.file.Path
 import kotlin.reflect.full.declaredMemberFunctions
 import kotlin.reflect.jvm.isAccessible
@@ -25,7 +22,7 @@ class ProxyServiceNginxConfigTest {
     @BeforeEach
     fun setup() {
         mockkObject(AppConfig)
-        every { AppConfig.proxyDir } returns tempDir.toFile()
+        every { AppConfig.nginxDir } returns tempDir.toFile()
     }
 
     @AfterEach
