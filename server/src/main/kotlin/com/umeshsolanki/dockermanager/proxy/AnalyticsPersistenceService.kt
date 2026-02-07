@@ -39,7 +39,7 @@ data class DailyProxyStats(
 
 class AnalyticsPersistenceService {
     private val logger = LoggerFactory.getLogger(AnalyticsPersistenceService::class.java)
-    private val analyticsDir = File(AppConfig.projectRoot, "analytics").apply {
+    private val analyticsDir = File(AppConfig.proxyLogFile, "analytics").apply {
         if (!exists()) mkdirs()
     }
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")

@@ -38,8 +38,6 @@ object ServiceContainer {
 
     val proxyService: IProxyService = ProxyServiceImpl(jailManagerService, sslService)
     
-    val syslogService: ISyslogService = SyslogServiceImpl()
-    
     val kafkaService: IKafkaService = KafkaServiceImpl().apply {
         registerHandler(object : KafkaMessageHandler {
             override fun canHandle(topic: String): Boolean = true // Handle all topics to check rules
@@ -97,7 +95,6 @@ object ServiceContainer {
         // Services are initialized lazily when accessed
         // This method can be used for any initialization logic if needed
         kafkaService.start(AppConfig.settings.kafkaSettings)
-        syslogService.start()
         ipEnrichmentWorker.start()
     }
 }

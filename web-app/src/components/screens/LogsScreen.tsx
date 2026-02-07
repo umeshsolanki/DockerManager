@@ -253,18 +253,6 @@ export default function LogsScreen() {
                     >
                         Journalctl
                     </button>
-                    <button
-                        onClick={() => setViewMode('SYSLOG')}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'SYSLOG' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:bg-white/5'}`}
-                    >
-                        Syslog
-                    </button>
-                    <button
-                        onClick={() => setViewMode('JOURNAL')}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'JOURNAL' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:bg-white/5'}`}
-                    >
-                        Journalctl
-                    </button>
                 </div>
                 {(isLoading || isSyslogLoading || isJournalLoading) && <RefreshCw className="animate-spin text-primary" size={24} />}
             </div>
@@ -497,62 +485,6 @@ export default function LogsScreen() {
                 </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 mb-5 px-1">
-                <span className="text-[10px] uppercase font-bold text-on-surface-variant/60 mr-1 tracking-wider">Quick Filters:</span>
-                <div className="flex bg-surface border border-outline/10 rounded-lg p-0.5 mr-4">
-                    {(['today', 'yesterday', 'week', 'month'] as const).map(r => (
-                        <button
-                            key={r}
-                            onClick={() => setQuickTimeRange(r)}
-                            className="px-2 py-1 text-[9px] uppercase font-bold hover:bg-white/5 rounded-md transition-all text-on-surface-variant/80 hover:text-primary"
-                        >
-                            {r === 'week' ? 'this week' : r === 'month' ? 'this month' : r}
-                        </button>
-                    ))}
-                    <button
-                        onClick={() => { setSince(''); setUntil(''); }}
-                        className="px-2 py-1 text-[9px] uppercase font-bold hover:bg-red-500/10 rounded-md transition-all text-red-400"
-                    >
-                        Reset Time
-                    </button>
-                </div>
-                <QuickFilterBtn
-                    label="Errors"
-                    awk="/[Ee]rror|ERROR/"
-                    current={awkFilter}
-                    onClick={(awk) => { setAwkFilter(awk); handleApplyFilter(awk); }}
-                />
-                <QuickFilterBtn
-                    label="Failures"
-                    awk="/[Ff]ail|FAILED/"
-                    current={awkFilter}
-                    onClick={(awk) => { setAwkFilter(awk); handleApplyFilter(awk); }}
-                />
-                <QuickFilterBtn
-                    label="Logins (utmp)"
-                    awk="/\[7\]/"
-                    current={awkFilter}
-                    onClick={(awk) => { setAwkFilter(awk); handleApplyFilter(awk); }}
-                />
-                <QuickFilterBtn
-                    label="SSH"
-                    awk="/ssh/"
-                    current={awkFilter}
-                    onClick={(awk) => { setAwkFilter(awk); handleApplyFilter(awk); }}
-                />
-                <QuickFilterBtn
-                    label="IP Counts"
-                    awk='| awk "{for(i=1;i<=NF;i++) if(\\$i ~ /([0-9]{1,3}\\.){3}[0-9]{1,3}/) a[\\$i]++} END {for(i in a) print a[i], i | \"sort -rn\"}"'
-                    current={awkFilter}
-                    onClick={(awk) => { setAwkFilter(awk); handleApplyFilter(awk); }}
-                />
-                <button
-                    onClick={() => { setAwkFilter(''); handleApplyFilter(''); }}
-                    className="ml-auto px-2 py-1 text-[10px] text-primary/70 hover:text-primary transition-colors underline decoration-dotted underline-offset-4"
-                >
-                    Clear Filter
-                </button>
-            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
                 {viewMode === 'SYSTEM' && (
@@ -1051,17 +983,3 @@ export default function LogsScreen() {
     );
 }
 
-function QuickFilterBtn({ label, awk, current, onClick }: { label: string, awk: string, current: string, onClick: (awk: string) => void }) {
-    const isActive = current === awk;
-    return (
-        <button
-            onClick={() => onClick(awk)}
-            className={`px-2 py-1 text-[10px] rounded-lg border transition-all ${isActive
-                ? 'bg-primary/20 border-primary/40 text-primary'
-                : 'bg-white/5 border-white/10 text-on-surface-variant hover:bg-white/10 hover:border-white/20'
-                }`}
-        >
-            {label}
-        </button>
-    );
-}

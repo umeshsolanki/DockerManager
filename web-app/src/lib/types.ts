@@ -613,7 +613,7 @@ export interface EmailUserDetail {
   quotaCount?: EmailQuota;
 }
 
-export type Screen = 'Dashboard' | 'Docker' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Files' | 'Settings' | 'Security' | 'Analytics' | 'DB' | 'Kafka';
+export type Screen = 'Dashboard' | 'Docker' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Files' | 'Settings' | 'Security' | 'Analytics' | 'DB' | 'Kafka' | 'IP';
 
 
 export interface AuthRequest {
@@ -735,20 +735,14 @@ export interface SqlQueryRequest {
   externalDbId?: string;
 }
 
-export interface SyslogLogEntry {
-  id: number;
-  timestamp: string;
-  facility: number | null;
-  severity: number | null;
-  host: string | null;
-  appName: string | null;
-  procId: string | null;
-  messageId: string | null;
-  message: string;
-}
 
-export interface SyslogConfig {
-  enabled: boolean;
-  port: number;
-  isRunning: boolean;
+export interface IpReputation {
+  ip: string;
+  firstObserved: string;
+  lastActivity: string;
+  firstBlocked?: string;
+  blockedTimes: number;
+  lastBlocked?: string;
+  reasons: string[];
+  country?: string;
 }

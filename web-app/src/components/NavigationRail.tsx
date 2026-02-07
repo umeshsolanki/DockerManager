@@ -25,6 +25,7 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
         { label: 'Files', icon: <FileText size={20} /> },
         { label: 'DB', icon: <Database size={20} /> },
         { label: 'Kafka', icon: <Zap size={20} /> },
+        { label: 'IP', icon: <Globe size={20} /> }, // Using Globe temporarily
     ];
 
 

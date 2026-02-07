@@ -72,11 +72,10 @@ class LogServiceImpl : ILogService {
                 }
                 command.add(lastCmd.toString())
             } else {
-                command.add("cat ${file.absolutePath}")
+                command.add("cat \"${file.absolutePath}\"")
             }
 
             val processBuilder = ProcessBuilder("sh", "-c", buildString {
-                append("timeout 10s ")
                 append(command.joinToString(" "))
                 
                 // Add time filtering for text logs if not wtmp/btmp
@@ -105,7 +104,7 @@ class LogServiceImpl : ILogService {
             val process = processBuilder.start()
             val output = process.inputStream.bufferedReader().use { it.readText() }
             val error = process.errorStream.bufferedReader().use { it.readText() }
-            val completed = process.waitFor(6, TimeUnit.SECONDS)
+            val completed = process.waitFor(10, TimeUnit.SECONDS)
 
             if (!completed) {
                 process.destroyForcibly()
@@ -154,7 +153,7 @@ class LogServiceImpl : ILogService {
                 }
             }
 
-            val processBuilder = ProcessBuilder("sh", "-c", "timeout 15s $command")
+            val processBuilder = ProcessBuilder("sh", "-c", "$command")
             val process = processBuilder.start()
             val output = process.inputStream.bufferedReader().use { it.readText() }
             val error = process.errorStream.bufferedReader().use { it.readText() }

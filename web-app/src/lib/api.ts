@@ -12,7 +12,7 @@ import {
     DockerStack, StackService, StackTask, DeployStackRequest, MigrateComposeToStackRequest, StopStackRequest,
     SaveProjectFileRequest, KafkaTopicInfo, KafkaMessage, CreateNetworkRequest, StorageInfo,
     ExternalDbConfig, SqlQueryRequest, KafkaRule, KafkaProcessedEvent, CustomPage,
-    SyslogLogEntry, SyslogConfig
+    IpReputation
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -233,6 +233,8 @@ export const DockerClient = {
         return textReq(url);
     },
 
+
+
     getSyslogLogs: (tail = 100, filter?: string) => {
         let url = `/logs/system/syslog?tail=${tail}`;
         if (filter) url += `&filter=${encodeURIComponent(filter)}`;
@@ -401,4 +403,8 @@ export const DockerClient = {
     getKafkaRules: () => req<KafkaRule[]>('/kafka/rules', {}, []),
     updateKafkaRules: (rules: KafkaRule[]) => safeReq<{ success: boolean }>('/kafka/rules', { method: 'POST', body: JSON.stringify(rules) }),
     getKafkaEvents: (limit = 100) => req<KafkaProcessedEvent[]>(`/kafka/events?limit=${limit}`, {}, []),
+
+    // --- IP Reputation ---
+    listIpReputations: (limit = 100, offset = 0, search = "") => req<IpReputation[]>(`/ip-reputation?limit=${limit}&offset=${offset}&search=${encodeURIComponent(search)}`, {}, []),
+    deleteIpReputation: (ip: string) => apiFetch(`/ip-reputation/${encodeURIComponent(ip)}`, { method: 'DELETE' }).then(r => r.ok),
 };

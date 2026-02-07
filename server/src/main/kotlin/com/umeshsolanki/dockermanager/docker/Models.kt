@@ -266,15 +266,3 @@ data class BatchDeleteRequest(
     val force: Boolean = false
 )
 
-@Serializable
-data class SyslogLogEntry(
-    val id: Long = 0,
-    val timestamp: String,
-    val facility: Int?,
-    val severity: Int?,
-    val host: String?,
-    val appName: String?,
-    val procId: String?,
-    val messageId: String?,
-    val message: String
-)

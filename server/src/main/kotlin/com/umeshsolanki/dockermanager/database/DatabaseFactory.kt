@@ -53,7 +53,7 @@ object DatabaseFactory {
             SchemaUtils.create(IpRangesTable)
             SchemaUtils.create(FcmTokensTable)
             SchemaUtils.create(KafkaProcessedEventsTable)
-            SchemaUtils.create(SyslogTable)
+            SchemaUtils.create(IpReputationTable)
         }
     }
 

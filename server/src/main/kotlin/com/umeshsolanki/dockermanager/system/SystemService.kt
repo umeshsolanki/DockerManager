@@ -113,7 +113,7 @@ object SystemService {
         osName = osName,
         syslogEnabled = AppConfig.settings.syslogEnabled,
         syslogPort = AppConfig.settings.syslogPort,
-        syslogIsRunning = ServiceContainer.syslogService.isRunning(),
+        syslogIsRunning = false,
         proxyRsyslogEnabled = AppConfig.settings.proxyRsyslogEnabled
     )
     
@@ -140,10 +140,7 @@ object SystemService {
         
         if (syslogChanged) {
             AppConfig.updateSyslogSettings(syslogEnabled, syslogPort)
-            ServiceContainer.syslogService.stop()
-            if (syslogEnabled) {
-                ServiceContainer.syslogService.start()
-            }
+            // Syslog service removed
         }
         
         request.proxyRsyslogEnabled?.let {

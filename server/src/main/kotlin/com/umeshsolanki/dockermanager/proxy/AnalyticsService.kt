@@ -156,11 +156,10 @@ class AnalyticsServiceImpl(
             while (isActive) {
                 try {
                    checkLogRotation()
-                   delay(60000) // Check every minute
                 } catch (e: Exception) {
                     logger.error("Error in daily reset worker", e)
-                    delay(60000) // Fallback delay
                 }
+                delay(60000) // Check every minute
             }
         }
     }
