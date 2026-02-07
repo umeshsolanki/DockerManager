@@ -852,49 +852,58 @@ class AnalyticsServiceImpl(
     /**
      * Extract all unique dates from the current access.log file (scans entire file)
      */
+    /**
+     * Extract all unique dates from all current access log files
+     */
     private fun extractAllDatesFromCurrentLog(): Set<String> {
-        if (!logFile.exists()) return emptySet()
+        val logFiles = logDir.listFiles { _, name -> 
+            name.endsWith("_access.log") || name == "access.log" 
+        } ?: return emptySet()
 
         val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
         val dateFormatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
         val dates = mutableSetOf<String>()
 
-        return try {
-            java.io.RandomAccessFile(logFile, "r").use { raf ->
-                raf.seek(0)
-                var line: String? = raf.readLine()
-
-                while (line != null) {
-                    val trimmedLine = line.trim()
-                    if (trimmedLine.isNotEmpty()) {
-                        // Try to extract date from log line
-                        val dateMatch = """\[([^\]]+)\]""".toRegex().find(trimmedLine)
-                        dateMatch?.let { match ->
-                            val dateStr = match.groupValues[1]
-                            try {
-                                val timestamp = dateFormat.parse(dateStr)
-                                val logDate = java.time.LocalDate.ofInstant(
-                                    timestamp.toInstant(), java.time.ZoneId.systemDefault()
-                                )
-                                dates.add(logDate.format(dateFormatter))
-                            } catch (e: Exception) {
-                                // Ignore parse errors
+        for (logFile in logFiles) {
+            if (!logFile.exists()) continue
+            
+            try {
+                java.io.RandomAccessFile(logFile, "r").use { raf ->
+                    raf.seek(0)
+                    var line: String? = raf.readLine()
+    
+                    while (line != null) {
+                        val trimmedLine = line.trim()
+                        if (trimmedLine.isNotEmpty()) {
+                            // Try to extract date from log line
+                            val dateMatch = """\[([^\]]+)\]""".toRegex().find(trimmedLine)
+                            dateMatch?.let { match ->
+                                val dateStr = match.groupValues[1]
+                                try {
+                                    val timestamp = dateFormat.parse(dateStr)
+                                    val logDate = java.time.LocalDate.ofInstant(
+                                        timestamp.toInstant(), java.time.ZoneId.systemDefault()
+                                    )
+                                    dates.add(logDate.format(dateFormatter))
+                                } catch (e: Exception) {
+                                    // Ignore parse errors
+                                }
                             }
                         }
+                        line = raf.readLine()
                     }
-                    line = raf.readLine()
                 }
+            } catch (e: Exception) {
+                logger.error("Error extracting dates from log file ${logFile.name}", e)
             }
-            logger.info(
-                "Found ${dates.size} unique dates in current access.log: ${
-                    dates.sorted().joinToString(", ")
-                }"
-            )
-            dates
-        } catch (e: Exception) {
-            logger.error("Error extracting all dates from logs", e)
-            emptySet()
         }
+        
+        logger.info(
+            "Found ${dates.size} unique dates in current access logs: ${
+                dates.sorted().joinToString(", ")
+            }"
+        )
+        return dates
     }
 
     /**
@@ -902,12 +911,8 @@ class AnalyticsServiceImpl(
      * Processes logs for each unique date and saves stats
      */
     override fun updateStatsForAllDaysInCurrentLog(): Map<String, Boolean> {
-        logger.info("Starting to update stats for all days in current access.log")
+        logger.info("Starting to update stats for all days in current access log files")
 
-        if (!logFile.exists() || logFile.length() == 0L) {
-            logger.warn("Access log file does not exist or is empty")
-            return emptyMap()
-        }
 
         // Extract all unique dates from current log file
         val dates = extractAllDatesFromCurrentLog()
@@ -1024,71 +1029,69 @@ class AnalyticsServiceImpl(
     /**
      * Extract all unique dates from the log file
      */
+    /**
+     * Extract all unique dates from the log files
+     */
     private fun extractDatesFromLogs(): Set<String> {
-        if (!logFile.exists()) {
-            logger.debug("Log file does not exist: ${logFile.absolutePath}")
-            return emptySet()
-        }
-
+        val logFiles = logDir.listFiles { _, name -> 
+            name.endsWith("_access.log") || name == "access.log" 
+        } ?: return emptySet()
+        
         val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
         val dateFormatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
         val dates = mutableSetOf<String>()
 
-        return try {
-            // Use BufferedReader for better UTF-8 support and error handling
-            logFile.bufferedReader(Charsets.UTF_8).use { reader ->
-                var line: String? = reader.readLine()
-                var lineCount = 0
-                val maxLinesToScan = 100000 // Limit scanning to avoid performance issues
-
-                while (line != null && lineCount < maxLinesToScan) {
-                    try {
-                        val trimmedLine = line.trim()
-                        if (trimmedLine.isNotEmpty()) {
-                            // Try to extract date from log line - support multiple formats
-                            val dateMatch = """\[([^\]]+)\]""".toRegex().find(trimmedLine)
-                            dateMatch?.let { match ->
-                                val dateStr = match.groupValues[1]
-                                try {
-                                    val timestamp = dateFormat.parse(dateStr)
-                                    val logDate = java.time.LocalDate.ofInstant(
-                                        timestamp.toInstant(), java.time.ZoneId.systemDefault()
-                                    )
-                                    dates.add(logDate.format(dateFormatter))
-                                } catch (e: Exception) {
-                                    // Try alternative date format (dd/MMM/yyyy:HH:mm:ss)
+        for (logFile in logFiles) {
+            try {
+                // Use BufferedReader for better UTF-8 support and error handling
+                logFile.bufferedReader(Charsets.UTF_8).use { reader ->
+                    var line: String? = reader.readLine()
+                    var lineCount = 0
+                    val maxLinesToScan = 50000 // Limit scanning per file
+    
+                    while (line != null && lineCount < maxLinesToScan) {
+                        try {
+                            val trimmedLine = line.trim()
+                            if (trimmedLine.isNotEmpty()) {
+                                // Try to extract date from log line - support multiple formats
+                                val dateMatch = """\[([^\]]+)\]""".toRegex().find(trimmedLine)
+                                dateMatch?.let { match ->
+                                    val dateStr = match.groupValues[1]
                                     try {
-                                        val altDateFormat =
-                                            SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss", Locale.US)
-                                        val altTimestamp = altDateFormat.parse(dateStr)
+                                        val timestamp = dateFormat.parse(dateStr)
                                         val logDate = java.time.LocalDate.ofInstant(
-                                            altTimestamp.toInstant(),
-                                            java.time.ZoneId.systemDefault()
+                                            timestamp.toInstant(), java.time.ZoneId.systemDefault()
                                         )
                                         dates.add(logDate.format(dateFormatter))
-                                    } catch (e2: Exception) {
-                                        // Ignore parse errors - log format might be different
-                                        logger.debug(
-                                            "Could not parse date from log line: $dateStr",
-                                            e2
-                                        )
+                                    } catch (e: Exception) {
+                                        // Try alternative date format (dd/MMM/yyyy:HH:mm:ss)
+                                        try {
+                                            val altDateFormat =
+                                                SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss", Locale.US)
+                                            val altTimestamp = altDateFormat.parse(dateStr)
+                                            val logDate = java.time.LocalDate.ofInstant(
+                                                altTimestamp.toInstant(),
+                                                java.time.ZoneId.systemDefault()
+                                            )
+                                            dates.add(logDate.format(dateFormatter))
+                                        } catch (e2: Exception) {
+                                            // Ignore parse errors
+                                        }
                                     }
                                 }
                             }
+                        } catch (e: Exception) {
+                            // Ignore line errors
                         }
-                    } catch (e: Exception) {
-                        logger.debug("Error processing log line $lineCount", e)
+                        line = reader.readLine()
+                        lineCount++
                     }
-                    line = reader.readLine()
-                    lineCount++
                 }
-                logger.debug("Extracted ${dates.size} unique dates from logs (scanned $lineCount lines)")
+            } catch (e: Exception) {
+                logger.error("Error extracting dates from log file: ${logFile.name}", e)
             }
-            dates
-        } catch (e: Exception) {
-            logger.error("Error extracting dates from logs: ${logFile.absolutePath}", e)
-            emptySet()
         }
+        return dates
     }
 
     override fun getStatsForDateRange(startDate: String, endDate: String): List<DailyProxyStats> {

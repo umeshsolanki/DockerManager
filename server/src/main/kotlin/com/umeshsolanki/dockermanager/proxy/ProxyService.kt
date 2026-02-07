@@ -929,8 +929,8 @@ class ProxyServiceImpl(
 
             // 2. Remote Syslog (Enabled if rsyslog is enabled)
             if (rsyslogEnabled) {
-                accessLogDirectives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_access,severity=info main;")
-                errorLogDirectives.add("error_log syslog:server=$syslogServer,tag=${syslogTag}_error,severity=warn;")
+                accessLogDirectives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_access,severity=info,nohostname main;")
+                errorLogDirectives.add("error_log syslog:server=$syslogServer,tag=${syslogTag}_error,nohostname warn;")
             }
 
             val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
@@ -949,7 +949,7 @@ class ProxyServiceImpl(
             }
             
             if (rsyslogEnabled) {
-                directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_danger,severity=crit main;")
+                directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_danger,severity=crit,nohostname main;")
             }
             
             val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
