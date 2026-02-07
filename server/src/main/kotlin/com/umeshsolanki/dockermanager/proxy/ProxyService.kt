@@ -956,18 +956,26 @@ class ProxyServiceImpl(
 
         val dangerHitsConfig = run {
             val template = getCachedTemplate("templates/proxy/danger-logging.conf")
+            val syslogLine = if (rsyslogEnabled) 
+                "access_log syslog:server=$syslogServer,tag=${syslogTag}_danger,severity=crit main;" 
+            else ""
+            
             val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                "syslogServer" to syslogServer,
-                "tag" to syslogTag
+                "syslogDangerLog" to syslogLine,
+                "tag" to tag // Use raw tag (domain) for filename
             ))
             snippet.lines().joinToString("\n    ") { it }
         }
 
         val burstLoggingConfig = run {
             val template = getCachedTemplate("templates/proxy/burst-logging.conf")
+            val syslogLine = if (rsyslogEnabled) 
+                "access_log syslog:server=$syslogServer,tag=${syslogTag}_burst,severity=warn main;" 
+            else ""
+
             val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                "syslogServer" to syslogServer,
-                "tag" to syslogTag
+                "syslogBurstLog" to syslogLine,
+                "tag" to tag // Use raw tag (domain) for filename
             ))
             snippet.lines().joinToString("\n    ") { it }
         }
