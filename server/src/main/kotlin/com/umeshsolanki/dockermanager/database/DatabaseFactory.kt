@@ -48,13 +48,15 @@ object DatabaseFactory {
         Database.connect(newDataSource)
 
         transaction {
-            SchemaUtils.create(SettingsTable)
-            SchemaUtils.create(ProxyLogsTable)
-            SchemaUtils.create(IpRangesTable)
-            SchemaUtils.create(FcmTokensTable)
-            SchemaUtils.create(KafkaProcessedEventsTable)
-            SchemaUtils.create(IpReputationTable)
-            SchemaUtils.create(SavedQueriesTable)
+            SchemaUtils.createMissingTablesAndColumns(
+                SettingsTable,
+                ProxyLogsTable,
+                IpRangesTable,
+                FcmTokensTable,
+                KafkaProcessedEventsTable,
+                IpReputationTable,
+                SavedQueriesTable
+            )
         }
     }
 
