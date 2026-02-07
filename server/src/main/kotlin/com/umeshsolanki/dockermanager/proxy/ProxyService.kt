@@ -904,7 +904,7 @@ class ProxyServiceImpl(
         val settings = AppConfig.settings
         val rsyslogEnabled = settings.proxyRsyslogEnabled
         val syslogServer = "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
-        val syslogTag = tag.replace(".", "_")
+        val syslogTag = tag.replace(Regex("[^a-zA-Z0-9_]"), "_")
 
         val standardLoggingConfig = run {
             val template = getCachedTemplate("templates/proxy/standard-logging.conf")
