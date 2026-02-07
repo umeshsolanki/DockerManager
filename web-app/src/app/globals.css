@@ -43,19 +43,36 @@ body {
 
 @layer components {
   .nav-rail-item {
-    @apply flex flex-col items-center justify-center py-4 px-2 cursor-pointer transition-colors duration-200 gap-1;
+    @apply flex flex-col items-center justify-center py-4 px-2 cursor-pointer transition-all duration-300 gap-1 relative overflow-hidden;
   }
 
   .nav-rail-item-active {
-    @apply text-primary;
+    @apply text-primary bg-primary/5 shadow-[inset_0_0_20px_rgba(208,188,255,0.05)];
+  }
+
+  .nav-rail-item-active::after {
+    content: '';
+    @apply absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-8 bg-primary rounded-r-full shadow-[0_0_10px_rgba(208,188,255,0.5)];
   }
 
   .nav-rail-item:hover {
     @apply bg-white/5;
   }
 
+  .nav-rail-item:hover svg {
+    @apply scale-110 -translate-y-0.5 transition-transform duration-300;
+  }
+
+  .nav-rail-item-active svg {
+    @apply drop-shadow-[0_0_8px_rgba(208,188,255,0.4)];
+  }
+
   [data-theme="light"] .nav-rail-item:hover {
     @apply bg-black/5;
+  }
+
+  [data-theme="light"] .nav-rail-item-active {
+    @apply bg-primary/10;
   }
 
   [data-theme="light"] .nav-rail-item {

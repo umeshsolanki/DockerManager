@@ -1,6 +1,6 @@
 'use client';
 
-import { LayoutDashboard, Database, Layers, Settings, Lock, Network, HardDrive, FileText, Shield, Globe, Box, Mail, LogOut, Activity, Zap } from 'lucide-react';
+import { LayoutDashboard, Database, Layers, Settings, Lock, Network, HardDrive, FileText, Shield, Globe, Box, Mail, LogOut, Activity, Zap, FileSearch, FolderInput, ShieldAlert, Cpu } from 'lucide-react';
 
 import { Screen } from '@/lib/types';
 import BatteryIndicator from './BatteryIndicator';
@@ -19,13 +19,13 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
         { label: 'Analytics', icon: <Activity size={20} /> },
         { label: 'Security', icon: <Lock size={20} /> },
         { label: 'Firewall', icon: <Shield size={20} /> },
-        { label: 'Logs', icon: <FileText size={20} /> },
+        { label: 'Logs', icon: <FileSearch size={20} /> },
         { label: 'Proxy', icon: <Globe size={20} /> },
         { label: 'Emails', icon: <Mail size={20} /> },
-        { label: 'Files', icon: <FileText size={20} /> },
+        { label: 'Files', icon: <FolderInput size={20} /> },
         { label: 'DB', icon: <Database size={20} /> },
         { label: 'Kafka', icon: <Zap size={20} /> },
-        { label: 'IP', icon: <Globe size={20} /> }, // Using Globe temporarily
+        { label: 'IP', icon: <ShieldAlert size={20} /> },
     ];
 
 
