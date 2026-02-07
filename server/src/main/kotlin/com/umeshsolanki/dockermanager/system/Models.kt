@@ -26,6 +26,7 @@ data class SystemConfig(
     val dbPersistenceLogsEnabled: Boolean,
     val osName: String,
     val syslogEnabled: Boolean,
+    val syslogServer: String,
     val syslogPort: Int,
     val syslogIsRunning: Boolean,
     val proxyRsyslogEnabled: Boolean
@@ -42,6 +43,7 @@ data class UpdateSystemConfigRequest(
     val kafkaSettings: KafkaSettings? = null,
     val dbPersistenceLogsEnabled: Boolean? = null,
     val syslogEnabled: Boolean? = null,
+    val syslogServer: String? = null,
     val syslogPort: Int? = null,
     val proxyRsyslogEnabled: Boolean? = null
 )
