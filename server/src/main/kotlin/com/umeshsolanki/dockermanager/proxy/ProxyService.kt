@@ -354,7 +354,7 @@ class ProxyServiceImpl(
             }
 
             // 3. Migrate to DB if active and hosts were loaded from file
-            if (AppConfig.storageBackend == "database" && hosts != null && hosts.isNotEmpty()) {
+            if (AppConfig.storageBackend == "database" && hosts.isNotEmpty()) {
                 scope.launch {
                     try {
                         val content = AppConfig.json.encodeToString(hosts)
@@ -376,7 +376,7 @@ class ProxyServiceImpl(
                 }
             }
 
-            val finalHosts = hosts ?: mutableListOf() // Ensure hosts is not null
+            val finalHosts = hosts // Ensure hosts is not null
             syncToRedis(finalHosts)
             cachedHosts = finalHosts.toMutableList()
             logger.debug("Loaded ${finalHosts.size} proxy hosts and cached in memory")
@@ -600,6 +600,32 @@ class ProxyServiceImpl(
         return this.replace(";", "").replace("{", "").replace("}", "").replace("\n", "").replace("\r", "").replace("#", "")
     }
 
+    private fun validateStaticPath(path: String): Pair<Boolean, String> {
+        if (path.contains(";") || path.contains("{") || path.contains("\n")) {
+            return false to "Invalid characters in static path"
+        }
+        if (path.contains("..")) {
+            return false to "Path traversal not allowed in static path"
+        }
+        return true to ""
+    }
+
+    private fun validateProxyTargetUrl(url: String, description: String = "Target"): Pair<Boolean, String> {
+        if (url.any { it.isISOControl() || it == '\n' || it == '\r' }) {
+            return false to "$description URL contains invalid characters"
+        }
+        return try {
+            val uri = java.net.URI(url)
+            if (uri.scheme == null || uri.host == null) {
+                false to "$description must include scheme and host (e.g., http://backend:8080)"
+            } else {
+                true to ""
+            }
+        } catch (e: Exception) {
+            false to "Invalid $description URL format: ${e.message}"
+        }
+    }
+
     private fun validatePathRoute(pathRoute: PathRoute): Pair<Boolean, String> {
         if (pathRoute.path.isBlank()) {
             return false to "Path cannot be empty"
@@ -615,26 +641,12 @@ class ProxyServiceImpl(
 
         if (pathRoute.isStatic) {
             // Validate as local path
-            if (pathRoute.target.contains(";") || pathRoute.target.contains("{") || pathRoute.target.contains("\n")) {
-                return false to "Invalid characters in static path"
-            }
-            // Basic path traversal check for static paths
-            if (pathRoute.target.contains("..")) {
-                return false to "Path traversal not allowed in static path"
-            }
+            val staticValidation = validateStaticPath(pathRoute.target)
+            if (!staticValidation.first) return staticValidation
         } else {
             // Validate target URL format only for PROXY routes
-            try {
-                val uri = java.net.URI(pathRoute.target)
-                if (uri.scheme == null || uri.host == null) {
-                    return false to "Target URL must include scheme and host (e.g., http://backend:8080)"
-                }
-                if (pathRoute.target.contains("\n") || pathRoute.target.contains("\r")) {
-                    return false to "Newlines not allowed in target URL"
-                }
-            } catch (e: Exception) {
-                return false to "Invalid target URL format: ${e.message}"
-            }
+            val urlValidation = validateProxyTargetUrl(pathRoute.target)
+            if (!urlValidation.first) return urlValidation
             
             // Validate custom Nginx config if present
             if (!pathRoute.customConfig.isNullOrBlank()) {
@@ -656,65 +668,46 @@ class ProxyServiceImpl(
         return true to ""
     }
 
+    private fun validateProxyHost(host: ProxyHost): Pair<Boolean, String> {
+        // Validate required fields
+        if (host.domain.isBlank()) {
+            return false to "Domain is required"
+        }
+        if (host.target.isBlank()) {
+            return false to "Target is required"
+        }
+
+        // Validate domain format (Strict check including avoiding control chars)
+        if (!host.domain.matches(Regex("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"))) {
+            return false to "Invalid domain format"
+        }
+        if (host.domain.any { it.isISOControl() }) {
+            return false to "Domain contains invalid characters"
+        }
+
+        // Validate target and upstream
+        if (host.isStatic) {
+            val staticValidation = validateStaticPath(host.target)
+            if (!staticValidation.first) return staticValidation
+        } else {
+            // Validate upstream/target URL format (Prevent CRLF Injection)
+            val effectiveUpstream = host.effectiveUpstream
+            val upstreamValidation = validateProxyTargetUrl(effectiveUpstream, "Upstream")
+            if (!upstreamValidation.first) return upstreamValidation
+
+            val targetValidation = validateProxyTargetUrl(host.target, "Target")
+            if (!targetValidation.first) return targetValidation
+        }
+
+        // Validate paths
+        return validateHostPaths(host.paths)
+    }
+
     override fun createHost(host: ProxyHost): Pair<Boolean, String> {
         return try {
-            // Validate required fields
-            if (host.domain.isBlank()) {
-                return false to "Domain is required"
-            }
-            if (host.target.isBlank()) {
-                return false to "Target is required"
-            }
+            val validation = validateProxyHost(host)
+            if (!validation.first) return validation
 
-            // Validate domain format (basic check)
-            if (!host.domain.matches(Regex("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"))) {
-                return false to "Invalid domain format"
-            }
-            if (host.domain.any { it.isISOControl() }) {
-                return false to "Domain contains invalid characters"
-            }
-
-            // Validate target
-            if (host.isStatic) {
-                if (host.target.contains(";") || host.target.contains("{") || host.target.contains("\n")) {
-                    return false to "Invalid characters in static path"
-                }
-                if (host.target.contains("..")) {
-                    return false to "Path traversal not allowed in static path"
-                }
-            } else {
-                // Validate upstream/target URL format (upstream defaults to target if not provided)
-                val effectiveUpstream = host.effectiveUpstream
-                if (effectiveUpstream.any { it.isISOControl() || it == '\n' || it == '\r' }) {
-                    return false to "Upstream URL contains invalid characters"
-                }
-                try {
-                    val upstreamUri = java.net.URI(effectiveUpstream)
-                    if (upstreamUri.scheme == null || upstreamUri.host == null) {
-                        return false to "Upstream must include scheme and host (e.g., http://backend:8080)"
-                    }
-                } catch (e: Exception) {
-                    return false to "Invalid upstream URL format: ${e.message}"
-                }
-
-                if (host.target.any { it.isISOControl() || it == '\n' || it == '\r' }) {
-                    return false to "Target URL contains invalid characters"
-                }
-                try {
-                    val targetUri = java.net.URI(host.target)
-                    if (targetUri.scheme == null || targetUri.host == null) {
-                        return false to "Target must include scheme and host (e.g., http://backend:8080)"
-                    }
-                } catch (e: Exception) {
-                    return false to "Invalid target URL format: ${e.message}"
-                }
-            }
-
-            // Validate paths
-            val pathValidation = validateHostPaths(host.paths)
-            if (!pathValidation.first) {
-                return pathValidation
-            }
 
             val hosts = loadHosts()
             
@@ -773,63 +766,8 @@ class ProxyServiceImpl(
 
     override fun updateHost(host: ProxyHost): Pair<Boolean, String> {
         return try {
-            // Validate required fields
-            if (host.domain.isBlank()) {
-                return false to "Domain is required"
-            }
-            if (host.target.isBlank()) {
-                return false to "Target is required"
-            }
-
-            // Validate domain format (Strict check including avoiding control chars)
-            if (!host.domain.matches(Regex("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"))) {
-                return false to "Invalid domain format"
-            }
-            if (host.domain.any { it.isISOControl() }) {
-                return false to "Domain contains invalid characters"
-            }
-
-            // Validate target
-            if (host.isStatic) {
-                if (host.target.contains(";") || host.target.contains("{") || host.target.contains("\n")) {
-                    return false to "Invalid characters in static path"
-                }
-                if (host.target.contains("..")) {
-                    return false to "Path traversal not allowed in static path"
-                }
-            } else {
-                // Validate upstream/target URL format (Prevent CRLF Injection)
-                val effectiveUpstream = host.effectiveUpstream
-                if (effectiveUpstream.any { it.isISOControl() || it == '\n' || it == '\r' }) {
-                    return false to "Upstream URL contains invalid characters"
-                }
-                try {
-                    val upstreamUri = java.net.URI(effectiveUpstream)
-                    if (upstreamUri.scheme == null || upstreamUri.host == null) {
-                        return false to "Upstream must include scheme and host (e.g., http://backend:8080)"
-                    }
-                } catch (e: Exception) {
-                    return false to "Invalid upstream URL format: ${e.message}"
-                }
-
-                if (host.target.any { it.isISOControl() || it == '\n' || it == '\r' }) {
-                    return false to "Target URL contains invalid characters"
-                }
-                try {
-                    val targetUri = java.net.URI(host.target)
-                    if (targetUri.scheme == null || targetUri.host == null) {
-                        return false to "Target must include scheme and host (e.g., http://backend:8080)"
-                    }
-                } catch (e: Exception) {
-                    return false to "Invalid target URL format: ${e.message}"
-                }
-            }
-
-            // Validate paths
-            val pathValidation = validateHostPaths(host.paths)
-            if (!pathValidation.first) {
-                return pathValidation
-            }
+            val validation = validateProxyHost(host)
+            if (!validation.first) return validation
 
             val hosts = loadHosts()
             val index = hosts.indexOfFirst { it.id == host.id }
