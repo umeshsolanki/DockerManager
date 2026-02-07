@@ -4,6 +4,7 @@ import com.umeshsolanki.dockermanager.firewall.BlockIPRequest
 import com.umeshsolanki.dockermanager.firewall.FirewallRule
 import com.umeshsolanki.dockermanager.firewall.IFirewallService
 import com.umeshsolanki.dockermanager.ip.IIpInfoService
+import com.umeshsolanki.dockermanager.ip.IIpReputationService
 import com.umeshsolanki.dockermanager.ip.IpInfo
 import io.mockk.*
 import org.junit.After
@@ -33,7 +34,10 @@ class JailManagerServiceTest {
     fun setup() {
         mockFirewallService = mockk<IFirewallService>(relaxed = true)
         mockIpInfoService = mockk<IIpInfoService>(relaxed = true)
-        jailManagerService = JailManagerServiceImpl(mockFirewallService, mockIpInfoService)
+        jailManagerService = JailManagerServiceImpl(
+            mockFirewallService, mockIpInfoService,
+            ipReputationService = mockk<IIpReputationService>(relaxed = true)
+        )
         
         // Mock the firewall list to return empty by default
         every { mockFirewallService.listRules() } returns emptyList()

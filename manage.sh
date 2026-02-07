@@ -14,6 +14,7 @@ build_server() {
     echo "Building Server (ShadowJar)..."
     echo "----------------------------------------"
     ./gradlew :server:shadowJar
+    ./gradlew :server:test
 }
 
 # Function to build UI
