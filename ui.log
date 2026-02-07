@@ -19,32 +19,6 @@ npm warn Unknown user config "email". This will stop working in the next major v
 - Network:       http://192.168.1.9:3000
 
 ✓ Starting...
-⚠ Turbopack's filesystem cache has been deleted because we previously detected an internal error in Turbopack. Builds or page loads may be slower as a result.
-✓ Ready in 3.7s
+✓ Ready in 723ms
 ○ Compiling / ...
- GET /?screen=Logs 200 in 3.4s (compile: 3.0s, render: 358ms)
- GET /?screen=Kafka 200 in 45ms (compile: 19ms, render: 26ms)
- GET /?screen=IP 200 in 17ms (compile: 4ms, render: 13ms)
- GET /?screen=IP 200 in 40ms (compile: 6ms, render: 35ms)
- GET /?screen=Docker 200 in 34ms (compile: 12ms, render: 22ms)
- GET /?screen=Docker&tab=Compose 200 in 24ms (compile: 4ms, render: 20ms)
- GET /?screen=Docker&tab=Images 200 in 22ms (compile: 4ms, render: 18ms)
- GET /?screen=Docker&tab=Networks 200 in 16ms (compile: 4ms, render: 12ms)
- GET /?screen=Docker&tab=Volumes 200 in 15ms (compile: 3ms, render: 12ms)
- GET /?screen=Docker&tab=Secrets 200 in 16ms (compile: 2ms, render: 14ms)
- GET /?screen=Analytics&tab=Secrets 200 in 18ms (compile: 4ms, render: 14ms)
- GET /?screen=Security&tab=Secrets 200 in 29ms (compile: 6ms, render: 23ms)
- GET /?screen=Firewall&tab=Secrets 200 in 29ms (compile: 6ms, render: 23ms)
- GET /?screen=Logs&tab=Secrets 200 in 29ms (compile: 7ms, render: 22ms)
- GET /?screen=Proxy&tab=Secrets 200 in 72ms (compile: 16ms, render: 55ms)
- GET /?screen=Docker&tab=Secrets 200 in 33ms (compile: 10ms, render: 23ms)
- GET /?screen=Docker&tab=Containers 200 in 15ms (compile: 4ms, render: 11ms)
- GET /?screen=Docker&tab=Compose 200 in 23ms (compile: 5ms, render: 18ms)
- GET /?screen=Docker&tab=Compose 200 in 59ms (compile: 14ms, render: 45ms)
- GET /?screen=Docker&tab=Images 200 in 27ms (compile: 6ms, render: 21ms)
- GET /?screen=Docker&tab=Networks 200 in 16ms (compile: 3ms, render: 12ms)
- GET /?screen=Docker&tab=Volumes 200 in 16ms (compile: 5ms, render: 12ms)
- GET /?screen=Docker&tab=Secrets 200 in 14ms (compile: 4ms, render: 10ms)
- GET /?screen=Docker&tab=Compose 200 in 12ms (compile: 4ms, render: 8ms)
- GET /?screen=Docker&tab=Images 200 in 17ms (compile: 5ms, render: 13ms)
- GET /?screen=Docker&tab=Compose 200 in 23ms (compile: 5ms, render: 18ms)
+ GET /?screen=Docker&tab=Compose 200 in 3.6s (compile: 3.3s, render: 294ms)
