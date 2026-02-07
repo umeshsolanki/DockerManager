@@ -58,3 +58,5 @@ npm warn Unknown user config "email". This will stop working in the next major v
  GET /?screen=Logs&tab=Containers 200 in 85ms (compile: 43ms, render: 41ms)
 ✓ Compiled in 610ms
 ✓ Compiled in 220ms
+ GET /?screen=Proxy&tab=Containers 200 in 308ms (compile: 237ms, render: 70ms)
+ GET /?screen=Proxy&tab=Containers 200 in 314ms (compile: 5ms, render: 309ms)

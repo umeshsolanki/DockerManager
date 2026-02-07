@@ -64,6 +64,7 @@ object ProxyService {
     fun updateDefaultBehavior(return404: Boolean) = service.updateDefaultBehavior(return404)
 
     fun updateRsyslogSettings(enabled: Boolean) = service.updateRsyslogSettings(enabled)
+    fun regenerateAllHostConfigs() = service.regenerateAllHostConfigs()
 
     fun getProxySecuritySettings() = AppConfig.settings
 
@@ -109,6 +110,7 @@ interface IProxyService {
     fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>)
     fun updateDefaultBehavior(return404: Boolean): Pair<Boolean, String>
     fun updateRsyslogSettings(enabled: Boolean): Pair<Boolean, String>
+    fun regenerateAllHostConfigs(): Pair<Boolean, String>
 
     // Analytics History
     fun getHistoricalStats(date: String): DailyProxyStats?
@@ -197,6 +199,8 @@ class ProxyServiceImpl(
         return try {
             AppConfig.updateProxyRsyslogSettings(enabled)
             ensureNginxMainConfig(forceOverwrite = true)
+            ensureDefaultServer()
+            regenerateAllHostConfigs()
             
             val reloadResult = reloadNginx()
             if (!reloadResult.first) {
@@ -208,7 +212,36 @@ class ProxyServiceImpl(
             true to "Rsyslog settings updated successfully"
         } catch (e: Exception) {
             logger.error("Failed to update Rsyslog settings", e)
-            false to "Failed to update: ${e.message}"
+            false to "Internal error updating rsyslog settings: ${e.message}"
+        }
+    }
+
+    override fun regenerateAllHostConfigs(): Pair<Boolean, String> {
+        return try {
+            logger.info("Regenerating config files for all enabled hosts...")
+            val hosts = loadHosts()
+            var failCount = 0
+            var lastError = ""
+            
+            for (host in hosts) {
+                if (host.enabled) {
+                    val configResult = generateNginxConfig(host)
+                    if (!configResult.first) {
+                        failCount++
+                        lastError = configResult.second
+                        logger.warn("Failed to generate config for ${host.domain}: ${configResult.second}")
+                    }
+                }
+            }
+            
+            if (failCount > 0) {
+                false to "Failed to regenerate $failCount host configs. Last error: $lastError"
+            } else {
+                true to "All host configs regenerated successfully"
+            }
+        } catch (e: Exception) {
+            logger.error("Error regenerating all host configs", e)
+            false to "Internal error: ${e.message}"
         }
     }
 
@@ -1233,18 +1266,7 @@ class ProxyServiceImpl(
             ensureNginxMainConfig(forceOverwrite = true)
             
             // Re-generate config files for all enabled hosts
-            logger.info("Regenerating config files for all enabled hosts...")
-            val hosts = loadHosts()
-            for (host in hosts) {
-                if (host.enabled) {
-                    val configResult = generateNginxConfig(host)
-                    if (!configResult.first) {
-                        logger.warn("Failed to generate config for ${host.domain} during build: ${configResult.second}")
-                    } else {
-                        logger.debug("Regenerated config for ${host.domain}")
-                    }
-                }
-            }
+            regenerateAllHostConfigs()
             
             val composeFile = ensureComposeFile()
             val buildCmd =

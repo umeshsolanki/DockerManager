@@ -147,7 +147,8 @@ object SystemService {
         
         if (syslogChanged) {
             AppConfig.updateSyslogSettings(syslogEnabled, syslogServer, syslogPort, syslogServerInternal)
-            // Syslog service removed
+            // Trigger proxy config regeneration if syslog settings changed
+            ServiceContainer.proxyService.updateRsyslogSettings(AppConfig.settings.proxyRsyslogEnabled)
         }
         
         request.proxyRsyslogEnabled?.let {
