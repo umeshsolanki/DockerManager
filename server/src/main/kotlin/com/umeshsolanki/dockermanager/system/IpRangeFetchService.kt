@@ -10,10 +10,12 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.json.*
+import com.umeshsolanki.dockermanager.database.DatabaseFactory.dbQuery
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.batchInsert
 import org.jetbrains.exposed.sql.deleteWhere
-import org.jetbrains.exposed.sql.transactions.transaction
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import java.math.BigDecimal
 
@@ -37,10 +39,10 @@ object IpRangeFetchService {
         return importCidrs(cidrs, "AWS", "hosting")
     }
 
-    fun parseAwsJson(jsonString: String): List<String> {
+    suspend fun parseAwsJson(jsonString: String): List<String> = withContext(Dispatchers.Default) {
         val json = AppConfig.json.parseToJsonElement(jsonString).jsonObject
         val prefixes = json["prefixes"]?.jsonArray ?: JsonArray(emptyList())
-        val ipv6Prefixes = json["ipv6_prefixes"]?.jsonArray ?: JsonArray(emptyList())
+        val ipv6Prefixes = json["ipv6_prefixes"]?.jsonArray ?: JsonArray(emptyArray<JsonElement>().toList())
         
         val cidrs = mutableListOf<String>()
         prefixes.forEach { 
@@ -49,7 +51,7 @@ object IpRangeFetchService {
         ipv6Prefixes.forEach { 
             it.jsonObject["ipv6_prefix"]?.jsonPrimitive?.content?.let { cidr -> cidrs.add(cidr) }
         }
-        return cidrs
+        cidrs
     }
 
     suspend fun fetchGoogleRanges(): Int {
@@ -59,7 +61,7 @@ object IpRangeFetchService {
         return importCidrs(cidrs, "Google", "hosting")
     }
 
-    fun parseGoogleJson(jsonString: String): List<String> {
+    suspend fun parseGoogleJson(jsonString: String): List<String> = withContext(Dispatchers.Default) {
         val json = AppConfig.json.parseToJsonElement(jsonString).jsonObject
         val prefixes = json["prefixes"]?.jsonArray ?: JsonArray(emptyList())
         
@@ -68,7 +70,7 @@ object IpRangeFetchService {
             prefix.jsonObject["ipv4Prefix"]?.jsonPrimitive?.content?.let { cidrs.add(it) }
             prefix.jsonObject["ipv6Prefix"]?.jsonPrimitive?.content?.let { cidrs.add(it) }
         }
-        return cidrs
+        cidrs
     }
 
     suspend fun fetchDigitalOceanRanges(): Int {
@@ -78,7 +80,7 @@ object IpRangeFetchService {
         val lines = response.lines().filter { it.isNotBlank() && !it.startsWith("#") }
         
         var imported = 0
-        transaction {
+        dbQuery {
             val batch = lines.mapNotNull { line ->
                 val parts = line.split(",")
                 if (parts.size < 4) return@mapNotNull null
@@ -169,7 +171,7 @@ object IpRangeFetchService {
         val lines = response.lines().filter { it.isNotBlank() && !it.trim().startsWith("#") && !it.trim().startsWith("//") }
         
         var imported = 0
-        transaction {
+        dbQuery {
             val batch = lines.mapNotNull { line ->
                 val parts = line.split(",").map { it.trim() }
                 // Try to find first valid CIDR in parts
@@ -216,9 +218,9 @@ object IpRangeFetchService {
         return imported
     }
 
-    private fun importCidrs(cidrs: List<String>, provider: String, type: String): Int {
+    private suspend fun importCidrs(cidrs: List<String>, provider: String, type: String): Int {
         var imported = 0
-        transaction {
+        dbQuery {
             val batch = cidrs.mapNotNull { cidr ->
                 val range = IpUtils.cidrToRange(cidr.trim()) ?: return@mapNotNull null
                 object {

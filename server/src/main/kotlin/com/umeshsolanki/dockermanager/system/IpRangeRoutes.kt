@@ -12,7 +12,7 @@ import org.jetbrains.exposed.sql.deleteAll
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
-import org.jetbrains.exposed.sql.transactions.transaction
+import com.umeshsolanki.dockermanager.database.DatabaseFactory.dbQuery
 import java.math.BigDecimal
 
 fun Route.ipRangeRoutes() {
@@ -27,7 +27,7 @@ fun Route.ipRangeRoutes() {
                 val lines = csvContent.lines().filter { it.isNotBlank() }
                 
                 var importedCount = 0
-                transaction {
+                dbQuery {
                     // Option to clear old data or just append
                     // IpRangesTable.deleteAll() 
                     
@@ -97,7 +97,7 @@ fun Route.ipRangeRoutes() {
 
         get("/stats") {
             try {
-                val count: Long = transaction {
+                val count: Long = dbQuery {
                     IpRangesTable.selectAll().count()
                 }
                 call.respond(HttpStatusCode.OK, mapOf("totalRanges" to count))
