@@ -107,6 +107,7 @@ data class AppSettings(
     
     // Syslog Ingestion
     val syslogEnabled: Boolean = false,
+    val syslogServer: String = "127.0.0.1",
     val syslogPort: Int = 514,
     val proxyRsyslogEnabled: Boolean = false
 )
@@ -367,9 +368,10 @@ object AppConfig {
         saveSettings()
     }
 
-    fun updateSyslogSettings(enabled: Boolean, port: Int) {
+    fun updateSyslogSettings(enabled: Boolean, server: String, port: Int) {
         _settings = _settings.copy(
             syslogEnabled = enabled,
+            syslogServer = server,
             syslogPort = port
         )
         saveSettings()

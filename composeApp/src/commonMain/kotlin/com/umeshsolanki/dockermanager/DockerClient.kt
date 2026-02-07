@@ -33,6 +33,22 @@ object DockerClient {
         appSettings[SettingsName.SERVER_URL] = url
     }
 
+    fun getSyslogServer(): String {
+        return appSettings.getString(SettingsName.SYSLOG_SERVER, "127.0.0.1")
+    }
+
+    fun setSyslogServer(server: String) {
+        appSettings[SettingsName.SYSLOG_SERVER] = server
+    }
+
+    fun getSyslogPort(): Int {
+        return appSettings.getInt(SettingsName.SYSLOG_PORT, 514)
+    }
+
+    fun setSyslogPort(port: Int) {
+        appSettings[SettingsName.SYSLOG_PORT] = port
+    }
+
     private val BASE_URL: String
         get() = getServerUrl()
 

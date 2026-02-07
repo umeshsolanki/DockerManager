@@ -2,6 +2,7 @@ package com.umeshsolanki.dockermanager.proxy
 
 import com.umeshsolanki.dockermanager.AppConfig
 import com.umeshsolanki.dockermanager.utils.ResourceLoader
+import com.umeshsolanki.dockermanager.proxy.ProxyService
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.nio.file.Files

@@ -31,6 +31,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [kafkaGroupId, setKafkaGroupId] = useState('docker-manager-jailer');
     const [dbPersistenceLogsEnabled, setDbPersistenceLogsEnabled] = useState(true);
     const [syslogEnabled, setSyslogEnabled] = useState(false);
+    const [syslogServerHost, setSyslogServerHost] = useState('127.0.0.1');
     const [syslogPort, setSyslogPort] = useState(514);
     const [proxyRsyslogEnabled, setProxyRsyslogEnabled] = useState(false);
     const [message, setMessage] = useState('');
@@ -76,6 +77,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 }
                 setDbPersistenceLogsEnabled(data.dbPersistenceLogsEnabled ?? true);
                 setSyslogEnabled(data.syslogEnabled);
+                setSyslogServerHost(data.syslogServer);
                 setSyslogPort(data.syslogPort);
                 setProxyRsyslogEnabled(data.proxyRsyslogEnabled);
             }
@@ -125,6 +127,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 },
                 dbPersistenceLogsEnabled: dbPersistenceLogsEnabled,
                 syslogEnabled: syslogEnabled,
+                syslogServer: syslogServerHost,
                 syslogPort: syslogPort,
                 proxyRsyslogEnabled: proxyRsyslogEnabled
             });
@@ -532,15 +535,27 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                     </button>
                                 </div>
 
-                                <div className="space-y-2">
-                                    <label className="text-xs font-semibold text-on-surface-variant px-1">Syslog Port (UDP)</label>
-                                    <input
-                                        type="number"
-                                        value={syslogPort}
-                                        onChange={(e) => setSyslogPort(parseInt(e.target.value))}
-                                        placeholder="514"
-                                        className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
-                                    />
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-semibold text-on-surface-variant px-1">Syslog Server</label>
+                                        <input
+                                            type="text"
+                                            value={syslogServerHost}
+                                            onChange={(e) => setSyslogServerHost(e.target.value)}
+                                            placeholder="127.0.0.1"
+                                            className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-semibold text-on-surface-variant px-1">Syslog Port (UDP)</label>
+                                        <input
+                                            type="number"
+                                            value={syslogPort}
+                                            onChange={(e) => setSyslogPort(parseInt(e.target.value))}
+                                            placeholder="514"
+                                            className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
+                                        />
+                                    </div>
                                 </div>
 
                                 <div className="pt-4 border-t border-outline/10">

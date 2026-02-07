@@ -569,6 +569,7 @@ export interface SystemConfig {
   dbPersistenceLogsEnabled: boolean;
   osName: string;
   syslogEnabled: boolean;
+  syslogServer: string;
   syslogPort: number;
   syslogIsRunning: boolean;
   proxyRsyslogEnabled: boolean;
@@ -584,6 +585,7 @@ export interface UpdateSystemConfigRequest {
   kafkaSettings?: KafkaSettings;
   dbPersistenceLogsEnabled?: boolean;
   syslogEnabled?: boolean;
+  syslogServer?: string;
   syslogPort?: number;
   proxyRsyslogEnabled?: boolean;
 }

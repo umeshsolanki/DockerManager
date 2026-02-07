@@ -15,6 +15,8 @@ import com.umeshsolanki.dockermanager.DockerClient
 @Composable
 fun SettingsScreen() {
     var serverUrl by remember { mutableStateOf(DockerClient.getServerUrl()) }
+    var syslogServer by remember { mutableStateOf(DockerClient.getSyslogServer()) }
+    var syslogPort by remember { mutableStateOf(DockerClient.getSyslogPort().toString()) }
     var message by remember { mutableStateOf("") }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -50,11 +52,45 @@ fun SettingsScreen() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                Text(
+                    "Rsyslog Configuration",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = syslogServer,
+                        onValueChange = { syslogServer = it },
+                        label = { Text("Log Server") },
+                        placeholder = { Text("127.0.0.1") },
+                        modifier = Modifier.weight(0.7f),
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.medium
+                    )
+
+                    OutlinedTextField(
+                        value = syslogPort,
+                        onValueChange = { syslogPort = it },
+                        label = { Text("Port") },
+                        placeholder = { Text("514") },
+                        modifier = Modifier.weight(0.3f),
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.medium
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(32.dp))
 
                 Button(
                     onClick = {
                         DockerClient.setServerUrl(serverUrl)
+                        DockerClient.setSyslogServer(syslogServer)
+                        DockerClient.setSyslogPort(syslogPort.toIntOrNull() ?: 514)
                         message = "Settings saved successfully!"
                     },
                     modifier = Modifier.align(Alignment.End),

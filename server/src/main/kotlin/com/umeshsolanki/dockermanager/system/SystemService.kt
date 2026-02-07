@@ -112,6 +112,7 @@ object SystemService {
         dbPersistenceLogsEnabled = AppConfig.settings.dbPersistenceLogsEnabled,
         osName = osName,
         syslogEnabled = AppConfig.settings.syslogEnabled,
+        syslogServer = AppConfig.settings.syslogServer,
         syslogPort = AppConfig.settings.syslogPort,
         syslogIsRunning = false,
         proxyRsyslogEnabled = AppConfig.settings.proxyRsyslogEnabled
@@ -134,12 +135,15 @@ object SystemService {
         
         // Handle Syslog Settings
         val syslogPort = request.syslogPort ?: AppConfig.settings.syslogPort
+        val syslogServer = request.syslogServer ?: AppConfig.settings.syslogServer
         val syslogEnabled = request.syslogEnabled ?: AppConfig.settings.syslogEnabled
         
-        val syslogChanged = syslogPort != AppConfig.settings.syslogPort || syslogEnabled != AppConfig.settings.syslogEnabled
+        val syslogChanged = syslogPort != AppConfig.settings.syslogPort || 
+                           syslogServer != AppConfig.settings.syslogServer || 
+                           syslogEnabled != AppConfig.settings.syslogEnabled
         
         if (syslogChanged) {
-            AppConfig.updateSyslogSettings(syslogEnabled, syslogPort)
+            AppConfig.updateSyslogSettings(syslogEnabled, syslogServer, syslogPort)
             // Syslog service removed
         }
         

@@ -27,6 +27,60 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
 import java.util.UUID
 
+// Service object for easy access
+object ProxyService {
+    private val service: IProxyService by lazy {
+        ServiceContainer.proxyService
+    }
+
+    fun listHosts() = service.listHosts()
+    fun createHost(host: ProxyHost) = service.createHost(host)
+    fun deleteHost(id: String) = service.deleteHost(id)
+    fun getStats() = service.getStats()
+    fun toggleHost(id: String) = service.toggleHost(id)
+    fun updateHost(host: ProxyHost) = service.updateHost(host)
+    fun requestSSL(id: String) = service.requestSSL(id)
+    fun listCertificates() = service.listCertificates()
+
+    // DNS Config Management
+    fun listDnsConfigs() = service.listDnsConfigs()
+    fun getDnsConfig(id: String) = service.getDnsConfig(id)
+    fun createDnsConfig(config: DnsConfig) = service.createDnsConfig(config)
+    fun updateDnsConfig(config: DnsConfig) = service.updateDnsConfig(config)
+    fun deleteDnsConfig(id: String) = service.deleteDnsConfig(id)
+
+    fun buildProxyImage() = service.buildProxyImage()
+    fun createProxyContainer() = service.createProxyContainer()
+    fun startProxyContainer() = service.startProxyContainer()
+    fun stopProxyContainer() = service.stopProxyContainer()
+    fun restartProxyContainer() = service.restartProxyContainer()
+    fun getProxyContainerStatus() = service.getProxyContainerStatus()
+    fun ensureProxyContainerExists() = service.ensureProxyContainerExists()
+    fun getComposeConfig() = service.getComposeConfig()
+    fun updateComposeConfig(content: String) = service.updateComposeConfig(content)
+    fun resetComposeConfig() = service.resetComposeConfig()
+    fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null) =
+        service.updateStatsSettings(active, intervalMs, filterLocalIps)
+
+    fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>) =
+        service.updateSecuritySettings(enabled, thresholdNon200, rules)
+
+    fun updateDefaultBehavior(return404: Boolean) = service.updateDefaultBehavior(return404)
+
+    fun updateRsyslogSettings(enabled: Boolean) = service.updateRsyslogSettings(enabled)
+
+    fun getProxySecuritySettings() = AppConfig.settings
+
+    // Analytics History
+    fun getHistoricalStats(date: String) = service.getHistoricalStats(date)
+    fun listAvailableDates() = service.listAvailableDates()
+    fun getStatsForDateRange(startDate: String, endDate: String) =
+        service.getStatsForDateRange(startDate, endDate)
+
+    fun forceReprocessLogs(date: String) = service.forceReprocessLogs(date)
+    fun updateStatsForAllDaysInCurrentLog() = service.updateStatsForAllDaysInCurrentLog()
+}
+
 interface IProxyService {
     fun listHosts(): List<ProxyHost>
     fun createHost(host: ProxyHost): Pair<Boolean, String>
@@ -854,7 +908,7 @@ class ProxyServiceImpl(
                     |        ${ipConfig}
                 """.trimMargin().trim()
             }
-            
+
             val safeTarget = host.target.sanitizeNginx()
             if (host.isStatic) {
                 return """
@@ -887,7 +941,8 @@ class ProxyServiceImpl(
                         |        ${ipConfig}
                     """.trimMargin().trim()
                 } else {
-                    val proxyTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/http-proxy-config.conf")
+                    val proxyTemplate =
+                        ResourceLoader.loadResourceOrThrow("templates/proxy/http-proxy-config.conf")
                     val proxyContent = ResourceLoader.replacePlaceholders(
                         proxyTemplate, mapOf(
                             "target" to safeTarget,
@@ -896,21 +951,60 @@ class ProxyServiceImpl(
                             "rateLimitConfig" to ""
                         )
                     )
-                    val indentedProxy = proxyContent.lines().joinToString("\n") { if (it.isBlank()) it else "        $it" }.trim()
+                    val indentedProxy = proxyContent.lines()
+                        .joinToString("\n") { if (it.isBlank()) it else "        $it" }.trim()
                     return if (redirect.isNotEmpty()) "${redirect}${indentedProxy}" else indentedProxy
                 }
             }
         }
 
         val silentDropConfig = if (host.silentDrop) {
-            """
-            |    # Silent Drop for Blocked IPs/Forbidden Requests
-            |    error_page 403 @silent_drop;
-            |    location @silent_drop {
-            |        return 444;
-            |    }
-            """.trimMargin()
+            val template = ResourceLoader.loadResourceOrThrow("templates/proxy/silent-drop.conf")
+            template.lines().joinToString("\n    ") { it }
         } else ""
+
+        // Generate Rsyslog Config if enabled
+        val rsyslogEnabled = AppConfig.settings.proxyRsyslogEnabled
+        val syslogServerHost = AppConfig.settings.syslogServer
+        val syslogServerPort = AppConfig.settings.syslogPort
+        val syslogServer = "$syslogServerHost:$syslogServerPort"
+        val syslogConfig = if (rsyslogEnabled) {
+            val template = ResourceLoader.loadResourceOrThrow("templates/proxy/rsyslog-config.conf")
+            val configSnippet = ResourceLoader.replacePlaceholders(template, mapOf(
+                "syslogServer" to syslogServer,
+                "tag" to host.domain
+            ))
+            configSnippet.lines().joinToString("\n    ") { it }
+        } else ""
+
+        val standardLoggingConfig = run {
+            val template = ResourceLoader.loadResourceOrThrow("templates/proxy/standard-logging.conf")
+            val configSnippet = ResourceLoader.replacePlaceholders(template, mapOf(
+                "tag" to host.domain
+            ))
+            configSnippet.lines().joinToString("\n    ") { it }
+        }
+
+        val dangerHitsConfig = run {
+            val template = ResourceLoader.loadResourceOrThrow("templates/proxy/danger-logging.conf")
+            val configSnippet = ResourceLoader.replacePlaceholders(template, mapOf(
+                "syslogServer" to syslogServer,
+                "tag" to host.domain
+            ))
+            configSnippet.lines().joinToString("\n    ") { it }
+        }
+
+        val burstLoggingConfig = run {
+            val template = ResourceLoader.loadResourceOrThrow("templates/proxy/burst-logging.conf")
+            val configSnippet = ResourceLoader.replacePlaceholders(template, mapOf(
+                "syslogServer" to syslogServer,
+                "tag" to host.domain
+            ))
+            configSnippet.lines().joinToString("\n    ") { it }
+        }
+        
+        // Inside server blocks, we need to make sure the indentation is correct.
+        // The placeholder in server-http/https.conf is already indented by 4 spaces.
 
         // Generate HTTPS server block if SSL is enabled
         val sslConfig = if (host.ssl) {
@@ -939,9 +1033,14 @@ class ProxyServiceImpl(
 
             val httpsTemplate =
                 ResourceLoader.loadResourceOrThrow("templates/proxy/server-https.conf")
+            
             ResourceLoader.replacePlaceholders(
                 httpsTemplate, mapOf(
                     "domain" to host.domain,
+                    "standardLoggingConfig" to standardLoggingConfig,
+                    "rsyslogConfig" to syslogConfig,
+                    "dangerHitsConfig" to dangerHitsConfig,
+                    "burstLoggingConfig" to burstLoggingConfig,
                     "sslCert" to containerCert,
                     "sslKey" to containerKey,
                     "hstsHeader" to hstsHeader,
@@ -949,7 +1048,6 @@ class ProxyServiceImpl(
                     "websocketConfig" to wsConfig,
                     "ipRestrictions" to ipConfig,
                     "pathLocations" to pathLocations,
-                    "rateLimitConfig" to (if (host.paths.isEmpty()) serverRateLimit else ""),
                     "rateLimitConfig" to (if (host.paths.isEmpty()) serverRateLimit else ""),
                     "mainLocationConfig" to generateMainLocationConfig(true),
                     "silentDropConfig" to silentDropConfig
@@ -963,11 +1061,15 @@ class ProxyServiceImpl(
         } else ""
 
         val httpTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/server-http.conf")
+        
         val httpConfig = ResourceLoader.replacePlaceholders(
             httpTemplate, mapOf(
                 "domain" to host.domain,
+                "standardLoggingConfig" to standardLoggingConfig,
+                "rsyslogConfig" to syslogConfig,
+                "dangerHitsConfig" to dangerHitsConfig,
+                "burstLoggingConfig" to burstLoggingConfig,
                 "pathLocations" to pathLocations,
-                "rateLimitConfig" to (if (host.ssl || host.paths.isNotEmpty()) "" else serverRateLimit),
                 "rateLimitConfig" to (if (host.ssl || host.paths.isNotEmpty()) "" else serverRateLimit),
                 "mainLocationConfig" to generateMainLocationConfig(false, httpRedirect),
                 "silentDropConfig" to silentDropConfig
@@ -1472,13 +1574,27 @@ class ProxyServiceImpl(
         val syslogServer = "127.0.0.1:${AppConfig.settings.syslogPort}"
         
         val loggingConfig = StringBuilder()
-        loggingConfig.append("    access_log  /usr/local/openresty/nginx/logs/access.log  main;\n")
-        loggingConfig.append("    error_log   /usr/local/openresty/nginx/logs/error.log warn;")
+        
+        val standardLoggingTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/standard-logging.conf")
+        val standardLoggingSnippet = ResourceLoader.replacePlaceholders(standardLoggingTemplate, mapOf(
+            "tag" to "nginx_main"
+        ))
+        loggingConfig.append("    ")
+        loggingConfig.append(standardLoggingSnippet.lines().joinToString("\n    ") { it })
         
         if (rsyslogEnabled) {
-            loggingConfig.append("\n\n    # Rsyslog remote logging\n")
-            loggingConfig.append("    access_log syslog:server=$syslogServer,tag=nginx_access,severity=info main;\n")
-            loggingConfig.append("    error_log  syslog:server=$syslogServer,tag=nginx_error,severity=warn;")
+            val syslogServerHost = AppConfig.settings.syslogServer
+            val syslogServerPort = AppConfig.settings.syslogPort
+            val syslogServer = "$syslogServerHost:$syslogServerPort"
+            
+            val syslogTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/rsyslog-config.conf")
+            val syslogSnippet = ResourceLoader.replacePlaceholders(syslogTemplate, mapOf(
+                "syslogServer" to syslogServer,
+                "tag" to "nginx_main"
+            ))
+            
+            loggingConfig.append("\n\n    ")
+            loggingConfig.append(syslogSnippet.lines().joinToString("\n    ") { it })
         }
         
         return ResourceLoader.replacePlaceholders(template, mapOf(
@@ -1502,8 +1618,54 @@ class ProxyServiceImpl(
             
             val defaultServerTemplate = ResourceLoader.loadResourceOrThrow(templateName)
             
+            val rsyslogEnabled = AppConfig.settings.proxyRsyslogEnabled
+            val syslogServer = "${AppConfig.settings.syslogServer}:${AppConfig.settings.syslogPort}"
+            val tag = "default_server"
+
+            val standardLoggingConfig = run {
+                val template = ResourceLoader.loadResourceOrThrow("templates/proxy/standard-logging.conf")
+                val snippet = ResourceLoader.replacePlaceholders(template, mapOf("tag" to tag))
+                snippet.lines().joinToString("\n    ") { it }
+            }
+
+            val syslogConfig = if (rsyslogEnabled) {
+                val template = ResourceLoader.loadResourceOrThrow("templates/proxy/rsyslog-config.conf")
+                val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
+                    "syslogServer" to syslogServer,
+                    "tag" to tag
+                ))
+                snippet.lines().joinToString("\n    ") { it }
+            } else ""
+
+            val dangerHitsConfig = run {
+                val template = ResourceLoader.loadResourceOrThrow("templates/proxy/danger-logging.conf")
+                val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
+                    "syslogServer" to syslogServer,
+                    "tag" to tag
+                ))
+                snippet.lines().joinToString("\n    ") { it }
+            }
+
+            val burstLoggingConfig = run {
+                val template = ResourceLoader.loadResourceOrThrow("templates/proxy/burst-logging.conf")
+                val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
+                    "syslogServer" to syslogServer,
+                    "tag" to tag
+                ))
+                snippet.lines().joinToString("\n    ") { it }
+            }
+
+            val finalContent = ResourceLoader.replacePlaceholders(
+                defaultServerTemplate, mapOf(
+                    "standardLoggingConfig" to standardLoggingConfig,
+                    "rsyslogConfig" to syslogConfig,
+                    "dangerHitsConfig" to dangerHitsConfig,
+                    "burstLoggingConfig" to burstLoggingConfig
+                )
+            )
+
             // Allow overwriting if content changed (simple check: always write)
-            defaultServerFile.writeText(defaultServerTemplate)
+            defaultServerFile.writeText(finalContent)
             logger.info("Updated default nginx server block: ${defaultServerFile.absolutePath} (Return 404: ${AppConfig.settings.proxyDefaultReturn404})")
         } catch (e: Exception) {
             logger.error("Failed to create/update default server block", e)
@@ -1667,61 +1829,5 @@ class ProxyServiceImpl(
             false to "Error deleting DNS config: ${e.message}"
         }
     }
-
-}
-
-// Service object for easy access
-object ProxyService {
-    private val service: IProxyService by lazy {
-        ServiceContainer.proxyService
-    }
-
-    fun listHosts() = service.listHosts()
-    fun createHost(host: ProxyHost) = service.createHost(host)
-    fun deleteHost(id: String) = service.deleteHost(id)
-    fun getStats() = service.getStats()
-    fun toggleHost(id: String) = service.toggleHost(id)
-    fun updateHost(host: ProxyHost) = service.updateHost(host)
-    fun requestSSL(id: String) = service.requestSSL(id)
-    fun listCertificates() = service.listCertificates()
-
-    // DNS Config Management
-    fun listDnsConfigs() = service.listDnsConfigs()
-    fun getDnsConfig(id: String) = service.getDnsConfig(id)
-    fun createDnsConfig(config: DnsConfig) = service.createDnsConfig(config)
-    fun updateDnsConfig(config: DnsConfig) = service.updateDnsConfig(config)
-    fun deleteDnsConfig(id: String) = service.deleteDnsConfig(id)
-
-    fun buildProxyImage() = service.buildProxyImage()
-    fun createProxyContainer() = service.createProxyContainer()
-    fun startProxyContainer() = service.startProxyContainer()
-    fun stopProxyContainer() = service.stopProxyContainer()
-    fun restartProxyContainer() = service.restartProxyContainer()
-    fun getProxyContainerStatus() = service.getProxyContainerStatus()
-    fun ensureProxyContainerExists() = service.ensureProxyContainerExists()
-    fun getComposeConfig() = service.getComposeConfig()
-    fun updateComposeConfig(content: String) = service.updateComposeConfig(content)
-    fun resetComposeConfig() = service.resetComposeConfig()
-    fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null) =
-        service.updateStatsSettings(active, intervalMs, filterLocalIps)
-
-    fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>) =
-        service.updateSecuritySettings(enabled, thresholdNon200, rules)
-
-    fun updateDefaultBehavior(return404: Boolean) = service.updateDefaultBehavior(return404)
-
-    fun updateRsyslogSettings(enabled: Boolean) = service.updateRsyslogSettings(enabled)
-
-    fun getProxySecuritySettings() = AppConfig.settings
-
-    // Analytics History
-    fun getHistoricalStats(date: String) = service.getHistoricalStats(date)
-    fun listAvailableDates() = service.listAvailableDates()
-    fun getStatsForDateRange(startDate: String, endDate: String) =
-        service.getStatsForDateRange(startDate, endDate)
-
-    fun forceReprocessLogs(date: String) = service.forceReprocessLogs(date)
-    fun updateStatsForAllDaysInCurrentLog() = service.updateStatsForAllDaysInCurrentLog()
-
 }
 
