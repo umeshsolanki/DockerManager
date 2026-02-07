@@ -39,7 +39,8 @@ class AnalyticsServiceImpl(
     private val jailManagerService: IJailManagerService,
 ) : IAnalyticsService {
     private val logger = LoggerFactory.getLogger(AnalyticsServiceImpl::class.java)
-    private val logFile = AppConfig.nginxAccessLogFile
+    private val logDir: File
+        get() = AppConfig.nginxLogDir
     private val analyticsPersistence = AnalyticsPersistenceService()
     private val commandExecutor = CommandExecutor(loggerName = AnalyticsServiceImpl::class.java.name)
 
@@ -52,7 +53,7 @@ class AnalyticsServiceImpl(
     )
 
     // Incremental state
-    private var lastProcessedOffset = 0L
+    private val lastProcessedOffsets = ConcurrentHashMap<String, Long>()
     private val totalHitsCounter = java.util.concurrent.atomic.AtomicLong(0)
     private val hitsByStatusMap = ConcurrentHashMap<Int, Long>()
     private val hitsByDomainMap = ConcurrentHashMap<String, Long>()
@@ -85,7 +86,7 @@ class AnalyticsServiceImpl(
 
     init {
         // Ensure log directory exists for Nginx
-        logFile.parentFile?.mkdirs()
+        logDir.mkdirs()
 
         // Start background worker for stats
         startStatsWorker()
@@ -178,13 +179,17 @@ class AnalyticsServiceImpl(
                 analyticsPersistence.saveDailyStats(yesterdayStats, lastResetDate!!)
                 logger.info("Saved daily stats for $lastResetDate")
 
-                // Rotate log file
-                if (logFile.exists() && logFile.length() > 1024) {
-                    rotateAccessLog(lastResetDate!!)
-                    lastRotationDate = lastResetDate
-                } else {
-                    logger.info("Skipping log rotation for $lastResetDate - log file is too small or doesn't exist")
+                // Rotate logs
+                val logFiles = logDir.listFiles { _, name -> 
+                    name.endsWith("_access.log") || name == "access.log" 
+                } ?: emptyArray()
+
+                for (file in logFiles) {
+                    if (file.exists() && file.length() > 1024) {
+                        rotateAccessLog(file, lastResetDate!!)
+                    }
                 }
+                lastRotationDate = lastResetDate
             }
 
             // Reset counters
@@ -197,40 +202,8 @@ class AnalyticsServiceImpl(
             lastResetDate = today
         }
         
-        // 2. Recovery Logic: Check if access.log belongs to a previous day (e.g. after restart)
-        // This handles cases where the app wasn't running during the midnight transition
-        if (logFile.exists() && logFile.length() > 0) {
-            try {
-                // Read first line to check date
-                val firstLine = logFile.bufferedReader(Charsets.UTF_8).use { it.readLine() }
-                if (firstLine != null) {
-                    val lineRegex = """^(\S+) \S+ \S+ \[([^\]]+)\]""".toRegex()
-                    val match = lineRegex.find(firstLine)
-                    if (match != null) {
-                       val (_, dateStr) = match.destructured
-                       val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
-                       val timestamp = dateFormat.parse(dateStr)
-                       val logDate = java.time.LocalDate.ofInstant(timestamp.toInstant(), java.time.ZoneId.systemDefault())
-                       val logDateStr = logDate.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
-                       
-                       if (logDateStr != today && logDateStr != lastRotationDate) {
-                           logger.info("Found log file starting on $logDateStr (older than today $today). Triggering recovery rotation.")
-                           rotateAccessLog(logDateStr)
-                           // We don't update lastRotationDate or reset stats here necessarily, 
-                           // just moving the file out of the way.
-                           
-                           // However, if we just rotated the active log, we should probably reset the counters 
-                           // if they were tracking that file.
-                           if (lastProcessedOffset > 0) {
-                               resetDailyStats()
-                           }
-                       }
-                    }
-                }
-            } catch (e: Exception) {
-                // Ignore read errors, just wait for next cycle
-            }
-        }
+        // 2. Recovery Logic would be complex with multiple files; relied on daily transition for now.
+        // We could implement older-file detection here if strictly necessary.
 
         // If date is today, persist current stats
         if (lastResetDate == today) {
@@ -240,56 +213,36 @@ class AnalyticsServiceImpl(
     }
 
     /**
-     * Rotate access.log by copying it to access_YYYY-MM-DD.log and truncating the original
-     * Only rotates if the log file has substantial content to prevent accidental data loss
+     * Rotate access log file
      */
-    private fun rotateAccessLog(date: String) {
+    private fun rotateAccessLog(file: File, date: String) {
         try {
-            if (!logFile.exists()) {
-                logger.debug("Access log file does not exist, skipping rotation")
-                return
-            }
+            if (!file.exists()) return
 
-            val currentSize = logFile.length()
-            if (currentSize == 0L) {
-                logger.debug("Access log file is empty, skipping rotation")
-                return
-            }
-
-            // Additional safety check: don't rotate if file is suspiciously small (might have been recently rotated)
-            // Only rotate if file is at least 10KB to avoid rotating files that were just created
+            val currentSize = file.length()
             if (currentSize < 10240) {
-                logger.warn("Access log file is too small (${currentSize} bytes), skipping rotation to prevent data loss. File may have been recently rotated.")
-                return
+                 // Skip small files
+                 return
             }
 
-            val logDir = logFile.parentFile
-            val rotatedLogFile = File(logDir, "access_$date.log")
+            val baseName = file.nameWithoutExtension
+            // e.g. domain_access -> domain_access_2023-10-27.log
+            val rotatedLogFile = File(logDir, "${baseName}_$date.log")
 
-            // Check if rotated file already exists and is larger - don't overwrite with smaller file
             if (rotatedLogFile.exists() && rotatedLogFile.length() > currentSize) {
-                logger.warn("Rotated log file ${rotatedLogFile.name} already exists and is larger (${rotatedLogFile.length()} > $currentSize bytes). Skipping rotation to prevent data loss.")
                 return
             }
 
-            // Copy access.log to access_YYYY-MM-DD.log
-            logFile.copyTo(rotatedLogFile, overwrite = true)
-            logger.info("Copied access.log (${currentSize} bytes) to ${rotatedLogFile.name}")
+            file.copyTo(rotatedLogFile, overwrite = true)
+            logger.info("Rotated ${file.name} to ${rotatedLogFile.name}")
 
-            // Verify copy was successful before truncating
             if (rotatedLogFile.exists() && rotatedLogFile.length() == currentSize) {
-                // Truncate access.log only after successful copy
-                logFile.writeText("")
-                logger.info("Truncated access.log after successful rotation")
-
-                // Reset lastProcessedOffset since we've rotated the log
-                lastProcessedOffset = 0L
-            } else {
-                logger.error("Rotated log file size mismatch! Expected ${currentSize} bytes but got ${rotatedLogFile.length()} bytes. Aborting truncation to prevent data loss.")
+                file.writeText("")
+                // Reset offset for this file
+                lastProcessedOffsets[file.name] = 0L
             }
-
         } catch (e: Exception) {
-            logger.error("Failed to rotate access log for date $date", e)
+            logger.error("Failed to rotate log file ${file.name} for date $date", e)
         }
     }
 
@@ -308,7 +261,7 @@ class AnalyticsServiceImpl(
         hitsByProviderMap.clear()
         hitsByTimeMap.clear()
         recentHitsList.clear()
-        lastProcessedOffset = 0L
+        lastProcessedOffsets.clear()
         
         // Reset WebSocket stats
         websocketConnectionsCounter.set(0)
@@ -337,196 +290,174 @@ class AnalyticsServiceImpl(
     }
 
     private fun updateStatsNatively() {
-        if (!logFile.exists()) return
+        val logFiles = logDir.listFiles { _, name -> 
+            name.endsWith("_access.log") || name == "access.log"
+        } ?: return
 
-        val currentLength = logFile.length()
-
-        // Handle log rotation or truncated file
-        // Only reset if the file was significantly reduced (more than 50% smaller)
-        // This prevents false positives from minor file changes or external processes
-        if (currentLength < lastProcessedOffset && lastProcessedOffset > 0) {
-            val reductionPercent =
-                ((lastProcessedOffset - currentLength).toDouble() / lastProcessedOffset.toDouble()) * 100
-            if (reductionPercent > 50) {
-                logger.info("Log file rotated or truncated (was ${lastProcessedOffset} bytes, now ${currentLength} bytes, ${reductionPercent.toInt()}% reduction), resetting offset")
-                lastProcessedOffset = 0
-            } else {
-                // File got smaller but not significantly - might be external truncation or write issue
-                logger.warn("Log file size decreased unexpectedly (was ${lastProcessedOffset} bytes, now ${currentLength} bytes, ${reductionPercent.toInt()}% reduction). Adjusting offset instead of resetting.")
-                lastProcessedOffset =
-                    currentLength // Adjust offset instead of resetting to avoid reprocessing
-            }
-        }
-
-        if (currentLength == lastProcessedOffset) return
-
+        // Regex now captures host as the 9th group
         val lineRegex =
             """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)".*$""".toRegex()
         val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
-
-        // Get settings once per update cycle
+        val hitsToInsert = mutableListOf<ProxyHit>()
         val settings = AppConfig.settings
         val shouldFilterLocalIps = settings.filterLocalIps
 
-        try {
-            val hitsToInsert = mutableListOf<ProxyHit>()
-            java.io.RandomAccessFile(logFile, "r").use { raf ->
-                raf.seek(lastProcessedOffset)
-                var line: String? = raf.readLine()
-                while (line != null) {
-                    val trimmedLine = line.trim()
-                    if (trimmedLine.isNotEmpty()) {
-                        lineRegex.find(trimmedLine)?.let { match ->
-                            val (ip, dateStr, fullRequest, statusStr, _, referer, ua, _) = match.destructured
-                            val status = statusStr.toIntOrNull() ?: 0
+        for (logFile in logFiles) {
+             try {
+                val lastProcessedOffset = lastProcessedOffsets.getOrDefault(logFile.name, 0L)
+                val currentLength = logFile.length()
 
-                            // Filter local IPs if enabled
-                            if (shouldFilterLocalIps && IpFilterUtils.isLocalIp(ip)) {
-                                // Skip this entry - it's a local IP
-                                return@let
-                            }
+                if (currentLength < lastProcessedOffset) {
+                    // File truncated
+                    lastProcessedOffsets[logFile.name] = 0L
+                    continue
+                }
+                
+                if (currentLength == lastProcessedOffset) continue
 
-                            val reqParts = fullRequest.split(" ")
-                            val method = reqParts.getOrNull(0) ?: "-"
-                            val path = reqParts.getOrNull(1) ?: fullRequest
+                java.io.RandomAccessFile(logFile, "r").use { raf ->
+                    raf.seek(lastProcessedOffset)
+                    var line: String? = raf.readLine()
+                    while (line != null) {
+                        val trimmedLine = line.trim()
+                        if (trimmedLine.isNotEmpty()) {
+                            lineRegex.find(trimmedLine)?.let { match ->
+                                val (ip, dateStr, fullRequest, statusStr, _, referer, ua, _, host) = match.destructured
+                                val status = statusStr.toIntOrNull() ?: 0
 
-                            // Filter 200 responses for static asset files
-                            if (status == 200) {
-                                val cleanPath = path.substringBefore('?')
-                                val isStaticAsset = cleanPath.endsWith(".js", ignoreCase = true) ||
-                                        cleanPath.endsWith(".css", ignoreCase = true) ||
-                                        cleanPath.endsWith(".png", ignoreCase = true) ||
-                                        cleanPath.endsWith(".jpg", ignoreCase = true) ||
-                                        cleanPath.endsWith(".jpeg", ignoreCase = true) ||
-                                        cleanPath.endsWith(".gif", ignoreCase = true) ||
-                                        cleanPath.endsWith(".svg", ignoreCase = true) ||
-                                        cleanPath.endsWith(".woff", ignoreCase = true) ||
-                                        cleanPath.endsWith(".woff2", ignoreCase = true) ||
-                                        cleanPath.endsWith(".ttf", ignoreCase = true) ||
-                                        cleanPath.endsWith(".webp", ignoreCase = true)
-                                if (isStaticAsset) {
+                                // Filter local IPs if enabled
+                                if (shouldFilterLocalIps && IpFilterUtils.isLocalIp(ip)) {
                                     return@let
                                 }
-                            }
 
-                            // Filter failures (>= 400) for .ico files
-                            if (status >= 400) {
-                                val cleanPath = path.substringBefore('?')
-                                if (cleanPath.endsWith(".ico", ignoreCase = true)) {
+                                val reqParts = fullRequest.split(" ")
+                                val method = reqParts.getOrNull(0) ?: "-"
+                                val path = reqParts.getOrNull(1) ?: fullRequest
+
+                                // Filter 200 responses for static assets
+                                if (status == 200) {
+                                    val cleanPath = path.substringBefore('?')
+                                    val isStaticAsset = cleanPath.endsWith(".js", ignoreCase = true) ||
+                                            cleanPath.endsWith(".css", ignoreCase = true) ||
+                                            cleanPath.endsWith(".png", ignoreCase = true) ||
+                                            cleanPath.endsWith(".jpg", ignoreCase = true) ||
+                                            cleanPath.endsWith(".jpeg", ignoreCase = true) ||
+                                            cleanPath.endsWith(".gif", ignoreCase = true) ||
+                                            cleanPath.endsWith(".svg", ignoreCase = true) ||
+                                            cleanPath.endsWith(".woff", ignoreCase = true) ||
+                                            cleanPath.endsWith(".woff2", ignoreCase = true) ||
+                                            cleanPath.endsWith(".ttf", ignoreCase = true) ||
+                                            cleanPath.endsWith(".webp", ignoreCase = true)
+                                    if (isStaticAsset) return@let
+                                }
+
+                                if (status >= 400 && path.substringBefore('?').endsWith(".ico", ignoreCase = true)) {
                                     return@let
                                 }
-                            }
 
-                            val domain = if (referer != "-") try {
-                                java.net.URI(referer).host
-                            } catch (e: Exception) {
-                                null
-                            } else null
+                                // Use captured host, fallback to referer
+                                val domain = if (host != "-") host else if (referer != "-") try {
+                                    java.net.URI(referer).host
+                                } catch (e: Exception) { null } else null
 
-                            // Update stats
-                            totalHitsCounter.incrementAndGet()
-                            hitsByStatusMap.merge(status, 1L, Long::plus)
-                            hitsByIpMap.merge(ip, 1L, Long::plus)
-                            hitsByMethodMap.merge(method, 1L, Long::plus)
-                            hitsByPathMap.merge(path, 1L, Long::plus)
-                            if (ua != "-") hitsByUserAgentMap.merge(ua, 1L, Long::plus)
-                            if (referer != "-") hitsByRefererMap.merge(referer, 1L, Long::plus)
-                            if (domain != null) {
-                                hitsByDomainMap.merge(domain, 1L, Long::plus)
-                                if (status >= 400) {
-                                    hitsByDomainErrorMap.merge(domain, 1L, Long::plus)
+                                // Update stats
+                                totalHitsCounter.incrementAndGet()
+                                hitsByStatusMap.merge(status, 1L, Long::plus)
+                                hitsByIpMap.merge(ip, 1L, Long::plus)
+                                hitsByMethodMap.merge(method, 1L, Long::plus)
+                                hitsByPathMap.merge(path, 1L, Long::plus)
+                                if (ua != "-") hitsByUserAgentMap.merge(ua, 1L, Long::plus)
+                                if (referer != "-") hitsByRefererMap.merge(referer, 1L, Long::plus)
+                                if (domain != null) {
+                                    hitsByDomainMap.merge(domain, 1L, Long::plus)
+                                    if (status >= 400) {
+                                        hitsByDomainErrorMap.merge(domain, 1L, Long::plus)
+                                    }
                                 }
-                            }
-                            
-                            // IP Lookup for in-memory stats
-                            val ipInfo = IpLookupService.lookup(ip)
-                            ipInfo?.countryCode?.let { hitsByCountryMap.merge(it, 1L, Long::plus) }
-                            ipInfo?.provider?.let { hitsByProviderMap.merge(it, 1L, Long::plus) }
+                                
+                                // IP Lookup
+                                val ipInfo = IpLookupService.lookup(ip)
+                                ipInfo?.countryCode?.let { hitsByCountryMap.merge(it, 1L, Long::plus) }
+                                ipInfo?.provider?.let { hitsByProviderMap.merge(it, 1L, Long::plus) }
 
-                            if (status >= 400 || status == 0) {
-                                hitsByIpErrorMap.merge(ip, 1L, Long::plus)
-                            }
+                                if (status >= 400 || status == 0) {
+                                    hitsByIpErrorMap.merge(ip, 1L, Long::plus)
+                                }
 
-                            // Security Jailing check (delegated to JailManagerService)
-                            val errCount = hitsByIpErrorMap[ip] ?: 0L
-                            jailManagerService.checkProxySecurityViolation(
-                                ip = ip,
-                                userAgent = ua,
-                                method = method,
-                                path = path,
-                                status = status,
-                                errorCount = errCount
-                            )
-
-                            // Time-based aggregation (ISO 8601 hour bucket)
-                            try {
-                                val timestamp = dateFormat.parse(dateStr)
-                                val hourKey = SimpleDateFormat("yyyy-MM-dd'T'HH:00:00XXX", Locale.US).format(timestamp)
-                                hitsByTimeMap.merge(hourKey, 1L, Long::plus)
-
-                                // Update recent hits
-                                val hit = ProxyHit(
-                                    timestamp = timestamp.time,
+                                // Security Jailing check
+                                val errCount = hitsByIpErrorMap[ip] ?: 0L
+                                jailManagerService.checkProxySecurityViolation(
                                     ip = ip,
+                                    userAgent = ua,
                                     method = method,
                                     path = path,
                                     status = status,
-                                    responseTime = 0,
-                                    userAgent = ua,
-                                    referer = if (referer == "-") null else referer,
-                                    domain = domain
+                                    errorCount = errCount
                                 )
-                                recentHitsList.addFirst(hit)
-                                while (recentHitsList.size > MAX_RECENT_HITS) {
-                                    recentHitsList.removeLast()
-                                }
-                                
-                                // Only store suspicious logs in database
-                                if (isSuspiciousRequest(hit)) {
-                                    hitsToInsert.add(hit)
-                                }
-                            } catch (e: Exception) {
-                                // Ignore date parse errors
+
+                                try {
+                                    val timestamp = dateFormat.parse(dateStr)
+                                    val hourKey = SimpleDateFormat("yyyy-MM-dd'T'HH:00:00XXX", Locale.US).format(timestamp)
+                                    hitsByTimeMap.merge(hourKey, 1L, Long::plus)
+
+                                    val hit = ProxyHit(
+                                        timestamp = timestamp.time,
+                                        ip = ip,
+                                        method = method,
+                                        path = path,
+                                        status = status,
+                                        responseTime = 0,
+                                        userAgent = ua,
+                                        referer = if (referer == "-") null else referer,
+                                        domain = domain
+                                    )
+                                    recentHitsList.addFirst(hit)
+                                    while (recentHitsList.size > MAX_RECENT_HITS) {
+                                        recentHitsList.removeLast()
+                                    }
+                                    
+                                    if (isSuspiciousRequest(hit)) {
+                                        hitsToInsert.add(hit)
+                                    }
+                                } catch (e: Exception) { }
                             }
                         }
+                        line = raf.readLine()
                     }
-                    line = raf.readLine()
+                    lastProcessedOffsets[logFile.name] = raf.filePointer
                 }
-                lastProcessedOffset = raf.filePointer
-            }
-            
-            // Batch insert ONLY suspicious logs into Database if active AND persistence is enabled
-            if (AppConfig.storageBackend == "database" && settings.dbPersistenceLogsEnabled && hitsToInsert.isNotEmpty()) {
-                try {
-                    transaction {
-                        ProxyLogsTable.batchInsert(hitsToInsert) { hit ->
-                            this[ProxyLogsTable.timestamp] = java.time.Instant.ofEpochMilli(hit.timestamp)
-                                .atZone(ZoneId.systemDefault()).toLocalDateTime()
-                            this[ProxyLogsTable.remoteIp] = hit.ip
-                            this[ProxyLogsTable.method] = hit.method
-                            this[ProxyLogsTable.path] = hit.path
-                            this[ProxyLogsTable.status] = hit.status
-                            this[ProxyLogsTable.responseTime] = hit.responseTime
-                            this[ProxyLogsTable.userAgent] = hit.userAgent
-                            this[ProxyLogsTable.referer] = hit.referer
-                            this[ProxyLogsTable.domain] = hit.domain
-                            
-                            // Enrich with IP info
-                            val ipInfo = IpLookupService.lookup(hit.ip)
-                            this[ProxyLogsTable.countryCode] = ipInfo?.countryCode
-                            this[ProxyLogsTable.provider] = ipInfo?.provider
-                        }
-                    }
-                    logger.debug("Inserted ${hitsToInsert.size} suspicious proxy logs into Database")
-                } catch (e: Exception) {
-                    logger.error("Failed to batch insert proxy logs to Database", e)
-                }
-            }
-        } catch (e: Exception) {
-            logger.error("Error processing log file incrementally", e)
+             } catch(e: Exception) {
+                 logger.error("Error processing log file ${logFile.name}", e)
+             }
         }
-
-        // Update cached stats for UI
+            
+        // Batch insert logs
+        if (AppConfig.storageBackend == "database" && settings.dbPersistenceLogsEnabled && hitsToInsert.isNotEmpty()) {
+            try {
+                transaction {
+                    ProxyLogsTable.batchInsert(hitsToInsert) { hit ->
+                        this[ProxyLogsTable.timestamp] = java.time.Instant.ofEpochMilli(hit.timestamp)
+                            .atZone(ZoneId.systemDefault()).toLocalDateTime()
+                        this[ProxyLogsTable.remoteIp] = hit.ip
+                        this[ProxyLogsTable.method] = hit.method
+                        this[ProxyLogsTable.path] = hit.path
+                        this[ProxyLogsTable.status] = hit.status
+                        this[ProxyLogsTable.responseTime] = hit.responseTime
+                        this[ProxyLogsTable.userAgent] = hit.userAgent
+                        this[ProxyLogsTable.referer] = hit.referer
+                        this[ProxyLogsTable.domain] = hit.domain
+                        
+                        val ipInfo = IpLookupService.lookup(hit.ip)
+                        this[ProxyLogsTable.countryCode] = ipInfo?.countryCode
+                        this[ProxyLogsTable.provider] = ipInfo?.provider
+                    }
+                }
+                logger.debug("Inserted ${hitsToInsert.size} suspicious proxy logs into Database")
+            } catch (e: Exception) {
+                logger.error("Failed to batch insert proxy logs to Database", e)
+            }
+        }
+        
         updateCachedStats()
     }
     
@@ -671,14 +602,13 @@ class AnalyticsServiceImpl(
                         topMethods = processedStats.topMethods
                     ), date
                 )
-                // Cache the processed stats (24 hour TTL)
                 CacheService.set(cacheKey, processedStats, ttlSeconds = 86400)
                 logger.info("Created and cached historical stats for $date from logs")
             } catch (e: Exception) {
                 logger.error("Error saving processed stats for $date", e)
             }
         } else {
-            logger.warn("No stats processed for date $date - log file may not exist or contain no entries for this date")
+            logger.warn("No stats processed for date $date")
         }
 
         return processedStats
@@ -688,45 +618,46 @@ class AnalyticsServiceImpl(
      * Get the appropriate log file for a specific date
      * Checks rotated log files first (access_YYYY-MM-DD.log), then falls back to current access.log
      */
-    private fun getLogFileForDate(targetDate: String): File? {
-        val logDir = logFile.parentFile
-        val rotatedLogFile = File(logDir, "access_$targetDate.log")
+    private fun getLogFilesForDate(targetDate: String): List<File> {
+        val allFiles = logDir.listFiles() ?: return emptyList()
+        val matchingFiles = mutableListOf<File>()
 
-        // Check if rotated log file exists for this date
-        if (rotatedLogFile.exists() && rotatedLogFile.length() > 0) {
-            logger.info("Using rotated log file for date $targetDate: ${rotatedLogFile.name}")
-            return rotatedLogFile
+        for (file in allFiles) {
+            // Match standard rotated files: access_YYYY-MM-DD.log
+            if (file.name == "access_$targetDate.log") {
+                matchingFiles.add(file)
+            }
+            // Match domain-specific rotated files: domain_access_YYYY-MM-DD.log
+            else if (file.name.endsWith("_access_$targetDate.log")) {
+                matchingFiles.add(file)
+            }
         }
 
-        // Check if it's today - use current log file
-        val today = java.time.LocalDate.now()
-            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
-        if (targetDate == today && logFile.exists()) {
-            logger.info("Using current log file for today's date: ${logFile.name}")
-            return logFile
+        if (matchingFiles.isNotEmpty()) {
+            return matchingFiles
         }
 
-        // Check current log file as fallback
-        if (logFile.exists() && logFile.length() > 0) {
-            logger.info("Using current log file as fallback for date $targetDate: ${logFile.name}")
-            return logFile
+        // Fallback to active logs if date is today
+        val today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        if (targetDate == today) {
+            return allFiles.filter { it.name == "access.log" || it.name.endsWith("_access.log") }
         }
 
-        logger.warn("No log file found for date $targetDate")
-        return null
+        return emptyList()
     }
 
     /**
      * Process log file for a specific date and generate stats
      */
     private fun processLogsForDate(targetDate: String): DailyProxyStats? {
-        val fileToProcess = getLogFileForDate(targetDate) ?: run {
-            logger.warn("Log file does not exist, cannot process historical stats for $targetDate")
+        val filesToProcess = getLogFilesForDate(targetDate)
+        if (filesToProcess.isEmpty()) {
+            logger.warn("No log files found for $targetDate")
             return null
         }
 
         val lineRegex =
-            """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)".*$""".toRegex()
+            """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)" "([^"]*)".*$""".toRegex()
         val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
         val targetLocalDate = try {
             java.time.LocalDate.parse(
@@ -738,11 +669,7 @@ class AnalyticsServiceImpl(
             return null
         }
 
-        // Get settings
-        val settings = AppConfig.settings
-        val shouldFilterLocalIps = settings.filterLocalIps
-
-        // Temporary maps for this date's stats
+        // Temporary maps for aggregation
         val tempTotalHits = java.util.concurrent.atomic.AtomicLong(0)
         val tempHitsByStatusMap = ConcurrentHashMap<Int, Long>()
         val tempHitsByDomainMap = ConcurrentHashMap<String, Long>()
@@ -754,48 +681,40 @@ class AnalyticsServiceImpl(
         val tempHitsByRefererMap = ConcurrentHashMap<String, Long>()
         val tempHitsByUserAgentMap = ConcurrentHashMap<String, Long>()
         val tempHitsByTimeMap = ConcurrentHashMap<String, Long>()
+        // Additional maps to match ProxyStats structure
+        val tempHitsByCountryMap = ConcurrentHashMap<String, Long>()
+        val tempHitsByProviderMap = ConcurrentHashMap<String, Long>()
 
-        return try {
-            // Read entire log file (or check rotated logs) - use BufferedReader for better UTF-8 support
-            fileToProcess.bufferedReader(Charsets.UTF_8).use { reader ->
-                var line: String? = reader.readLine()
-                var processedCount = 0L
-                var skippedCount = 0L
+        val settings = AppConfig.settings
+        val shouldFilterLocalIps = settings.filterLocalIps
 
-                while (line != null) {
-                    try {
+        for (file in filesToProcess) {
+            try {
+                file.bufferedReader(Charsets.UTF_8).use { reader ->
+                    var line: String? = reader.readLine()
+                    while (line != null) {
                         val trimmedLine = line.trim()
                         if (trimmedLine.isNotEmpty()) {
                             lineRegex.find(trimmedLine)?.let { match ->
-                                val (ip, dateStr, fullRequest, statusStr, _, referer, ua, _) = match.destructured
+                                val (ip, dateStr, fullRequest, statusStr, _, referer, ua, _, host) = match.destructured
                                 val status = statusStr.toIntOrNull() ?: 0
 
-                                // Parse date from log entry
+                                // Parse date and check match
                                 try {
                                     val timestamp = dateFormat.parse(dateStr)
                                     val logDate = java.time.LocalDate.ofInstant(
                                         timestamp.toInstant(), java.time.ZoneId.systemDefault()
                                     )
-
-                                    // Only process entries for the target date
-                                    // Compare dates directly (ignoring time)
                                     if (!logDate.isEqual(targetLocalDate)) {
-                                        skippedCount++
                                         return@let
                                     }
 
-                                    logger.debug("Processing log entry for date $targetDate: $dateStr -> $logDate")
-
-                                    // Filter local IPs if enabled
-                                    if (shouldFilterLocalIps && IpFilterUtils.isLocalIp(ip)) {
-                                        return@let
-                                    }
+                                    if (shouldFilterLocalIps && IpFilterUtils.isLocalIp(ip)) return@let
 
                                     val reqParts = fullRequest.split(" ")
                                     val method = reqParts.getOrNull(0) ?: "-"
                                     val path = reqParts.getOrNull(1) ?: fullRequest
 
-                                    // Filter 200 responses for static asset files
                                     if (status == 200) {
                                         val cleanPath = path.substringBefore('?')
                                         val isStaticAsset = cleanPath.endsWith(".js", ignoreCase = true) ||
@@ -809,96 +728,61 @@ class AnalyticsServiceImpl(
                                                 cleanPath.endsWith(".woff2", ignoreCase = true) ||
                                                 cleanPath.endsWith(".ttf", ignoreCase = true) ||
                                                 cleanPath.endsWith(".webp", ignoreCase = true)
-                                        if (isStaticAsset) {
-                                            return@let
-                                        }
+                                        if (isStaticAsset) return@let
                                     }
 
-                                    // Filter failures (>= 400) for .ico files
-                                    if (status >= 400) {
-                                        val cleanPath = path.substringBefore('?')
-                                        if (cleanPath.endsWith(".ico", ignoreCase = true)) {
-                                            return@let
-                                        }
-                                    }
-
-                                    val domain = if (referer != "-") try {
+                                    val domain = if (host != "-") host else if (referer != "-") try {
                                         java.net.URI(referer).host
-                                    } catch (e: Exception) {
-                                        null
-                                    } else null
+                                    } catch (e: Exception) { null } else null
 
-                                    // Update stats
                                     tempTotalHits.incrementAndGet()
                                     tempHitsByStatusMap.merge(status, 1L, Long::plus)
                                     tempHitsByIpMap.merge(ip, 1L, Long::plus)
                                     tempHitsByMethodMap.merge(method, 1L, Long::plus)
                                     tempHitsByPathMap.merge(path, 1L, Long::plus)
                                     if (ua != "-") tempHitsByUserAgentMap.merge(ua, 1L, Long::plus)
-                                    if (referer != "-") tempHitsByRefererMap.merge(
-                                        referer,
-                                        1L,
-                                        Long::plus
-                                    )
+                                    if (referer != "-") tempHitsByRefererMap.merge(referer, 1L, Long::plus)
                                     if (domain != null) {
-                                        tempHitsByDomainMap.merge(
-                                            domain,
-                                            1L,
-                                            Long::plus
-                                        )
-                                        if (status >= 400) {
-                                            tempHitsByDomainErrorMap.merge(domain, 1L, Long::plus)
-                                        }
+                                        tempHitsByDomainMap.merge(domain, 1L, Long::plus)
+                                        if (status >= 400) tempHitsByDomainErrorMap.merge(domain, 1L, Long::plus)
                                     }
+                                    if (status >= 400) tempHitsByIpErrorMap.merge(ip, 1L, Long::plus)
 
-                                    if (status >= 400 || status == 0) {
-                                        tempHitsByIpErrorMap.merge(ip, 1L, Long::plus)
-                                    }
+                                    val hourKey = SimpleDateFormat("yyyy-MM-dd'T'HH:00:00XXX", Locale.US).format(timestamp)
+                                    tempHitsByTimeMap.merge(hourKey, 1L, Long::plus)
 
-                            // Time-based aggregation (ISO 8601 hour bucket)
-                                val hourKey = SimpleDateFormat("yyyy-MM-dd'T'HH:00:00XXX", Locale.US).format(timestamp)
-                                tempHitsByTimeMap.merge(hourKey, 1L, Long::plus)
+                                    // IP Lookup (Optional for historical, but robust)
+                                    val ipInfo = IpLookupService.lookup(ip)
+                                    ipInfo?.countryCode?.let { tempHitsByCountryMap.merge(it, 1L, Long::plus) }
+                                    ipInfo?.provider?.let { tempHitsByProviderMap.merge(it, 1L, Long::plus) }
 
-                                processedCount++
-                            } catch (e: Exception) {
-                                // Log parse errors for debugging but continue processing
-                                logger.debug("Error parsing date from log entry: $dateStr", e)
-                            }
+                                } catch (e: Exception) { }
                             }
                         }
-                    } catch (e: Exception) {
-                        logger.debug("Error processing log line", e)
+                        line = reader.readLine()
                     }
-                    line = reader.readLine()
                 }
-
-                logger.info("Processed $processedCount log entries for date $targetDate (skipped $skippedCount entries from other dates)")
+            } catch (e: Exception) {
+                logger.error("Error processing log file ${file.name}", e)
             }
-
-            // Convert to DailyProxyStats
-            DailyProxyStats(
-                date = targetDate,
-                totalHits = tempTotalHits.get(),
-                hitsByStatus = tempHitsByStatusMap.toMap(),
-                hitsOverTime = tempHitsByTimeMap.toSortedMap(),
-                topPaths = tempHitsByPathMap.entries.sortedByDescending { it.value }
-                    .map { PathHit(it.key, it.value) },
-                hitsByDomain = tempHitsByDomainMap.toMap(),
-                hitsByDomainErrors = tempHitsByDomainErrorMap.toMap(),
-                topIps = tempHitsByIpMap.entries.sortedByDescending { it.value }
-                    .map { GenericHitEntry(it.key, it.value) },
-                topIpsWithErrors = tempHitsByIpErrorMap.entries.sortedByDescending { it.value }
-                    .map { GenericHitEntry(it.key, it.value) },
-                topUserAgents = tempHitsByUserAgentMap.entries.sortedByDescending { it.value }
-                    .map { GenericHitEntry(it.key, it.value) },
-                topReferers = tempHitsByRefererMap.entries.sortedByDescending { it.value }
-                    .map { GenericHitEntry(it.key, it.value) },
-                topMethods = tempHitsByMethodMap.entries.sortedByDescending { it.value }
-                    .map { GenericHitEntry(it.key, it.value) })
-        } catch (e: Exception) {
-            logger.error("Error processing logs for date $targetDate", e)
-            null
         }
+
+        return DailyProxyStats(
+            date = targetDate,
+            totalHits = tempTotalHits.get(),
+            hitsByStatus = tempHitsByStatusMap.toMap(),
+            hitsOverTime = tempHitsByTimeMap.toSortedMap(),
+            topPaths = tempHitsByPathMap.entries.sortedByDescending { it.value }.take(100).map { PathHit(it.key, it.value) },
+            hitsByDomain = tempHitsByDomainMap.toMap(),
+            hitsByDomainErrors = tempHitsByDomainErrorMap.toMap(),
+            topIps = tempHitsByIpMap.entries.sortedByDescending { it.value }.take(100).map { GenericHitEntry(it.key, it.value) },
+            topIpsWithErrors = tempHitsByIpErrorMap.entries.sortedByDescending { it.value }.take(100).map { GenericHitEntry(it.key, it.value) },
+            topUserAgents = tempHitsByUserAgentMap.entries.sortedByDescending { it.value }.take(100).map { GenericHitEntry(it.key, it.value) },
+            topReferers = tempHitsByRefererMap.entries.sortedByDescending { it.value }.take(100).map { GenericHitEntry(it.key, it.value) },
+            topMethods = tempHitsByMethodMap.entries.sortedByDescending { it.value }.map { GenericHitEntry(it.key, it.value) },
+            hitsByCountry = tempHitsByCountryMap.toMap(),
+            hitsByProvider = tempHitsByProviderMap.toMap()
+        )
     }
 
     /**
