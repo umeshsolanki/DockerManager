@@ -11,6 +11,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
+import io.ktor.server.response.respondText
 
 fun Route.proxyRoutes() {
     route("/proxy") {
@@ -239,7 +240,8 @@ fun Route.proxyRoutes() {
         post("/settings/rsyslog") {
             val request = call.receive<Map<String, Boolean>>()
             val enabled = request["enabled"] ?: false
-            val result = ProxyService.updateRsyslogSettings(enabled)
+            val dualLogging = request["dualLogging"] ?: false
+            val result = ProxyService.updateRsyslogSettings(enabled, dualLogging)
             call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.InternalServerError)
         }
 
