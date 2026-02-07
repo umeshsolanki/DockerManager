@@ -570,6 +570,7 @@ export interface SystemConfig {
   osName: string;
   syslogEnabled: boolean;
   syslogServer: string;
+  syslogServerInternal?: string;
   syslogPort: number;
   syslogIsRunning: boolean;
   proxyRsyslogEnabled: boolean;
@@ -586,6 +587,7 @@ export interface UpdateSystemConfigRequest {
   dbPersistenceLogsEnabled?: boolean;
   syslogEnabled?: boolean;
   syslogServer?: string;
+  syslogServerInternal?: string;
   syslogPort?: number;
   proxyRsyslogEnabled?: boolean;
 }

@@ -113,6 +113,7 @@ object SystemService {
         osName = osName,
         syslogEnabled = AppConfig.settings.syslogEnabled,
         syslogServer = AppConfig.settings.syslogServer,
+        syslogServerInternal = AppConfig.settings.syslogServerInternal,
         syslogPort = AppConfig.settings.syslogPort,
         syslogIsRunning = false,
         proxyRsyslogEnabled = AppConfig.settings.proxyRsyslogEnabled
@@ -136,14 +137,16 @@ object SystemService {
         // Handle Syslog Settings
         val syslogPort = request.syslogPort ?: AppConfig.settings.syslogPort
         val syslogServer = request.syslogServer ?: AppConfig.settings.syslogServer
+        val syslogServerInternal = request.syslogServerInternal ?: AppConfig.settings.syslogServerInternal
         val syslogEnabled = request.syslogEnabled ?: AppConfig.settings.syslogEnabled
         
         val syslogChanged = syslogPort != AppConfig.settings.syslogPort || 
                            syslogServer != AppConfig.settings.syslogServer || 
+                           syslogServerInternal != AppConfig.settings.syslogServerInternal ||
                            syslogEnabled != AppConfig.settings.syslogEnabled
         
         if (syslogChanged) {
-            AppConfig.updateSyslogSettings(syslogEnabled, syslogServer, syslogPort)
+            AppConfig.updateSyslogSettings(syslogEnabled, syslogServer, syslogPort, syslogServerInternal)
             // Syslog service removed
         }
         

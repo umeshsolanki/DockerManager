@@ -903,7 +903,7 @@ class ProxyServiceImpl(
     private fun getLoggingReplacements(tag: String): Map<String, String> {
         val settings = AppConfig.settings
         val rsyslogEnabled = settings.proxyRsyslogEnabled
-        val syslogServer = "${settings.syslogServer}:${settings.syslogPort}"
+        val syslogServer = "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
         val syslogTag = tag.replace(".", "_")
 
         val standardLoggingConfig = run {
@@ -1594,7 +1594,7 @@ class ProxyServiceImpl(
         loggingConfig.append(standardLoggingSnippet.lines().joinToString("\n    ") { it })
         
         if (rsyslogEnabled) {
-            val syslogServer = "${settings.syslogServer}:${settings.syslogPort}"
+            val syslogServer = "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
             
             val syslogTemplate = getCachedTemplate("templates/proxy/rsyslog-config.conf")
             val syslogSnippet = ResourceLoader.replacePlaceholders(syslogTemplate, mapOf(
