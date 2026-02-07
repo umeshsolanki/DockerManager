@@ -27,6 +27,7 @@ data class SystemConfig(
     val osName: String,
     val syslogEnabled: Boolean,
     val syslogServer: String,
+    val syslogServerInternal: String?,
     val syslogPort: Int,
     val syslogIsRunning: Boolean,
     val proxyRsyslogEnabled: Boolean
@@ -44,6 +45,7 @@ data class UpdateSystemConfigRequest(
     val dbPersistenceLogsEnabled: Boolean? = null,
     val syslogEnabled: Boolean? = null,
     val syslogServer: String? = null,
+    val syslogServerInternal: String? = null,
     val syslogPort: Int? = null,
     val proxyRsyslogEnabled: Boolean? = null
 )
