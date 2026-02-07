@@ -15,17 +15,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.*
 import com.umeshsolanki.dockermanager.database.SettingsTable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 // Service object for easy access
 object ProxyService {
@@ -153,6 +149,20 @@ class ProxyServiceImpl(
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val commandExecutor = CommandExecutor(loggerName = ProxyServiceImpl::class.java.name)
+    
+    // Template cache to avoid redundant resource loads
+    private val templateCache = ConcurrentHashMap<String, String>()
+    
+    // In-memory cache for proxy hosts
+    @Volatile
+    private var cachedHosts: MutableList<ProxyHost>? = null
+    private val hostsLock = java.util.concurrent.locks.ReentrantReadWriteLock()
+
+    private fun getCachedTemplate(path: String): String {
+        return templateCache.getOrPut(path) {
+            ResourceLoader.loadResourceOrThrow(path)
+        }
+    }
 
     override fun updateSecuritySettings(
         enabled: Boolean,
@@ -209,89 +219,101 @@ class ProxyServiceImpl(
     override fun getStats(): ProxyStats = AnalyticsService.getStats()
 
     private fun loadHosts(): MutableList<ProxyHost> {
-        // 1. Try to load from Database first if active
-        if (AppConfig.storageBackend == "database") {
-            try {
-                val dbHostsJson = transaction {
-                    SettingsTable.selectAll().where { SettingsTable.key eq "PROXY_HOSTS" }
-                        .singleOrNull()
-                        ?.get(SettingsTable.value)
-                }
-
-                if (dbHostsJson != null) {
-                    logger.debug("Proxy hosts loaded from Database")
-                    val hosts = AppConfig.json.decodeFromString<List<ProxyHost>>(dbHostsJson).toMutableList()
-                    syncToRedis(hosts)
-                    return hosts
-                }
-            } catch (e: Exception) {
-                logger.warn("Failed to load proxy hosts from DB: ${e.message}")
+        hostsLock.readLock().lock()
+        try {
+            cachedHosts?.let {
+                return it.toMutableList()
             }
+        } finally {
+            hostsLock.readLock().unlock()
         }
 
-        // 2. Fallback to file load (legacy/migration source)
-        val hosts = try {
-            // Try to load normally first
-            if (hostsFile.exists()) {
-                val content = hostsFile.readText()
-                if (content.isBlank()) {
-                    emptyList<ProxyHost>().toMutableList()
-                } else {
-                    try {
-                        // Try normal deserialization
-                        AppConfig.json.decodeFromString<List<ProxyHost>>(content).toMutableList()
-                    } catch (e: kotlinx.serialization.MissingFieldException) {
-                        // Handle migration for old data format missing 'upstream' field
-                        if (e.message?.contains("upstream") == true) {
-                            logger.warn("Detected old proxy host format missing 'upstream' field, attempting migration...")
-                            migrateOldHostsFormat(content)
+        hostsLock.writeLock().lock()
+        try {
+            // Check again after acquiring write lock
+            cachedHosts?.let {
+                return it.toMutableList()
+            }
+
+            // 1. Try to load from Database first if active
+            var hosts: MutableList<ProxyHost>? = null
+            if (AppConfig.storageBackend == "database") {
+                try {
+                    val dbHostsJson = transaction {
+                        SettingsTable.selectAll().where { SettingsTable.key eq "PROXY_HOSTS" }
+                            .singleOrNull()
+                            ?.get(SettingsTable.value)
+                    }
+
+                    if (dbHostsJson != null) {
+                        logger.debug("Proxy hosts loaded from Database")
+                        hosts = AppConfig.json.decodeFromString<List<ProxyHost>>(dbHostsJson).toMutableList()
+                    }
+                } catch (e: Exception) {
+                    logger.warn("Failed to load proxy hosts from DB: ${e.message}")
+                }
+            }
+
+            // 2. Fallback to file load (legacy/migration source)
+            if (hosts == null) {
+                hosts = try {
+                    if (hostsFile.exists()) {
+                        val content = hostsFile.readText()
+                        if (content.isBlank()) {
+                            mutableListOf()
                         } else {
-                            logger.error("Error loading proxy hosts: ${e.message}", e)
-                            emptyList<ProxyHost>().toMutableList()
+                            try {
+                                AppConfig.json.decodeFromString<List<ProxyHost>>(content).toMutableList()
+                            } catch (e: Exception) {
+                                if (e.message?.contains("upstream") == true) {
+                                    logger.warn("Detected old proxy host format missing 'upstream' field, attempting migration...")
+                                    migrateOldHostsFormat(content)
+                                } else {
+                                    logger.error("Error loading proxy hosts: ${e.message}", e)
+                                    mutableListOf()
+                                }
+                            }
                         }
-                    }
-                }
-            } else {
-                jsonPersistence.load().toMutableList()
-            }
-        } catch (e: Exception) {
-            logger.error("Error loading proxy hosts", e)
-            // Fallback to JsonPersistence which handles errors gracefully
-            try {
-                jsonPersistence.load().toMutableList()
-            } catch (fallbackError: Exception) {
-                logger.error("Fallback load also failed", fallbackError)
-                emptyList<ProxyHost>().toMutableList()
-            }
-        }
-
-        // 3. Migrate to DB if active and hosts were loaded from file
-        if (AppConfig.storageBackend == "database" && hosts.isNotEmpty()) {
-            try {
-                logger.info("Migrating proxy hosts from file to Database...")
-                val content = AppConfig.json.encodeToString(hosts)
-                transaction {
-                    val existing = SettingsTable.selectAll().where { SettingsTable.key eq "PROXY_HOSTS" }.singleOrNull()
-                    if (existing != null) {
-                         SettingsTable.update({ SettingsTable.key eq "PROXY_HOSTS" }) { stmt ->
-                             stmt[SettingsTable.value] = content
-                         }
                     } else {
-                         SettingsTable.insert { stmt ->
-                             stmt[SettingsTable.key] = "PROXY_HOSTS"
-                             stmt[SettingsTable.value] = content
-                         }
+                        jsonPersistence.load().toMutableList()
+                    }
+                } catch (e: Exception) {
+                    logger.error("Error loading proxy hosts", e)
+                    jsonPersistence.load().toMutableList()
+                }
+            }
+
+            // 3. Migrate to DB if active and hosts were loaded from file
+            if (AppConfig.storageBackend == "database" && hosts != null && hosts.isNotEmpty()) {
+                scope.launch {
+                    try {
+                        val content = AppConfig.json.encodeToString(hosts)
+                        transaction {
+                            val existing = SettingsTable.selectAll().where { SettingsTable.key eq "PROXY_HOSTS" }.singleOrNull()
+                            if (existing != null) {
+                                SettingsTable.update({ SettingsTable.key eq "PROXY_HOSTS" }) { stmt -> stmt[SettingsTable.value] = content }
+                            } else {
+                                SettingsTable.insert { stmt ->
+                                    stmt[SettingsTable.key] = "PROXY_HOSTS"
+                                    stmt[SettingsTable.value] = content
+                                }
+                            }
+                        }
+                        logger.info("Proxy hosts migrated to Database successfully.")
+                    } catch (e: Exception) {
+                        logger.error("Failed to migrate proxy hosts to DB", e)
                     }
                 }
-                logger.info("Proxy hosts migrated to Database successfully.")
-            } catch (e: Exception) {
-                logger.error("Failed to migrate proxy hosts to DB", e)
             }
-        }
 
-        syncToRedis(hosts)
-        logger.debug("Loaded ${hosts.size} proxy hosts")
-        return hosts
+            val finalHosts = hosts ?: mutableListOf() // Ensure hosts is not null
+            syncToRedis(finalHosts)
+            cachedHosts = finalHosts.toMutableList()
+            logger.debug("Loaded ${finalHosts.size} proxy hosts and cached in memory")
+            return finalHosts
+        } finally {
+            hostsLock.writeLock().unlock()
+        }
     }
 
     private fun syncToRedis(hosts: List<ProxyHost>) {
@@ -407,58 +429,66 @@ class ProxyServiceImpl(
     }
 
     private fun saveHosts(hosts: List<ProxyHost>) {
-        // Ensure parent directory exists
-        hostsFile.parentFile?.mkdirs()
+        hostsLock.writeLock().lock()
+        try {
+            // Ensure parent directory exists
+            hostsFile.parentFile?.mkdirs()
 
-        // 1. Save to Database first if active
-        if (AppConfig.storageBackend == "database") {
-            try {
-                val content = AppConfig.json.encodeToString(hosts)
-                transaction {
-                    val existing = SettingsTable.selectAll().where { SettingsTable.key eq "PROXY_HOSTS" }.singleOrNull()
-                    if (existing != null) {
-                         SettingsTable.update({ SettingsTable.key eq "PROXY_HOSTS" }) { stmt ->
-                             stmt[SettingsTable.value] = content
-                             stmt[SettingsTable.updatedAt] = java.time.LocalDateTime.now()
-                         }
-                    } else {
-                         SettingsTable.insert { stmt ->
-                             stmt[SettingsTable.key] = "PROXY_HOSTS"
-                             stmt[SettingsTable.value] = content
-                             stmt[SettingsTable.updatedAt] = java.time.LocalDateTime.now()
-                         }
+            // 1. Save to Database first if active
+            if (AppConfig.storageBackend == "database") {
+                try {
+                    val content = AppConfig.json.encodeToString(hosts)
+                    transaction {
+                        val existing = SettingsTable.selectAll().where { SettingsTable.key eq "PROXY_HOSTS" }.singleOrNull()
+                        if (existing != null) {
+                            SettingsTable.update({ SettingsTable.key eq "PROXY_HOSTS" }) { stmt ->
+                                stmt[SettingsTable.value] = content
+                                stmt[SettingsTable.updatedAt] = java.time.LocalDateTime.now()
+                            }
+                        } else {
+                            SettingsTable.insert { stmt ->
+                                stmt[SettingsTable.key] = "PROXY_HOSTS"
+                                stmt[SettingsTable.value] = content
+                                stmt[SettingsTable.updatedAt] = java.time.LocalDateTime.now()
+                            }
+                        }
                     }
+                    logger.info("Proxy hosts saved to Database")
+                } catch (e: Exception) {
+                    logger.error("Failed to save proxy hosts to Database", e)
                 }
-                logger.info("Proxy hosts saved to Database")
-            } catch (e: Exception) {
-                logger.error("Failed to save proxy hosts to Database", e)
             }
-        }
 
-        // 2. Save to file as backup/legacy storage
-        val saved = jsonPersistence.save(hosts)
-        if (!saved) {
-            val errorMsg = "Failed to save proxy hosts to ${hostsFile.absolutePath}"
-            logger.error(errorMsg)
-            // Only throw if DB save also likely failed or isn't active
-            if (AppConfig.storageBackend != "database") {
-                throw IllegalStateException(errorMsg)
+            // 2. Save to file as backup/legacy storage
+            val saved = jsonPersistence.save(hosts)
+            if (!saved) {
+                val errorMsg = "Failed to save proxy hosts to ${hostsFile.absolutePath}"
+                logger.error(errorMsg)
+                if (AppConfig.storageBackend != "database") {
+                    throw IllegalStateException(errorMsg)
+                }
             }
-        }
-        logger.debug("Synced ${hosts.size} proxy hosts to file backup at ${hostsFile.absolutePath}")
+            logger.debug("Synced ${hosts.size} proxy hosts to file backup at ${hostsFile.absolutePath}")
 
-        // 3. If Redis is enabled, also sync to Redis
-        if (CacheService.currentConfig.enabled) {
-            try {
-                CacheService.set("proxy:hosts", hosts, null)
-                logger.debug("Synced ${hosts.size} proxy hosts to Redis")
-            } catch (e: Exception) {
-                logger.warn("Failed to sync proxy hosts to Redis: ${e.message}", e)
+            // 3. If Redis is enabled, also sync to Redis
+            if (CacheService.currentConfig.enabled) {
+                try {
+                    CacheService.set("proxy:hosts", hosts, null)
+                    logger.debug("Synced ${hosts.size} proxy hosts to Redis")
+                } catch (e: Exception) {
+                    logger.warn("Failed to sync proxy hosts to Redis: ${e.message}", e)
+                }
             }
-        }
 
-        // 4. Generate zones config for rate limiting
-        generateZonesConfig(hosts)
+            // 4. Update in-memory cache
+            cachedHosts = hosts.toMutableList()
+            logger.debug("Updated proxy hosts in memory cache and storage")
+
+            // 5. Generate zones config for rate limiting
+            generateZonesConfig(hosts)
+        } finally {
+            hostsLock.writeLock().unlock()
+        }
     }
 
     private fun generateZonesConfig(hosts: List<ProxyHost>) {
@@ -870,10 +900,56 @@ class ProxyServiceImpl(
         return commandExecutor.execute(command).output
     }
 
+    private fun getLoggingReplacements(tag: String): Map<String, String> {
+        val settings = AppConfig.settings
+        val rsyslogEnabled = settings.proxyRsyslogEnabled
+        val syslogServer = "${settings.syslogServer}:${settings.syslogPort}"
+
+        val standardLoggingConfig = run {
+            val template = getCachedTemplate("templates/proxy/standard-logging.conf")
+            val snippet = ResourceLoader.replacePlaceholders(template, mapOf("tag" to tag))
+            snippet.lines().joinToString("\n    ") { it }
+        }
+
+        val syslogConfig = if (rsyslogEnabled) {
+            val template = getCachedTemplate("templates/proxy/rsyslog-config.conf")
+            val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
+                "syslogServer" to syslogServer,
+                "tag" to tag
+            ))
+            snippet.lines().joinToString("\n    ") { it }
+        } else ""
+
+        val dangerHitsConfig = run {
+            val template = getCachedTemplate("templates/proxy/danger-logging.conf")
+            val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
+                "syslogServer" to syslogServer,
+                "tag" to tag
+            ))
+            snippet.lines().joinToString("\n    ") { it }
+        }
+
+        val burstLoggingConfig = run {
+            val template = getCachedTemplate("templates/proxy/burst-logging.conf")
+            val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
+                "syslogServer" to syslogServer,
+                "tag" to tag
+            ))
+            snippet.lines().joinToString("\n    ") { it }
+        }
+
+        return mapOf(
+            "standardLoggingConfig" to standardLoggingConfig,
+            "rsyslogConfig" to syslogConfig,
+            "dangerHitsConfig" to dangerHitsConfig,
+            "burstLoggingConfig" to burstLoggingConfig
+        )
+    }
+
     private fun generateNginxConfig(host: ProxyHost): Pair<Boolean, String> {
         // Load websocket config if enabled
         val wsConfigRaw = if (host.websocketEnabled) {
-            ResourceLoader.loadResourceOrThrow("templates/proxy/websocket-config.conf")
+            getCachedTemplate("templates/proxy/websocket-config.conf")
         } else ""
 
         // Indent websocket config for use in location blocks (8 spaces)
@@ -941,8 +1017,7 @@ class ProxyServiceImpl(
                         |        ${ipConfig}
                     """.trimMargin().trim()
                 } else {
-                    val proxyTemplate =
-                        ResourceLoader.loadResourceOrThrow("templates/proxy/http-proxy-config.conf")
+                    val proxyTemplate = getCachedTemplate("templates/proxy/http-proxy-config.conf")
                     val proxyContent = ResourceLoader.replacePlaceholders(
                         proxyTemplate, mapOf(
                             "target" to safeTarget,
@@ -959,131 +1034,66 @@ class ProxyServiceImpl(
         }
 
         val silentDropConfig = if (host.silentDrop) {
-            val template = ResourceLoader.loadResourceOrThrow("templates/proxy/silent-drop.conf")
+            val template = getCachedTemplate("templates/proxy/silent-drop.conf")
             template.lines().joinToString("\n    ") { it }
         } else ""
 
-        // Generate Rsyslog Config if enabled
-        val rsyslogEnabled = AppConfig.settings.proxyRsyslogEnabled
-        val syslogServerHost = AppConfig.settings.syslogServer
-        val syslogServerPort = AppConfig.settings.syslogPort
-        val syslogServer = "$syslogServerHost:$syslogServerPort"
-        val syslogConfig = if (rsyslogEnabled) {
-            val template = ResourceLoader.loadResourceOrThrow("templates/proxy/rsyslog-config.conf")
-            val configSnippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                "syslogServer" to syslogServer,
-                "tag" to host.domain
-            ))
-            configSnippet.lines().joinToString("\n    ") { it }
-        } else ""
-
-        val standardLoggingConfig = run {
-            val template = ResourceLoader.loadResourceOrThrow("templates/proxy/standard-logging.conf")
-            val configSnippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                "tag" to host.domain
-            ))
-            configSnippet.lines().joinToString("\n    ") { it }
-        }
-
-        val dangerHitsConfig = run {
-            val template = ResourceLoader.loadResourceOrThrow("templates/proxy/danger-logging.conf")
-            val configSnippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                "syslogServer" to syslogServer,
-                "tag" to host.domain
-            ))
-            configSnippet.lines().joinToString("\n    ") { it }
-        }
-
-        val burstLoggingConfig = run {
-            val template = ResourceLoader.loadResourceOrThrow("templates/proxy/burst-logging.conf")
-            val configSnippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                "syslogServer" to syslogServer,
-                "tag" to host.domain
-            ))
-            configSnippet.lines().joinToString("\n    ") { it }
-        }
-        
-        // Inside server blocks, we need to make sure the indentation is correct.
-        // The placeholder in server-http/https.conf is already indented by 4 spaces.
+        // Generate Logging Config Replacements
+        val loggingReplacements = getLoggingReplacements(host.domain)
 
         // Generate HTTPS server block if SSL is enabled
         val sslConfig = if (host.ssl) {
             val (hostCert, hostKey) = resolveSslCertPaths(host)
-
             val hostCertFile = File(hostCert)
             val hostKeyFile = File(hostKey)
 
-            logger.info("Checking SSL files for ${host.domain} at:\nCert: ${hostCertFile.absolutePath}\nKey: ${hostKeyFile.absolutePath}")
-
             if (!hostCertFile.exists() || !hostKeyFile.exists()) {
                 logger.warn("SSL fallback for ${host.domain}: Host files missing or inaccessible.")
+                // Recursive call with SSL disabled
                 return generateNginxConfig(host.copy(ssl = false)).copy(second = "SSL Certificate missing on disk (checked ${hostCertFile.parent})")
             }
 
             val containerCert = translateToContainerPath(hostCert)
             val containerKey = translateToContainerPath(hostKey)
+            val hstsHeader = if (host.hstsEnabled) "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;" else ""
 
-            logger.info("Using SSL config for ${host.domain}: $containerCert")
-
-            val hstsHeader = if (host.hstsEnabled) {
-                "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;"
-            } else ""
-
-
-
-            val httpsTemplate =
-                ResourceLoader.loadResourceOrThrow("templates/proxy/server-https.conf")
-            
-            ResourceLoader.replacePlaceholders(
-                httpsTemplate, mapOf(
-                    "domain" to host.domain,
-                    "standardLoggingConfig" to standardLoggingConfig,
-                    "rsyslogConfig" to syslogConfig,
-                    "dangerHitsConfig" to dangerHitsConfig,
-                    "burstLoggingConfig" to burstLoggingConfig,
-                    "sslCert" to containerCert,
-                    "sslKey" to containerKey,
-                    "hstsHeader" to hstsHeader,
-                    "target" to host.target,
-                    "websocketConfig" to wsConfig,
-                    "ipRestrictions" to ipConfig,
-                    "pathLocations" to pathLocations,
-                    "rateLimitConfig" to (if (host.paths.isEmpty()) serverRateLimit else ""),
-                    "mainLocationConfig" to generateMainLocationConfig(true),
-                    "silentDropConfig" to silentDropConfig
-                )
-            )
+            val httpsTemplate = getCachedTemplate("templates/proxy/server-https.conf")
+            val replacements = loggingReplacements.toMutableMap().apply {
+                put("domain", host.domain)
+                put("sslCert", containerCert)
+                put("sslKey", containerKey)
+                put("hstsHeader", hstsHeader)
+                put("target", host.target)
+                put("websocketConfig", wsConfig)
+                put("ipRestrictions", ipConfig)
+                put("pathLocations", pathLocations)
+                put("rateLimitConfig", if (host.paths.isEmpty()) serverRateLimit else "")
+                put("mainLocationConfig", generateMainLocationConfig(true))
+                put("silentDropConfig", silentDropConfig)
+            }
+            ResourceLoader.replacePlaceholders(httpsTemplate, replacements)
         } else ""
 
         // Generate HTTP server block
-        val httpRedirect = if (host.ssl) {
-            "        return 301 https://\$host\$request_uri;\n"
-        } else ""
+        val httpRedirect = if (host.ssl) "        return 301 https://\$host\$request_uri;\n" else ""
+        val httpTemplate = getCachedTemplate("templates/proxy/server-http.conf")
+        val httpReplacements = loggingReplacements.toMutableMap().apply {
+            put("domain", host.domain)
+            put("pathLocations", pathLocations)
+            put("rateLimitConfig", if (host.ssl || host.paths.isNotEmpty()) "" else serverRateLimit)
+            put("mainLocationConfig", generateMainLocationConfig(false, httpRedirect))
+            put("silentDropConfig", silentDropConfig)
+        }
+        val httpConfig = ResourceLoader.replacePlaceholders(httpTemplate, httpReplacements)
 
-        val httpTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/server-http.conf")
-        
-        val httpConfig = ResourceLoader.replacePlaceholders(
-            httpTemplate, mapOf(
-                "domain" to host.domain,
-                "standardLoggingConfig" to standardLoggingConfig,
-                "rsyslogConfig" to syslogConfig,
-                "dangerHitsConfig" to dangerHitsConfig,
-                "burstLoggingConfig" to burstLoggingConfig,
-                "pathLocations" to pathLocations,
-                "rateLimitConfig" to (if (host.ssl || host.paths.isNotEmpty()) "" else serverRateLimit),
-                "mainLocationConfig" to generateMainLocationConfig(false, httpRedirect),
-                "silentDropConfig" to silentDropConfig
-            )
-        )
+        val finalConfig = "$httpConfig\n\n$sslConfig".trim()
 
-        val config = "$httpConfig\n\n$sslConfig".trim()
-
-        try {
-            File(configDir, "${host.domain}.conf").writeText(config)
-            return true to "Config generated"
+        return try {
+            File(configDir, "${host.domain}.conf").writeText(finalConfig)
+            true to "Config generated"
         } catch (e: Exception) {
             logger.error("Failed to generate nginx config for ${host.domain}", e)
-            return false to "Failed to write config: ${e.message}"
+            false to "Failed to write config: ${e.message}"
         }
     }
 
@@ -1125,7 +1135,7 @@ class ProxyServiceImpl(
             } ?: ""
 
             if (pathRoute.isStatic) {
-                val staticTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/static-location-block.conf")
+                val staticTemplate = getCachedTemplate("templates/proxy/static-location-block.conf")
                 ResourceLoader.replacePlaceholders(
                     staticTemplate, mapOf(
                         "path" to safePath,
@@ -1138,7 +1148,7 @@ class ProxyServiceImpl(
             } else {
                 // Load websocket config if enabled for this path
                 val wsConfigRaw = if (pathRoute.websocketEnabled) {
-                    ResourceLoader.loadResourceOrThrow("templates/proxy/websocket-config.conf")
+                    getCachedTemplate("templates/proxy/websocket-config.conf")
                 } else ""
 
                 val wsConfig = if (wsConfigRaw.isNotEmpty()) {
@@ -1156,7 +1166,7 @@ class ProxyServiceImpl(
                     "proxy_pass $targetUrl\$request_uri;"
                 }
 
-                val locationTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/location-block.conf")
+                val locationTemplate = getCachedTemplate("templates/proxy/location-block.conf")
                 ResourceLoader.replacePlaceholders(
                     locationTemplate, mapOf(
                         "path" to safePath,
@@ -1481,7 +1491,7 @@ class ProxyServiceImpl(
     }
 
     private fun getDefaultComposeConfig(): String {
-        val template = ResourceLoader.loadResourceOrThrow("templates/proxy/docker-compose.yml")
+        val template = getCachedTemplate("templates/proxy/docker-compose.yml")
         return ResourceLoader.replacePlaceholders(
             template, mapOf(
                 "nginxPath" to nginxPath,
@@ -1492,7 +1502,7 @@ class ProxyServiceImpl(
     }
 
     private fun getDefaultDockerfileConfig(): String {
-        return ResourceLoader.loadResourceOrThrow("templates/proxy/Dockerfile.proxy")
+        return getCachedTemplate("templates/proxy/Dockerfile.proxy")
     }
 
     private fun ensureComposeFile(): File {
@@ -1569,13 +1579,13 @@ class ProxyServiceImpl(
     }
 
     private fun getDefaultNginxConfig(): String {
-        val template = ResourceLoader.loadResourceOrThrow("templates/proxy/nginx.conf")
-        val rsyslogEnabled = AppConfig.settings.proxyRsyslogEnabled
-        val syslogServer = "127.0.0.1:${AppConfig.settings.syslogPort}"
+        val template = getCachedTemplate("templates/proxy/nginx.conf")
+        val settings = AppConfig.settings
+        val rsyslogEnabled = settings.proxyRsyslogEnabled
         
         val loggingConfig = StringBuilder()
         
-        val standardLoggingTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/standard-logging.conf")
+        val standardLoggingTemplate = getCachedTemplate("templates/proxy/standard-logging.conf")
         val standardLoggingSnippet = ResourceLoader.replacePlaceholders(standardLoggingTemplate, mapOf(
             "tag" to "nginx_main"
         ))
@@ -1583,11 +1593,9 @@ class ProxyServiceImpl(
         loggingConfig.append(standardLoggingSnippet.lines().joinToString("\n    ") { it })
         
         if (rsyslogEnabled) {
-            val syslogServerHost = AppConfig.settings.syslogServer
-            val syslogServerPort = AppConfig.settings.syslogPort
-            val syslogServer = "$syslogServerHost:$syslogServerPort"
+            val syslogServer = "${settings.syslogServer}:${settings.syslogPort}"
             
-            val syslogTemplate = ResourceLoader.loadResourceOrThrow("templates/proxy/rsyslog-config.conf")
+            val syslogTemplate = getCachedTemplate("templates/proxy/rsyslog-config.conf")
             val syslogSnippet = ResourceLoader.replacePlaceholders(syslogTemplate, mapOf(
                 "syslogServer" to syslogServer,
                 "tag" to "nginx_main"
@@ -1610,63 +1618,23 @@ class ProxyServiceImpl(
     private fun ensureDefaultServer() {
         val defaultServerFile = File(configDir, "zz-default-server.conf")
         try {
-            val templateName = if (AppConfig.settings.proxyDefaultReturn404) {
+            val settings = AppConfig.settings
+            val templateName = if (settings.proxyDefaultReturn404) {
                 "templates/proxy/default-server-404.conf"
             } else {
                 "templates/proxy/default-server.conf"
             }
             
-            val defaultServerTemplate = ResourceLoader.loadResourceOrThrow(templateName)
-            
-            val rsyslogEnabled = AppConfig.settings.proxyRsyslogEnabled
-            val syslogServer = "${AppConfig.settings.syslogServer}:${AppConfig.settings.syslogPort}"
-            val tag = "default_server"
-
-            val standardLoggingConfig = run {
-                val template = ResourceLoader.loadResourceOrThrow("templates/proxy/standard-logging.conf")
-                val snippet = ResourceLoader.replacePlaceholders(template, mapOf("tag" to tag))
-                snippet.lines().joinToString("\n    ") { it }
-            }
-
-            val syslogConfig = if (rsyslogEnabled) {
-                val template = ResourceLoader.loadResourceOrThrow("templates/proxy/rsyslog-config.conf")
-                val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                    "syslogServer" to syslogServer,
-                    "tag" to tag
-                ))
-                snippet.lines().joinToString("\n    ") { it }
-            } else ""
-
-            val dangerHitsConfig = run {
-                val template = ResourceLoader.loadResourceOrThrow("templates/proxy/danger-logging.conf")
-                val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                    "syslogServer" to syslogServer,
-                    "tag" to tag
-                ))
-                snippet.lines().joinToString("\n    ") { it }
-            }
-
-            val burstLoggingConfig = run {
-                val template = ResourceLoader.loadResourceOrThrow("templates/proxy/burst-logging.conf")
-                val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                    "syslogServer" to syslogServer,
-                    "tag" to tag
-                ))
-                snippet.lines().joinToString("\n    ") { it }
-            }
+            val defaultServerTemplate = getCachedTemplate(templateName)
+            val loggingReplacements = getLoggingReplacements("default_server")
 
             val finalContent = ResourceLoader.replacePlaceholders(
-                defaultServerTemplate, mapOf(
-                    "standardLoggingConfig" to standardLoggingConfig,
-                    "rsyslogConfig" to syslogConfig,
-                    "dangerHitsConfig" to dangerHitsConfig,
-                    "burstLoggingConfig" to burstLoggingConfig
-                )
+                defaultServerTemplate, loggingReplacements
             )
 
             // Allow overwriting if content changed (simple check: always write)
             defaultServerFile.writeText(finalContent)
-            logger.info("Updated default nginx server block: ${defaultServerFile.absolutePath} (Return 404: ${AppConfig.settings.proxyDefaultReturn404})")
+            logger.info("Updated default nginx server block: ${defaultServerFile.absolutePath} (Return 404: ${settings.proxyDefaultReturn404})")
         } catch (e: Exception) {
             logger.error("Failed to create/update default server block", e)
         }
@@ -1680,7 +1648,7 @@ class ProxyServiceImpl(
         if (!indexFile.exists()) {
             try {
                 val defaultPageTemplate =
-                    ResourceLoader.loadResourceOrThrow("templates/proxy/default-index.html")
+                    getCachedTemplate("templates/proxy/default-index.html")
                 indexFile.writeText(defaultPageTemplate)
                 logger.info("Created default HTML page: ${indexFile.absolutePath}")
             } catch (e: Exception) {
