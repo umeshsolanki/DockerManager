@@ -30,7 +30,9 @@ data class SystemConfig(
     val syslogServerInternal: String?,
     val syslogPort: Int,
     val syslogIsRunning: Boolean,
-    val proxyRsyslogEnabled: Boolean
+    val proxyRsyslogEnabled: Boolean,
+    val proxyDualLoggingEnabled: Boolean,
+    val nginxLogDir: String
 )
 
 @Serializable
@@ -47,7 +49,9 @@ data class UpdateSystemConfigRequest(
     val syslogServer: String? = null,
     val syslogServerInternal: String? = null,
     val syslogPort: Int? = null,
-    val proxyRsyslogEnabled: Boolean? = null
+    val proxyRsyslogEnabled: Boolean? = null,
+    val proxyDualLoggingEnabled: Boolean? = null,
+    val nginxLogDir: String? = null
 )
 
 @Serializable

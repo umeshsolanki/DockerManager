@@ -93,6 +93,7 @@ data class ProxyStats(
     val topPaths: List<PathHit> = emptyList(),
     val recentHits: List<ProxyHit> = emptyList(),
     val hitsByDomain: Map<String, Long> = emptyMap(),
+    val hitsByDomainErrors: Map<String, Long> = emptyMap(),
     val topIps: List<GenericHitEntry> = emptyList(),
     val topIpsWithErrors: List<GenericHitEntry> = emptyList(),
     val topUserAgents: List<GenericHitEntry> = emptyList(),

@@ -110,7 +110,9 @@ data class AppSettings(
     val syslogServer: String = "127.0.0.1",
     val syslogServerInternal: String? = null,
     val syslogPort: Int = 514,
-    val proxyRsyslogEnabled: Boolean = false
+    val proxyRsyslogEnabled: Boolean = false,
+    val proxyDualLoggingEnabled: Boolean = false,
+    val nginxLogDir: String? = null
 )
 
 object AppConfig {
@@ -348,9 +350,10 @@ object AppConfig {
         saveSettings()
     }
 
-    fun updateLoggingSettings(dbPersistenceLogsEnabled: Boolean) {
+    fun updateLoggingSettings(dbPersistenceLogsEnabled: Boolean? = null, nginxLogDir: String? = null) {
         _settings = _settings.copy(
-            dbPersistenceLogsEnabled = dbPersistenceLogsEnabled
+            dbPersistenceLogsEnabled = dbPersistenceLogsEnabled ?: _settings.dbPersistenceLogsEnabled,
+            nginxLogDir = nginxLogDir ?: _settings.nginxLogDir
         )
         saveSettings()
     }
@@ -379,9 +382,10 @@ object AppConfig {
         saveSettings()
     }
 
-    fun updateProxyRsyslogSettings(enabled: Boolean) {
+    fun updateProxyRsyslogSettings(enabled: Boolean, dualLogging: Boolean) {
         _settings = _settings.copy(
-            proxyRsyslogEnabled = enabled
+            proxyRsyslogEnabled = enabled,
+            proxyDualLoggingEnabled = dualLogging
         )
         saveSettings()
     }
@@ -484,7 +488,7 @@ object AppConfig {
 
     // Proxy Service Configs
     val nginxDir: File get() = File(dataRoot, FileConstants.NGINX)
-    val nginxLogDir: File get() = File(nginxDir, FileConstants.LOGS)
+    val nginxLogDir: File get() = _settings.nginxLogDir?.takeIf { it.isNotBlank() }?.let { File(it) } ?: File(nginxDir, FileConstants.LOGS)
     val nginxAccessLogFile: File get() = File(nginxDir, "${FileConstants.LOGS}/${FileConstants.ACCESS_LOG}")
     val nginxConfigDir: File get() = File(nginxDir, FileConstants.CONFIG_D)
     val nginxHostsFile: File get() = File(dataRoot, "${FileConstants.PROXY}/${FileConstants.HOSTS_JSON}")

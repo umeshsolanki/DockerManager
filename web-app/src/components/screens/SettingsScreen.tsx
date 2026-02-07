@@ -35,6 +35,8 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [syslogServerInternal, setSyslogServerInternal] = useState('');
     const [syslogPort, setSyslogPort] = useState(514);
     const [proxyRsyslogEnabled, setProxyRsyslogEnabled] = useState(false);
+    const [proxyDualLoggingEnabled, setProxyDualLoggingEnabled] = useState(false);
+    const [nginxLogDir, setNginxLogDir] = useState('');
     const [message, setMessage] = useState('');
     const [config, setConfig] = useState<SystemConfig | null>(null);
     const [loading, setLoading] = useState(false);
@@ -82,6 +84,8 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 setSyslogServerInternal(data.syslogServerInternal || '');
                 setSyslogPort(data.syslogPort);
                 setProxyRsyslogEnabled(data.proxyRsyslogEnabled);
+                setProxyDualLoggingEnabled(data.proxyDualLoggingEnabled || false);
+                setNginxLogDir(data.nginxLogDir);
             }
 
 
@@ -132,7 +136,9 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 syslogServer: syslogServerHost,
                 syslogServerInternal: syslogServerInternal || undefined,
                 syslogPort: syslogPort,
-                proxyRsyslogEnabled: proxyRsyslogEnabled
+                proxyRsyslogEnabled: proxyRsyslogEnabled,
+                proxyDualLoggingEnabled: proxyDualLoggingEnabled,
+                nginxLogDir: nginxLogDir
             });
             if (result.success) {
                 setMessage('System settings updated successfully!');
@@ -529,6 +535,18 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                         <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${proxyRsyslogEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
                                     </button>
                                 </div>
+                                <div className={`flex items-center justify-between p-4 bg-surface/50 rounded-xl border border-outline/10 transition-all ${!proxyRsyslogEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                                    <div className="flex-1 pr-4">
+                                        <p className="text-sm font-bold text-on-surface">Dual Logging (Local + Syslog)</p>
+                                        <p className="text-xs text-on-surface-variant leading-relaxed">Keep local logs even when syslog is enabled</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setProxyDualLoggingEnabled(!proxyDualLoggingEnabled)}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 flex-shrink-0 ${proxyDualLoggingEnabled ? 'bg-primary' : 'bg-surface border border-outline/30'}`}
+                                    >
+                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${proxyDualLoggingEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                                    </button>
+                                </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="space-y-2">
@@ -781,6 +799,21 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                     <div className="p-4 bg-surface/80 rounded-xl border border-outline/5 overflow-hidden">
                                         <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Data Root</p>
                                         <p className="text-on-surface font-mono text-sm truncate" title={config.dataRoot}>{config.dataRoot}</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-semibold text-on-surface-variant px-1">Nginx Logs Directory</label>
+                                        <div className="relative">
+                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">
+                                                <Terminal size={18} />
+                                            </div>
+                                            <input
+                                                type="text"
+                                                value={nginxLogDir}
+                                                onChange={(e) => setNginxLogDir(e.target.value)}
+                                                placeholder="/path/to/nginx/logs"
+                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 pl-11 pr-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm font-mono"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             ) : (

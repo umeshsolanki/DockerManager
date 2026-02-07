@@ -21,6 +21,7 @@ data class DailyProxyStats(
     val hitsOverTime: Map<String, Long> = emptyMap(),
     val topPaths: List<PathHit> = emptyList(),
     val hitsByDomain: Map<String, Long> = emptyMap(),
+    val hitsByDomainErrors: Map<String, Long> = emptyMap(),
     val topIps: List<GenericHitEntry> = emptyList(),
     val topIpsWithErrors: List<GenericHitEntry> = emptyList(),
     val topUserAgents: List<GenericHitEntry> = emptyList(),
@@ -57,6 +58,7 @@ class AnalyticsPersistenceService {
                 hitsOverTime = stats.hitsOverTime,
                 topPaths = stats.topPaths,
                 hitsByDomain = stats.hitsByDomain,
+                hitsByDomainErrors = stats.hitsByDomainErrors,
                 topIps = stats.topIps,
                 topIpsWithErrors = stats.topIpsWithErrors,
                 topUserAgents = stats.topUserAgents,
@@ -123,6 +125,15 @@ class AnalyticsPersistenceService {
                         }
                         .toMap()
 
+                    val hitsByDomainErrors = ProxyLogsTable.select(ProxyLogsTable.domain, ProxyLogsTable.domain.count())
+                        .where { (ProxyLogsTable.timestamp greaterEq start) and (ProxyLogsTable.timestamp less end) and (ProxyLogsTable.status greaterEq 400) }
+                        .groupBy(ProxyLogsTable.domain)
+                        .mapNotNull { 
+                            val domain = it[ProxyLogsTable.domain] ?: return@mapNotNull null
+                            domain to it[ProxyLogsTable.domain.count()] 
+                        }
+                        .toMap()
+
                     val topIps = ProxyLogsTable.select(ProxyLogsTable.remoteIp, ProxyLogsTable.remoteIp.count())
                         .where { (ProxyLogsTable.timestamp greaterEq start) and (ProxyLogsTable.timestamp less end) }
                         .groupBy(ProxyLogsTable.remoteIp)
@@ -176,6 +187,7 @@ class AnalyticsPersistenceService {
                         hitsOverTime = hitsOverTime,
                         topPaths = topPaths,
                         hitsByDomain = hitsByDomain,
+                        hitsByDomainErrors = hitsByDomainErrors,
                         topIps = topIps,
                         topMethods = topMethods,
                         topUserAgents = topUserAgents,

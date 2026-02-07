@@ -13,20 +13,20 @@ interface Props {
 }
 
 export default function NavigationRail({ selectedScreen, onScreenChange, onLogout }: Props) {
-    const items: { label: Screen; icon: React.ReactNode }[] = [
-        { label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
-        { label: 'Docker', icon: <Box size={20} /> },
-        { label: 'Analytics', icon: <Activity size={20} /> },
-        { label: 'Security', icon: <Lock size={20} /> },
-        { label: 'Firewall', icon: <Shield size={20} /> },
-        { label: 'Logs', icon: <FileSearch size={20} /> },
-        { label: 'Proxy', icon: <Globe size={20} /> },
-        { label: 'Emails', icon: <Mail size={20} /> },
-        { label: 'Files', icon: <FolderInput size={20} /> },
-        { label: 'DB', icon: <Database size={20} /> },
-        { label: 'Kafka', icon: <Zap size={20} /> },
-        { label: 'IP', icon: <ShieldAlert size={20} /> },
-    ];
+    const items = [
+        { label: 'Dashboard', Icon: LayoutDashboard },
+        { label: 'Docker', Icon: Box },
+        { label: 'Analytics', Icon: Activity },
+        { label: 'Security', Icon: Lock },
+        { label: 'Firewall', Icon: Shield },
+        { label: 'Logs', Icon: FileSearch },
+        { label: 'Proxy', Icon: Globe },
+        { label: 'Emails', Icon: Mail },
+        { label: 'Files', Icon: FolderInput },
+        { label: 'DB', Icon: Database },
+        { label: 'Kafka', Icon: Zap },
+        { label: 'IP', Icon: ShieldAlert },
+    ] as const;
 
 
 
@@ -50,7 +50,7 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
                             className={`nav-rail-item py-2 ${isActive ? 'nav-rail-item-active' : 'text-on-surface-variant'}`}
                             title={item.label}
                         >
-                            {item.icon}
+                            <item.Icon size={20} />
                             <span className="text-[9px] mt-1 font-medium">{item.label}</span>
                         </button>
                     );

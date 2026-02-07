@@ -56,6 +56,7 @@ class AnalyticsServiceImpl(
     private val totalHitsCounter = java.util.concurrent.atomic.AtomicLong(0)
     private val hitsByStatusMap = ConcurrentHashMap<Int, Long>()
     private val hitsByDomainMap = ConcurrentHashMap<String, Long>()
+    private val hitsByDomainErrorMap = ConcurrentHashMap<String, Long>()
     private val hitsByPathMap = ConcurrentHashMap<String, Long>()
     private val hitsByIpMap = ConcurrentHashMap<String, Long>()
     private val hitsByIpErrorMap = ConcurrentHashMap<String, Long>()
@@ -296,6 +297,7 @@ class AnalyticsServiceImpl(
         totalHitsCounter.set(0)
         hitsByStatusMap.clear()
         hitsByDomainMap.clear()
+        hitsByDomainErrorMap.clear()
         hitsByPathMap.clear()
         hitsByIpMap.clear()
         hitsByIpErrorMap.clear()
@@ -321,6 +323,7 @@ class AnalyticsServiceImpl(
             topPaths = emptyList(),
             recentHits = emptyList(),
             hitsByDomain = emptyMap(),
+            hitsByDomainErrors = emptyMap(),
             topIps = emptyList(),
             topIpsWithErrors = emptyList(),
             topUserAgents = emptyList(),
@@ -428,7 +431,12 @@ class AnalyticsServiceImpl(
                             hitsByPathMap.merge(path, 1L, Long::plus)
                             if (ua != "-") hitsByUserAgentMap.merge(ua, 1L, Long::plus)
                             if (referer != "-") hitsByRefererMap.merge(referer, 1L, Long::plus)
-                            if (domain != null) hitsByDomainMap.merge(domain, 1L, Long::plus)
+                            if (domain != null) {
+                                hitsByDomainMap.merge(domain, 1L, Long::plus)
+                                if (status >= 400) {
+                                    hitsByDomainErrorMap.merge(domain, 1L, Long::plus)
+                                }
+                            }
                             
                             // IP Lookup for in-memory stats
                             val ipInfo = IpLookupService.lookup(ip)
@@ -531,6 +539,7 @@ class AnalyticsServiceImpl(
                 .map { PathHit(it.key, it.value) },
             recentHits = recentHitsList.toList(),
             hitsByDomain = hitsByDomainMap.toMap(),
+            hitsByDomainErrors = hitsByDomainErrorMap.toMap(),
             topIps = hitsByIpMap.entries.sortedByDescending { it.value }
                 .map { GenericHitEntry(it.key, it.value) },
             topIpsWithErrors = hitsByIpErrorMap.entries.sortedByDescending { it.value }
@@ -654,6 +663,7 @@ class AnalyticsServiceImpl(
                         topPaths = processedStats.topPaths,
                         recentHits = emptyList(),
                         hitsByDomain = processedStats.hitsByDomain,
+                        hitsByDomainErrors = processedStats.hitsByDomainErrors,
                         topIps = processedStats.topIps,
                         topIpsWithErrors = processedStats.topIpsWithErrors,
                         topUserAgents = processedStats.topUserAgents,
@@ -736,6 +746,7 @@ class AnalyticsServiceImpl(
         val tempTotalHits = java.util.concurrent.atomic.AtomicLong(0)
         val tempHitsByStatusMap = ConcurrentHashMap<Int, Long>()
         val tempHitsByDomainMap = ConcurrentHashMap<String, Long>()
+        val tempHitsByDomainErrorMap = ConcurrentHashMap<String, Long>()
         val tempHitsByPathMap = ConcurrentHashMap<String, Long>()
         val tempHitsByIpMap = ConcurrentHashMap<String, Long>()
         val tempHitsByIpErrorMap = ConcurrentHashMap<String, Long>()
@@ -829,11 +840,16 @@ class AnalyticsServiceImpl(
                                         1L,
                                         Long::plus
                                     )
-                                    if (domain != null) tempHitsByDomainMap.merge(
-                                        domain,
-                                        1L,
-                                        Long::plus
-                                    )
+                                    if (domain != null) {
+                                        tempHitsByDomainMap.merge(
+                                            domain,
+                                            1L,
+                                            Long::plus
+                                        )
+                                        if (status >= 400) {
+                                            tempHitsByDomainErrorMap.merge(domain, 1L, Long::plus)
+                                        }
+                                    }
 
                                     if (status >= 400 || status == 0) {
                                         tempHitsByIpErrorMap.merge(ip, 1L, Long::plus)
@@ -868,6 +884,7 @@ class AnalyticsServiceImpl(
                 topPaths = tempHitsByPathMap.entries.sortedByDescending { it.value }
                     .map { PathHit(it.key, it.value) },
                 hitsByDomain = tempHitsByDomainMap.toMap(),
+                hitsByDomainErrors = tempHitsByDomainErrorMap.toMap(),
                 topIps = tempHitsByIpMap.entries.sortedByDescending { it.value }
                     .map { GenericHitEntry(it.key, it.value) },
                 topIpsWithErrors = tempHitsByIpErrorMap.entries.sortedByDescending { it.value }

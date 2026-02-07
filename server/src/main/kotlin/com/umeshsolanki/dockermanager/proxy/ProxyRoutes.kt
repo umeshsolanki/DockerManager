@@ -65,6 +65,14 @@ fun Route.proxyRoutes() {
             call.respondBooleanResult(ProxyService.requestSSL(id))
         }
 
+        get("/hosts/{id}/logs") {
+            val id = call.requireParameter("id") ?: return@get
+            val type = call.request.queryParameters["type"] ?: "access"
+            val lines = call.request.queryParameters["lines"]?.toIntOrNull() ?: 100
+            val content = ProxyService.getProxyLogs(id, type, lines)
+            call.respondText(content)
+        }
+
         // Path-based routing management
         get("/hosts/{id}/paths") {
             val id = call.requireParameter("id") ?: return@get

@@ -409,6 +409,7 @@ export interface ProxyStats {
   topPaths: PathHit[];
   recentHits: ProxyHit[];
   hitsByDomain: Record<string, number>;
+  hitsByDomainErrors: Record<string, number>;
   topIps: GenericHitEntry[];
   topIpsWithErrors: GenericHitEntry[];
   topUserAgents: GenericHitEntry[];
@@ -429,6 +430,7 @@ export interface DailyProxyStats {
   hitsOverTime: Record<string, number>;
   topPaths: PathHit[];
   hitsByDomain: Record<string, number>;
+  hitsByDomainErrors: Record<string, number>;
   topIps: GenericHitEntry[];
   topIpsWithErrors: GenericHitEntry[];
   topUserAgents: GenericHitEntry[];
@@ -574,6 +576,8 @@ export interface SystemConfig {
   syslogPort: number;
   syslogIsRunning: boolean;
   proxyRsyslogEnabled: boolean;
+  proxyDualLoggingEnabled?: boolean;
+  nginxLogDir: string;
 }
 
 export interface UpdateSystemConfigRequest {
@@ -590,6 +594,8 @@ export interface UpdateSystemConfigRequest {
   syslogServerInternal?: string;
   syslogPort?: number;
   proxyRsyslogEnabled?: boolean;
+  proxyDualLoggingEnabled?: boolean;
+  nginxLogDir?: string;
 }
 
 export interface JamesContainerStatus {

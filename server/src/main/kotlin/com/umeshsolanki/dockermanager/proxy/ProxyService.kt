@@ -63,10 +63,11 @@ object ProxyService {
 
     fun updateDefaultBehavior(return404: Boolean) = service.updateDefaultBehavior(return404)
 
-    fun updateRsyslogSettings(enabled: Boolean) = service.updateRsyslogSettings(enabled)
+    fun updateRsyslogSettings(enabled: Boolean, dualLogging: Boolean) = service.updateRsyslogSettings(enabled, dualLogging)
     fun regenerateAllHostConfigs() = service.regenerateAllHostConfigs()
 
     fun getProxySecuritySettings() = AppConfig.settings
+    fun getProxyLogs(hostId: String, type: String, lines: Int) = service.getProxyLogs(hostId, type, lines)
 
     // Analytics History
     fun getHistoricalStats(date: String) = service.getHistoricalStats(date)
@@ -109,8 +110,9 @@ interface IProxyService {
     fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null)
     fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>)
     fun updateDefaultBehavior(return404: Boolean): Pair<Boolean, String>
-    fun updateRsyslogSettings(enabled: Boolean): Pair<Boolean, String>
+    fun updateRsyslogSettings(enabled: Boolean, dualLogging: Boolean): Pair<Boolean, String>
     fun regenerateAllHostConfigs(): Pair<Boolean, String>
+    fun getProxyLogs(hostId: String, type: String, lines: Int): String
 
     // Analytics History
     fun getHistoricalStats(date: String): DailyProxyStats?
@@ -195,9 +197,9 @@ class ProxyServiceImpl(
         }
     }
 
-    override fun updateRsyslogSettings(enabled: Boolean): Pair<Boolean, String> {
+    override fun updateRsyslogSettings(enabled: Boolean, dualLogging: Boolean): Pair<Boolean, String> {
         return try {
-            AppConfig.updateProxyRsyslogSettings(enabled)
+            AppConfig.updateProxyRsyslogSettings(enabled, dualLogging)
             ensureNginxMainConfig(forceOverwrite = true)
             ensureDefaultServer()
             regenerateAllHostConfigs()
@@ -213,6 +215,41 @@ class ProxyServiceImpl(
         } catch (e: Exception) {
             logger.error("Failed to update Rsyslog settings", e)
             false to "Internal error updating rsyslog settings: ${e.message}"
+        }
+    }
+
+    override fun getProxyLogs(hostId: String, type: String, lines: Int): String {
+        return try {
+            val hosts = loadHosts()
+            val host = hosts.find { it.id == hostId } ?: return "Host not found"
+            
+            // Determine log file name
+            // Note: Standard logging uses 'access' and 'error'
+            // Danger logging uses 'danger'
+            // Burst logging uses 'burst'
+            val logType = when(type) {
+                "access" -> "access"
+                "error" -> "error" 
+                "danger" -> "danger"
+                "burst" -> "burst"
+                else -> "access"
+            }
+            
+            // The local file tag is effectively the domain
+            val tag = host.domain
+            
+            // Construct file path
+            val logFile = File(File(AppConfig.nginxDir, "logs"), "${tag}_${logType}.log")
+            
+            if (!logFile.exists()) {
+                return "Log file not found: ${logFile.name}"
+            }
+            
+            // Read tail
+            executeCommand("tail -n $lines ${logFile.absolutePath}")
+        } catch (e: Exception) {
+            logger.error("Error reading logs for host $hostId", e)
+            "Error reading logs: ${e.message}"
         }
     }
 
@@ -936,53 +973,73 @@ class ProxyServiceImpl(
     private fun getLoggingReplacements(tag: String): Map<String, String> {
         val settings = AppConfig.settings
         val rsyslogEnabled = settings.proxyRsyslogEnabled
+        val dualLogging = settings.proxyDualLoggingEnabled
         val syslogServer = "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
         val syslogTag = tag.replace(Regex("[^a-zA-Z0-9_]"), "_")
 
         val standardLoggingConfig = run {
             val template = getCachedTemplate("templates/proxy/standard-logging.conf")
-            val snippet = ResourceLoader.replacePlaceholders(template, mapOf("tag" to tag))
+            
+            val accessLogDirectives = mutableListOf<String>()
+            val errorLogDirectives = mutableListOf<String>()
+
+            // 1. Local Logging (Enabled if dual logging OR rsyslog is disabled)
+            if (dualLogging || !rsyslogEnabled) {
+                accessLogDirectives.add("access_log /usr/local/openresty/nginx/logs/${tag}_access.log main;")
+                errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/${tag}_error.log warn;")
+            }
+
+            // 2. Remote Syslog (Enabled if rsyslog is enabled)
+            if (rsyslogEnabled) {
+                accessLogDirectives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_access,severity=info main;")
+                errorLogDirectives.add("error_log syslog:server=$syslogServer,tag=${syslogTag}_error,severity=warn;")
+            }
+
+            val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
+                "accessLogDirective" to accessLogDirectives.joinToString("\n"),
+                "errorLogDirective" to errorLogDirectives.joinToString("\n")
+            ))
             snippet.lines().joinToString("\n    ") { it }
         }
 
-        val syslogConfig = if (rsyslogEnabled) {
-            val template = getCachedTemplate("templates/proxy/rsyslog-config.conf")
-            val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                "syslogServer" to syslogServer,
-                "tag" to syslogTag
-            ))
-            snippet.lines().joinToString("\n    ") { it }
-        } else ""
-
         val dangerHitsConfig = run {
             val template = getCachedTemplate("templates/proxy/danger-logging.conf")
-            val syslogLine = if (rsyslogEnabled) 
-                "access_log syslog:server=$syslogServer,tag=${syslogTag}_danger,severity=crit main;" 
-            else ""
+            val directives = mutableListOf<String>()
+            
+            if (dualLogging || !rsyslogEnabled) {
+                directives.add("access_log /usr/local/openresty/nginx/logs/${tag}_danger.log main;")
+            }
+            
+            if (rsyslogEnabled) {
+                directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_danger,severity=crit main;")
+            }
             
             val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                "syslogDangerLog" to syslogLine,
-                "tag" to tag // Use raw tag (domain) for filename
+                "dangerLoggingDirectives" to directives.joinToString("\n    ")
             ))
             snippet.lines().joinToString("\n    ") { it }
         }
 
         val burstLoggingConfig = run {
             val template = getCachedTemplate("templates/proxy/burst-logging.conf")
-            val syslogLine = if (rsyslogEnabled) 
-                "access_log syslog:server=$syslogServer,tag=${syslogTag}_burst,severity=warn main;" 
-            else ""
+            val directives = mutableListOf<String>()
+            
+            if (dualLogging || !rsyslogEnabled) {
+                directives.add("access_log /usr/local/openresty/nginx/logs/${tag}_burst.log main;")
+            }
+            
+            if (rsyslogEnabled) {
+                directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_burst,severity=warn main;")
+            }
 
             val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                "syslogBurstLog" to syslogLine,
-                "tag" to tag // Use raw tag (domain) for filename
+                "burstLoggingDirectives" to directives.joinToString("\n    ")
             ))
             snippet.lines().joinToString("\n    ") { it }
         }
 
         return mapOf(
             "standardLoggingConfig" to standardLoggingConfig,
-            "rsyslogConfig" to syslogConfig,
             "dangerHitsConfig" to dangerHitsConfig,
             "burstLoggingConfig" to burstLoggingConfig
         )

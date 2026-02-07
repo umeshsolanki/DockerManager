@@ -116,7 +116,9 @@ object SystemService {
         syslogServerInternal = AppConfig.settings.syslogServerInternal,
         syslogPort = AppConfig.settings.syslogPort,
         syslogIsRunning = false,
-        proxyRsyslogEnabled = AppConfig.settings.proxyRsyslogEnabled
+        proxyRsyslogEnabled = AppConfig.settings.proxyRsyslogEnabled,
+        proxyDualLoggingEnabled = AppConfig.settings.proxyDualLoggingEnabled,
+        nginxLogDir = AppConfig.nginxLogDir.absolutePath
     )
     
     fun updateSystemConfig(request: UpdateSystemConfigRequest) {
@@ -130,8 +132,8 @@ object SystemService {
             kafkaSettings = request.kafkaSettings ?: AppConfig.settings.kafkaSettings
         )
 
-        request.dbPersistenceLogsEnabled?.let {
-            AppConfig.updateLoggingSettings(it)
+        if (request.dbPersistenceLogsEnabled != null || request.nginxLogDir != null) {
+            AppConfig.updateLoggingSettings(request.dbPersistenceLogsEnabled, request.nginxLogDir)
         }
         
         // Handle Syslog Settings
@@ -148,11 +150,16 @@ object SystemService {
         if (syslogChanged) {
             AppConfig.updateSyslogSettings(syslogEnabled, syslogServer, syslogPort, syslogServerInternal)
             // Trigger proxy config regeneration if syslog settings changed
-            ServiceContainer.proxyService.updateRsyslogSettings(AppConfig.settings.proxyRsyslogEnabled)
+            ServiceContainer.proxyService.updateRsyslogSettings(
+                AppConfig.settings.proxyRsyslogEnabled,
+                AppConfig.settings.proxyDualLoggingEnabled
+            )
         }
         
-        request.proxyRsyslogEnabled?.let {
-            ServiceContainer.proxyService.updateRsyslogSettings(it)
+        if (request.proxyRsyslogEnabled != null || request.proxyDualLoggingEnabled != null) {
+            val enabled = request.proxyRsyslogEnabled ?: AppConfig.settings.proxyRsyslogEnabled
+            val dual = request.proxyDualLoggingEnabled ?: AppConfig.settings.proxyDualLoggingEnabled
+            ServiceContainer.proxyService.updateRsyslogSettings(enabled, dual)
         }
 
         // Refresh Docker client to use new settings
