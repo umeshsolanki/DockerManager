@@ -9,7 +9,7 @@ class IpRangeFetchServiceTest {
     // Test parsing logic without mocking HTTP (decoupled)
 
     @Test
-    fun testParseAwsJson() {
+    fun testParseAwsJson() = kotlinx.coroutines.runBlocking {
         val json = """
             {
               "syncToken": "123",
@@ -41,7 +41,7 @@ class IpRangeFetchServiceTest {
     }
     
     @Test
-    fun testParseGoogleJson() {
+    fun testParseGoogleJson() = kotlinx.coroutines.runBlocking {
         val json = """
             {
               "syncToken": "123",
