@@ -6,12 +6,12 @@ import com.umeshsolanki.dockermanager.kafka.IpReputationEvent
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import org.slf4j.LoggerFactory
+import com.zaxxer.hikari.HikariConfig
+import com.zaxxer.hikari.HikariDataSource
 import java.sql.Connection
-import java.sql.DriverManager
 import java.sql.PreparedStatement
 import java.sql.SQLException
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.ConcurrentLinkedQueue
 
 object ClickHouseService {
     private val logger = LoggerFactory.getLogger(ClickHouseService::class.java)
@@ -91,28 +91,32 @@ object ClickHouseService {
         }
     }
 
-    // Simple connection holder - in a real high-load scenario, use HikariCP
-    private var activeConnection: Connection? = null
-    private val connectionLock = Any()
-
+    private var dataSource: HikariDataSource? = null
+    
     private fun getConnection(): Connection? {
-        synchronized(connectionLock) {
-            try {
-                if (activeConnection != null && !activeConnection!!.isClosed && !activeConnection!!.isValid(2)) {
-                   try { activeConnection!!.close() } catch (e: Exception) {}
-                   activeConnection = null
-                }
-                
-                if (activeConnection == null || activeConnection!!.isClosed) {
+        if (dataSource == null || dataSource!!.isClosed) {
+            synchronized(this) {
+                if (dataSource == null || dataSource!!.isClosed) {
                     val settings = AppConfig.settings.clickhouseSettings
-                    val url = "jdbc:clickhouse://${settings.host}:${settings.port}/${settings.database}"
-                    activeConnection = DriverManager.getConnection(url, settings.user, settings.password)
+                    val config = HikariConfig().apply {
+                        jdbcUrl = "jdbc:clickhouse://${settings.host}:${settings.port}/${settings.database}"
+                        username = settings.user
+                        password = settings.password
+                        driverClassName = "com.clickhouse.jdbc.ClickHouseDriver"
+                        maximumPoolSize = 5
+                        connectionTimeout = 10000
+                        isAutoCommit = true
+                        validate()
+                    }
+                    dataSource = HikariDataSource(config)
                 }
-                return activeConnection
-            } catch (e: Exception) {
-                logger.error("Failed to connect to ClickHouse: ${e.message}")
-                return null
             }
+        }
+        return try {
+            dataSource?.connection
+        } catch (e: Exception) {
+            logger.error("Failed to get connection from pool", e)
+            null
         }
     }
 
@@ -189,12 +193,7 @@ object ClickHouseService {
         if (batch.isEmpty()) return
         
         try {
-            // Get connection but don't close it - we want to reuse it
-            // However, we need to handle if it's null
-            val conn = getConnection() ?: return
-            
-            // We use a try-with-resources for the statement only
-            try {
+            getConnection()?.use { conn ->
                 conn.prepareStatement(sql).use { pstmt ->
                     for (item in batch) {
                         parameterSetter(pstmt, item)
@@ -203,13 +202,6 @@ object ClickHouseService {
                     pstmt.executeBatch()
                 }
                 logger.debug("Successfully flushed ${batch.size} $batchName to ClickHouse")
-            } catch (e: SQLException) {
-                // If SQL exception occurs, invalidating connection might be safe
-                logger.error("SQL Error flushing $batchName batch", e)
-                synchronized(connectionLock) {
-                    try { activeConnection?.close() } catch (ignored: Exception) {}
-                    activeConnection = null
-                }
             }
         } catch (e: Exception) {
             logger.error("Failed to flush $batchName batch to ClickHouse", e)
@@ -272,16 +264,18 @@ object ClickHouseService {
     fun stop() {
         isRunning.set(false)
         scope.cancel()
+        dataSource?.close()
+        dataSource = null
     }
 
     fun <T> query(sql: String, mapper: (java.sql.ResultSet) -> T): List<T> {
         val results = mutableListOf<T>()
         try {
-            // Use the shared connection without closing it
-            val conn = getConnection() ?: return emptyList()
-            conn.createStatement().executeQuery(sql).use { rs ->
-                while (rs.next()) {
-                    results.add(mapper(rs))
+            getConnection()?.use { conn ->
+                conn.createStatement().executeQuery(sql).use { rs ->
+                    while (rs.next()) {
+                        results.add(mapper(rs))
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -293,11 +287,11 @@ object ClickHouseService {
     fun queryMap(sql: String): Map<String, Long> {
         val results = mutableMapOf<String, Long>()
         try {
-            // Use the shared connection without closing it
-            val conn = getConnection() ?: return emptyMap()
-            conn.createStatement().executeQuery(sql).use { rs ->
-                while (rs.next()) {
-                    results[rs.getString(1)] = rs.getLong(2)
+            getConnection()?.use { conn ->
+                conn.createStatement().executeQuery(sql).use { rs ->
+                    while (rs.next()) {
+                        results[rs.getString(1)] = rs.getLong(2)
+                    }
                 }
             }
         } catch (e: Exception) {
