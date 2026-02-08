@@ -74,11 +74,13 @@ object ServiceContainer {
                     if (topic == settings.kafkaSettings.topic) {
                         try {
                             val request = AppConfig.json.decodeFromString<IpBlockRequest>(processedEvent.processedValue)
-                            jailManagerService.jailIP(
-                                ip = request.ip,
-                                durationMinutes = request.durationMinutes,
-                                reason = request.reason
-                            )
+                            kotlinx.coroutines.GlobalScope.launch {
+                                jailManagerService.jailIP(
+                                    ip = request.ip,
+                                    durationMinutes = request.durationMinutes,
+                                    reason = request.reason
+                                )
+                            }
                         } catch (e: Exception) {
                             org.slf4j.LoggerFactory.getLogger("KafkaHandler").error("Failed to process block request", e)
                         }

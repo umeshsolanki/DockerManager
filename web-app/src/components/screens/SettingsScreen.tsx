@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Link, Save, CheckCircle, Info, Database, Server, Terminal, RefreshCw, Settings2, Globe, XCircle, ShieldCheck, Key, LogOut, Maximize2, Minimize2 } from 'lucide-react';
+import { Link, Save, CheckCircle, Info, Database, Server, Terminal, RefreshCw, Settings2, Globe, XCircle, ShieldCheck, ShieldAlert, Key, LogOut, Maximize2, Minimize2 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { SystemConfig, TwoFactorSetupResponse, StorageInfo } from '@/lib/types';
 import dynamic from 'next/dynamic';
@@ -42,6 +42,11 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [logBufferingEnabled, setLogBufferingEnabled] = useState(false);
     const [logBufferSizeKb, setLogBufferSizeKb] = useState(32);
     const [logFlushIntervalSeconds, setLogFlushIntervalSeconds] = useState(60);
+    const [jailEnabled, setJailEnabled] = useState(true);
+    const [jailThreshold, setJailThreshold] = useState(5);
+    const [jailDurationMinutes, setJailDurationMinutes] = useState(30);
+    const [exponentialJailEnabled, setExponentialJailEnabled] = useState(true);
+    const [maxJailDurationMinutes, setMaxJailDurationMinutes] = useState(10080);
     const [clickhouseEnabled, setClickhouseEnabled] = useState(false);
     const [clickhouseHost, setClickhouseHost] = useState('localhost');
     const [clickhousePort, setClickhousePort] = useState(8123);
@@ -104,6 +109,11 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 setLogBufferingEnabled(data.logBufferingEnabled || false);
                 setLogBufferSizeKb(data.logBufferSizeKb || 32);
                 setLogFlushIntervalSeconds(data.logFlushIntervalSeconds || 60);
+                setJailEnabled(data.jailEnabled ?? true);
+                setJailThreshold(data.jailThreshold || 5);
+                setJailDurationMinutes(data.jailDurationMinutes || 30);
+                setExponentialJailEnabled(data.exponentialJailEnabled ?? true);
+                setMaxJailDurationMinutes(data.maxJailDurationMinutes || 10080);
                 if (data.clickhouseSettings) {
                     setClickhouseEnabled(data.clickhouseSettings.enabled);
                     setClickhouseHost(data.clickhouseSettings.host);
@@ -172,6 +182,11 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 logBufferingEnabled: logBufferingEnabled,
                 logBufferSizeKb: logBufferSizeKb,
                 logFlushIntervalSeconds: logFlushIntervalSeconds,
+                jailEnabled: jailEnabled,
+                jailThreshold: jailThreshold,
+                jailDurationMinutes: jailDurationMinutes,
+                exponentialJailEnabled: exponentialJailEnabled,
+                maxJailDurationMinutes: maxJailDurationMinutes,
                 clickhouseSettings: {
                     enabled: clickhouseEnabled,
                     host: clickhouseHost,
@@ -1064,6 +1079,107 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                 >
                                     {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
                                     <span>Save Logging Settings</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* IP Jailing & Security */}
+                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="p-3 bg-red-500/10 rounded-xl text-red-500">
+                                    <ShieldAlert size={20} />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-bold">IP Jailing & Security</h2>
+                                    <p className="text-xs text-on-surface-variant mt-0.5">Automated threat mitigation</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:border-red-500/20">
+                                    <div>
+                                        <p className="text-sm font-semibold text-on-surface">Auto-Jail Enabled</p>
+                                        <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">Automatically block IPs after repeated violations</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setJailEnabled(!jailEnabled)}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ring-2 ring-offset-2 ring-offset-surface ring-transparent active:ring-red-500/20 ${jailEnabled ? 'bg-red-500' : 'bg-surface-variant'}`}
+                                    >
+                                        <span
+                                            className={`${jailEnabled ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+                                        />
+                                    </button>
+                                </div>
+
+                                {jailEnabled && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-semibold text-on-surface-variant px-1 flex justify-between">
+                                                <span>Penalty Threshold</span>
+                                                <span className="text-primary">{jailThreshold} Attempts</span>
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={jailThreshold}
+                                                onChange={(e) => setJailThreshold(parseInt(e.target.value) || 5)}
+                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-mono"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-semibold text-on-surface-variant px-1 flex justify-between">
+                                                <span>Base Duration (Mins)</span>
+                                                <span className="text-primary">{jailDurationMinutes}m</span>
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={jailDurationMinutes}
+                                                onChange={(e) => setJailDurationMinutes(parseInt(e.target.value) || 30)}
+                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-mono"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="h-px bg-outline/10 my-4" />
+
+                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:border-red-500/20">
+                                    <div>
+                                        <p className="text-sm font-semibold text-on-surface">Exponential Backoff</p>
+                                        <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">Double jail time on each repeat offence. Penalty resets after 1 week clean.</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setExponentialJailEnabled(!exponentialJailEnabled)}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ring-2 ring-offset-2 ring-offset-surface ring-transparent active:ring-red-500/20 ${exponentialJailEnabled ? 'bg-red-500' : 'bg-surface-variant'}`}
+                                    >
+                                        <span
+                                            className={`${exponentialJailEnabled ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+                                        />
+                                    </button>
+                                </div>
+
+                                {exponentialJailEnabled && (
+                                    <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                        <label className="text-xs font-semibold text-on-surface-variant px-1 flex justify-between">
+                                            <span>Max Duration (Mins)</span>
+                                            <span className="text-primary">{maxJailDurationMinutes}m (~{Math.round(maxJailDurationMinutes / 1440)} days)</span>
+                                        </label>
+                                        <input
+                                            type="number"
+                                            value={maxJailDurationMinutes}
+                                            onChange={(e) => setMaxJailDurationMinutes(parseInt(e.target.value) || 10080)}
+                                            className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-mono"
+                                        />
+                                        <p className="text-[10px] text-on-surface-variant/60 px-1 italic">Hard cap for escalated jail time to prevent infinite bans</p>
+                                    </div>
+                                )}
+
+                                <button
+                                    onClick={handleSaveSystem}
+                                    disabled={saving || loading}
+                                    className="w-full flex items-center justify-center gap-2 bg-red-500 text-white font-semibold px-4 py-2.5 rounded-xl hover:bg-red-600 transition-all active:scale-[0.98] shadow-md shadow-red-500/20 disabled:opacity-50 text-sm"
+                                >
+                                    {saving ? <RefreshCw className="animate-spin" size={16} /> : <ShieldAlert size={16} />}
+                                    <span>Save Security Settings</span>
                                 </button>
                             </div>
                         </div>

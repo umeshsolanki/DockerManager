@@ -35,7 +35,12 @@ data class SystemConfig(
     val nginxLogDir: String,
     val logBufferingEnabled: Boolean,
     val logBufferSizeKb: Int,
-    val logFlushIntervalSeconds: Int
+    val logFlushIntervalSeconds: Int,
+    val jailEnabled: Boolean,
+    val jailThreshold: Int,
+    val jailDurationMinutes: Int,
+    val exponentialJailEnabled: Boolean,
+    val maxJailDurationMinutes: Int
 )
 
 @Serializable
@@ -57,7 +62,12 @@ data class UpdateSystemConfigRequest(
     val nginxLogDir: String? = null,
     val logBufferingEnabled: Boolean? = null,
     val logBufferSizeKb: Int? = null,
-    val logFlushIntervalSeconds: Int? = null
+    val logFlushIntervalSeconds: Int? = null,
+    val jailEnabled: Boolean? = null,
+    val jailThreshold: Int? = null,
+    val jailDurationMinutes: Int? = null,
+    val exponentialJailEnabled: Boolean? = null,
+    val maxJailDurationMinutes: Int? = null
 )
 
 @Serializable

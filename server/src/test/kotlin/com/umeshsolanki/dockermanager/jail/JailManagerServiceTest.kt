@@ -14,6 +14,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
 
 /**
  * Unit tests for JailManagerService
@@ -56,7 +57,9 @@ class JailManagerServiceTest {
         
         every { mockFirewallService.blockIP(any()) } returns true
 
-        val result = jailManagerService.jailIP(testIp, durationMinutes, reason)
+        val result = runBlocking {
+            jailManagerService.jailIP(testIp, durationMinutes, reason)
+        }
 
         assertTrue(result)
         verify(exactly = 1) {
@@ -84,7 +87,9 @@ class JailManagerServiceTest {
             true
         }
 
-        jailManagerService.jailIP(testIp, durationMinutes, reason)
+        runBlocking {
+            jailManagerService.jailIP(testIp, durationMinutes, reason)
+        }
         
         val afterTime = System.currentTimeMillis()
         val expectedMin = beforeTime + (durationMinutes * 60_000L)

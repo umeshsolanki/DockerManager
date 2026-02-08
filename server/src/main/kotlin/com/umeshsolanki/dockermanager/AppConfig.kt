@@ -78,6 +78,8 @@ data class AppSettings(
     val jailEnabled: Boolean = true,
     val jailThreshold: Int = 5,
     val jailDurationMinutes: Int = 30,
+    val exponentialJailEnabled: Boolean = true,
+    val maxJailDurationMinutes: Int = 10080, // 1 week
     val monitoringActive: Boolean = true,
     val monitoringIntervalMinutes: Int = 5,
     val fcmServiceAccountPath: String = FileConstants.FCM_SERVICE_ACCOUNT_JSON,
@@ -329,6 +331,8 @@ object AppConfig {
         durationMinutes: Int,
         monitoringActive: Boolean? = null,
         monitoringIntervalMinutes: Int? = null,
+        exponentialEnabled: Boolean? = null,
+        maxDuration: Int? = null
     ) = synchronized(lock) {
         _settings = _settings.copy(
             jailEnabled = enabled,
@@ -336,7 +340,9 @@ object AppConfig {
             jailDurationMinutes = durationMinutes,
             monitoringActive = monitoringActive ?: _settings.monitoringActive,
             monitoringIntervalMinutes = monitoringIntervalMinutes
-                ?: _settings.monitoringIntervalMinutes
+                ?: _settings.monitoringIntervalMinutes,
+            exponentialJailEnabled = exponentialEnabled ?: _settings.exponentialJailEnabled,
+            maxJailDurationMinutes = maxDuration ?: _settings.maxJailDurationMinutes
         )
         saveSettings()
     }

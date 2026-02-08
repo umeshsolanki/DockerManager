@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 interface IJailManagerService {
     fun listJails(): List<JailedIP>
-    fun jailIP(ip: String, durationMinutes: Int, reason: String): Boolean
+    suspend fun jailIP(ip: String, durationMinutes: Int, reason: String): Boolean
     fun unjailIP(ip: String): Boolean
     fun getCountryCode(ip: String): String
     fun isIPJailed(ip: String): Boolean
@@ -96,8 +96,40 @@ class JailManagerServiceImpl(
         }
     }
 
-    override fun jailIP(ip: String, durationMinutes: Int, reason: String): Boolean {
-        val expiresAt = System.currentTimeMillis() + (durationMinutes * 60_000L)
+    override suspend fun jailIP(ip: String, durationMinutes: Int, reason: String): Boolean {
+        val settings = AppConfig.settings
+        var finalDuration = durationMinutes
+
+        if (settings.exponentialJailEnabled) {
+            try {
+                val reputation = ipReputationService.getIpReputation(ip)
+                if (reputation != null && reputation.blockedTimes > 0) {
+                    val lastBlocked = reputation.lastBlocked?.let {
+                        try {
+                            java.time.LocalDateTime.parse(it, java.time.format.DateTimeFormatter.ISO_DATE_TIME)
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+
+                    val weekAgo = java.time.LocalDateTime.now().minusDays(7)
+                    if (lastBlocked != null && lastBlocked.isAfter(weekAgo)) {
+                        // Exponential backoff: base_duration * (2 ^ exponentialBlockedTimes)
+                        val multiplier = Math.pow(2.0, reputation.exponentialBlockedTimes.toDouble()).toLong()
+                        finalDuration = (durationMinutes * multiplier).toInt()
+                            .coerceAtMost(settings.maxJailDurationMinutes)
+                        
+                        logger.warn("Exponential jail for $ip: ${reputation.exponentialBlockedTimes} previous streaks. Multiplier: ${multiplier}x. Escalated duration: $finalDuration mins (base $durationMinutes)")
+                    } else if (lastBlocked != null) {
+                        logger.info("Last block for $ip was > 1 week ago (${reputation.lastBlocked}). Resetting exponential backoff strike count.")
+                    }
+                }
+            } catch (e: Exception) {
+                logger.error("Failed to calculate exponential jail duration for $ip", e)
+            }
+        }
+
+        val expiresAt = System.currentTimeMillis() + (finalDuration * 60_000L)
         
         // Fast path: Check DB cache only. DO NOT block on network here.
         // If missing, proper enrichment will happen in the background worker.
@@ -155,20 +187,22 @@ class JailManagerServiceImpl(
         // Check threshold
         if (count >= settings.jailThreshold) {
             val reason = "Failed login >= ${settings.jailThreshold} failed attempts"
-            val success = jailIP(ip, settings.jailDurationMinutes, reason)
             
-            if (success) {
-                failedAttemptsInWindow.remove(ip)
-                
-                // Send notification
-                try {
-                    FcmService.sendNotification(
-                        title = "Security Alert: IP Jailed",
-                        body = "IP $ip has been jailed for ${settings.jailThreshold} failed attempts.",
-                        data = mapOf("type" to "security", "ip" to ip, "action" to "jail")
-                    )
-                } catch (e: Exception) {
-                    logger.warn("Failed to send FCM notification", e)
+            scope.launch {
+                val success = jailIP(ip, settings.jailDurationMinutes, reason)
+                if (success) {
+                    failedAttemptsInWindow.remove(ip)
+                    
+                    // Send notification
+                    try {
+                        FcmService.sendNotification(
+                            title = "Security Alert: IP Jailed",
+                            body = "IP $ip has been jailed for ${settings.jailThreshold} failed attempts.",
+                            data = mapOf("type" to "security", "ip" to ip, "action" to "jail")
+                        )
+                    } catch (e: Exception) {
+                        logger.warn("Failed to send FCM notification", e)
+                    }
                 }
             }
         }
@@ -344,17 +378,19 @@ class JailManagerServiceImpl(
         if (shouldJail) {
             logger.warn("Jailing IP $ip for proxy violation: $reason")
             val duration = AppConfig.settings.jailDurationMinutes
-            val success = jailIP(ip, duration, "Proxy: $reason")
             
-            if (success) {
-                 try {
-                    FcmService.sendNotification(
-                        title = "Security Alert: IP Jailed (Proxy)",
-                        body = "IP $ip jailed. Reason: $reason",
-                        data = mapOf("type" to "security", "ip" to ip, "action" to "jail", "reason" to reason)
-                    )
-                } catch (e: Exception) {
-                    logger.warn("Failed to send FCM notification", e)
+            scope.launch {
+                val success = jailIP(ip, duration, "Proxy: $reason")
+                if (success) {
+                    try {
+                        FcmService.sendNotification(
+                            title = "Security Alert: IP Jailed (Proxy)",
+                            body = "IP $ip jailed. Reason: $reason",
+                            data = mapOf("type" to "security", "ip" to ip, "action" to "jail", "reason" to reason)
+                        )
+                    } catch (e: Exception) {
+                        logger.warn("Failed to send FCM notification", e)
+                    }
                 }
             }
         }
@@ -366,7 +402,7 @@ object JailManagerService {
     private val service: IJailManagerService get() = ServiceContainer.jailManagerService
     
     fun listJails() = service.listJails()
-    fun jailIP(ip: String, durationMinutes: Int, reason: String) = service.jailIP(ip, durationMinutes, reason)
+    suspend fun jailIP(ip: String, durationMinutes: Int, reason: String) = service.jailIP(ip, durationMinutes, reason)
     fun unjailIP(ip: String) = service.unjailIP(ip)
     fun getCountryCode(ip: String) = service.getCountryCode(ip)
     fun isIPJailed(ip: String) = service.isIPJailed(ip)

@@ -121,7 +121,12 @@ object SystemService {
         nginxLogDir = AppConfig.nginxLogDir.absolutePath,
         logBufferingEnabled = AppConfig.settings.logBufferingEnabled,
         logBufferSizeKb = AppConfig.settings.logBufferSizeKb,
-        logFlushIntervalSeconds = AppConfig.settings.logFlushIntervalSeconds
+        logFlushIntervalSeconds = AppConfig.settings.logFlushIntervalSeconds,
+        jailEnabled = AppConfig.settings.jailEnabled,
+        jailThreshold = AppConfig.settings.jailThreshold,
+        jailDurationMinutes = AppConfig.settings.jailDurationMinutes,
+        exponentialJailEnabled = AppConfig.settings.exponentialJailEnabled,
+        maxJailDurationMinutes = AppConfig.settings.maxJailDurationMinutes
     )
     
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineName("SystemService"))
@@ -137,6 +142,18 @@ object SystemService {
             autoStorageRefreshIntervalMinutes = request.autoStorageRefreshIntervalMinutes,
             kafkaSettings = request.kafkaSettings
         )
+
+        if (request.jailEnabled != null || request.jailThreshold != null || request.jailDurationMinutes != null || 
+            request.exponentialJailEnabled != null || request.maxJailDurationMinutes != null) {
+            
+            AppConfig.updateJailSettings(
+                enabled = request.jailEnabled ?: AppConfig.settings.jailEnabled,
+                threshold = request.jailThreshold ?: AppConfig.settings.jailThreshold,
+                durationMinutes = request.jailDurationMinutes ?: AppConfig.settings.jailDurationMinutes,
+                exponentialEnabled = request.exponentialJailEnabled,
+                maxDuration = request.maxJailDurationMinutes
+            )
+        }
 
         // Slow updates: Background service management
         serviceScope.launch {
