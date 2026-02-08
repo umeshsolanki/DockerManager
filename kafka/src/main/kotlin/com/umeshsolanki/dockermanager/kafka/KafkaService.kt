@@ -38,6 +38,9 @@ interface IKafkaService {
     fun publishMessage(settings: KafkaSettings, topic: String, key: String?, value: String)
     fun publishSqlAudit(settings: KafkaSettings, audit: SqlAuditLog)
     
+    // Reputation
+    fun publishReputationEvent(settings: KafkaSettings, event: IpReputationEvent)
+    
     // Handlers
     fun registerHandler(handler: KafkaMessageHandler)
 }
@@ -246,5 +249,11 @@ class KafkaServiceImpl : IKafkaService {
     override fun publishSqlAudit(settings: KafkaSettings, audit: SqlAuditLog) {
         val json = kotlinx.serialization.json.Json.encodeToString(SqlAuditLog.serializer(), audit)
         publishMessage(settings, "sql-audit-log", audit.externalDbId ?: "primary", json)
+    }
+    
+    override fun publishReputationEvent(settings: KafkaSettings, event: IpReputationEvent) {
+        if (!settings.enabled) return
+        val json = kotlinx.serialization.json.Json.encodeToString(IpReputationEvent.serializer(), event)
+        publishMessage(settings, settings.reputationTopic, event.ip, json)
     }
 }

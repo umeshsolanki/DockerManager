@@ -28,6 +28,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [kafkaBootstrap, setKafkaBootstrap] = useState('localhost:9092');
     const [kafkaAdminHost, setKafkaAdminHost] = useState('localhost:9092');
     const [kafkaTopic, setKafkaTopic] = useState('ip-blocking-requests');
+    const [kafkaReputationTopic, setKafkaReputationTopic] = useState('ip-reputation-events');
     const [kafkaGroupId, setKafkaGroupId] = useState('docker-manager-jailer');
     const [dbPersistenceLogsEnabled, setDbPersistenceLogsEnabled] = useState(true);
     const [syslogEnabled, setSyslogEnabled] = useState(false);
@@ -88,6 +89,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                     setKafkaBootstrap(data.kafkaSettings.bootstrapServers);
                     setKafkaAdminHost(data.kafkaSettings.adminHost);
                     setKafkaTopic(data.kafkaSettings.topic);
+                    setKafkaReputationTopic(data.kafkaSettings.reputationTopic || 'ip-reputation-events');
                     setKafkaGroupId(data.kafkaSettings.groupId);
                 }
                 setDbPersistenceLogsEnabled(data.dbPersistenceLogsEnabled ?? true);
@@ -155,6 +157,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                     bootstrapServers: kafkaBootstrap,
                     adminHost: kafkaAdminHost,
                     topic: kafkaTopic,
+                    reputationTopic: kafkaReputationTopic,
                     groupId: kafkaGroupId
                 },
                 dbPersistenceLogsEnabled: dbPersistenceLogsEnabled,
@@ -1545,6 +1548,17 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                     />
                                 </div>
 
+                                <div className="space-y-2">
+                                    <label className="text-xs font-semibold text-on-surface-variant px-1">Reputation Events Topic</label>
+                                    <input
+                                        type="text"
+                                        value={kafkaReputationTopic}
+                                        onChange={(e) => setKafkaReputationTopic(e.target.value)}
+                                        placeholder="ip-reputation-events"
+                                        className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
+                                    />
+                                </div>
+
                                 <button
                                     onClick={handleSaveSystem}
                                     disabled={saving || loading}
@@ -1568,13 +1582,28 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                             </div>
                             <div className="space-y-4">
                                 <p className="text-sm text-on-surface leading-relaxed">
-                                    Your external apps should publish JSON messages to the specified topic in the following format:
+                                    <strong>Block Request:</strong> Publish to Topic Name
                                 </p>
                                 <pre className="p-4 bg-black/30 rounded-xl border border-white/5 font-mono text-[11px] text-blue-300 overflow-x-auto">
                                     {`{
   "ip": "1.2.3.4",
   "durationMinutes": 30,
-  "reason": "Suspicious login attempt"
+  "reason": "Suspicious activity"
+}`}
+                                </pre>
+
+                                <p className="text-sm text-on-surface leading-relaxed mt-4">
+                                    <strong>Reputation Event:</strong> Emitted on Reputation Topic
+                                </p>
+                                <pre className="p-4 bg-black/30 rounded-xl border border-white/5 font-mono text-[11px] text-green-300 overflow-x-auto">
+                                    {`{
+  "type": "BLOCK",
+  "ip": "1.2.3.4",
+  "timestamp": 1675862400000,
+  "country": "US",
+  "reason": "Path traversal",
+  "tags": ["scanner"],
+  "dangerTags": ["high-risk"]
 }`}
                                 </pre>
                                 <div className="p-4 bg-surface/80 rounded-xl border border-outline/5">

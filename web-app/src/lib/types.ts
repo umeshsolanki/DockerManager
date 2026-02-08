@@ -516,6 +516,7 @@ export interface KafkaSettings {
   bootstrapServers: string;
   adminHost: string;
   topic: string;
+  reputationTopic: string;
   groupId: string;
 }
 

@@ -8,6 +8,7 @@ data class KafkaSettings(
     val bootstrapServers: String = "localhost:9092",
     val adminHost: String = "localhost:9092",
     val topic: String = "ip-blocking-requests",
+    val reputationTopic: String = "ip-reputation-events",
     val groupId: String = "docker-manager-jailer"
 )
 
@@ -64,4 +65,18 @@ data class KafkaProcessedEvent(
     val originalValue: String,
     val processedValue: String,
     val appliedRules: List<String> = emptyList()
+)
+
+@Serializable
+data class IpReputationEvent(
+    val type: String, // "BLOCK", "ACTIVITY", "OBSERVED", "DELETE"
+    val ip: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val country: String? = null,
+    val isp: String? = null,
+    val reason: String? = null,
+    val score: Int? = null,
+    val blockedTimes: Int? = null,
+    val tags: List<String> = emptyList(),
+    val dangerTags: List<String> = emptyList()
 )

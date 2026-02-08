@@ -11,6 +11,9 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import com.umeshsolanki.dockermanager.system.IpLookupService
+import com.umeshsolanki.dockermanager.kafka.IpReputationEvent
+import com.umeshsolanki.dockermanager.ServiceContainer
+import com.umeshsolanki.dockermanager.AppConfig
 import java.util.concurrent.ConcurrentHashMap
 
 interface IIpReputationService {
@@ -28,6 +31,17 @@ class IpReputationServiceImpl : IIpReputationService {
         private val activityCache = ConcurrentHashMap<String, Long>()
         private const val ACTIVITY_CACHE_TTL_MS = 60_000L // 1 minute
         private const val MAX_CACHE_SIZE = 10_000
+        
+        private fun publishToKafka(event: IpReputationEvent) {
+            try {
+                val settings = AppConfig.settings.kafkaSettings
+                if (settings.enabled) {
+                    ServiceContainer.kafkaService.publishReputationEvent(settings, event)
+                }
+            } catch (e: Exception) {
+                // Ignore kafka errors to not break core logic
+            }
+        }
     }
 
     override suspend fun getIpReputation(ip: String): IpReputation? = dbQuery {
@@ -135,6 +149,16 @@ class IpReputationServiceImpl : IIpReputationService {
                     }
                 }
             }
+            
+            // Publish to Kafka
+            publishToKafka(IpReputationEvent(
+                type = if (existing == null) "OBSERVED" else "ACTIVITY",
+                ip = ipAddress,
+                country = resolvedCountry,
+                isp = resolvedIsp,
+                tags = (resolvedTag ?: "").split(",").filter { it.isNotBlank() },
+                dangerTags = (dangerTag ?: "").split(",").filter { it.isNotBlank() }
+            ))
         }
     }
 
@@ -208,6 +232,17 @@ class IpReputationServiceImpl : IIpReputationService {
             }
         }
         
+        // Publish to Kafka
+        publishToKafka(IpReputationEvent(
+            type = "BLOCK",
+            ip = ipAddress,
+            country = resolvedCountry,
+            isp = resolvedIsp,
+            reason = reason,
+            tags = (resolvedTag ?: "").split(",").filter { it.isNotBlank() },
+            dangerTags = (dangerTag ?: "").split(",").filter { it.isNotBlank() }
+        ))
+
         // Update cache to prevent immediate re-activity record
         activityCache[ipAddress] = System.currentTimeMillis()
     }
