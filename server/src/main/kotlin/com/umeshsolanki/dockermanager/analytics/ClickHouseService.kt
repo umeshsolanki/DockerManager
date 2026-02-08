@@ -8,7 +8,10 @@ import kotlinx.coroutines.channels.Channel
 import org.slf4j.LoggerFactory
 import java.sql.Connection
 import java.sql.DriverManager
+import java.sql.PreparedStatement
+import java.sql.SQLException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.ConcurrentLinkedQueue
 
 object ClickHouseService {
     private val logger = LoggerFactory.getLogger(ClickHouseService::class.java)
@@ -88,15 +91,28 @@ object ClickHouseService {
         }
     }
 
+    // Simple connection holder - in a real high-load scenario, use HikariCP
+    private var activeConnection: Connection? = null
+    private val connectionLock = Any()
+
     private fun getConnection(): Connection? {
-        val settings = AppConfig.settings.clickhouseSettings
-        // Use JDBC URL for ClickHouse
-        val url = "jdbc:clickhouse://${settings.host}:${settings.port}/${settings.database}"
-        return try {
-             DriverManager.getConnection(url, settings.user, settings.password)
-        } catch (e: Exception) {
-            logger.error("Failed to connect to ClickHouse at $url: ${e.message}")
-            null
+        synchronized(connectionLock) {
+            try {
+                if (activeConnection != null && !activeConnection!!.isClosed && !activeConnection!!.isValid(2)) {
+                   try { activeConnection!!.close() } catch (e: Exception) {}
+                   activeConnection = null
+                }
+                
+                if (activeConnection == null || activeConnection!!.isClosed) {
+                    val settings = AppConfig.settings.clickhouseSettings
+                    val url = "jdbc:clickhouse://${settings.host}:${settings.port}/${settings.database}"
+                    activeConnection = DriverManager.getConnection(url, settings.user, settings.password)
+                }
+                return activeConnection
+            } catch (e: Exception) {
+                logger.error("Failed to connect to ClickHouse: ${e.message}")
+                return null
+            }
         }
     }
 
@@ -164,81 +180,92 @@ object ClickHouseService {
         }
     }
 
-    private fun flushBatch(batch: List<ProxyHit>) {
+    private fun <T> flushGenericBatch(
+        batch: List<T>, 
+        sql: String, 
+        batchName: String, 
+        parameterSetter: (PreparedStatement, T) -> Unit
+    ) {
         if (batch.isEmpty()) return
         
         try {
-            getConnection()?.use { conn ->
-                val sql = "INSERT INTO proxy_logs (timestamp, domain, ip, method, path, status, response_time, user_agent, referer, country_code, provider) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            // Get connection but don't close it - we want to reuse it
+            // However, we need to handle if it's null
+            val conn = getConnection() ?: return
+            
+            // We use a try-with-resources for the statement only
+            try {
                 conn.prepareStatement(sql).use { pstmt ->
-                    for (hit in batch) {
-                        pstmt.setTimestamp(1, java.sql.Timestamp(hit.timestamp))
-                        pstmt.setString(2, hit.domain ?: "-")
-                        pstmt.setString(3, hit.ip)
-                        pstmt.setString(4, hit.method)
-                        pstmt.setString(5, hit.path)
-                        pstmt.setInt(6, hit.status)
-                        pstmt.setLong(7, hit.responseTime)
-                        pstmt.setString(8, hit.userAgent)
-                        pstmt.setString(9, hit.referer)
-                        pstmt.setString(10, hit.countryCode ?: "Unknown")
-                        pstmt.setString(11, hit.provider ?: "Unknown")
+                    for (item in batch) {
+                        parameterSetter(pstmt, item)
                         pstmt.addBatch()
                     }
                     pstmt.executeBatch()
                 }
-                logger.debug("Successfully flushed ${batch.size} logs to ClickHouse")
+                logger.debug("Successfully flushed ${batch.size} $batchName to ClickHouse")
+            } catch (e: SQLException) {
+                // If SQL exception occurs, invalidating connection might be safe
+                logger.error("SQL Error flushing $batchName batch", e)
+                synchronized(connectionLock) {
+                    try { activeConnection?.close() } catch (ignored: Exception) {}
+                    activeConnection = null
+                }
             }
         } catch (e: Exception) {
-            logger.error("Failed to flush batch to ClickHouse", e)
+            logger.error("Failed to flush $batchName batch to ClickHouse", e)
+        }
+    }
+
+    private fun flushBatch(batch: List<ProxyHit>) {
+        val sql = "INSERT INTO proxy_logs (timestamp, domain, ip, method, path, status, response_time, user_agent, referer, country_code, provider) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        flushGenericBatch(batch, sql, "logs") { pstmt, hit ->
+            pstmt.setTimestamp(1, java.sql.Timestamp(hit.timestamp))
+            pstmt.setString(2, hit.domain ?: "-")
+            pstmt.setString(3, hit.ip)
+            pstmt.setString(4, hit.method)
+            pstmt.setString(5, hit.path)
+            pstmt.setInt(6, hit.status)
+            pstmt.setLong(7, hit.responseTime)
+            pstmt.setString(8, hit.userAgent)
+            pstmt.setString(9, hit.referer)
+            pstmt.setString(10, hit.countryCode ?: "Unknown")
+            pstmt.setString(11, hit.provider ?: "Unknown")
         }
     }
 
     private fun flushReputationBatch(batch: List<IpReputationEvent>) {
-        if (batch.isEmpty()) return
-        
-        try {
-            getConnection()?.use { conn ->
-                val sql = "INSERT INTO ip_reputation_events (timestamp, type, ip, country_code, isp, reason, score, blocked_times, exponential_blocked_times, flagged_times, last_jail_duration, first_flagged, last_flagged, tags, danger_tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-                conn.prepareStatement(sql).use { pstmt ->
-                    for (event in batch) {
-                        pstmt.setTimestamp(1, java.sql.Timestamp(event.timestamp))
-                        pstmt.setString(2, event.type)
-                        pstmt.setString(3, event.ip)
-                        pstmt.setString(4, event.country ?: "Unknown")
-                        pstmt.setString(5, event.isp ?: "Unknown")
-                        pstmt.setString(6, event.reason ?: "")
-                        pstmt.setInt(7, event.score ?: 0)
-                        pstmt.setInt(8, event.blockedTimes ?: 0)
-                        pstmt.setInt(9, event.exponentialBlockedTimes ?: 0)
-                        pstmt.setInt(10, event.flaggedTimes ?: 0)
-                        pstmt.setInt(11, event.lastJailDuration ?: 0)
-                        
-                        val firstFlagged = event.firstFlagged
-                        if (firstFlagged != null) {
-                            pstmt.setTimestamp(12, java.sql.Timestamp(firstFlagged))
-                        } else {
-                            pstmt.setTimestamp(12, java.sql.Timestamp(0)) // Default or null if nullable
-                        }
-                        
-                        val lastFlagged = event.lastFlagged
-                        if (lastFlagged != null) {
-                            pstmt.setTimestamp(13, java.sql.Timestamp(lastFlagged))
-                        } else {
-                            pstmt.setTimestamp(13, java.sql.Timestamp(0))
-                        }
-                        
-                        pstmt.setArray(14, conn.createArrayOf("String", event.tags.toTypedArray()))
-                        pstmt.setArray(15, conn.createArrayOf("String", event.dangerTags.toTypedArray()))
-                        
-                        pstmt.addBatch()
-                    }
-                    pstmt.executeBatch()
-                }
-                logger.debug("Successfully flushed ${batch.size} reputation events to ClickHouse")
+        val sql = "INSERT INTO ip_reputation_events (timestamp, type, ip, country_code, isp, reason, score, blocked_times, exponential_blocked_times, flagged_times, last_jail_duration, first_flagged, last_flagged, tags, danger_tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        flushGenericBatch(batch, sql, "reputation events") { pstmt, event ->
+            val conn = pstmt.connection // Need connection for createArrayOf
+            
+            pstmt.setTimestamp(1, java.sql.Timestamp(event.timestamp))
+            pstmt.setString(2, event.type)
+            pstmt.setString(3, event.ip)
+            pstmt.setString(4, event.country ?: "Unknown")
+            pstmt.setString(5, event.isp ?: "Unknown")
+            pstmt.setString(6, event.reason ?: "")
+            pstmt.setInt(7, event.score ?: 0)
+            pstmt.setInt(8, event.blockedTimes ?: 0)
+            pstmt.setInt(9, event.exponentialBlockedTimes ?: 0)
+            pstmt.setInt(10, event.flaggedTimes ?: 0)
+            pstmt.setInt(11, event.lastJailDuration ?: 0)
+            
+            val firstFlagged = event.firstFlagged
+            if (firstFlagged != null) {
+                pstmt.setTimestamp(12, java.sql.Timestamp(firstFlagged))
+            } else {
+                pstmt.setTimestamp(12, java.sql.Timestamp(0))
             }
-        } catch (e: Exception) {
-            logger.error("Failed to flush reputation batch to ClickHouse", e)
+            
+            val lastFlagged = event.lastFlagged
+            if (lastFlagged != null) {
+                pstmt.setTimestamp(13, java.sql.Timestamp(lastFlagged))
+            } else {
+                pstmt.setTimestamp(13, java.sql.Timestamp(0))
+            }
+            
+            pstmt.setArray(14, conn.createArrayOf("String", event.tags.toTypedArray()))
+            pstmt.setArray(15, conn.createArrayOf("String", event.dangerTags.toTypedArray()))
         }
     }
 
@@ -250,11 +277,11 @@ object ClickHouseService {
     fun <T> query(sql: String, mapper: (java.sql.ResultSet) -> T): List<T> {
         val results = mutableListOf<T>()
         try {
-            getConnection()?.use { conn ->
-                conn.createStatement().executeQuery(sql).use { rs ->
-                    while (rs.next()) {
-                        results.add(mapper(rs))
-                    }
+            // Use the shared connection without closing it
+            val conn = getConnection() ?: return emptyList()
+            conn.createStatement().executeQuery(sql).use { rs ->
+                while (rs.next()) {
+                    results.add(mapper(rs))
                 }
             }
         } catch (e: Exception) {
@@ -266,11 +293,11 @@ object ClickHouseService {
     fun queryMap(sql: String): Map<String, Long> {
         val results = mutableMapOf<String, Long>()
         try {
-            getConnection()?.use { conn ->
-                conn.createStatement().executeQuery(sql).use { rs ->
-                    while (rs.next()) {
-                        results[rs.getString(1)] = rs.getLong(2)
-                    }
+            // Use the shared connection without closing it
+            val conn = getConnection() ?: return emptyMap()
+            conn.createStatement().executeQuery(sql).use { rs ->
+                while (rs.next()) {
+                    results[rs.getString(1)] = rs.getLong(2)
                 }
             }
         } catch (e: Exception) {
