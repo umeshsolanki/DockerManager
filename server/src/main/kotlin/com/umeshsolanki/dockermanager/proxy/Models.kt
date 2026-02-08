@@ -121,6 +121,17 @@ data class ProxyHit(
 )
 
 @Serializable
+data class ErrorLogEntry(
+    val timestamp: Long,
+    val level: String,
+    val message: String,
+    val client: String? = null,
+    val server: String? = null,
+    val request: String? = null,
+    val host: String? = null
+)
+
+@Serializable
 data class PathHit(
     val path: String,
     val hits: Long

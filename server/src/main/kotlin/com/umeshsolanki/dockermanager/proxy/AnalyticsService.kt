@@ -33,6 +33,10 @@ interface IAnalyticsService {
     fun updateStatsForAllDaysInCurrentLog(): Map<String, Boolean>
     fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null)
     fun truncateProxyLogs(): Boolean
+    
+    // Log Browsing
+    fun getAccessLogs(type: String, page: Int, limit: Int, search: String? = null, date: String? = null): List<ProxyHit>
+    fun getErrorLogs(page: Int, limit: Int, search: String? = null, date: String? = null): List<ErrorLogEntry>
 }
 
 class AnalyticsServiceImpl(
@@ -1149,8 +1153,180 @@ class AnalyticsServiceImpl(
             false
         }
     }
-}
 
+
+    // ========== Log Browsing Implementation ==========
+    
+    override fun getAccessLogs(type: String, page: Int, limit: Int, search: String?, date: String?): List<ProxyHit> {
+        val targetDate = date ?: java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        
+        // Select files based on type and date
+        val logFiles = if (type == "danger") {
+            logDir.listFiles { _, name -> 
+                (name.endsWith("_danger.log") || name.endsWith("_danger_$targetDate.log"))
+            }?.toList() ?: emptyList()
+        } else {
+            // Default to access logs
+            logDir.listFiles { _, name -> 
+                (name == "access.log" || name.endsWith("_access.log") || 
+                 name == "access_$targetDate.log" || name.endsWith("_access_$targetDate.log"))
+            }?.toList() ?: emptyList()
+        }
+        
+        val lineRegex = """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)".*$""".toRegex()
+        val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
+        
+        val logs = mutableListOf<ProxyHit>()
+        // Read lines from files
+        // Optimization: For large files, we should use RandomAccessFile and read backwards.
+        // For now, simpler implementation: Read all lines, filter, sort.
+        // Limit max lines read per request to avoid OOM
+        val maxLinesToRead = 50000 
+        
+        for (file in logFiles) {
+            if (!file.exists()) continue
+            try {
+                // Determine if file matches date (active log might contain older entries, rotated logs are date-specific)
+                val isRotated = file.name.contains(targetDate)
+                
+                // Read reverse lines (using reversed() on readLines is memory intensive for large files)
+                // Better approach: use useLines and takeLast if possible, but File.useLines is forward only.
+                // We'll use a simple approach: readLines() but limit size.
+                val lines = file.readLines()
+                val linesToProcess = if (lines.size > maxLinesToRead) lines.takeLast(maxLinesToRead) else lines
+                
+                for (line in linesToProcess.asReversed()) {
+                    val trimmedLine = line.trim()
+                    if (trimmedLine.isBlank()) continue
+                    
+                    // Basic search filter before regex (faster)
+                    if (search != null && !trimmedLine.contains(search, ignoreCase = true)) continue
+                    
+                    lineRegex.find(trimmedLine)?.let { match ->
+                        val (ip, dateStr, fullRequest, statusStr, _, referer, ua, _, host) = match.destructured
+                        
+                        try {
+                            val timestamp = dateFormat.parse(dateStr).time
+                            // Check date match if file is not rotated (active log)
+                            // Or trust the file selection
+                            
+                            val status = statusStr.toIntOrNull() ?: 0
+                            val reqParts = fullRequest.split(" ")
+                            val method = reqParts.getOrNull(0) ?: "-"
+                            val path = reqParts.getOrNull(1) ?: fullRequest
+                            
+                            val domain = if (host != "-") host else if (referer != "-") try {
+                                java.net.URI(referer).host
+                            } catch (e: Exception) { null } else null
+                            
+                            logs.add(ProxyHit(
+                                timestamp = timestamp,
+                                ip = ip,
+                                method = method,
+                                path = path,
+                                status = status,
+                                responseTime = 0,
+                                userAgent = ua,
+                                referer = if (referer == "-") null else referer,
+                                domain = domain
+                            ))
+                        } catch (e: Exception) { }
+                    }
+                }
+            } catch (e: Exception) {
+                logger.error("Error reading log file ${file.name}", e)
+            }
+        }
+        
+        // Sort by timestamp desc
+        logs.sortByDescending { it.timestamp }
+        
+        // Pagination
+        val startIndex = (page - 1) * limit
+        val endIndex = minOf(startIndex + limit, logs.size)
+        
+        if (startIndex >= logs.size) return emptyList()
+        return logs.subList(startIndex, endIndex)
+    }
+
+    override fun getErrorLogs(page: Int, limit: Int, search: String?, date: String?): List<ErrorLogEntry> {
+        val targetDate = date ?: java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        val targetDateSlashed = targetDate.replace("-", "/") // Nginx error log uses YYYY/MM/DD
+        
+        // Select files
+        val logFiles = logDir.listFiles { _, name -> 
+            (name == "error.log" || name.endsWith("_error.log") || 
+             name == "error_$targetDate.log" || name.endsWith("_error_$targetDate.log"))
+        }?.toList() ?: emptyList()
+        
+        // Log format: 2023/10/27 10:00:00 [error] ...
+        val lineRegex = """^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] \d+#\d+: \*?\d+ (.*)$""".toRegex()
+        val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.US)
+        
+        val logs = mutableListOf<ErrorLogEntry>()
+        val maxLinesToRead = 50000
+        
+        for (file in logFiles) {
+            if (!file.exists()) continue
+            try {
+                val lines = file.readLines()
+                val linesToProcess = if (lines.size > maxLinesToRead) lines.takeLast(maxLinesToRead) else lines
+                
+                for (line in linesToProcess.asReversed()) {
+                    val trimmedLine = line.trim()
+                    if (trimmedLine.isBlank()) continue
+                    
+                    if (search != null && !trimmedLine.contains(search, ignoreCase = true)) continue
+                    if (!trimmedLine.startsWith(targetDateSlashed)) continue // Date filter check
+                    
+                    lineRegex.find(trimmedLine)?.let { match ->
+                        val (dateStr, level, content) = match.destructured
+                        
+                        try {
+                            val timestamp = dateFormat.parse(dateStr).time
+                            
+                            // Parse key-values from content
+                            val clientMatch = """client: ([^,]+)""".toRegex().find(content)
+                            val serverMatch = """server: ([^,]+)""".toRegex().find(content)
+                            val requestMatch = """request: "([^"]+)"""".toRegex().find(content)
+                            val hostMatch = """host: "([^"]+)"""".toRegex().find(content)
+                            
+                            val client = clientMatch?.groupValues?.get(1)
+                            val server = serverMatch?.groupValues?.get(1)
+                            val request = requestMatch?.groupValues?.get(1)
+                            val host = hostMatch?.groupValues?.get(1)
+                            
+                            // Message is content minus the keys (roughly)
+                            // A simple way is to take everything before ", client:"
+                            val message = content.substringBefore(", client:")
+                            
+                            logs.add(ErrorLogEntry(
+                                timestamp = timestamp,
+                                level = level,
+                                message = message,
+                                client = client,
+                                server = server,
+                                request = request,
+                                host = host
+                            ))
+                        } catch (e: Exception) { }
+                    }
+                }
+            } catch (e: Exception) {
+                logger.error("Error reading error log file ${file.name}", e)
+            }
+        }
+        
+        logs.sortByDescending { it.timestamp }
+        
+        val startIndex = (page - 1) * limit
+        val endIndex = minOf(startIndex + limit, logs.size)
+        
+        if (startIndex >= logs.size) return emptyList()
+        return logs.subList(startIndex, endIndex)
+    }
+}
+ 
 // Service object for easy access
 object AnalyticsService {
     private val service: IAnalyticsService by lazy {
@@ -1169,6 +1345,10 @@ object AnalyticsService {
     fun updateStatsForAllDaysInCurrentLog() = service.updateStatsForAllDaysInCurrentLog()
     fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null) = service.updateStatsSettings(active, intervalMs, filterLocalIps)
     fun truncateProxyLogs() = service.truncateProxyLogs()
+    
+    // Log Browsing
+    fun getAccessLogs(type: String, page: Int, limit: Int, search: String? = null, date: String? = null) = service.getAccessLogs(type, page, limit, search, date)
+    fun getErrorLogs(page: Int, limit: Int, search: String? = null, date: String? = null) = service.getErrorLogs(page, limit, search, date)
     
     // WebSocket tracking
     fun trackWebSocketConnection(endpoint: String, ip: String, userAgent: String? = null, containerId: String? = null, authenticated: Boolean = true) {

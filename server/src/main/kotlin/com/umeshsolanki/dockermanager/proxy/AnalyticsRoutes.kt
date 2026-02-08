@@ -85,6 +85,23 @@ fun Route.analyticsRoutes() {
                 call.respond(HttpStatusCode.InternalServerError, ProxyActionResult(false, "Failed to truncate proxy_logs table"))
             }
         }
+        
+        // Log Browsing
+        get("/logs") {
+            val type = call.request.queryParameters["type"] ?: "access"
+            val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 1
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 50
+            val search = call.request.queryParameters["search"]
+            val date = call.request.queryParameters["date"]
+            
+            if (type == "error") {
+                val logs = AnalyticsService.getErrorLogs(page, limit, search, date)
+                call.respond(logs)
+            } else {
+                val logs = AnalyticsService.getAccessLogs(type, page, limit, search, date)
+                call.respond(logs)
+            }
+        }
     }
 }
 
