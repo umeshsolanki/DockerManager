@@ -1648,13 +1648,6 @@ class ProxyServiceImpl(
             "errorLogDirective" to "error_log /usr/local/openresty/nginx/logs/error.log warn;"
         ))
         loggingConfig.append("    ")
-        // Just use standard logging directly for main config if needed, or rely on snippet
-        // The standard-logging.conf expects accessLogDirective and errorLogDirective placeholders usually?
-        // Let's check getLoggingReplacements logic. standard-logging.conf has ${accessLogDirective} and ${errorLogDirective}.
-        // We need to construct them manually here for the main block if we want it to have logs.
-        // Actually, the main block usually just defines the format. The access_log is inside http block.
-        
-        // Constructing standard directives for MAIN http block
         val accessLogDirectives = mutableListOf<String>()
         val errorLogDirectives = mutableListOf<String>()
 

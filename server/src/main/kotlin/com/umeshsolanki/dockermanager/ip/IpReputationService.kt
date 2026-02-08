@@ -16,8 +16,8 @@ import java.util.concurrent.ConcurrentHashMap
 interface IIpReputationService {
     suspend fun getIpReputation(ip: String): IpReputation?
     suspend fun listIpReputations(limit: Int = 100, offset: Long = 0, search: String? = null): List<IpReputation>
-    suspend fun recordActivity(ipAddress: String, countryCode: String? = null, isp: String? = null, tag: String? = null, range: String? = null)
-    suspend fun recordBlock(ipAddress: String, reason: String, countryCode: String? = null, isp: String? = null, tag: String? = null, range: String? = null)
+    suspend fun recordActivity(ipAddress: String, countryCode: String? = null, isp: String? = null, tag: String? = null, range: String? = null, dangerTag: String? = null)
+    suspend fun recordBlock(ipAddress: String, reason: String, countryCode: String? = null, isp: String? = null, tag: String? = null, range: String? = null, dangerTag: String? = null)
     suspend fun deleteIpReputation(ipAddress: String): Boolean
 }
 
@@ -63,7 +63,7 @@ class IpReputationServiceImpl : IIpReputationService {
         return if (merged.isEmpty()) null else merged.joinToString(",")
     }
 
-    override suspend fun recordActivity(ipAddress: String, countryCode: String?, isp: String?, tag: String?, range: String?) {
+    override suspend fun recordActivity(ipAddress: String, countryCode: String?, isp: String?, tag: String?, range: String?, dangerTag: String?) {
         val nowMs = System.currentTimeMillis()
         
         // Debounce: If updated recently, skip DB write
@@ -97,12 +97,18 @@ class IpReputationServiceImpl : IIpReputationService {
                 val currentTags = existing[IpReputationTable.tag]
                 val newTags = mergeTags(currentTags, resolvedTag)
 
+                val currentDangerTags = existing[IpReputationTable.dangerTags]
+                val newDangerTags = if (dangerTag != null) mergeTags(currentDangerTags, dangerTag) else currentDangerTags
+
                 IpReputationTable.update({ IpReputationTable.ip eq ipAddress }) {
                     it[lastActivity] = now
                     resolvedCountry?.let { code -> it[country] = code }
                     resolvedIsp?.let { v -> it[IpReputationTable.isp] = v }
                     if (newTags != currentTags) {
                          it[IpReputationTable.tag] = newTags
+                    }
+                    if (newDangerTags != currentDangerTags) {
+                        it[IpReputationTable.dangerTags] = newDangerTags ?: ""
                     }
                     resolvedRange?.let { v -> it[IpReputationTable.range] = v }
                 }
@@ -113,10 +119,11 @@ class IpReputationServiceImpl : IIpReputationService {
                         it[firstObserved] = now
                         it[lastActivity] = now
                         it[blockedTimes] = 0
-                        it[reasons] = "[]"
+                        it[reasons] = ""
                         it[country] = resolvedCountry
                         it[IpReputationTable.isp] = resolvedIsp
                         it[IpReputationTable.tag] = resolvedTag
+                        it[IpReputationTable.dangerTags] = dangerTag ?: ""
                         it[IpReputationTable.range] = resolvedRange
                     }
                 } catch (e: Exception) {
@@ -131,7 +138,7 @@ class IpReputationServiceImpl : IIpReputationService {
         }
     }
 
-    override suspend fun recordBlock(ipAddress: String, reason: String, countryCode: String?, isp: String?, tag: String?, range: String?) = dbQuery {
+    override suspend fun recordBlock(ipAddress: String, reason: String, countryCode: String?, isp: String?, tag: String?, range: String?, dangerTag: String?) = dbQuery {
         val shortReason = reason.trim().take(64)
         val now = LocalDateTime.now()
         
@@ -155,10 +162,11 @@ class IpReputationServiceImpl : IIpReputationService {
                     it[firstBlocked] = now
                     it[lastBlocked] = now
                     it[blockedTimes] = 1
-                    it[reasons] = Json.encodeToString(listOf(shortReason))
+                    it[reasons] = shortReason
                     it[country] = resolvedCountry
                     it[IpReputationTable.isp] = resolvedIsp
                     it[IpReputationTable.tag] = resolvedTag
+                    it[IpReputationTable.dangerTags] = dangerTag ?: ""
                     it[IpReputationTable.range] = resolvedRange
                 }
             } catch (e: Exception) {
@@ -166,22 +174,18 @@ class IpReputationServiceImpl : IIpReputationService {
                 recordBlockRetry(ipAddress, shortReason, countryCode, now)
             }
         } else {
-            val currentReasonsString = existing[IpReputationTable.reasons]
-            
-            // Optimize JSON handling
-            val reasonExists = currentReasonsString.contains("\"$shortReason\"")
-            
-            val updatedReasonsString = if (reasonExists) {
-                currentReasonsString
-            } else {
-                val currentReasons = try {
-                    Json.decodeFromString<List<String>>(currentReasonsString)
-                } catch (e: Exception) { emptyList() }
-                Json.encodeToString((currentReasons + shortReason).distinct())
-            }
+            val currentReasons = existing[IpReputationTable.reasons]
+            val newReasons = mergeTags(currentReasons, shortReason)
+            // mergeTags returns null if empty, but reasons likely not empty if we are adding one.
+            // If mergeTags returns null (empty), we should put ""? Or shortReason? 
+            // mergeTags returns combination. If default was "", currentReasons is "". mergeTags("", "foo") -> "foo".
+            val updatedReasonsString = newReasons ?: shortReason
 
             val currentTags = existing[IpReputationTable.tag]
             val newTags = mergeTags(currentTags, resolvedTag)
+
+            val currentDangerTags = existing[IpReputationTable.dangerTags]
+            val newDangerTags = if (dangerTag != null) mergeTags(currentDangerTags, dangerTag) else currentDangerTags
 
             IpReputationTable.update({ IpReputationTable.ip eq ipAddress }) {
                 it[lastActivity] = now
@@ -196,6 +200,9 @@ class IpReputationServiceImpl : IIpReputationService {
                 resolvedIsp?.let { v -> it[IpReputationTable.isp] = v }
                 if (newTags != currentTags) {
                      it[IpReputationTable.tag] = newTags
+                }
+                if (newDangerTags != currentDangerTags) {
+                    it[IpReputationTable.dangerTags] = newDangerTags ?: ""
                 }
                 resolvedRange?.let { v -> it[IpReputationTable.range] = v }
             }
@@ -223,10 +230,7 @@ class IpReputationServiceImpl : IIpReputationService {
 
     private fun toIpReputation(row: ResultRow): IpReputation {
         val reasonsString = row[IpReputationTable.reasons]
-        // Fast path for empty array
-        val reasons = if (reasonsString == "[]") emptyList() else try {
-            Json.decodeFromString<List<String>>(reasonsString)
-        } catch (e: Exception) { emptyList() }
+        val reasons = reasonsString.split(",").map { it.trim() }.filter { it.isNotBlank() }
         
         val tagsString = row[IpReputationTable.tag]
         val tags = tagsString?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
@@ -242,6 +246,7 @@ class IpReputationServiceImpl : IIpReputationService {
             country = row[IpReputationTable.country],
             isp = row[IpReputationTable.isp],
             tags = tags,
+            dangerTags = row[IpReputationTable.dangerTags].split(",").map { it.trim() }.filter { it.isNotBlank() },
             range = row[IpReputationTable.range]
         )
     }
