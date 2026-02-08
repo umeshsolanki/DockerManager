@@ -47,11 +47,11 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
                         <button
                             key={item.label}
                             onClick={() => onScreenChange(item.label)}
-                            className={`nav-rail-item py-2 ${isActive ? 'nav-rail-item-active' : 'text-on-surface-variant'}`}
+                            className={`nav-rail-item ${isActive ? 'nav-rail-item-active' : 'text-on-surface-variant'}`}
                             title={item.label}
                         >
-                            <item.Icon size={20} className="shrink-0" />
-                            <span className="text-[9px] mt-1 font-medium">{item.label}</span>
+                            <item.Icon size={18} className="shrink-0" />
+                            <span className="text-[10px] font-medium leading-none">{item.label}</span>
                         </button>
                     );
                 })}
@@ -64,20 +64,20 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
 
             <button
                 onClick={() => onScreenChange('Settings')}
-                className={`nav-rail-item py-2 ${selectedScreen === 'Settings' ? 'nav-rail-item-active' : 'text-on-surface-variant'}`}
+                className={`nav-rail-item ${selectedScreen === 'Settings' ? 'nav-rail-item-active' : 'text-on-surface-variant'}`}
                 title="Settings"
             >
-                <Settings size={20} />
-                <span className="text-[9px] mt-1 font-medium">Settings</span>
+                <Settings size={18} />
+                <span className="text-[10px] font-medium leading-none">Settings</span>
             </button>
 
             <button
                 onClick={onLogout}
-                className="nav-rail-item py-2 text-red-400 hover:text-red-300 transition-colors mt-2"
+                className="nav-rail-item text-red-400 hover:text-red-300 transition-colors mt-2"
                 title="Logout"
             >
-                <LogOut size={20} />
-                <span className="text-[9px] mt-1 font-medium text-on-surface-variant/60">Log Out</span>
+                <LogOut size={18} />
+                <span className="text-[10px] font-medium text-on-surface-variant/60 leading-none">Log Out</span>
             </button>
         </div>
     );

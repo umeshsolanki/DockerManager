@@ -43,16 +43,11 @@ body {
 
 @layer components {
   .nav-rail-item {
-    @apply flex flex-col items-center justify-center py-4 px-2 cursor-pointer transition-all duration-300 gap-1 relative overflow-hidden;
+    @apply flex flex-col items-center justify-center py-3 px-1 cursor-pointer transition-all duration-300 gap-1 relative shrink-0 w-full;
   }
 
   .nav-rail-item-active {
-    @apply text-primary bg-primary/5 shadow-[inset_0_0_20px_rgba(208,188,255,0.05)];
-  }
-
-  .nav-rail-item-active::after {
-    content: '';
-    @apply absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-8 bg-primary rounded-r-full shadow-[0_0_10px_rgba(208,188,255,0.5)];
+    @apply text-primary bg-primary/10;
   }
 
   .nav-rail-item:hover {
@@ -64,7 +59,7 @@ body {
   }
 
   .nav-rail-item-active svg {
-    @apply drop-shadow-[0_0_8px_rgba(208,188,255,0.4)];
+    @apply drop-shadow-md;
   }
 
   [data-theme="light"] .nav-rail-item:hover {
