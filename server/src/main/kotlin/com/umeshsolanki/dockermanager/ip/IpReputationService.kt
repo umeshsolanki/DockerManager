@@ -20,7 +20,7 @@ interface IIpReputationService {
     suspend fun getIpReputation(ip: String): IpReputation?
     suspend fun listIpReputations(limit: Int = 100, offset: Long = 0, search: String? = null): List<IpReputation>
     suspend fun recordActivity(ipAddress: String, countryCode: String? = null, isp: String? = null, tag: String? = null, range: String? = null, dangerTag: String? = null)
-    suspend fun recordBlock(ipAddress: String, reason: String, countryCode: String? = null, isp: String? = null, tag: String? = null, range: String? = null, dangerTag: String? = null)
+    suspend fun recordBlock(ipAddress: String, reason: String, countryCode: String? = null, isp: String? = null, tag: String? = null, range: String? = null, dangerTag: String? = null, durationMinutes: Int = 0)
     suspend fun deleteIpReputation(ipAddress: String): Boolean
 }
 
@@ -34,9 +34,15 @@ class IpReputationServiceImpl : IIpReputationService {
         
         private fun publishToKafka(event: IpReputationEvent) {
             try {
+                // Send to Kafka
                 val settings = AppConfig.settings.kafkaSettings
                 if (settings.enabled) {
                     ServiceContainer.kafkaService.publishReputationEvent(settings, event)
+                }
+                
+                // Send to ClickHouse
+                if (AppConfig.settings.clickhouseSettings.enabled) {
+                    com.umeshsolanki.dockermanager.analytics.ClickHouseService.logReputationEvent(event)
                 }
             } catch (e: Exception) {
                 // Ignore kafka errors to not break core logic
@@ -116,6 +122,11 @@ class IpReputationServiceImpl : IIpReputationService {
 
                 IpReputationTable.update({ IpReputationTable.ip eq ipAddress }) {
                     it[lastActivity] = now
+                    it[flaggedTimes] = existing[IpReputationTable.flaggedTimes] + 1
+                    it[lastFlagged] = now
+                    if (existing[IpReputationTable.firstFlagged] == null) {
+                        it[firstFlagged] = now
+                    }
                     resolvedCountry?.let { code -> it[country] = code }
                     resolvedIsp?.let { v -> it[IpReputationTable.isp] = v }
                     if (newTags != currentTags) {
@@ -132,6 +143,9 @@ class IpReputationServiceImpl : IIpReputationService {
                         it[ip] = ipAddress
                         it[firstObserved] = now
                         it[lastActivity] = now
+                        it[flaggedTimes] = 1
+                        it[firstFlagged] = now
+                        it[lastFlagged] = now
                         it[blockedTimes] = 0
                         it[reasons] = ""
                         it[country] = resolvedCountry
@@ -156,13 +170,14 @@ class IpReputationServiceImpl : IIpReputationService {
                 ip = ipAddress,
                 country = resolvedCountry,
                 isp = resolvedIsp,
+                flaggedTimes = if (existing == null) 1 else existing[IpReputationTable.flaggedTimes] + 1,
                 tags = (resolvedTag ?: "").split(",").filter { it.isNotBlank() },
                 dangerTags = (dangerTag ?: "").split(",").filter { it.isNotBlank() }
             ))
         }
     }
 
-    override suspend fun recordBlock(ipAddress: String, reason: String, countryCode: String?, isp: String?, tag: String?, range: String?, dangerTag: String?) = dbQuery {
+    override suspend fun recordBlock(ipAddress: String, reason: String, countryCode: String?, isp: String?, tag: String?, range: String?, dangerTag: String?, durationMinutes: Int) = dbQuery {
         val shortReason = reason.trim().take(64)
         val now = LocalDateTime.now()
         
@@ -176,6 +191,11 @@ class IpReputationServiceImpl : IIpReputationService {
         // Use selectAll().where to find existing without slicing to avoid potential incomplete object mapping issues if we were mapping
         // But here we are just reading columns. selectAll().where is safer API-wise.
         val existing = IpReputationTable.selectAll().where { IpReputationTable.ip eq ipAddress }.singleOrNull()
+        val weekAgo = java.time.LocalDateTime.now().minusDays(7)
+        val lastBlockedTime = existing?.get(IpReputationTable.lastBlocked)
+        val newExponential = if (existing == null || lastBlockedTime == null || lastBlockedTime.isBefore(weekAgo)) 1 else existing[IpReputationTable.exponentialBlockedTimes] + 1
+        val newBlocked = (existing?.get(IpReputationTable.blockedTimes) ?: 0) + 1
+        val newFlagged = (existing?.get(IpReputationTable.flaggedTimes) ?: 0) + 1
 
         if (existing == null) {
             try {
@@ -185,7 +205,12 @@ class IpReputationServiceImpl : IIpReputationService {
                     it[lastActivity] = now // Block implies activity
                     it[firstBlocked] = now
                     it[lastBlocked] = now
-                    it[blockedTimes] = 1
+                    it[blockedTimes] = newBlocked
+                    it[flaggedTimes] = newFlagged
+                    it[firstFlagged] = now
+                    it[lastFlagged] = now
+                    it[exponentialBlockedTimes] = newExponential
+                    it[lastJailDuration] = durationMinutes
                     it[reasons] = shortReason
                     it[country] = resolvedCountry
                     it[IpReputationTable.isp] = resolvedIsp
@@ -218,8 +243,15 @@ class IpReputationServiceImpl : IIpReputationService {
                     it[firstBlocked] = now
                 }
                 
-                it[blockedTimes] = existing[IpReputationTable.blockedTimes] + 1
                 it[reasons] = updatedReasonsString
+                it[flaggedTimes] = newFlagged
+                it[lastFlagged] = now
+                if (existing[IpReputationTable.firstFlagged] == null) {
+                    it[firstFlagged] = now
+                }
+                it[exponentialBlockedTimes] = newExponential
+                it[blockedTimes] = newBlocked
+                it[IpReputationTable.lastJailDuration] = durationMinutes
                 resolvedCountry?.let { code -> it[country] = code }
                 resolvedIsp?.let { v -> it[IpReputationTable.isp] = v }
                 if (newTags != currentTags) {
@@ -239,6 +271,11 @@ class IpReputationServiceImpl : IIpReputationService {
             country = resolvedCountry,
             isp = resolvedIsp,
             reason = reason,
+            blockedTimes = newBlocked,
+            exponentialBlockedTimes = newExponential,
+            flaggedTimes = newFlagged,
+            lastJailDuration = durationMinutes,
+            lastFlagged = System.currentTimeMillis(),
             tags = (resolvedTag ?: "").split(",").filter { it.isNotBlank() },
             dangerTags = (dangerTag ?: "").split(",").filter { it.isNotBlank() }
         ))
@@ -276,6 +313,11 @@ class IpReputationServiceImpl : IIpReputationService {
             lastActivity = row[IpReputationTable.lastActivity].format(DateTimeFormatter.ISO_DATE_TIME),
             firstBlocked = row[IpReputationTable.firstBlocked]?.format(DateTimeFormatter.ISO_DATE_TIME),
             blockedTimes = row[IpReputationTable.blockedTimes],
+            exponentialBlockedTimes = row[IpReputationTable.exponentialBlockedTimes],
+            lastJailDuration = row[IpReputationTable.lastJailDuration],
+            flaggedTimes = row[IpReputationTable.flaggedTimes],
+            firstFlagged = row[IpReputationTable.firstFlagged]?.format(DateTimeFormatter.ISO_DATE_TIME),
+            lastFlagged = row[IpReputationTable.lastFlagged]?.format(DateTimeFormatter.ISO_DATE_TIME),
             lastBlocked = row[IpReputationTable.lastBlocked]?.format(DateTimeFormatter.ISO_DATE_TIME),
             reasons = reasons,
             country = row[IpReputationTable.country],

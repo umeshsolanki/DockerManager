@@ -77,6 +77,11 @@ data class IpReputationEvent(
     val reason: String? = null,
     val score: Int? = null,
     val blockedTimes: Int? = null,
+    val exponentialBlockedTimes: Int? = null,
+    val flaggedTimes: Int? = null,
+    val lastJailDuration: Int? = null,
+    val firstFlagged: Long? = null,
+    val lastFlagged: Long? = null,
     val tags: List<String> = emptyList(),
     val dangerTags: List<String> = emptyList()
 )

@@ -11,6 +11,11 @@ object IpReputationTable : Table("ip_reputation") {
     val lastActivity = datetime("last_activity").default(LocalDateTime.now())
     val firstBlocked = datetime("first_blocked").nullable()
     val blockedTimes = integer("blocked_times").default(0)
+    val exponentialBlockedTimes = integer("exponential_blocked_times").default(0)
+    val lastJailDuration = integer("last_jail_duration").default(0)
+    val flaggedTimes = integer("flagged_times").default(0)
+    val firstFlagged = datetime("first_flagged").nullable()
+    val lastFlagged = datetime("last_flagged").nullable()
     val lastBlocked = datetime("last_blocked").nullable()
     val reasons = text("reasons").default("") // CSV of unique reasons
     val country = varchar("country", 5).nullable()
@@ -29,6 +34,11 @@ data class IpReputation(
     val lastActivity: String,
     val firstBlocked: String? = null,
     val blockedTimes: Int = 0,
+    val exponentialBlockedTimes: Int = 0,
+    val lastJailDuration: Int = 0,
+    val flaggedTimes: Int = 0,
+    val firstFlagged: String? = null,
+    val lastFlagged: String? = null,
     val lastBlocked: String? = null,
     val reasons: List<String> = emptyList(),
     val country: String? = null,

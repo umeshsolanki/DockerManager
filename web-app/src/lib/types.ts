@@ -603,6 +603,11 @@ export interface SystemConfig {
   nginxLogDir: string;
   logBufferingEnabled: boolean;
   logBufferSizeKb: number;
+  jailEnabled: boolean;
+  jailThreshold: number;
+  jailDurationMinutes: number;
+  exponentialJailEnabled: boolean;
+  maxJailDurationMinutes: number;
   logFlushIntervalSeconds: number;
   clickhouseSettings: ClickHouseSettings;
 }
@@ -628,6 +633,11 @@ export interface UpdateSystemConfigRequest {
   logBufferingEnabled?: boolean;
   logBufferSizeKb?: number;
   logFlushIntervalSeconds?: number;
+  jailEnabled?: boolean;
+  jailThreshold?: number;
+  jailDurationMinutes?: number;
+  exponentialJailEnabled?: boolean;
+  maxJailDurationMinutes?: number;
 }
 
 export interface JamesContainerStatus {
@@ -784,6 +794,11 @@ export interface IpReputation {
   lastActivity: string;
   firstBlocked?: string;
   blockedTimes: number;
+  exponentialBlockedTimes: number;
+  lastJailDuration: number;
+  flaggedTimes: number;
+  firstFlagged?: string;
+  lastFlagged?: string;
   lastBlocked?: string;
   reasons: string[];
   country?: string;

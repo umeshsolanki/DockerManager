@@ -109,12 +109,18 @@ class FirewallServiceImpl(
                 saveRules(rules)
 
                 // Record to Reputation DB asynchronously
+                val blockTime = System.currentTimeMillis()
                 reputationScope.launch {
                     try {
+                        val durationMinutes = if (request.expiresAt != null) {
+                            ((request.expiresAt - blockTime) / 60_000L).toInt().coerceAtLeast(0)
+                        } else 0
+
                         ipReputationService.recordBlock(
                             ipAddress = request.ip,
                             reason = request.comment ?: "Manual Block",
-                            countryCode = request.country
+                            countryCode = request.country,
+                            durationMinutes = durationMinutes
                         )
                     } catch (e: Exception) {
                         logger.error("Failed to record IP reputation for ${request.ip}", e)
