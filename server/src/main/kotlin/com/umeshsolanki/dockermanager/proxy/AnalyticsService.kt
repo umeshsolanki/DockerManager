@@ -185,7 +185,7 @@ class AnalyticsServiceImpl(
 
                 // Rotate logs
                 val logFiles = logDir.listFiles { _, name -> 
-                    name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log")
+                    name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || name == "nginx_main_access.log"
                 } ?: emptyArray()
 
                 for (file in logFiles) {
@@ -295,7 +295,7 @@ class AnalyticsServiceImpl(
 
     private fun updateStatsNatively() {
         val logFiles = logDir.listFiles { _, name -> 
-            name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log")
+            name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || name == "nginx_main_access.log"
         } ?: return
 
         // Regex now captures host as the 9th group
@@ -639,6 +639,10 @@ class AnalyticsServiceImpl(
             else if (file.name.endsWith("_danger_$targetDate.log")) {
                 matchingFiles.add(file)
             }
+            // Match nginx_main rotated files: nginx_main_access_YYYY-MM-DD.log
+            else if (file.name == "nginx_main_access_$targetDate.log") {
+                matchingFiles.add(file)
+            }
         }
 
         if (matchingFiles.isNotEmpty()) {
@@ -648,7 +652,10 @@ class AnalyticsServiceImpl(
         // Fallback to active logs if date is today
         val today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
         if (targetDate == today) {
-            return allFiles.filter { it.name == "access.log" || it.name.endsWith("_access.log") || it.name.endsWith("_danger.log") }
+            return allFiles.filter { 
+                it.name == "access.log" || it.name.endsWith("_access.log") || 
+                it.name.endsWith("_danger.log") || it.name == "nginx_main_access.log"
+            }
         }
 
         return emptyList()
@@ -865,7 +872,7 @@ class AnalyticsServiceImpl(
      */
     private fun extractAllDatesFromCurrentLog(): Set<String> {
         val logFiles = logDir.listFiles { _, name -> 
-            name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log")
+            name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || name == "nginx_main_access.log"
         } ?: return emptySet()
 
         val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
@@ -1042,7 +1049,7 @@ class AnalyticsServiceImpl(
      */
     private fun extractDatesFromLogs(): Set<String> {
         val logFiles = logDir.listFiles { _, name -> 
-            name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log")
+            name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || name == "nginx_main_access.log"
         } ?: return emptySet()
         
         val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
@@ -1168,8 +1175,8 @@ class AnalyticsServiceImpl(
         } else {
             // Default to access logs
             logDir.listFiles { _, name -> 
-                (name == "access.log" || name.endsWith("_access.log") || 
-                 name == "access_$targetDate.log" || name.endsWith("_access_$targetDate.log"))
+                (name == "access.log" || name.endsWith("_access.log") || name == "nginx_main_access.log" ||
+                 name == "access_$targetDate.log" || name.endsWith("_access_$targetDate.log") || name == "nginx_main_access_$targetDate.log")
             }?.toList() ?: emptyList()
         }
         
