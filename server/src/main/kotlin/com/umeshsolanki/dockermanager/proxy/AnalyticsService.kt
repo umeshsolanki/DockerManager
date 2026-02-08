@@ -58,7 +58,7 @@ class AnalyticsServiceImpl(
         val host: String?
     )
 
-    private val lineRegex = """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)".*$""".toRegex()
+    private val lineRegex = """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)" "([^"]*)".*$""".toRegex()
 
     private fun parseLogLine(line: String): ParsedLogEntry? {
         val trimmed = line.trim()
