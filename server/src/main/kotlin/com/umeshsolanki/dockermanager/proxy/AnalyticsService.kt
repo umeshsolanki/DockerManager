@@ -12,6 +12,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import com.umeshsolanki.dockermanager.database.ProxyLogsTable
+import com.umeshsolanki.dockermanager.analytics.ClickHouseService
 import com.umeshsolanki.dockermanager.system.IpLookupService
 import org.jetbrains.exposed.sql.batchInsert
 import org.jetbrains.exposed.sql.deleteAll
@@ -131,12 +132,29 @@ class AnalyticsServiceImpl(
     private val recentHitsList = ConcurrentLinkedDeque<ProxyHit>()
     private val MAX_RECENT_HITS = 100
     
-    // WebSocket tracking
     private val websocketConnectionsCounter = java.util.concurrent.atomic.AtomicLong(0)
     private val websocketConnectionsByEndpointMap = ConcurrentHashMap<String, Long>()
     private val websocketConnectionsByIpMap = ConcurrentHashMap<String, Long>()
     private val recentWebSocketConnectionsList = ConcurrentLinkedDeque<WebSocketConnection>()
     private val MAX_RECENT_WEBSOCKET_CONNECTIONS = 50
+    
+    // Hostwise stats 
+    private class DomainStats {
+        val totalHits = java.util.concurrent.atomic.AtomicLong(0)
+        val hitsByStatus = ConcurrentHashMap<Int, Long>()
+        val hitsByPath = ConcurrentHashMap<String, Long>()
+        val hitsByIp = ConcurrentHashMap<String, Long>()
+        val hitsByMethod = ConcurrentHashMap<String, Long>()
+        
+        fun reset() {
+            totalHits.set(0)
+            hitsByStatus.clear()
+            hitsByPath.clear()
+            hitsByIp.clear()
+            hitsByMethod.clear()
+        }
+    }
+    private val hostStatsData = ConcurrentHashMap<String, DomainStats>()
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var lastResetDate: String? = null
@@ -323,6 +341,7 @@ class AnalyticsServiceImpl(
         hitsByTimeMap.clear()
         recentHitsList.clear()
         lastProcessedOffsets.clear()
+        hostStatsData.clear()
         
         // Reset WebSocket stats
         websocketConnectionsCounter.set(0)
@@ -350,18 +369,20 @@ class AnalyticsServiceImpl(
         )
     }
 
+    private val logLineDateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
+    private val hourKeyFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:00:00XXX", Locale.US)
+
     private fun updateStatsNatively() {
         val logFiles = logDir.listFiles { _, name -> 
             name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || name == "nginx_main_access.log"
         } ?: return
 
-        // Regex now captures host as the 9th group
-        val lineRegex =
-            """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)".*$""".toRegex()
-        val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
         val hitsToInsert = mutableListOf<ProxyHit>()
         val settings = AppConfig.settings
         val shouldFilterLocalIps = settings.filterLocalIps
+        
+        // Local cache for IP lookups in this batch to avoid redundant DB hits
+        val localIpInfoCache = mutableMapOf<String, com.umeshsolanki.dockermanager.system.IpInfo?>()
 
         for (logFile in logFiles) {
              try {
@@ -434,10 +455,18 @@ class AnalyticsServiceImpl(
                                     if (status >= 400) {
                                         hitsByDomainErrorMap.merge(domain, 1L, Long::plus)
                                     }
+                                    
+                                    // Update hostwise stats
+                                    val hStats = hostStatsData.getOrPut(domain) { DomainStats() }
+                                    hStats.totalHits.incrementAndGet()
+                                    hStats.hitsByStatus.merge(status, 1L, Long::plus)
+                                    hStats.hitsByIp.merge(ip, 1L, Long::plus)
+                                    hStats.hitsByPath.merge(path, 1L, Long::plus)
+                                    hStats.hitsByMethod.merge(method, 1L, Long::plus)
                                 }
                                 
-                                // IP Lookup
-                                val ipInfo = IpLookupService.lookup(ip)
+                                // IP Lookup with local batch cache
+                                val ipInfo = localIpInfoCache.getOrPut(ip) { IpLookupService.lookup(ip) }
                                 ipInfo?.countryCode?.let { hitsByCountryMap.merge(it, 1L, Long::plus) }
                                 ipInfo?.provider?.let { hitsByProviderMap.merge(it, 1L, Long::plus) }
 
@@ -457,11 +486,11 @@ class AnalyticsServiceImpl(
                                 )
 
                                 try {
-                                    val timestamp = dateFormat.parse(dateStr)
-                                    val hourKey = SimpleDateFormat("yyyy-MM-dd'T'HH:00:00XXX", Locale.US).format(timestamp)
+                                    val timestamp = logLineDateFormat.parse(dateStr)
+                                    val hourKey = hourKeyFormat.format(timestamp)
                                     hitsByTimeMap.merge(hourKey, 1L, Long::plus)
 
-                                    val hit = ProxyHit(
+                                     val hit = ProxyHit(
                                         timestamp = timestamp.time,
                                         ip = ip,
                                         method = method,
@@ -470,9 +499,12 @@ class AnalyticsServiceImpl(
                                         responseTime = 0,
                                         userAgent = ua,
                                         referer = if (referer == "-") null else referer,
-                                        domain = domain
+                                        domain = domain,
+                                        countryCode = ipInfo?.countryCode,
+                                        provider = ipInfo?.provider
                                     )
                                     recentHitsList.addFirst(hit)
+                                    ClickHouseService.log(hit)
                                     while (recentHitsList.size > MAX_RECENT_HITS) {
                                         recentHitsList.removeLast()
                                     }
@@ -546,7 +578,16 @@ class AnalyticsServiceImpl(
             websocketConnections = websocketConnectionsCounter.get(),
             websocketConnectionsByEndpoint = websocketConnectionsByEndpointMap.toMap(),
             websocketConnectionsByIp = websocketConnectionsByIpMap.toMap(),
-            recentWebSocketConnections = recentWebSocketConnectionsList.toList()
+            recentWebSocketConnections = recentWebSocketConnectionsList.toList(),
+            hostwiseStats = hostStatsData.entries.associate { (domain, stats) ->
+                domain to DetailedHostStats(
+                    totalHits = stats.totalHits.get(),
+                    hitsByStatus = stats.hitsByStatus.toMap(),
+                    topPaths = stats.hitsByPath.entries.sortedByDescending { it.value }.take(10).map { PathHit(it.key, it.value) },
+                    topIps = stats.hitsByIp.entries.sortedByDescending { it.value }.take(10).map { GenericHitEntry(it.key, it.value) },
+                    topMethods = stats.hitsByMethod.entries.sortedByDescending { it.value }.take(10).map { GenericHitEntry(it.key, it.value) }
+                )
+            }
         )
     }
     
@@ -727,9 +768,6 @@ class AnalyticsServiceImpl(
             return null
         }
 
-        val lineRegex =
-            """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)" "([^"]*)".*$""".toRegex()
-        val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
         val targetLocalDate = try {
             java.time.LocalDate.parse(
                 targetDate,
@@ -740,7 +778,7 @@ class AnalyticsServiceImpl(
             return null
         }
 
-        // Temporary maps for aggregation
+        // Temporary structures for aggregation
         val tempTotalHits = java.util.concurrent.atomic.AtomicLong(0)
         val tempHitsByStatusMap = ConcurrentHashMap<Int, Long>()
         val tempHitsByDomainMap = ConcurrentHashMap<String, Long>()
@@ -749,30 +787,29 @@ class AnalyticsServiceImpl(
         val tempHitsByIpMap = ConcurrentHashMap<String, Long>()
         val tempHitsByIpErrorMap = ConcurrentHashMap<String, Long>()
         val tempHitsByMethodMap = ConcurrentHashMap<String, Long>()
-        val tempHitsByRefererMap = ConcurrentHashMap<String, Long>()
-        val tempHitsByUserAgentMap = ConcurrentHashMap<String, Long>()
         val tempHitsByTimeMap = ConcurrentHashMap<String, Long>()
-        // Additional maps to match ProxyStats structure
         val tempHitsByCountryMap = ConcurrentHashMap<String, Long>()
         val tempHitsByProviderMap = ConcurrentHashMap<String, Long>()
+        val tempHostStatsData = ConcurrentHashMap<String, DomainStats>()
 
         val settings = AppConfig.settings
         val shouldFilterLocalIps = settings.filterLocalIps
+        val localIpInfoCache = mutableMapOf<String, com.umeshsolanki.dockermanager.system.IpInfo?>()
 
         for (file in filesToProcess) {
             try {
                 file.bufferedReader(Charsets.UTF_8).use { reader ->
                     var line: String? = reader.readLine()
                     while (line != null) {
-                        val trimmedLine = line.trim()
-                        if (trimmedLine.isNotEmpty()) {
-                            lineRegex.find(trimmedLine)?.let { match ->
-                                val (ip, dateStr, fullRequest, statusStr, _, referer, ua, _, host) = match.destructured
-                                val status = statusStr.toIntOrNull() ?: 0
+                        parseLogLine(line)?.let { logEntry ->
+                                val ip = logEntry.ip
+                                val dateStr = logEntry.dateStr
+                                val status = logEntry.status
+                                val host = logEntry.host ?: "-"
 
                                 // Parse date and check match
                                 try {
-                                    val timestamp = dateFormat.parse(dateStr)
+                                    val timestamp = logLineDateFormat.parse(dateStr)
                                     val logDate = java.time.LocalDate.ofInstant(
                                         timestamp.toInstant(), java.time.ZoneId.systemDefault()
                                     )
@@ -782,9 +819,9 @@ class AnalyticsServiceImpl(
 
                                     if (shouldFilterLocalIps && IpFilterUtils.isLocalIp(ip)) return@let
 
-                                    val reqParts = fullRequest.split(" ")
-                                    val method = reqParts.getOrNull(0) ?: "-"
-                                    val path = reqParts.getOrNull(1) ?: fullRequest
+                                    val method = logEntry.method
+                                    val path = logEntry.path
+                                    val referer = logEntry.referer
 
                                     if (status == 200) {
                                         val cleanPath = path.substringBefore('?')
@@ -802,39 +839,45 @@ class AnalyticsServiceImpl(
                                         if (isStaticAsset) return@let
                                     }
 
-                                    val domain = if (host != "-") host else if (referer != "-") try {
-                                        java.net.URI(referer).host
-                                    } catch (e: Exception) { null } else null
-
                                     tempTotalHits.incrementAndGet()
                                     tempHitsByStatusMap.merge(status, 1L, Long::plus)
                                     tempHitsByIpMap.merge(ip, 1L, Long::plus)
                                     tempHitsByMethodMap.merge(method, 1L, Long::plus)
                                     tempHitsByPathMap.merge(path, 1L, Long::plus)
-                                    if (ua != "-") tempHitsByUserAgentMap.merge(ua, 1L, Long::plus)
-                                    if (referer != "-") tempHitsByRefererMap.merge(referer, 1L, Long::plus)
+                                    
+                                    val domain = if (host != "-") host else if (referer != "-") try {
+                                        java.net.URI(referer).host
+                                    } catch (e: Exception) { null } else null
+
                                     if (domain != null) {
                                         tempHitsByDomainMap.merge(domain, 1L, Long::plus)
-                                        if (status >= 400) tempHitsByDomainErrorMap.merge(domain, 1L, Long::plus)
+                                        if (status >= 400) {
+                                            tempHitsByDomainErrorMap.merge(domain, 1L, Long::plus)
+                                        }
+                                        
+                                        // Hostwise Stats
+                                        val hStats = tempHostStatsData.getOrPut(domain) { DomainStats() }
+                                        hStats.totalHits.incrementAndGet()
+                                        hStats.hitsByStatus.merge(status, 1L, Long::plus)
+                                        hStats.hitsByIp.merge(ip, 1L, Long::plus)
+                                        hStats.hitsByPath.merge(path, 1L, Long::plus)
+                                        hStats.hitsByMethod.merge(method, 1L, Long::plus)
                                     }
-                                    if (status >= 400) tempHitsByIpErrorMap.merge(ip, 1L, Long::plus)
 
-                                    val hourKey = SimpleDateFormat("yyyy-MM-dd'T'HH:00:00XXX", Locale.US).format(timestamp)
-                                    tempHitsByTimeMap.merge(hourKey, 1L, Long::plus)
-
-                                    // IP Lookup (Optional for historical, but robust)
-                                    val ipInfo = IpLookupService.lookup(ip)
+                                    // IP Lookup Info
+                                    val ipInfo = localIpInfoCache.getOrPut(ip) { IpLookupService.lookup(ip) }
                                     ipInfo?.countryCode?.let { tempHitsByCountryMap.merge(it, 1L, Long::plus) }
                                     ipInfo?.provider?.let { tempHitsByProviderMap.merge(it, 1L, Long::plus) }
 
+                                    val hourKey = hourKeyFormat.format(timestamp)
+                                    tempHitsByTimeMap.merge(hourKey, 1L, Long::plus)
                                 } catch (e: Exception) { }
-                            }
                         }
                         line = reader.readLine()
                     }
                 }
             } catch (e: Exception) {
-                logger.error("Error processing log file ${file.name}", e)
+                logger.error("Error processing log file ${file.name} for $targetDate", e)
             }
         }
 
@@ -843,16 +886,25 @@ class AnalyticsServiceImpl(
             totalHits = tempTotalHits.get(),
             hitsByStatus = tempHitsByStatusMap.toMap(),
             hitsOverTime = tempHitsByTimeMap.toSortedMap(),
-            topPaths = tempHitsByPathMap.entries.sortedByDescending { it.value }.take(100).map { PathHit(it.key, it.value) },
+            topPaths = tempHitsByPathMap.entries.sortedByDescending { it.value }
+                .take(50).map { PathHit(it.key, it.value) },
             hitsByDomain = tempHitsByDomainMap.toMap(),
             hitsByDomainErrors = tempHitsByDomainErrorMap.toMap(),
-            topIps = tempHitsByIpMap.entries.sortedByDescending { it.value }.take(100).map { GenericHitEntry(it.key, it.value) },
-            topIpsWithErrors = tempHitsByIpErrorMap.entries.sortedByDescending { it.value }.take(100).map { GenericHitEntry(it.key, it.value) },
-            topUserAgents = tempHitsByUserAgentMap.entries.sortedByDescending { it.value }.take(100).map { GenericHitEntry(it.key, it.value) },
-            topReferers = tempHitsByRefererMap.entries.sortedByDescending { it.value }.take(100).map { GenericHitEntry(it.key, it.value) },
-            topMethods = tempHitsByMethodMap.entries.sortedByDescending { it.value }.map { GenericHitEntry(it.key, it.value) },
+            topIps = tempHitsByIpMap.entries.sortedByDescending { it.value }
+                .take(50).map { GenericHitEntry(it.key, it.value) },
+            topMethods = tempHitsByMethodMap.entries.sortedByDescending { it.value }
+                .map { GenericHitEntry(it.key, it.value) },
             hitsByCountry = tempHitsByCountryMap.toMap(),
-            hitsByProvider = tempHitsByProviderMap.toMap()
+            hitsByProvider = tempHitsByProviderMap.toMap(),
+            hostwiseStats = tempHostStatsData.entries.associate { (domain, stats) ->
+                domain to DetailedHostStats(
+                    totalHits = stats.totalHits.get(),
+                    hitsByStatus = stats.hitsByStatus.toMap(),
+                    topPaths = stats.hitsByPath.entries.sortedByDescending { it.value }.take(10).map { PathHit(it.key, it.value) },
+                    topIps = stats.hitsByIp.entries.sortedByDescending { it.value }.take(10).map { GenericHitEntry(it.key, it.value) },
+                    topMethods = stats.hitsByMethod.entries.sortedByDescending { it.value }.take(10).map { GenericHitEntry(it.key, it.value) }
+                )
+            }
         )
     }
 

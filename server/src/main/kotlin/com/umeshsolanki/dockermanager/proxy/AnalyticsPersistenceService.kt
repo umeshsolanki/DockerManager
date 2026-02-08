@@ -1,4 +1,5 @@
 package com.umeshsolanki.dockermanager.proxy
+import com.umeshsolanki.dockermanager.analytics.ClickHouseService
 
 import com.umeshsolanki.dockermanager.AppConfig
 import com.umeshsolanki.dockermanager.database.ProxyLogsTable
@@ -31,7 +32,8 @@ data class DailyProxyStats(
     val hitsByProvider: Map<String, Long> = emptyMap(),
     val websocketConnections: Long = 0,
     val websocketConnectionsByEndpoint: Map<String, Long> = emptyMap(),
-    val websocketConnectionsByIp: Map<String, Long> = emptyMap()
+    val websocketConnectionsByIp: Map<String, Long> = emptyMap(),
+    val hostwiseStats: Map<String, DetailedHostStats> = emptyMap()
 )
 
 class AnalyticsPersistenceService {
@@ -87,10 +89,11 @@ class AnalyticsPersistenceService {
         }
     }
 
-    /**
-     * Load stats for a specific date using SQL columns if DB is active
-     */
     fun loadDailyStats(date: String): DailyProxyStats? {
+        if (AppConfig.settings.clickhouseSettings.enabled) {
+            loadDailyStatsFromClickHouse(date)?.let { return it }
+        }
+
         if (AppConfig.storageBackend == "database") {
             try {
                 return transaction {
@@ -211,11 +214,94 @@ class AnalyticsPersistenceService {
         }
     }
 
+    private fun loadDailyStatsFromClickHouse(date: String): DailyProxyStats? {
+        try {
+            val totalHits = ClickHouseService.query("SELECT count() FROM proxy_logs WHERE toDate(timestamp) = '$date'") { it.getLong(1) }.firstOrNull() ?: 0L
+            if (totalHits == 0L) return null
+
+            val hitsByStatus = ClickHouseService.queryMap("SELECT toString(status), count() FROM proxy_logs WHERE toDate(timestamp) = '$date' GROUP BY status")
+            val hitsByStatusInt = hitsByStatus.mapKeys { it.key.toIntOrNull() ?: 0 }
+            
+            val hitsOverTime = ClickHouseService.queryMap("SELECT formatDateTime(timestamp, '%H:00'), count() FROM proxy_logs WHERE toDate(timestamp) = '$date' GROUP BY toHour(timestamp) ORDER BY toHour(timestamp)")
+            
+            val topPaths = ClickHouseService.query("SELECT path, count() as c FROM proxy_logs WHERE toDate(timestamp) = '$date' GROUP BY path ORDER BY c DESC LIMIT 20") {
+                PathHit(it.getString(1), it.getLong(2))
+            }
+
+            val topIps = ClickHouseService.query("SELECT ip, count() as c FROM proxy_logs WHERE toDate(timestamp) = '$date' GROUP BY ip ORDER BY c DESC LIMIT 20") {
+                GenericHitEntry(it.getString(1), it.getLong(2))
+            }
+
+            val topMethods = ClickHouseService.query("SELECT method, count() as c FROM proxy_logs WHERE toDate(timestamp) = '$date' GROUP BY method ORDER BY c DESC") {
+                GenericHitEntry(it.getString(1), it.getLong(2))
+            }
+
+            val hitsByDomain = ClickHouseService.queryMap("SELECT domain, count() FROM proxy_logs WHERE toDate(timestamp) = '$date' GROUP BY domain")
+            val hitsByDomainErrors = ClickHouseService.queryMap("SELECT domain, count() FROM proxy_logs WHERE toDate(timestamp) = '$date' AND status >= 400 GROUP BY domain")
+            
+            val hitsByCountry = ClickHouseService.queryMap("SELECT country_code, count() FROM proxy_logs WHERE toDate(timestamp) = '$date' GROUP BY country_code")
+            val hitsByProvider = ClickHouseService.queryMap("SELECT provider, count() FROM proxy_logs WHERE toDate(timestamp) = '$date' GROUP BY provider")
+
+            // Hostwise stats for ClickHouse
+            val domains = hitsByDomain.keys
+            val hostwiseStats = domains.associateWith { domain ->
+                val hTotal = hitsByDomain[domain] ?: 0L
+                val hStatus = ClickHouseService.queryMap("SELECT toString(status), count() FROM proxy_logs WHERE toDate(timestamp) = '$date' AND domain = '$domain' GROUP BY status").mapKeys { it.key.toIntOrNull() ?: 0 }
+                val hPaths = ClickHouseService.query("SELECT path, count() as c FROM proxy_logs WHERE toDate(timestamp) = '$date' AND domain = '$domain' GROUP BY path ORDER BY c DESC LIMIT 10") {
+                    PathHit(it.getString(1), it.getLong(2))
+                }
+                val hIps = ClickHouseService.query("SELECT ip, count() as c FROM proxy_logs WHERE toDate(timestamp) = '$date' AND domain = '$domain' GROUP BY ip ORDER BY c DESC LIMIT 10") {
+                    GenericHitEntry(it.getString(1), it.getLong(2))
+                }
+                val hMethods = ClickHouseService.query("SELECT method, count() as c FROM proxy_logs WHERE toDate(timestamp) = '$date' AND domain = '$domain' GROUP BY method ORDER BY c DESC LIMIT 10") {
+                    GenericHitEntry(it.getString(1), it.getLong(2))
+                }
+                
+                DetailedHostStats(
+                    totalHits = hTotal,
+                    hitsByStatus = hStatus,
+                    topPaths = hPaths,
+                    topIps = hIps,
+                    topMethods = hMethods
+                )
+            }
+
+            return DailyProxyStats(
+                date = date,
+                totalHits = totalHits,
+                hitsByStatus = hitsByStatusInt,
+                hitsOverTime = hitsOverTime,
+                topPaths = topPaths,
+                hitsByDomain = hitsByDomain,
+                hitsByDomainErrors = hitsByDomainErrors,
+                topIps = topIps,
+                topMethods = topMethods,
+                hitsByCountry = hitsByCountry,
+                hitsByProvider = hitsByProvider,
+                hostwiseStats = hostwiseStats
+            )
+
+        } catch (e: Exception) {
+            logger.error("ClickHouse query failed for date $date", e)
+            return null
+        }
+    }
+
     /**
      * Get all available dates with saved stats
      */
     fun listAvailableDates(): List<String> {
         val datesList = mutableSetOf<String>()
+
+        if (AppConfig.settings.clickhouseSettings.enabled) {
+            try {
+                ClickHouseService.query("SELECT DISTINCT toDate(timestamp) FROM proxy_logs ORDER BY toDate(timestamp) DESC") {
+                    it.getString(1)
+                }.forEach { datesList.add(it) }
+            } catch (e: Exception) {
+                logger.warn("ClickHouse list dates failed: ${e.message}")
+            }
+        }
 
         if (AppConfig.storageBackend == "database") {
             try {

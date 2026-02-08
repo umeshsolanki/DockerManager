@@ -59,6 +59,18 @@ val DEFAULT_PROXY_JAIL_RULES = listOf(
 // KafkaSettings removed and moved to shared module
 
 @Serializable
+data class ClickHouseSettings(
+    val enabled: Boolean = false,
+    val host: String = "localhost",
+    val port: Int = 8123,
+    val database: String = "docker_manager",
+    val user: String = "default",
+    val password: String = "",
+    val batchSize: Int = 5000,
+    val flushIntervalMs: Long = 5000
+)
+
+@Serializable
 data class AppSettings(
     val dockerSocket: String = SystemConstants.DOCKER_SOCKET_DEFAULT,
     val jamesWebAdminUrl: String = NetworkConstants.JAMES_WEB_ADMIN_DEFAULT,
@@ -113,11 +125,18 @@ data class AppSettings(
     val syslogPort: Int = 514,
     val proxyRsyslogEnabled: Boolean = false,
     val proxyDualLoggingEnabled: Boolean = false,
-    val nginxLogDir: String? = null
+    val nginxLogDir: String? = null,
+    val logBufferingEnabled: Boolean = false,
+    val logBufferSizeKb: Int = 512, // Default 512kb
+    val logFlushIntervalSeconds: Int = 5, // Default 5s
+    
+    // ClickHouse for big data analytics
+    val clickhouseSettings: ClickHouseSettings = ClickHouseSettings()
 )
 
 object AppConfig {
     private val logger = LoggerFactory.getLogger(AppConfig::class.java)
+    private val lock = Any()
     private const val DEFAULT_DATA_DIR = SystemConstants.DEFAULT_DATA_DIR
 
     val json = Json {
@@ -165,7 +184,7 @@ object AppConfig {
 
     val storageBackend: String get() = if (isDbActive) "database" else "file"
 
-    fun reloadSettings() {
+    fun reloadSettings() = synchronized(lock) {
         logger.info("Reloading settings...")
         _settings = loadSettings()
     }
@@ -284,22 +303,22 @@ object AppConfig {
     }
 
     fun updateSettings(
-        dockerSocket: String,
-        jamesWebAdminUrl: String,
-        dockerBuildKit: Boolean = _settings.dockerBuildKit,
-        dockerCliBuild: Boolean = _settings.dockerCliBuild,
-        autoStorageRefresh: Boolean = _settings.autoStorageRefresh,
-        autoStorageRefreshIntervalMinutes: Int = _settings.autoStorageRefreshIntervalMinutes,
-        kafkaSettings: KafkaSettings = _settings.kafkaSettings
-    ) {
+        dockerSocket: String? = null,
+        jamesWebAdminUrl: String? = null,
+        dockerBuildKit: Boolean? = null,
+        dockerCliBuild: Boolean? = null,
+        autoStorageRefresh: Boolean? = null,
+        autoStorageRefreshIntervalMinutes: Int? = null,
+        kafkaSettings: KafkaSettings? = null
+    ) = synchronized(lock) {
         _settings = _settings.copy(
-            dockerSocket = dockerSocket,
-            jamesWebAdminUrl = jamesWebAdminUrl,
-            dockerBuildKit = dockerBuildKit,
-            dockerCliBuild = dockerCliBuild,
-            autoStorageRefresh = autoStorageRefresh,
-            autoStorageRefreshIntervalMinutes = autoStorageRefreshIntervalMinutes,
-            kafkaSettings = kafkaSettings
+            dockerSocket = dockerSocket ?: _settings.dockerSocket,
+            jamesWebAdminUrl = jamesWebAdminUrl ?: _settings.jamesWebAdminUrl,
+            dockerBuildKit = dockerBuildKit ?: _settings.dockerBuildKit,
+            dockerCliBuild = dockerCliBuild ?: _settings.dockerCliBuild,
+            autoStorageRefresh = autoStorageRefresh ?: _settings.autoStorageRefresh,
+            autoStorageRefreshIntervalMinutes = autoStorageRefreshIntervalMinutes ?: _settings.autoStorageRefreshIntervalMinutes,
+            kafkaSettings = kafkaSettings ?: _settings.kafkaSettings
         )
         saveSettings()
     }
@@ -310,7 +329,7 @@ object AppConfig {
         durationMinutes: Int,
         monitoringActive: Boolean? = null,
         monitoringIntervalMinutes: Int? = null,
-    ) {
+    ) = synchronized(lock) {
         _settings = _settings.copy(
             jailEnabled = enabled,
             jailThreshold = threshold,
@@ -322,7 +341,7 @@ object AppConfig {
         saveSettings()
     }
 
-    fun updateProxyStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null) {
+    fun updateProxyStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null) = synchronized(lock) {
         _settings = _settings.copy(
             proxyStatsActive = active,
             proxyStatsIntervalMs = intervalMs,
@@ -335,7 +354,7 @@ object AppConfig {
         enabled: Boolean,
         thresholdNon200: Int,
         rules: List<ProxyJailRule>
-    ) {
+    ) = synchronized(lock) {
         _settings = _settings.copy(
             proxyJailEnabled = enabled,
             proxyJailThresholdNon200 = thresholdNon200,
@@ -344,37 +363,47 @@ object AppConfig {
         saveSettings()
     }
 
-    fun updateProxyDefaultBehavior(return404: Boolean) {
+    fun updateProxyDefaultBehavior(return404: Boolean) = synchronized(lock) {
         _settings = _settings.copy(
             proxyDefaultReturn404 = return404
         )
         saveSettings()
     }
 
-    fun updateLoggingSettings(dbPersistenceLogsEnabled: Boolean? = null, nginxLogDir: String? = null, jsonLoggingEnabled: Boolean? = null) {
+    fun updateLoggingSettings(
+        dbPersistenceLogsEnabled: Boolean? = null,
+        nginxLogDir: String? = null,
+        jsonLoggingEnabled: Boolean? = null,
+        logBufferingEnabled: Boolean? = null,
+        logBufferSizeKb: Int? = null,
+        logFlushIntervalSeconds: Int? = null
+    ) = synchronized(lock) {
         _settings = _settings.copy(
             dbPersistenceLogsEnabled = dbPersistenceLogsEnabled ?: _settings.dbPersistenceLogsEnabled,
-            nginxLogDir = nginxLogDir ?: _settings.nginxLogDir,
-            jsonLoggingEnabled = jsonLoggingEnabled ?: _settings.jsonLoggingEnabled
+            nginxLogDir = if (nginxLogDir.isNullOrBlank()) _settings.nginxLogDir else nginxLogDir,
+            jsonLoggingEnabled = jsonLoggingEnabled ?: _settings.jsonLoggingEnabled,
+            logBufferingEnabled = logBufferingEnabled ?: _settings.logBufferingEnabled,
+            logBufferSizeKb = logBufferSizeKb ?: _settings.logBufferSizeKb,
+            logFlushIntervalSeconds = logFlushIntervalSeconds ?: _settings.logFlushIntervalSeconds
         )
         saveSettings()
     }
 
-    fun updateFileBookmarks(bookmarks: List<String>) {
+    fun updateFileBookmarks(bookmarks: List<String>) = synchronized(lock) {
         _settings = _settings.copy(
             fileBookmarks = bookmarks
         )
         saveSettings()
     }
 
-    fun updateKafkaRules(rules: List<KafkaRule>) {
+    fun updateKafkaRules(rules: List<KafkaRule>) = synchronized(lock) {
         _settings = _settings.copy(
             kafkaRules = rules
         )
         saveSettings()
     }
 
-    fun updateSyslogSettings(enabled: Boolean, server: String, port: Int, serverInternal: String? = null) {
+    fun updateSyslogSettings(enabled: Boolean, server: String, port: Int, serverInternal: String? = null) = synchronized(lock) {
         _settings = _settings.copy(
             syslogEnabled = enabled,
             syslogServer = server,

@@ -26,6 +26,7 @@ export default function AnalyticsScreen() {
     const [availableDates, setAvailableDates] = useState<string[]>([]);
     const [selectedDate, setSelectedDate] = useState<string>('');
     const [historicalStats, setHistoricalStats] = useState<DailyProxyStats | null>(null);
+    const [selectedHost, setSelectedHost] = useState<string>('global');
     const [searchQuery, setSearchQuery] = useState('');
     const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
         paths: false,
@@ -181,16 +182,24 @@ export default function AnalyticsScreen() {
 
     // Memoized filtered data - all hooks must be at top level BEFORE any early returns
     const filteredPaths = useMemo(() => {
-        return stats?.topPaths
+        const source = (selectedHost !== 'global' && stats?.hostwiseStats?.[selectedHost])
+            ? stats.hostwiseStats[selectedHost].topPaths
+            : stats?.topPaths;
+
+        return source
             ?.filter(p => !searchQuery || p.path.toLowerCase().includes(searchQuery.toLowerCase()))
             .map(p => ({ label: p.path, value: p.count, sub: 'Path' })) || [];
-    }, [stats?.topPaths, searchQuery]);
+    }, [stats?.topPaths, stats?.hostwiseStats, selectedHost, searchQuery]);
 
     const filteredIps = useMemo(() => {
-        return stats?.topIps
+        const source = (selectedHost !== 'global' && stats?.hostwiseStats?.[selectedHost])
+            ? stats.hostwiseStats[selectedHost].topIps
+            : stats?.topIps;
+
+        return source
             ?.filter(p => !searchQuery || p.label.toLowerCase().includes(searchQuery.toLowerCase()))
             .map(p => ({ label: p.label, value: p.count, sub: 'IP Source' })) || [];
-    }, [stats?.topIps, searchQuery]);
+    }, [stats?.topIps, stats?.hostwiseStats, selectedHost, searchQuery]);
 
     const filteredUserAgents = useMemo(() => {
         return stats?.topUserAgents
@@ -205,10 +214,14 @@ export default function AnalyticsScreen() {
     }, [stats?.topReferers, searchQuery]);
 
     const filteredMethods = useMemo(() => {
-        return stats?.topMethods
+        const source = (selectedHost !== 'global' && stats?.hostwiseStats?.[selectedHost])
+            ? stats.hostwiseStats[selectedHost].topMethods
+            : stats?.topMethods;
+
+        return source
             ?.filter(p => !searchQuery || p.label.toLowerCase().includes(searchQuery.toLowerCase()))
             .map(p => ({ label: p.label, value: p.count, sub: 'Method' })) || [];
-    }, [stats?.topMethods, searchQuery]);
+    }, [stats?.topMethods, stats?.hostwiseStats, selectedHost, searchQuery]);
 
     const filteredDomains = useMemo(() => {
         return stats?.hitsByDomain
@@ -370,34 +383,65 @@ export default function AnalyticsScreen() {
                 </div>
             </header>
 
+            {/* Host Tabs */}
+            {stats && Object.keys(stats.hostwiseStats || {}).length > 0 && (
+                <div className="flex flex-wrap gap-2 p-1 bg-surface/30 border border-outline/5 rounded-2xl">
+                    <button
+                        onClick={() => setSelectedHost('global')}
+                        className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${selectedHost === 'global'
+                                ? 'bg-primary text-on-primary shadow-lg shadow-primary/20'
+                                : 'text-on-surface-variant hover:bg-white/5'
+                            }`}
+                    >
+                        Global
+                    </button>
+                    {Object.keys(stats.hostwiseStats || {}).sort().map(host => (
+                        <button
+                            key={host}
+                            onClick={() => setSelectedHost(host)}
+                            className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${selectedHost === host
+                                    ? 'bg-primary text-on-primary shadow-lg shadow-primary/20'
+                                    : 'text-on-surface-variant hover:bg-white/5'
+                                }`}
+                        >
+                            {host}
+                        </button>
+                    ))}
+                </div>
+            )}
+
             {/* High Level Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard
-                    label="Total Requests"
-                    value={stats?.totalHits.toLocaleString() || '0'}
+                    label="Requests"
+                    value={(selectedHost !== 'global' && stats?.hostwiseStats?.[selectedHost] ? stats.hostwiseStats[selectedHost].totalHits : stats?.totalHits || 0).toLocaleString()}
                     icon={<MousePointerClick size={20} />}
-                    sub={viewMode === 'today' ? 'Today\'s Traffic' : 'Daily Total'}
+                    sub={selectedHost === 'global' ? 'All Traffic' : `${selectedHost} traffic`}
                     color="primary"
                 />
                 <StatCard
-                    label="Active Domains"
-                    value={Object.keys(stats?.hitsByDomain || {}).length.toString()}
+                    label={selectedHost === 'global' ? "Active Domains" : "Domain Share"}
+                    value={selectedHost === 'global'
+                        ? Object.keys(stats?.hitsByDomain || {}).length.toString()
+                        : `${((stats?.hostwiseStats?.[selectedHost]?.totalHits || 0) / (stats?.totalHits || 1) * 100).toFixed(1)}%`}
                     icon={<Globe size={20} />}
-                    sub="Configured Hosts"
+                    sub={selectedHost === 'global' ? "Configured Hosts" : "of total requests"}
                     color="indigo"
                 />
                 <StatCard
                     label="Unique Reach"
-                    value={stats?.topIps?.length.toString() || '0'}
+                    value={(selectedHost !== 'global' && stats?.hostwiseStats?.[selectedHost] ? stats.hostwiseStats[selectedHost].topIps.length : stats?.topIps?.length || 0).toString()}
                     icon={<Network size={20} />}
                     sub="Unique Source IPs"
                     color="indigo"
                 />
                 <StatCard
-                    label="Error Rate"
-                    value={stats ? `${((Object.entries(stats.hitsByStatus).filter(([s]) => !s.startsWith('2')).reduce((acc, [_, v]) => acc + v, 0) / stats.totalHits) * 100).toFixed(1)}%` : '0%'}
+                    label="Distribution"
+                    value={selectedHost === 'global'
+                        ? `${Object.keys(stats?.hitsByStatus || {}).length} Statuses`
+                        : `${Object.keys(stats?.hostwiseStats?.[selectedHost]?.hitsByStatus || {}).length} Statuses`}
                     icon={<Zap size={20} />}
-                    sub="Non-200 Responses"
+                    sub="Response variety"
                     color="red"
                 />
             </div>
@@ -517,25 +561,37 @@ export default function AnalyticsScreen() {
                     </h3>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                    {stats?.hitsByStatus && Object.entries(stats.hitsByStatus)
-                        .sort(([a], [b]) => parseInt(a) - parseInt(b))
-                        .map(([status, count]) => {
-                            const statusInt = parseInt(status);
-                            const percentage = stats.totalHits > 0 ? ((count / stats.totalHits) * 100).toFixed(1) : '0';
-                            const colorClass = statusInt >= 500 ? 'bg-red-500/20 text-red-500 border-red-500/30' :
-                                statusInt >= 400 ? 'bg-orange-500/20 text-orange-500 border-orange-500/30' :
-                                    statusInt >= 300 ? 'bg-blue-500/20 text-blue-500 border-blue-500/30' :
-                                        statusInt >= 200 ? 'bg-green-500/20 text-green-500 border-green-500/30' :
-                                            'bg-gray-500/20 text-gray-500 border-gray-500/30';
+                    {(() => {
+                        const source = (selectedHost !== 'global' && stats?.hostwiseStats?.[selectedHost])
+                            ? stats.hostwiseStats[selectedHost].hitsByStatus
+                            : stats?.hitsByStatus;
 
-                            return (
-                                <div key={status} className={`p-4 rounded-xl border ${colorClass}`}>
-                                    <div className="text-2xl font-black">{status}</div>
-                                    <div className="text-xs font-bold mt-1 opacity-80">{count.toLocaleString()}</div>
-                                    <div className="text-[10px] font-medium mt-1 opacity-60">{percentage}%</div>
-                                </div>
-                            );
-                        })}
+                        const total = (selectedHost !== 'global' && stats?.hostwiseStats?.[selectedHost])
+                            ? stats.hostwiseStats[selectedHost].totalHits
+                            : stats?.totalHits || 0;
+
+                        if (!source || Object.keys(source).length === 0) return null;
+
+                        return Object.entries(source)
+                            .sort(([a], [b]) => parseInt(a) - parseInt(b))
+                            .map(([status, count]) => {
+                                const statusInt = parseInt(status);
+                                const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0';
+                                const colorClass = statusInt >= 500 ? 'bg-red-500/20 text-red-500 border-red-500/30' :
+                                    statusInt >= 400 ? 'bg-orange-500/20 text-orange-500 border-orange-500/30' :
+                                        statusInt >= 300 ? 'bg-blue-500/20 text-blue-500 border-blue-500/30' :
+                                            statusInt >= 200 ? 'bg-green-500/20 text-green-500 border-green-500/30' :
+                                                'bg-gray-500/20 text-gray-500 border-gray-500/30';
+
+                                return (
+                                    <div key={status} className={`p-4 rounded-xl border ${colorClass}`}>
+                                        <div className="text-2xl font-black">{status}</div>
+                                        <div className="text-xs font-bold mt-1 opacity-80">{count.toLocaleString()}</div>
+                                        <div className="text-[10px] font-medium mt-1 opacity-60">{percentage}%</div>
+                                    </div>
+                                );
+                            });
+                    })()}
                     {(!stats?.hitsByStatus || Object.keys(stats.hitsByStatus).length === 0) && (
                         <div className="col-span-full text-center py-8 text-on-surface-variant/60 text-sm">
                             No status code data available

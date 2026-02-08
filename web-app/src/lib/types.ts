@@ -421,6 +421,15 @@ export interface ProxyStats {
   hitsByCountry?: Record<string, number>;
   hitsByProvider?: Record<string, number>;
   recentWebSocketConnections: WebSocketConnection[];
+  hostwiseStats?: Record<string, DetailedHostStats>;
+}
+
+export interface DetailedHostStats {
+  totalHits: number;
+  hitsByStatus: Record<number, number>;
+  topPaths: PathHit[];
+  topIps: GenericHitEntry[];
+  topMethods: GenericHitEntry[];
 }
 
 export interface DailyProxyStats {
@@ -441,6 +450,7 @@ export interface DailyProxyStats {
   websocketConnectionsByIp: Record<string, number>;
   hitsByCountry?: Record<string, number>;
   hitsByProvider?: Record<string, number>;
+  hostwiseStats?: Record<string, DetailedHostStats>;
 }
 
 export interface BtmpEntry {
@@ -543,6 +553,17 @@ export interface KafkaMessage {
   timestamp: number;
 }
 
+export interface ClickHouseSettings {
+  enabled: boolean;
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  password?: string;
+  batchSize: number;
+  flushIntervalMs: number;
+}
+
 export interface EmailMailbox {
   name: string;
 }
@@ -579,6 +600,10 @@ export interface SystemConfig {
   proxyDualLoggingEnabled?: boolean;
   jsonLoggingEnabled: boolean;
   nginxLogDir: string;
+  logBufferingEnabled: boolean;
+  logBufferSizeKb: number;
+  logFlushIntervalSeconds: number;
+  clickhouseSettings: ClickHouseSettings;
 }
 
 export interface UpdateSystemConfigRequest {
@@ -598,6 +623,10 @@ export interface UpdateSystemConfigRequest {
   proxyDualLoggingEnabled?: boolean;
   jsonLoggingEnabled?: boolean;
   nginxLogDir?: string;
+  clickhouseSettings?: ClickHouseSettings;
+  logBufferingEnabled?: boolean;
+  logBufferSizeKb?: number;
+  logFlushIntervalSeconds?: number;
 }
 
 export interface JamesContainerStatus {

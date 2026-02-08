@@ -64,6 +64,21 @@ object ProxyService {
     fun updateDefaultBehavior(return404: Boolean) = service.updateDefaultBehavior(return404)
 
     fun updateRsyslogSettings(enabled: Boolean, dualLogging: Boolean) = service.updateRsyslogSettings(enabled, dualLogging)
+    fun updateLoggingSettings(
+        dbPersistenceLogsEnabled: Boolean? = null,
+        nginxLogDir: String? = null,
+        jsonLoggingEnabled: Boolean? = null,
+        logBufferingEnabled: Boolean? = null,
+        logBufferSizeKb: Int? = null,
+        logFlushIntervalSeconds: Int? = null
+    ) = service.updateLoggingSettings(
+        dbPersistenceLogsEnabled,
+        nginxLogDir,
+        jsonLoggingEnabled,
+        logBufferingEnabled,
+        logBufferSizeKb,
+        logFlushIntervalSeconds
+    )
     fun regenerateAllHostConfigs() = service.regenerateAllHostConfigs()
 
     fun getProxySecuritySettings() = AppConfig.settings
@@ -111,6 +126,14 @@ interface IProxyService {
     fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>)
     fun updateDefaultBehavior(return404: Boolean): Pair<Boolean, String>
     fun updateRsyslogSettings(enabled: Boolean, dualLogging: Boolean): Pair<Boolean, String>
+    fun updateLoggingSettings(
+        dbPersistenceLogsEnabled: Boolean? = null,
+        nginxLogDir: String? = null,
+        jsonLoggingEnabled: Boolean? = null,
+        logBufferingEnabled: Boolean? = null,
+        logBufferSizeKb: Int? = null,
+        logFlushIntervalSeconds: Int? = null
+    ): Pair<Boolean, String>
     fun regenerateAllHostConfigs(): Pair<Boolean, String>
     fun getProxyLogs(hostId: String, type: String, lines: Int): String
 
@@ -215,6 +238,43 @@ class ProxyServiceImpl(
         } catch (e: Exception) {
             logger.error("Failed to update Rsyslog settings", e)
             false to "Internal error updating rsyslog settings: ${e.message}"
+        }
+    }
+
+    override fun updateLoggingSettings(
+        dbPersistenceLogsEnabled: Boolean?,
+        nginxLogDir: String?,
+        jsonLoggingEnabled: Boolean?,
+        logBufferingEnabled: Boolean?,
+        logBufferSizeKb: Int?,
+        logFlushIntervalSeconds: Int?
+    ): Pair<Boolean, String> {
+        return try {
+            AppConfig.updateLoggingSettings(
+                dbPersistenceLogsEnabled,
+                nginxLogDir,
+                jsonLoggingEnabled,
+                logBufferingEnabled,
+                logBufferSizeKb,
+                logFlushIntervalSeconds
+            )
+            
+            // If buffering settings changed, we need to regenerate configs
+            ensureNginxMainConfig(forceOverwrite = true)
+            ensureDefaultServer()
+            regenerateAllHostConfigs()
+            
+            val reloadResult = reloadNginx()
+            if (!reloadResult.first) {
+                if (reloadResult.second.contains("Proxy container is not running", ignoreCase = true)) {
+                    return true to "Logging settings saved (Proxy not running)"
+                }
+                return false to "Settings saved but failed to reload Nginx: ${reloadResult.second}"
+            }
+            true to "Logging settings updated successfully"
+        } catch (e: Exception) {
+            logger.error("Failed to update logging settings", e)
+            false to "Internal error updating logging settings: ${e.message}"
         }
     }
 
@@ -908,6 +968,13 @@ class ProxyServiceImpl(
         return commandExecutor.execute(command).output
     }
 
+    private fun getAccessLogDirective(path: String, format: String): String {
+        val settings = AppConfig.settings
+        if (!settings.logBufferingEnabled) return "access_log $path $format;"
+        
+        return "access_log $path $format buffer=${settings.logBufferSizeKb}k flush=${settings.logFlushIntervalSeconds}s;"
+    }
+
     private fun getLoggingReplacements(tag: String): Map<String, String> {
         val settings = AppConfig.settings
         val rsyslogEnabled = settings.proxyRsyslogEnabled
@@ -925,7 +992,7 @@ class ProxyServiceImpl(
 
             // 1. Local Logging (Enabled if dual logging OR rsyslog is disabled)
             if (dualLogging || !rsyslogEnabled) {
-                accessLogDirectives.add("access_log /usr/local/openresty/nginx/logs/${tag}_access.log $logFormat;")
+                accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_access.log", logFormat))
                 errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/${tag}_error.log warn;")
             }
 
@@ -947,7 +1014,7 @@ class ProxyServiceImpl(
             val directives = mutableListOf<String>()
             
             if (dualLogging || !rsyslogEnabled) {
-                directives.add("access_log /usr/local/openresty/nginx/logs/${tag}_danger.log $logFormat;")
+                directives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_danger.log", logFormat))
             }
             
             if (rsyslogEnabled) {
@@ -965,7 +1032,7 @@ class ProxyServiceImpl(
             val directives = mutableListOf<String>()
             
             if (dualLogging || !rsyslogEnabled) {
-                directives.add("access_log /usr/local/openresty/nginx/logs/${tag}_burst.log $logFormat;")
+                directives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_burst.log", logFormat))
             }
             
             if (rsyslogEnabled) {
@@ -998,14 +1065,25 @@ class ProxyServiceImpl(
 
         // Generate IP restrictions
         val ipConfig = if (host.allowedIps.isNotEmpty()) {
-            host.allowedIps.joinToString("\n        ") { "allow $it;" } + "\n        deny all;"
+            val template = getCachedTemplate("templates/proxy/ip-restrictions.conf")
+            val allowDirectives = host.allowedIps.joinToString("\n        ") { "allow $it;" }
+            val content = ResourceLoader.replacePlaceholders(template, mapOf(
+                "allowDirectives" to allowDirectives
+            ))
+            content.lines().joinToString("\n") { if (it.isBlank()) it else "        $it" }.trim()
         } else ""
 
         // Generate Rate Limiting config (server level - 4 spaces)
         val serverRateLimit = host.rateLimit?.let { rl ->
             if (rl.enabled) {
+                val template = getCachedTemplate("templates/proxy/rate-limit-config.conf")
                 val zoneName = "limit_${host.id.replace("-", "")}"
-                "    limit_req zone=$zoneName burst=${rl.burst}${if (rl.nodelay) " nodelay" else ""};"
+                val content = ResourceLoader.replacePlaceholders(template, mapOf(
+                    "zoneName" to zoneName,
+                    "burst" to rl.burst.toString(),
+                    "noDelay" to if (rl.nodelay) " nodelay" else ""
+                ))
+                "    $content"
             } else ""
         } ?: ""
 
@@ -1014,62 +1092,27 @@ class ProxyServiceImpl(
 
         // Generate Main Location Config (for /)
         fun generateMainLocationConfig(isHttps: Boolean, redirect: String = ""): String {
-            if (host.underConstruction) {
-                val pageId = host.underConstructionPageId ?: ""
-                return """
-                    |        ${redirect}root /var/www/html;
-                    |        index pages/${pageId}.html;
-                    |        try_files /pages/${pageId}.html =404;
-                    |        ${ipConfig}
-                """.trimMargin().trim()
+            val safeTarget = host.target.sanitizeNginx()
+            val templateName = when {
+                host.underConstruction -> "templates/proxy/under-construction-config.conf"
+                host.isStatic -> "templates/proxy/static-host-config.conf"
+                else -> "templates/proxy/http-proxy-config.conf"
             }
 
-            val safeTarget = host.target.sanitizeNginx()
-            if (host.isStatic) {
-                return """
-                    |        ${redirect}root ${safeTarget.trimEnd('/')};
-                    |        index index.html index.htm;
-                    |        try_files ${'$'}uri ${'$'}uri/ =404;
-                    |        ${ipConfig}
-                """.trimMargin().trim()
-            } else {
-                if (isHttps) {
-                    return """
-                        |        proxy_pass ${safeTarget};
-                        |        
-                        |        # Upstream Keepalive & Websocket Support
-                        |        proxy_http_version 1.1;
-                        |        proxy_set_header Upgrade ${'$'}http_upgrade;
-                        |        proxy_set_header Connection ${'$'}connection_upgrade;
-                        |        
-                        |        # Proxy Headers
-                        |        proxy_set_header Host ${'$'}host;
-                        |        proxy_set_header X-Real-IP ${'$'}remote_addr;
-                        |        proxy_set_header X-Forwarded-For ${'$'}proxy_add_x_forwarded_for;
-                        |        proxy_set_header X-Forwarded-Proto ${'$'}scheme;
-                        |
-                        |        # Performance Tuning
-                        |        proxy_buffers 8 16k;
-                        |        proxy_buffer_size 32k;
-                        |
-                        |        ${wsConfig}
-                        |        ${ipConfig}
-                    """.trimMargin().trim()
-                } else {
-                    val proxyTemplate = getCachedTemplate("templates/proxy/http-proxy-config.conf")
-                    val proxyContent = ResourceLoader.replacePlaceholders(
-                        proxyTemplate, mapOf(
-                            "target" to safeTarget,
-                            "websocketConfig" to wsConfig,
-                            "ipRestrictions" to ipConfig,
-                            "rateLimitConfig" to ""
-                        )
-                    )
-                    val indentedProxy = proxyContent.lines()
-                        .joinToString("\n") { if (it.isBlank()) it else "        $it" }.trim()
-                    return if (redirect.isNotEmpty()) "${redirect}${indentedProxy}" else indentedProxy
-                }
-            }
+            val template = getCachedTemplate(templateName)
+            val replacements = mapOf(
+                "target" to safeTarget.trimEnd('/'),
+                "pageId" to (host.underConstructionPageId ?: ""),
+                "websocketConfig" to wsConfig,
+                "ipRestrictions" to ipConfig,
+                "rateLimitConfig" to ""
+            )
+
+            val content = ResourceLoader.replacePlaceholders(template, replacements)
+            val indentedContent = content.lines()
+                .joinToString("\n") { if (it.isBlank()) it else "        $it" }.trim()
+
+            return if (redirect.isNotEmpty()) "${redirect}${indentedContent}" else indentedContent
         }
 
         val silentDropConfig = if (host.silentDrop) {
@@ -1157,14 +1200,25 @@ class ProxyServiceImpl(
             val safeTarget = pathRoute.target.sanitizeNginx()
 
             val ipConfig = if (pathRoute.allowedIps.isNotEmpty()) {
-                pathRoute.allowedIps.joinToString("\n        ") { "allow ${it.sanitizeNginx()};" } + "\n        deny all;"
+                val template = getCachedTemplate("templates/proxy/ip-restrictions.conf")
+                val allowDirectives = pathRoute.allowedIps.joinToString("\n        ") { "allow ${it.sanitizeNginx()};" }
+                val content = ResourceLoader.replacePlaceholders(template, mapOf(
+                    "allowDirectives" to allowDirectives
+                ))
+                content.lines().joinToString("\n") { if (it.isBlank()) it else "        $it" }.trim()
             } else ""
 
             // Generate Rate Limiting config for this path (indented 8 spaces)
             val rateLimitConfig = pathRoute.rateLimit?.let { rl ->
                 if (rl.enabled) {
+                    val template = getCachedTemplate("templates/proxy/rate-limit-config.conf")
                     val zoneName = "limit_${pathRoute.id.replace("-", "")}"
-                    "        limit_req zone=$zoneName burst=${rl.burst}${if (rl.nodelay) " nodelay" else ""};"
+                    val content = ResourceLoader.replacePlaceholders(template, mapOf(
+                        "zoneName" to zoneName,
+                        "burst" to rl.burst.toString(),
+                        "noDelay" to if (rl.nodelay) " nodelay" else ""
+                    ))
+                    "        $content"
                 } else ""
             } ?: ""
 
@@ -1614,29 +1668,9 @@ class ProxyServiceImpl(
 
         // Define the 'main' log format based on settings
         val logFormatDefinition = if (jsonLogging) {
-            """
-            log_format main escape=json '{'
-                '"ts": "${'$'}time_local",'
-                '"ip": "${'$'}remote_addr",'
-                '"u": "${'$'}remote_user",'
-                '"req": "${'$'}request",'
-                '"st": "${'$'}status",'
-                '"bytes": "${'$'}body_bytes_sent",'
-                '"ref": "${'$'}http_referer",'
-                '"ua": "${'$'}http_user_agent",'
-                '"xff": "${'$'}http_x_forwarded_for",'
-                '"hst": "${'$'}host",'
-                '"rt": "${'$'}request_time",'
-                '"ut": "${'$'}upstream_response_time",'
-                '"up": "${'$'}upstream_addr"'
-            '}';
-            """.trimIndent()
+            getCachedTemplate("templates/proxy/log-format-json.conf")
         } else {
-            """
-            log_format main '${'$'}remote_addr - ${'$'}remote_user [${'$'}time_local] "${'$'}request" '
-                            '${'$'}status ${'$'}body_bytes_sent "${'$'}http_referer" '
-                            '"${'$'}http_user_agent" "${'$'}http_x_forwarded_for" "${'$'}host"';
-            """.trimIndent()
+            getCachedTemplate("templates/proxy/log-format-standard.conf")
         }
         
         val loggingConfig = StringBuilder()
@@ -1652,7 +1686,7 @@ class ProxyServiceImpl(
         val errorLogDirectives = mutableListOf<String>()
 
         if (settings.proxyDualLoggingEnabled || !rsyslogEnabled) {
-            accessLogDirectives.add("access_log /usr/local/openresty/nginx/logs/access.log main;")
+            accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/access.log", "main"))
             errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/error.log warn;")
         }
 
@@ -1663,8 +1697,8 @@ class ProxyServiceImpl(
         }
 
         val standardLoggingContent = ResourceLoader.replacePlaceholders(standardLoggingTemplate, mapOf(
-            "accessLogDirective" to accessLogDirectives.joinToString("\n"),
-            "errorLogDirective" to errorLogDirectives.joinToString("\n")
+            "accessLogDirective" to accessLogDirectives.joinToString("\n    "),
+            "errorLogDirective" to errorLogDirectives.joinToString("\n    ")
         ))
         
         loggingConfig.append(standardLoggingContent.lines().joinToString("\n    ") { it })

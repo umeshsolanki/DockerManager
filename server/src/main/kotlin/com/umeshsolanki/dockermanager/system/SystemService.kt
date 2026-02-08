@@ -118,57 +118,81 @@ object SystemService {
         syslogIsRunning = false,
         proxyRsyslogEnabled = AppConfig.settings.proxyRsyslogEnabled,
         proxyDualLoggingEnabled = AppConfig.settings.proxyDualLoggingEnabled,
-        nginxLogDir = AppConfig.nginxLogDir.absolutePath
+        nginxLogDir = AppConfig.nginxLogDir.absolutePath,
+        logBufferingEnabled = AppConfig.settings.logBufferingEnabled,
+        logBufferSizeKb = AppConfig.settings.logBufferSizeKb,
+        logFlushIntervalSeconds = AppConfig.settings.logFlushIntervalSeconds
     )
     
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineName("SystemService"))
+
     fun updateSystemConfig(request: UpdateSystemConfigRequest) {
+        // Fast updates: Save settings to disk/DB
         AppConfig.updateSettings(
-            dockerSocket = request.dockerSocket ?: AppConfig.dockerSocket,
-            jamesWebAdminUrl = request.jamesWebAdminUrl ?: AppConfig.jamesWebAdminUrl,
-            dockerBuildKit = request.dockerBuildKit ?: AppConfig.settings.dockerBuildKit,
-            dockerCliBuild = request.dockerCliBuild ?: AppConfig.settings.dockerCliBuild,
-            autoStorageRefresh = request.autoStorageRefresh ?: AppConfig.settings.autoStorageRefresh,
-            autoStorageRefreshIntervalMinutes = request.autoStorageRefreshIntervalMinutes ?: AppConfig.settings.autoStorageRefreshIntervalMinutes,
-            kafkaSettings = request.kafkaSettings ?: AppConfig.settings.kafkaSettings
+            dockerSocket = request.dockerSocket,
+            jamesWebAdminUrl = request.jamesWebAdminUrl,
+            dockerBuildKit = request.dockerBuildKit,
+            dockerCliBuild = request.dockerCliBuild,
+            autoStorageRefresh = request.autoStorageRefresh,
+            autoStorageRefreshIntervalMinutes = request.autoStorageRefreshIntervalMinutes,
+            kafkaSettings = request.kafkaSettings
         )
 
-        if (request.dbPersistenceLogsEnabled != null || request.nginxLogDir != null) {
-            AppConfig.updateLoggingSettings(request.dbPersistenceLogsEnabled, request.nginxLogDir)
-        }
-        
-        // Handle Syslog Settings
-        val syslogPort = request.syslogPort ?: AppConfig.settings.syslogPort
-        val syslogServer = request.syslogServer ?: AppConfig.settings.syslogServer
-        val syslogServerInternal = request.syslogServerInternal ?: AppConfig.settings.syslogServerInternal
-        val syslogEnabled = request.syslogEnabled ?: AppConfig.settings.syslogEnabled
-        
-        val syslogChanged = syslogPort != AppConfig.settings.syslogPort || 
-                           syslogServer != AppConfig.settings.syslogServer || 
-                           syslogServerInternal != AppConfig.settings.syslogServerInternal ||
-                           syslogEnabled != AppConfig.settings.syslogEnabled
-        
-        if (syslogChanged) {
-            AppConfig.updateSyslogSettings(syslogEnabled, syslogServer, syslogPort, syslogServerInternal)
-            // Trigger proxy config regeneration if syslog settings changed
-            ServiceContainer.proxyService.updateRsyslogSettings(
-                AppConfig.settings.proxyRsyslogEnabled,
-                AppConfig.settings.proxyDualLoggingEnabled
-            )
-        }
-        
-        if (request.proxyRsyslogEnabled != null || request.proxyDualLoggingEnabled != null) {
-            val enabled = request.proxyRsyslogEnabled ?: AppConfig.settings.proxyRsyslogEnabled
-            val dual = request.proxyDualLoggingEnabled ?: AppConfig.settings.proxyDualLoggingEnabled
-            ServiceContainer.proxyService.updateRsyslogSettings(enabled, dual)
-        }
+        // Slow updates: Background service management
+        serviceScope.launch {
+            try {
+                // Handle Logging Settings (Includes Nginx Reload)
+                if (request.dbPersistenceLogsEnabled != null || request.nginxLogDir != null ||
+                    request.logBufferingEnabled != null || request.logBufferSizeKb != null || request.logFlushIntervalSeconds != null) {
+                    ServiceContainer.proxyService.updateLoggingSettings(
+                        request.dbPersistenceLogsEnabled,
+                        request.nginxLogDir,
+                        logBufferingEnabled = request.logBufferingEnabled,
+                        logBufferSizeKb = request.logBufferSizeKb,
+                        logFlushIntervalSeconds = request.logFlushIntervalSeconds
+                    )
+                }
+                
+                // Handle Syslog Settings (Includes Nginx Reload)
+                val syslogPort = request.syslogPort ?: AppConfig.settings.syslogPort
+                val syslogServer = request.syslogServer ?: AppConfig.settings.syslogServer
+                val syslogServerInternal = request.syslogServerInternal ?: AppConfig.settings.syslogServerInternal
+                val syslogEnabled = request.syslogEnabled ?: AppConfig.settings.syslogEnabled
+                
+                val syslogChanged = syslogPort != AppConfig.settings.syslogPort || 
+                                   syslogServer != AppConfig.settings.syslogServer || 
+                                   syslogServerInternal != AppConfig.settings.syslogServerInternal ||
+                                   syslogEnabled != AppConfig.settings.syslogEnabled
+                
+                if (syslogChanged) {
+                    AppConfig.updateSyslogSettings(syslogEnabled, syslogServer, syslogPort, syslogServerInternal)
+                    ServiceContainer.proxyService.updateRsyslogSettings(
+                        AppConfig.settings.proxyRsyslogEnabled,
+                        AppConfig.settings.proxyDualLoggingEnabled
+                    )
+                }
+                
+                if (request.proxyRsyslogEnabled != null || request.proxyDualLoggingEnabled != null) {
+                    val enabled = request.proxyRsyslogEnabled ?: AppConfig.settings.proxyRsyslogEnabled
+                    val dual = request.proxyDualLoggingEnabled ?: AppConfig.settings.proxyDualLoggingEnabled
+                    ServiceContainer.proxyService.updateRsyslogSettings(enabled, dual)
+                }
 
-        // Refresh Docker client to use new settings
-        DockerClientProvider.refreshClient()
-        DockerService.refreshServices()
-        
-        // Refresh Kafka service
-        ServiceContainer.kafkaService.stop()
-        ServiceContainer.kafkaService.start(AppConfig.settings.kafkaSettings)
+                // Refresh Docker client
+                DockerClientProvider.refreshClient()
+                DockerService.refreshServices()
+                
+                // Restart Kafka in background if settings provided
+                if (request.kafkaSettings != null) {
+                    logger.info("Restarting Kafka service with new settings...")
+                    ServiceContainer.kafkaService.stop()
+                    ServiceContainer.kafkaService.start(AppConfig.settings.kafkaSettings)
+                    logger.info("Kafka service restarted successfully.")
+                }
+            } catch (e: Exception) {
+                logger.error("Failed to apply some system configurations in background", e)
+            }
+        }
     }
 
     fun getStorageInfo(): StorageInfo {

@@ -245,6 +245,26 @@ fun Route.proxyRoutes() {
             call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.InternalServerError)
         }
 
+        post("/settings/logging") {
+            val request = call.receive<Map<String, String>>()
+            val dbPersistence = request["dbPersistenceLogsEnabled"]?.toBoolean()
+            val nginxLogDir = request["nginxLogDir"]
+            val jsonLogging = request["jsonLoggingEnabled"]?.toBoolean()
+            val bufferingEnabled = request["logBufferingEnabled"]?.toBoolean()
+            val bufferSizeKb = request["logBufferSizeKb"]?.toIntOrNull()
+            val flushIntervalSeconds = request["logFlushIntervalSeconds"]?.toIntOrNull()
+
+            val result = ProxyService.updateLoggingSettings(
+                dbPersistence,
+                nginxLogDir,
+                jsonLogging,
+                bufferingEnabled,
+                bufferSizeKb,
+                flushIntervalSeconds
+            )
+            call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.InternalServerError)
+        }
+
         get("/certificates") {
             call.respond(ProxyService.listCertificates())
         }

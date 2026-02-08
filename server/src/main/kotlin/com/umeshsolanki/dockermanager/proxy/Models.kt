@@ -104,7 +104,17 @@ data class ProxyStats(
     val websocketConnections: Long = 0,
     val websocketConnectionsByEndpoint: Map<String, Long> = emptyMap(),
     val websocketConnectionsByIp: Map<String, Long> = emptyMap(),
-    val recentWebSocketConnections: List<WebSocketConnection> = emptyList()
+    val recentWebSocketConnections: List<WebSocketConnection> = emptyList(),
+    val hostwiseStats: Map<String, DetailedHostStats> = emptyMap()
+)
+
+@Serializable
+data class DetailedHostStats(
+    val totalHits: Long,
+    val hitsByStatus: Map<Int, Long> = emptyMap(),
+    val topPaths: List<PathHit> = emptyList(),
+    val topIps: List<GenericHitEntry> = emptyList(),
+    val topMethods: List<GenericHitEntry> = emptyList()
 )
 
 @Serializable
@@ -117,7 +127,9 @@ data class ProxyHit(
     val responseTime: Long = 0,
     val userAgent: String? = null,
     val referer: String? = null,
-    val domain: String? = null
+    val domain: String? = null,
+    val countryCode: String? = null,
+    val provider: String? = null
 )
 
 @Serializable

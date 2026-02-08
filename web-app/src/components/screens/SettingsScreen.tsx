@@ -38,6 +38,17 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [proxyDualLoggingEnabled, setProxyDualLoggingEnabled] = useState(false);
     const [jsonLoggingEnabled, setJsonLoggingEnabled] = useState(false);
     const [nginxLogDir, setNginxLogDir] = useState('');
+    const [logBufferingEnabled, setLogBufferingEnabled] = useState(false);
+    const [logBufferSizeKb, setLogBufferSizeKb] = useState(32);
+    const [logFlushIntervalSeconds, setLogFlushIntervalSeconds] = useState(60);
+    const [clickhouseEnabled, setClickhouseEnabled] = useState(false);
+    const [clickhouseHost, setClickhouseHost] = useState('localhost');
+    const [clickhousePort, setClickhousePort] = useState(8123);
+    const [clickhouseDatabase, setClickhouseDatabase] = useState('docker_manager');
+    const [clickhouseUser, setClickhouseUser] = useState('default');
+    const [clickhousePassword, setClickhousePassword] = useState('');
+    const [clickhouseBatchSize, setClickhouseBatchSize] = useState(5000);
+    const [clickhouseFlushInterval, setClickhouseFlushInterval] = useState(5000);
     const [message, setMessage] = useState('');
     const [config, setConfig] = useState<SystemConfig | null>(null);
     const [loading, setLoading] = useState(false);
@@ -88,6 +99,19 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 setProxyDualLoggingEnabled(data.proxyDualLoggingEnabled || false);
                 setJsonLoggingEnabled(data.jsonLoggingEnabled || false);
                 setNginxLogDir(data.nginxLogDir);
+                setLogBufferingEnabled(data.logBufferingEnabled || false);
+                setLogBufferSizeKb(data.logBufferSizeKb || 32);
+                setLogFlushIntervalSeconds(data.logFlushIntervalSeconds || 60);
+                if (data.clickhouseSettings) {
+                    setClickhouseEnabled(data.clickhouseSettings.enabled);
+                    setClickhouseHost(data.clickhouseSettings.host);
+                    setClickhousePort(data.clickhouseSettings.port);
+                    setClickhouseDatabase(data.clickhouseSettings.database);
+                    setClickhouseUser(data.clickhouseSettings.user);
+                    setClickhousePassword(data.clickhouseSettings.password || '');
+                    setClickhouseBatchSize(data.clickhouseSettings.batchSize);
+                    setClickhouseFlushInterval(data.clickhouseSettings.flushIntervalMs);
+                }
             }
 
 
@@ -141,7 +165,20 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 proxyRsyslogEnabled: proxyRsyslogEnabled,
                 proxyDualLoggingEnabled: proxyDualLoggingEnabled,
                 jsonLoggingEnabled: jsonLoggingEnabled,
-                nginxLogDir: nginxLogDir
+                nginxLogDir: nginxLogDir,
+                logBufferingEnabled: logBufferingEnabled,
+                logBufferSizeKb: logBufferSizeKb,
+                logFlushIntervalSeconds: logFlushIntervalSeconds,
+                clickhouseSettings: {
+                    enabled: clickhouseEnabled,
+                    host: clickhouseHost,
+                    port: clickhousePort,
+                    database: clickhouseDatabase,
+                    user: clickhouseUser,
+                    password: clickhousePassword,
+                    batchSize: clickhouseBatchSize,
+                    flushIntervalMs: clickhouseFlushInterval
+                }
             });
             if (result.success) {
                 setMessage('System settings updated successfully!');
@@ -958,7 +995,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                     </button>
                                 </div>
 
-                                <div className="p-4 bg-primary/5 rounded-xl border border-primary/10">
+                                <div className="p-4 bg-primary/5 rounded-xl border border-primary/10 mb-4">
                                     <div className="flex items-start gap-3">
                                         <div className="p-1.5 bg-primary/10 rounded-lg text-primary mt-0.5">
                                             <Info size={14} />
@@ -969,6 +1006,54 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                     </div>
                                 </div>
 
+                                <div className="h-px bg-outline/10 my-4" />
+
+                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:border-primary/20">
+                                    <div>
+                                        <p className="text-sm font-semibold text-on-surface">Log Buffering</p>
+                                        <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">Buffer Nginx access logs for better performance</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setLogBufferingEnabled(!logBufferingEnabled)}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ring-2 ring-offset-2 ring-offset-surface ring-transparent active:ring-primary/20 ${logBufferingEnabled ? 'bg-primary' : 'bg-surface-variant'}`}
+                                    >
+                                        <span
+                                            className={`${logBufferingEnabled ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+                                        />
+                                    </button>
+                                </div>
+
+                                {logBufferingEnabled && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-semibold text-on-surface-variant px-1 flex justify-between">
+                                                <span>Buffer Size (KB)</span>
+                                                <span className="text-primary">{logBufferSizeKb} KB</span>
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={logBufferSizeKb}
+                                                onChange={(e) => setLogBufferSizeKb(parseInt(e.target.value) || 32)}
+                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                                            />
+                                            <p className="text-[10px] text-on-surface-variant/60 px-1 italic">Maximum size of the log buffer before flushing</p>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-semibold text-on-surface-variant px-1 flex justify-between">
+                                                <span>Flush Interval (Seconds)</span>
+                                                <span className="text-primary">{logFlushIntervalSeconds}s</span>
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={logFlushIntervalSeconds}
+                                                onChange={(e) => setLogFlushIntervalSeconds(parseInt(e.target.value) || 60)}
+                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                                            />
+                                            <p className="text-[10px] text-on-surface-variant/60 px-1 italic">Maximum time to wait before flushing the buffer</p>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <button
                                     onClick={handleSaveSystem}
                                     disabled={saving || loading}
@@ -976,6 +1061,109 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                 >
                                     {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
                                     <span>Save Logging Settings</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* ClickHouse Analytics */}
+                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="p-3 bg-blue-500/10 rounded-xl text-blue-500">
+                                    <Database size={20} />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-bold">ClickHouse Analytics</h2>
+                                    <p className="text-xs text-on-surface-variant mt-0.5">High-performance warehouse for big data</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:border-primary/20">
+                                    <div>
+                                        <p className="text-sm font-semibold text-on-surface">Enable ClickHouse</p>
+                                        <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">Offload high-volume logs to ClickHouse</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setClickhouseEnabled(!clickhouseEnabled)}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ring-2 ring-offset-2 ring-offset-surface ring-transparent active:ring-primary/20 ${clickhouseEnabled ? 'bg-primary' : 'bg-surface-variant'}`}
+                                    >
+                                        <span
+                                            className={`${clickhouseEnabled ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+                                        />
+                                    </button>
+                                </div>
+
+                                {clickhouseEnabled && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-semibold text-on-surface-variant px-1">Host</label>
+                                            <input
+                                                type="text"
+                                                value={clickhouseHost}
+                                                onChange={(e) => setClickhouseHost(e.target.value)}
+                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                                                placeholder="localhost"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-semibold text-on-surface-variant px-1">Port</label>
+                                            <input
+                                                type="number"
+                                                value={clickhousePort}
+                                                onChange={(e) => setClickhousePort(parseInt(e.target.value) || 8123)}
+                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-semibold text-on-surface-variant px-1">Database</label>
+                                            <input
+                                                type="text"
+                                                value={clickhouseDatabase}
+                                                onChange={(e) => setClickhouseDatabase(e.target.value)}
+                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-semibold text-on-surface-variant px-1">User</label>
+                                            <input
+                                                type="text"
+                                                value={clickhouseUser}
+                                                onChange={(e) => setClickhouseUser(e.target.value)}
+                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-semibold text-on-surface-variant px-1">Password</label>
+                                            <input
+                                                type="password"
+                                                value={clickhousePassword}
+                                                onChange={(e) => setClickhousePassword(e.target.value)}
+                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                                                placeholder="••••••••"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-semibold text-on-surface-variant px-1 flex justify-between">
+                                                <span>Batch Size</span>
+                                                <span className="text-primary">{clickhouseBatchSize}</span>
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={clickhouseBatchSize}
+                                                onChange={(e) => setClickhouseBatchSize(parseInt(e.target.value) || 5000)}
+                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                <button
+                                    onClick={handleSaveSystem}
+                                    disabled={saving || loading}
+                                    className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition-all active:scale-[0.98] shadow-md shadow-primary/20 disabled:opacity-50 text-sm"
+                                >
+                                    {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
+                                    <span>Update ClickHouse Configuration</span>
                                 </button>
                             </div>
                         </div>

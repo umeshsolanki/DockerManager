@@ -75,6 +75,7 @@ dependencies {
     implementation(libs.mysql)
     implementation(libs.mariadb)
     implementation(libs.sqlite)
+    implementation(libs.clickhouse.jdbc)
     implementation(projects.kafka)
     implementation("org.slf4j:slf4j-api:2.0.9")
     testImplementation(libs.ktor.serverTestHost)

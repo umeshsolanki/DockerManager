@@ -10,6 +10,7 @@ import com.umeshsolanki.dockermanager.proxy.ProxyServiceImpl
 import com.umeshsolanki.dockermanager.proxy.SSLServiceImpl
 import com.umeshsolanki.dockermanager.kafka.*
 import com.umeshsolanki.dockermanager.docker.*
+import com.umeshsolanki.dockermanager.analytics.ClickHouseService
 import kotlinx.coroutines.*
 import org.jetbrains.exposed.sql.insert
 
@@ -98,6 +99,7 @@ object ServiceContainer {
         // This method can be used for any initialization logic if needed
         kafkaService.start(AppConfig.settings.kafkaSettings)
         ipEnrichmentWorker.start()
+        ClickHouseService.start()
     }
 }
 
