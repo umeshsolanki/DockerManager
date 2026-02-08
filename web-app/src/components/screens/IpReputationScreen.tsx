@@ -21,6 +21,7 @@ export default function IpReputationScreen() {
         setIsLoading(true);
         try {
             const data = await DockerClient.listIpReputations(limit, offset, search);
+            data.sort((a, b) => b.blockedTimes - a.blockedTimes);
             setReputations(data);
         } catch (e) {
             console.error('Failed to fetch IP reputations', e);
@@ -233,8 +234,17 @@ export default function IpReputationScreen() {
                 </div>
             </div>
 
-            {/* List */}
-            <div className="grid grid-cols-1 gap-4">
+            {/* Compact List */}
+            <div className="flex flex-col gap-2">
+                {/* Table Header */}
+                <div className="grid grid-cols-12 gap-4 px-4 py-2 text-xs font-bold text-on-surface-variant/50 uppercase tracking-wider">
+                    <div className="col-span-3">IP Address</div>
+                    <div className="col-span-2">Country</div>
+                    <div className="col-span-2 text-center">Blocked</div>
+                    <div className="col-span-3">Last Activity</div>
+                    <div className="col-span-2 text-right">Actions</div>
+                </div>
+
                 {reputations.length === 0 && !isLoading ? (
                     <div className="flex flex-col items-center justify-center py-20 text-on-surface-variant/40 border-2 border-dashed border-outline/10 rounded-3xl bg-surface/10">
                         <Globe size={48} className="mb-4 opacity-50" />
@@ -243,73 +253,69 @@ export default function IpReputationScreen() {
                     </div>
                 ) : (
                     reputations.map((rep) => (
-                        <div key={rep.ip} className="bg-surface border border-outline/10 rounded-2xl p-5 hover:border-primary/30 transition-all group shadow-sm">
-                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                                <div className="flex items-start gap-4">
-                                    <div className={`mt-1 p-2.5 rounded-xl ${rep.blockedTimes > 0 ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
-                                        {rep.blockedTimes > 0 ? <Shield size={24} /> : <Activity size={24} />}
+                        <div key={rep.ip} className="group bg-surface hover:bg-surface-variant/5 border border-outline/10 rounded-xl p-3 transition-all hover:border-primary/20 shadow-sm">
+                            <div className="grid grid-cols-12 gap-4 items-center">
+                                {/* IP & Risk */}
+                                <div className="col-span-3 flex items-center gap-3">
+                                    <div className={`p-1.5 rounded-lg ${rep.blockedTimes > 0 ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
+                                        {rep.blockedTimes > 0 ? <Shield size={14} /> : <Activity size={14} />}
                                     </div>
-                                    <div className="flex flex-col gap-1">
-                                        <div className="flex items-center gap-3">
-                                            <span className="font-mono text-lg font-bold tracking-tight">{rep.ip}</span>
-                                            {rep.country && (
-                                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-variant/50 border border-outline/5 text-xs font-bold text-on-surface-variant">
-                                                    <MapPin size={10} />
-                                                    {rep.country}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-on-surface-variant/70 mt-1">
-                                            <div className="flex items-center gap-1.5" title="First Observed">
-                                                <Clock size={12} />
-                                                <span className="font-mono opacity-80">First Seen: {new Date(rep.firstObserved).toLocaleString()}</span>
-                                            </div>
-                                            <div className="flex items-center gap-1.5" title="Last Activity">
-                                                <Activity size={12} />
-                                                <span className="font-mono opacity-80">Last Active: {new Date(rep.lastActivity).toLocaleString()}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-col lg:items-end gap-2 lg:min-w-[300px]">
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex flex-col items-end">
-                                            <span className="text-[10px] uppercase font-bold text-on-surface-variant/50 tracking-wider">Times Blocked</span>
-                                            <span className={`text-xl font-black ${rep.blockedTimes > 0 ? 'text-red-400' : 'text-on-surface-variant'}`}>{rep.blockedTimes}</span>
-                                        </div>
-                                        {rep.lastBlocked && (
-                                            <div className="flex flex-col items-end border-l border-outline/10 pl-4">
-                                                <span className="text-[10px] uppercase font-bold text-on-surface-variant/50 tracking-wider">Last Block</span>
-                                                <span className="text-xs font-mono font-bold text-red-500">{new Date(rep.lastBlocked).toLocaleDateString()}</span>
-                                                <span className="text-[10px] font-mono opacity-50">{new Date(rep.lastBlocked).toLocaleTimeString()}</span>
-                                            </div>
+                                    <div className="flex flex-col">
+                                        <span className="font-mono text-sm font-bold text-on-surface">{rep.ip}</span>
+                                        {rep.reasons && rep.reasons.length > 0 && (
+                                            <span className="text-[10px] text-on-surface-variant/70 truncate max-w-[150px]" title={rep.reasons.join(', ')}>
+                                                {rep.reasons[0]} {rep.reasons.length > 1 && `+${rep.reasons.length - 1}`}
+                                            </span>
                                         )}
                                     </div>
                                 </div>
-                            </div>
 
-                            {/* Reasons */}
-                            {rep.reasons && rep.reasons.length > 0 && (
-                                <div className="mt-4 pt-4 border-t border-outline/10 flex flex-wrap gap-2">
-                                    {rep.reasons.map((reason, i) => (
-                                        <div key={i} className="px-2.5 py-1 rounded-lg bg-surface-variant/30 border border-outline/5 text-xs font-medium text-on-surface-variant/80 flex items-center gap-1.5">
-                                            <AlertTriangle size={10} className="text-orange-400" />
-                                            {reason}
+                                {/* Country */}
+                                <div className="col-span-2">
+                                    {rep.country ? (
+                                        <div className="flex items-center gap-1.5 text-xs font-medium text-on-surface-variant">
+                                            <MapPin size={12} className="opacity-70" />
+                                            {rep.country}
                                         </div>
-                                    ))}
+                                    ) : (
+                                        <span className="text-xs text-on-surface-variant/30 italic">Unknown</span>
+                                    )}
                                 </div>
-                            )}
 
-                            <div className="mt-4 flex justify-end">
-                                <button
-                                    onClick={() => handleDelete(rep.ip)}
-                                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
-                                >
-                                    <Trash2 size={14} />
-                                    Delete Record
-                                </button>
+                                {/* Compacter Block Stats */}
+                                <div className="col-span-2 text-center">
+                                    <div className="inline-flex flex-col items-center">
+                                        <span className={`text-sm font-black ${rep.blockedTimes > 0 ? 'text-red-500' : 'text-on-surface-variant/50'}`}>
+                                            {rep.blockedTimes}
+                                        </span>
+                                        <span className="text-[9px] font-bold text-on-surface-variant/40 uppercase">Blocks</span>
+                                    </div>
+                                </div>
+
+                                {/* Activity Times */}
+                                <div className="col-span-3 flex flex-col justify-center text-[10px] text-on-surface-variant/70 gap-0.5">
+                                    <div className="flex items-center gap-1.5">
+                                        <Activity size={10} />
+                                        <span>Active: {new Date(rep.lastActivity).toLocaleString()}</span>
+                                    </div>
+                                    {rep.lastBlocked && (
+                                        <div className="flex items-center gap-1.5 text-red-400/80">
+                                            <Shield size={10} />
+                                            <span>Blocked: {new Date(rep.lastBlocked).toLocaleString()}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Actions */}
+                                <div className="col-span-2 flex justify-end">
+                                    <button
+                                        onClick={() => handleDelete(rep.ip)}
+                                        className="p-1.5 rounded-lg text-on-surface-variant/50 hover:bg-red-500/10 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                                        title="Delete Record"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     ))
