@@ -912,6 +912,8 @@ class ProxyServiceImpl(
         val settings = AppConfig.settings
         val rsyslogEnabled = settings.proxyRsyslogEnabled
         val dualLogging = settings.proxyDualLoggingEnabled
+        val jsonLogging = settings.jsonLoggingEnabled
+        val logFormat = if (jsonLogging) "json_analytics" else "main"
         val syslogServer = "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
         val syslogTag = tag.replace(Regex("[^a-zA-Z0-9_]"), "_")
 
@@ -923,13 +925,13 @@ class ProxyServiceImpl(
 
             // 1. Local Logging (Enabled if dual logging OR rsyslog is disabled)
             if (dualLogging || !rsyslogEnabled) {
-                accessLogDirectives.add("access_log /usr/local/openresty/nginx/logs/${tag}_access.log main;")
+                accessLogDirectives.add("access_log /usr/local/openresty/nginx/logs/${tag}_access.log $logFormat;")
                 errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/${tag}_error.log warn;")
             }
 
             // 2. Remote Syslog (Enabled if rsyslog is enabled)
             if (rsyslogEnabled) {
-                accessLogDirectives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_access,severity=info,nohostname main;")
+                accessLogDirectives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_access,severity=info,nohostname $logFormat;")
                 errorLogDirectives.add("error_log syslog:server=$syslogServer,tag=${syslogTag}_error,nohostname warn;")
             }
 
@@ -945,11 +947,11 @@ class ProxyServiceImpl(
             val directives = mutableListOf<String>()
             
             if (dualLogging || !rsyslogEnabled) {
-                directives.add("access_log /usr/local/openresty/nginx/logs/${tag}_danger.log main;")
+                directives.add("access_log /usr/local/openresty/nginx/logs/${tag}_danger.log $logFormat;")
             }
             
             if (rsyslogEnabled) {
-                directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_danger,severity=crit,nohostname main;")
+                directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_danger,severity=crit,nohostname $logFormat;")
             }
             
             val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
@@ -963,11 +965,11 @@ class ProxyServiceImpl(
             val directives = mutableListOf<String>()
             
             if (dualLogging || !rsyslogEnabled) {
-                directives.add("access_log /usr/local/openresty/nginx/logs/${tag}_burst.log main;")
+                directives.add("access_log /usr/local/openresty/nginx/logs/${tag}_burst.log $logFormat;")
             }
             
             if (rsyslogEnabled) {
-                directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_burst,severity=warn main;")
+                directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_burst,severity=warn $logFormat;")
             }
 
             val snippet = ResourceLoader.replacePlaceholders(template, mapOf(

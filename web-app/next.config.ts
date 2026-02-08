@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
     unoptimized: true,
   },
   basePath: '/ui',
+  transpilePackages: ['lucide-react'],
 };
 
 export default nextConfig;

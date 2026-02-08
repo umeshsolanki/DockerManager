@@ -98,6 +98,7 @@ data class AppSettings(
 
     // Logging Settings
     val dbPersistenceLogsEnabled: Boolean = true,
+    val jsonLoggingEnabled: Boolean = false,
     
     // Kafka Rules
     val kafkaRules: List<KafkaRule> = emptyList(),
@@ -350,10 +351,11 @@ object AppConfig {
         saveSettings()
     }
 
-    fun updateLoggingSettings(dbPersistenceLogsEnabled: Boolean? = null, nginxLogDir: String? = null) {
+    fun updateLoggingSettings(dbPersistenceLogsEnabled: Boolean? = null, nginxLogDir: String? = null, jsonLoggingEnabled: Boolean? = null) {
         _settings = _settings.copy(
             dbPersistenceLogsEnabled = dbPersistenceLogsEnabled ?: _settings.dbPersistenceLogsEnabled,
-            nginxLogDir = nginxLogDir ?: _settings.nginxLogDir
+            nginxLogDir = nginxLogDir ?: _settings.nginxLogDir,
+            jsonLoggingEnabled = jsonLoggingEnabled ?: _settings.jsonLoggingEnabled
         )
         saveSettings()
     }

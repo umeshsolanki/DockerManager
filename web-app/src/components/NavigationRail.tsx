@@ -50,7 +50,7 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
                             className={`nav-rail-item py-2 ${isActive ? 'nav-rail-item-active' : 'text-on-surface-variant'}`}
                             title={item.label}
                         >
-                            <item.Icon size={20} />
+                            <item.Icon size={20} className="shrink-0" />
                             <span className="text-[9px] mt-1 font-medium">{item.label}</span>
                         </button>
                     );

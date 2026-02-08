@@ -23,6 +23,10 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedDeque
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
+import kotlinx.serialization.json.intOrNull
 
 interface IAnalyticsService {
     fun getStats(): ProxyStats
@@ -42,6 +46,59 @@ interface IAnalyticsService {
 class AnalyticsServiceImpl(
     private val jailManagerService: IJailManagerService,
 ) : IAnalyticsService {
+    
+    private data class ParsedLogEntry(
+        val ip: String,
+        val dateStr: String,
+        val method: String,
+        val path: String,
+        val status: Int,
+        val referer: String,
+        val userAgent: String,
+        val host: String?
+    )
+
+    private val lineRegex = """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)".*$""".toRegex()
+
+    private fun parseLogLine(line: String): ParsedLogEntry? {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty()) return null
+
+        if (trimmed.startsWith("{")) {
+            return try {
+                val jsonElement = AppConfig.json.parseToJsonElement(trimmed)
+                val json = jsonElement.jsonObject
+                
+                val ip = json["ip"]?.jsonPrimitive?.content ?: return null
+                val timeLocal = json["ts"]?.jsonPrimitive?.content ?: return null
+                val request = json["req"]?.jsonPrimitive?.content ?: "" 
+                // Status might be string or int in JSON depending on Nginx config, usually string in my config
+                val statusStr = json["st"]?.jsonPrimitive?.content ?: "0"
+                val status = statusStr.toIntOrNull() ?: 0
+                val referer = json["ref"]?.jsonPrimitive?.content ?: "-"
+                val ua = json["ua"]?.jsonPrimitive?.content ?: "-"
+                val host = json["hst"]?.jsonPrimitive?.content
+
+                val reqParts = request.split(" ")
+                val method = reqParts.getOrNull(0) ?: "-"
+                val path = reqParts.getOrNull(1) ?: request
+
+                ParsedLogEntry(ip, timeLocal, method, path, status, referer, ua, host)
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+             return lineRegex.find(trimmed)?.let { match ->
+                val (ip, dateStr, fullRequest, statusStr, _, referer, ua, _, host) = match.destructured
+                val status = statusStr.toIntOrNull() ?: 0
+                val reqParts = fullRequest.split(" ")
+                val method = reqParts.getOrNull(0) ?: "-"
+                val path = reqParts.getOrNull(1) ?: fullRequest
+                
+                ParsedLogEntry(ip, dateStr, method, path, status, referer, ua, if (host != "-") host else null)
+            }
+        }
+    }
     private val logger = LoggerFactory.getLogger(AnalyticsServiceImpl::class.java)
     private val logDir: File
         get() = AppConfig.nginxLogDir
@@ -323,20 +380,20 @@ class AnalyticsServiceImpl(
                     raf.seek(lastProcessedOffset)
                     var line: String? = raf.readLine()
                     while (line != null) {
-                        val trimmedLine = line.trim()
-                        if (trimmedLine.isNotEmpty()) {
-                            lineRegex.find(trimmedLine)?.let { match ->
-                                val (ip, dateStr, fullRequest, statusStr, _, referer, ua, _, host) = match.destructured
-                                val status = statusStr.toIntOrNull() ?: 0
+                        parseLogLine(line)?.let { logEntry ->
+                                val ip = logEntry.ip
+                                val dateStr = logEntry.dateStr
+                                val method = logEntry.method
+                                val path = logEntry.path
+                                val status = logEntry.status
+                                val referer = logEntry.referer
+                                val ua = logEntry.userAgent
+                                val host = logEntry.host ?: "-"
 
                                 // Filter local IPs if enabled
                                 if (shouldFilterLocalIps && IpFilterUtils.isLocalIp(ip)) {
                                     return@let
                                 }
-
-                                val reqParts = fullRequest.split(" ")
-                                val method = reqParts.getOrNull(0) ?: "-"
-                                val path = reqParts.getOrNull(1) ?: fullRequest
 
                                 // Filter 200 responses for static assets
                                 if (status == 200) {
@@ -424,7 +481,6 @@ class AnalyticsServiceImpl(
                                         hitsToInsert.add(hit)
                                     }
                                 } catch (e: Exception) { }
-                            }
                         }
                         line = raf.readLine()
                     }

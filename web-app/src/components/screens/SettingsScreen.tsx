@@ -36,6 +36,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [syslogPort, setSyslogPort] = useState(514);
     const [proxyRsyslogEnabled, setProxyRsyslogEnabled] = useState(false);
     const [proxyDualLoggingEnabled, setProxyDualLoggingEnabled] = useState(false);
+    const [jsonLoggingEnabled, setJsonLoggingEnabled] = useState(false);
     const [nginxLogDir, setNginxLogDir] = useState('');
     const [message, setMessage] = useState('');
     const [config, setConfig] = useState<SystemConfig | null>(null);
@@ -85,6 +86,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 setSyslogPort(data.syslogPort);
                 setProxyRsyslogEnabled(data.proxyRsyslogEnabled);
                 setProxyDualLoggingEnabled(data.proxyDualLoggingEnabled || false);
+                setJsonLoggingEnabled(data.jsonLoggingEnabled || false);
                 setNginxLogDir(data.nginxLogDir);
             }
 
@@ -138,6 +140,7 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 syslogPort: syslogPort,
                 proxyRsyslogEnabled: proxyRsyslogEnabled,
                 proxyDualLoggingEnabled: proxyDualLoggingEnabled,
+                jsonLoggingEnabled: jsonLoggingEnabled,
                 nginxLogDir: nginxLogDir
             });
             if (result.success) {
@@ -545,6 +548,18 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 flex-shrink-0 ${proxyDualLoggingEnabled ? 'bg-primary' : 'bg-surface border border-outline/30'}`}
                                     >
                                         <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${proxyDualLoggingEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                                    </button>
+                                </div>
+                                <div className="flex items-center justify-between p-4 bg-surface/50 rounded-xl border border-outline/10 transition-all">
+                                    <div className="flex-1 pr-4">
+                                        <p className="text-sm font-bold text-on-surface">JSON Logging</p>
+                                        <p className="text-xs text-on-surface-variant leading-relaxed">Use structured JSON format for access logs (easier parsing)</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setJsonLoggingEnabled(!jsonLoggingEnabled)}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 flex-shrink-0 ${jsonLoggingEnabled ? 'bg-primary' : 'bg-surface border border-outline/30'}`}
+                                    >
+                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${jsonLoggingEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
                                     </button>
                                 </div>
 
@@ -1385,24 +1400,26 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 )}
             </div>
 
-            {isShellOpen && (
-                <Modal
-                    onClose={() => setIsShellOpen(false)}
-                    title="Server Terminal"
-                    description="Interactive shell session"
-                    icon={<Terminal size={24} />}
-                    maxWidth="max-w-6xl"
-                    className="h-[80vh] flex flex-col"
-                >
-                    <div className="flex-1 bg-black rounded-2xl overflow-hidden mt-4 border border-outline/10 p-2">
-                        <WebShell
-                            url={`${DockerClient.getServerUrl()}/shell/server`}
-                            onClose={() => setIsShellOpen(false)}
-                        />
-                    </div>
-                </Modal>
-            )}
+            {
+                isShellOpen && (
+                    <Modal
+                        onClose={() => setIsShellOpen(false)}
+                        title="Server Terminal"
+                        description="Interactive shell session"
+                        icon={<Terminal size={24} />}
+                        maxWidth="max-w-6xl"
+                        className="h-[80vh] flex flex-col"
+                    >
+                        <div className="flex-1 bg-black rounded-2xl overflow-hidden mt-4 border border-outline/10 p-2">
+                            <WebShell
+                                url={`${DockerClient.getServerUrl()}/shell/server`}
+                                onClose={() => setIsShellOpen(false)}
+                            />
+                        </div>
+                    </Modal>
+                )
+            }
 
-        </div>
+        </div >
     );
 }

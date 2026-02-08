@@ -577,6 +577,7 @@ export interface SystemConfig {
   syslogIsRunning: boolean;
   proxyRsyslogEnabled: boolean;
   proxyDualLoggingEnabled?: boolean;
+  jsonLoggingEnabled: boolean;
   nginxLogDir: string;
 }
 
@@ -595,6 +596,7 @@ export interface UpdateSystemConfigRequest {
   syslogPort?: number;
   proxyRsyslogEnabled?: boolean;
   proxyDualLoggingEnabled?: boolean;
+  jsonLoggingEnabled?: boolean;
   nginxLogDir?: string;
 }
 
