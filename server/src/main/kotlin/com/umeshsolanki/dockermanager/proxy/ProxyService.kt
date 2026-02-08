@@ -913,7 +913,7 @@ class ProxyServiceImpl(
         val rsyslogEnabled = settings.proxyRsyslogEnabled
         val dualLogging = settings.proxyDualLoggingEnabled
         val jsonLogging = settings.jsonLoggingEnabled
-        val logFormat = if (jsonLogging) "json_analytics" else "main"
+        val logFormat = "main" // Always use main, as it's dynamically defined now
         val syslogServer = "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
         val syslogTag = tag.replace(Regex("[^a-zA-Z0-9_]"), "_")
 
@@ -1610,31 +1610,75 @@ class ProxyServiceImpl(
         val template = getCachedTemplate("templates/proxy/nginx.conf")
         val settings = AppConfig.settings
         val rsyslogEnabled = settings.proxyRsyslogEnabled
+        val jsonLogging = settings.jsonLoggingEnabled
+
+        // Define the 'main' log format based on settings
+        val logFormatDefinition = if (jsonLogging) {
+            """
+            log_format main escape=json '{'
+                '"ts": "${'$'}time_local",'
+                '"ip": "${'$'}remote_addr",'
+                '"u": "${'$'}remote_user",'
+                '"req": "${'$'}request",'
+                '"st": "${'$'}status",'
+                '"bytes": "${'$'}body_bytes_sent",'
+                '"ref": "${'$'}http_referer",'
+                '"ua": "${'$'}http_user_agent",'
+                '"xff": "${'$'}http_x_forwarded_for",'
+                '"hst": "${'$'}host",'
+                '"rt": "${'$'}request_time",'
+                '"ut": "${'$'}upstream_response_time",'
+                '"up": "${'$'}upstream_addr"'
+            '}';
+            """.trimIndent()
+        } else {
+            """
+            log_format main '${'$'}remote_addr - ${'$'}remote_user [${'$'}time_local] "${'$'}request" '
+                            '${'$'}status ${'$'}body_bytes_sent "${'$'}http_referer" '
+                            '"${'$'}http_user_agent" "${'$'}http_x_forwarded_for" "${'$'}host"';
+            """.trimIndent()
+        }
         
         val loggingConfig = StringBuilder()
         
         val standardLoggingTemplate = getCachedTemplate("templates/proxy/standard-logging.conf")
         val standardLoggingSnippet = ResourceLoader.replacePlaceholders(standardLoggingTemplate, mapOf(
-            "tag" to "nginx_main"
+            "tag" to "nginx_main",
+            "accessLogDirective" to "access_log /usr/local/openresty/nginx/logs/access.log main;",
+            "errorLogDirective" to "error_log /usr/local/openresty/nginx/logs/error.log warn;"
         ))
         loggingConfig.append("    ")
-        loggingConfig.append(standardLoggingSnippet.lines().joinToString("\n    ") { it })
+        // Just use standard logging directly for main config if needed, or rely on snippet
+        // The standard-logging.conf expects accessLogDirective and errorLogDirective placeholders usually?
+        // Let's check getLoggingReplacements logic. standard-logging.conf has ${accessLogDirective} and ${errorLogDirective}.
+        // We need to construct them manually here for the main block if we want it to have logs.
+        // Actually, the main block usually just defines the format. The access_log is inside http block.
         
+        // Constructing standard directives for MAIN http block
+        val accessLogDirectives = mutableListOf<String>()
+        val errorLogDirectives = mutableListOf<String>()
+
+        if (settings.proxyDualLoggingEnabled || !rsyslogEnabled) {
+            accessLogDirectives.add("access_log /usr/local/openresty/nginx/logs/access.log main;")
+            errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/error.log warn;")
+        }
+
         if (rsyslogEnabled) {
             val syslogServer = "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
-            
-            val syslogTemplate = getCachedTemplate("templates/proxy/rsyslog-config.conf")
-            val syslogSnippet = ResourceLoader.replacePlaceholders(syslogTemplate, mapOf(
-                "syslogServer" to syslogServer,
-                "tag" to "nginx_main"
-            ))
-            
-            loggingConfig.append("\n\n    ")
-            loggingConfig.append(syslogSnippet.lines().joinToString("\n    ") { it })
+            accessLogDirectives.add("access_log syslog:server=$syslogServer,tag=nginx_main_access,severity=info,nohostname main;")
+            errorLogDirectives.add("error_log syslog:server=$syslogServer,tag=nginx_main_error,nohostname warn;")
         }
+
+        val standardLoggingContent = ResourceLoader.replacePlaceholders(standardLoggingTemplate, mapOf(
+            "accessLogDirective" to accessLogDirectives.joinToString("\n"),
+            "errorLogDirective" to errorLogDirectives.joinToString("\n")
+        ))
+        
+        loggingConfig.append(standardLoggingContent.lines().joinToString("\n    ") { it })
         
         return ResourceLoader.replacePlaceholders(template, mapOf(
-            "loggingConfig" to loggingConfig.toString()
+            "loggingConfig" to loggingConfig.toString(),
+            "logFormatDefinition" to logFormatDefinition
         ))
     }
 
