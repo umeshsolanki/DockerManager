@@ -5,7 +5,7 @@ import {
     BarChart3, Activity, Globe, Server, User, Link2,
     RefreshCw, MousePointerClick, Zap, TrendingUp, Clock,
     Network, Hash, ArrowUpRight, ArrowDownRight, Search,
-    Download, Filter, ChevronDown, ChevronUp, Calendar, Trash2
+    Download, Filter, ChevronDown, ChevronUp, Calendar, Trash2, ShieldAlert
 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { ProxyStats, GenericHitEntry, DailyProxyStats } from '@/lib/types';
@@ -27,6 +27,7 @@ export default function AnalyticsScreen() {
     const [selectedDate, setSelectedDate] = useState<string>('');
     const [historicalStats, setHistoricalStats] = useState<DailyProxyStats | null>(null);
     const [selectedHost, setSelectedHost] = useState<string>('global');
+    const [securityMode, setSecurityMode] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
         paths: false,
@@ -180,7 +181,6 @@ export default function AnalyticsScreen() {
         }
     };
 
-    // Memoized filtered data - all hooks must be at top level BEFORE any early returns
     const filteredPaths = useMemo(() => {
         const source = (selectedHost !== 'global' && stats?.hostwiseStats?.[selectedHost])
             ? stats.hostwiseStats[selectedHost].topPaths
@@ -189,9 +189,15 @@ export default function AnalyticsScreen() {
         return source
             ?.filter(p => !searchQuery || p.path.toLowerCase().includes(searchQuery.toLowerCase()))
             .map(p => ({ label: p.path, value: p.count, sub: 'Path' })) || [];
-    }, [stats?.topPaths, stats?.hostwiseStats, selectedHost, searchQuery]);
+    }, [stats?.topPaths, stats?.hostwiseStats, selectedHost, searchQuery]); // Paths are generic, no error-specific path stats available in current API
 
     const filteredIps = useMemo(() => {
+        if (securityMode && selectedHost === 'global') {
+            return stats?.topIpsWithErrors
+                ?.filter(p => !searchQuery || p.label.toLowerCase().includes(searchQuery.toLowerCase()))
+                .map(p => ({ label: p.label, value: p.count, sub: 'Error Source' })) || [];
+        }
+
         const source = (selectedHost !== 'global' && stats?.hostwiseStats?.[selectedHost])
             ? stats.hostwiseStats[selectedHost].topIps
             : stats?.topIps;
@@ -199,7 +205,7 @@ export default function AnalyticsScreen() {
         return source
             ?.filter(p => !searchQuery || p.label.toLowerCase().includes(searchQuery.toLowerCase()))
             .map(p => ({ label: p.label, value: p.count, sub: 'IP Source' })) || [];
-    }, [stats?.topIps, stats?.hostwiseStats, selectedHost, searchQuery]);
+    }, [stats?.topIps, stats?.hostwiseStats, selectedHost, searchQuery, stats?.topIpsWithErrors, securityMode]);
 
     const filteredUserAgents = useMemo(() => {
         return stats?.topUserAgents
@@ -224,13 +230,14 @@ export default function AnalyticsScreen() {
     }, [stats?.topMethods, stats?.hostwiseStats, selectedHost, searchQuery]);
 
     const filteredDomains = useMemo(() => {
-        return stats?.hitsByDomain
-            ? Object.entries(stats.hitsByDomain)
+        const source = securityMode && stats?.hitsByDomainErrors ? stats.hitsByDomainErrors : stats?.hitsByDomain;
+        return source
+            ? Object.entries(source)
                 .filter(([domain]) => !searchQuery || domain.toLowerCase().includes(searchQuery.toLowerCase()))
                 .sort(([, a], [, b]) => b - a)
                 .map(([domain, count]) => ({ label: domain, value: count, sub: 'Domain' }))
             : [];
-    }, [stats?.hitsByDomain, searchQuery]);
+    }, [stats?.hitsByDomain, stats?.hitsByDomainErrors, searchQuery, securityMode]);
 
     const filteredCountries = useMemo(() => {
         return stats?.hitsByCountry
@@ -274,6 +281,35 @@ export default function AnalyticsScreen() {
                 };
             }).sort((a, b) => a.originalKey.localeCompare(b.originalKey)) : [];
     }, [stats?.hitsOverTime]);
+
+    // Calculate security metrics
+    const securityMetrics = useMemo(() => {
+        if (!stats) return { totalErrors: 0, errorRate: 0, uniqueErrorIps: 0 };
+
+        let totalHits = 0;
+        let errorHits = 0;
+
+        const statusData = (selectedHost !== 'global' && stats.hostwiseStats?.[selectedHost])
+            ? stats.hostwiseStats[selectedHost].hitsByStatus
+            : stats.hitsByStatus;
+
+        if (statusData) {
+            Object.entries(statusData).forEach(([status, count]) => {
+                const code = parseInt(status);
+                totalHits += count;
+                if (code >= 400) errorHits += count;
+            });
+        }
+
+        const uniqueErrorIps = selectedHost === 'global' ? (stats.topIpsWithErrors?.length || 0) : 0;
+
+        return {
+            totalErrors: errorHits,
+            totalHits,
+            errorRate: totalHits > 0 ? (errorHits / totalHits) * 100 : 0,
+            uniqueErrorIps
+        };
+    }, [stats, selectedHost]);
 
     if (!stats && isLoading) {
         return (
@@ -330,6 +366,18 @@ export default function AnalyticsScreen() {
                             Historical
                         </button>
                     </div>
+
+                    <button
+                        onClick={() => setSecurityMode(!securityMode)}
+                        className={`group px-3 py-2 rounded-xl border transition-all flex items-center gap-2 ${securityMode
+                            ? 'bg-red-500/10 border-red-500/30 text-red-500'
+                            : 'bg-surface border-outline/10 text-on-surface-variant hover:bg-white/5'
+                            }`}
+                        title="Toggle Security Focus Mode"
+                    >
+                        <ShieldAlert size={16} className={securityMode ? 'animate-pulse' : ''} />
+                        <span className={`text-xs font-bold ${!securityMode && 'hidden sm:inline'}`}>Security</span>
+                    </button>
 
                     {viewMode === 'today' && (
                         <>
@@ -415,45 +463,79 @@ export default function AnalyticsScreen() {
             {/* High Level Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard
-                    label="Requests"
-                    value={(selectedHost !== 'global' && stats?.hostwiseStats?.[selectedHost] ? stats.hostwiseStats[selectedHost].totalHits : stats?.totalHits || 0).toLocaleString()}
-                    icon={<MousePointerClick size={20} />}
-                    sub={selectedHost === 'global' ? 'All Traffic' : `${selectedHost} traffic`}
-                    color="primary"
+                    label={securityMode ? "Blocked Requests" : "Requests"}
+                    value={securityMode
+                        ? securityMetrics.totalErrors.toLocaleString()
+                        : (selectedHost !== 'global' && stats?.hostwiseStats?.[selectedHost] ? stats.hostwiseStats[selectedHost].totalHits : stats?.totalHits || 0).toLocaleString()
+                    }
+                    icon={securityMode ? <ShieldAlert size={20} /> : <MousePointerClick size={20} />}
+                    sub={selectedHost === 'global' ? (securityMode ? '4xx/5xx Errors' : 'All Traffic') : `${selectedHost} traffic`}
+                    color={securityMode ? "red" : "primary"}
                 />
                 <StatCard
                     label={selectedHost === 'global' ? "Active Domains" : "Domain Share"}
-                    value={selectedHost === 'global'
-                        ? Object.keys(stats?.hitsByDomain || {}).length.toString()
-                        : `${((stats?.hostwiseStats?.[selectedHost]?.totalHits || 0) / (stats?.totalHits || 1) * 100).toFixed(1)}%`}
+                    value={(() => {
+                        if (securityMode) {
+                            if (selectedHost === 'global') {
+                                return Object.keys(stats?.hitsByDomainErrors || {}).length.toString();
+                            }
+                            // Calculate share of errors
+                            let globalErrors = 0;
+                            if (stats?.hitsByStatus) {
+                                Object.entries(stats.hitsByStatus).forEach(([s, c]) => {
+                                    if (parseInt(s) >= 400) globalErrors += c;
+                                });
+                            }
+                            const share = globalErrors > 0 ? (securityMetrics.totalErrors / globalErrors) * 100 : 0;
+                            return `${share.toFixed(1)}%`;
+                        } else {
+                            // Normal mode
+                            return selectedHost === 'global'
+                                ? Object.keys(stats?.hitsByDomain || {}).length.toString()
+                                : `${((stats?.hostwiseStats?.[selectedHost]?.totalHits || 0) / (stats?.totalHits || 1) * 100).toFixed(1)}%`;
+                        }
+                    })()}
                     icon={<Globe size={20} />}
-                    sub={selectedHost === 'global' ? "Configured Hosts" : "of total requests"}
+                    sub={selectedHost === 'global' ? (securityMode ? "Targeted Domains" : "Configured Hosts") : (securityMode ? "of total threats" : "of total requests")}
                     color="indigo"
                 />
                 <StatCard
-                    label="Unique Reach"
-                    value={(selectedHost !== 'global' && stats?.hostwiseStats?.[selectedHost] ? stats.hostwiseStats[selectedHost].topIps.length : stats?.topIps?.length || 0).toString()}
-                    icon={<Network size={20} />}
-                    sub="Unique Source IPs"
+                    label={securityMode ? "Attacking IPs" : "Unique Reach"}
+                    value={securityMode
+                        ? (selectedHost === 'global' ? securityMetrics.uniqueErrorIps.toString() : "N/A")
+                        : (selectedHost !== 'global' && stats?.hostwiseStats?.[selectedHost] ? stats.hostwiseStats[selectedHost].topIps.length : stats?.topIps?.length || 0).toString()
+                    }
+                    icon={securityMode ? <ShieldAlert size={20} /> : <Network size={20} />}
+                    sub={securityMode ? (selectedHost === 'global' ? "Unique Sources" : "Global Stats Only") : "Unique Source IPs"}
                     color="indigo"
                 />
-                <StatCard
-                    label="Distribution"
-                    value={selectedHost === 'global'
-                        ? `${Object.keys(stats?.hitsByStatus || {}).length} Statuses`
-                        : `${Object.keys(stats?.hostwiseStats?.[selectedHost]?.hitsByStatus || {}).length} Statuses`}
-                    icon={<Zap size={20} />}
-                    sub="Response variety"
-                    color="red"
-                />
+                {!securityMode ? (
+                    <StatCard
+                        label="Distribution"
+                        value={selectedHost === 'global'
+                            ? `${Object.keys(stats?.hitsByStatus || {}).length} Statuses`
+                            : `${Object.keys(stats?.hostwiseStats?.[selectedHost]?.hitsByStatus || {}).length} Statuses`}
+                        icon={<Zap size={20} />}
+                        sub="Response variety"
+                        color="red"
+                    />
+                ) : (
+                    <StatCard
+                        label="Error Rate"
+                        value={`${securityMetrics.errorRate.toFixed(1)}%`}
+                        icon={<ShieldAlert size={20} />}
+                        sub={`${securityMetrics.totalErrors.toLocaleString()} Threats`}
+                        color="red"
+                    />
+                )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Traffic Profile Chart */}
-                <div className="lg:col-span-2 bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] p-6">
+                <div className={`lg:col-span-2 bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] p-6 ${securityMode ? 'opacity-50 grayscale' : ''}`}>
                     <div className="flex items-center justify-between mb-8">
                         <div>
-                            <h3 className="text-xl font-bold">Traffic Velocity</h3>
+                            <h3 className="text-xl font-bold">{securityMode ? "Traffic Velocity (Unfiltered)" : "Traffic Velocity"}</h3>
                             <p className="text-xs text-on-surface-variant font-medium">Request frequency over the last 24 hours</p>
                         </div>
                         <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full text-[10px] font-black tracking-tighter text-primary uppercase">
@@ -519,7 +601,7 @@ export default function AnalyticsScreen() {
                         </span>
                     </div>
                     <div className="flex-1 overflow-y-auto space-y-4 pr-1 max-h-[400px] scrollbar-thin scrollbar-thumb-outline/20 scrollbar-track-transparent">
-                        {stats?.hitsByDomain && Object.entries(stats.hitsByDomain)
+                        {stats?.hitsByDomain && Object.entries(securityMode && stats.hitsByDomainErrors ? stats.hitsByDomainErrors : stats.hitsByDomain)
                             .sort((a, b) => b[1] - a[1])
                             .map(([domain, count], i) => (
                                 <div key={domain} className="group">
@@ -578,6 +660,8 @@ export default function AnalyticsScreen() {
                             .sort(([a], [b]) => parseInt(a) - parseInt(b))
                             .map(([status, count]) => {
                                 const statusInt = parseInt(status);
+                                if (securityMode && statusInt < 400) return null;
+
                                 const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0';
                                 const colorClass = statusInt >= 500 ? 'bg-red-500/20 text-red-500 border-red-500/30' :
                                     statusInt >= 400 ? 'bg-orange-500/20 text-orange-500 border-orange-500/30' :
@@ -642,17 +726,19 @@ export default function AnalyticsScreen() {
                     items={filteredPaths}
                     color="primary"
                     total={stats?.totalHits || 1}
+                    // Hide paths in security mode as we don't have error-specific paths
                     sectionKey="paths"
                     expanded={expandedSections.paths}
                     onToggle={() => setExpandedSections(prev => ({ ...prev, paths: !prev.paths }))}
                     itemsToShow={itemsToShow.paths}
                     onShowMore={() => setItemsToShow(prev => ({ ...prev, paths: prev.paths + 20 }))}
+                    className={securityMode ? 'opacity-50 grayscale' : ''}
                 />
 
                 {/* Top Sources */}
                 <ExpandableStatsCard
-                    title="All Source IPs"
-                    icon={<Network size={18} />}
+                    title={securityMode ? "Top Treat Actors" : "All Source IPs"}
+                    icon={securityMode ? <ShieldAlert size={18} /> : <Network size={18} />}
                     items={filteredIps}
                     color="indigo"
                     total={stats?.totalHits || 1}
@@ -773,39 +859,41 @@ export default function AnalyticsScreen() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-outline/5">
-                                {stats?.recentHits.slice(0, 50).map((hit, i) => (
-                                    <tr key={i} className={`${theme === 'dark' ? 'hover:bg-white/[0.02]' : 'hover:bg-black/[0.02]'} transition-colors group`}>
-                                        <td className="px-3 py-1.5 font-mono text-[9px] text-on-surface-variant">
-                                            {new Date(hit.timestamp).toLocaleTimeString()}
-                                        </td>
-                                        <td className="px-3 py-1.5 text-[10px] font-bold truncate max-w-[150px]" title={hit.domain || undefined}>
-                                            {hit.domain}
-                                        </td>
-                                        <td className="px-3 py-1.5 text-[10px] font-medium truncate max-w-[300px]" title={hit.path}>
-                                            <div className="flex items-center gap-1.5">
-                                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${hit.method === 'GET' ? 'bg-green-500/10 text-green-500' :
-                                                    hit.method === 'POST' ? 'bg-blue-500/10 text-blue-500' :
-                                                        'bg-purple-500/10 text-purple-500'
-                                                    }`}>
-                                                    {hit.method}
-                                                </span>
-                                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${hit.status.toString().startsWith('2') ? 'bg-green-500/10 text-green-500' :
-                                                    hit.status.toString().startsWith('3') ? 'bg-blue-500/10 text-blue-500' :
-                                                        'bg-red-500/10 text-red-500'
-                                                    }`}>
-                                                    {hit.status}
-                                                </span>
-                                                <span className="truncate">{hit.path}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-3 py-1.5 text-[9px] font-mono text-on-surface-variant">
-                                            {hit.ip}
-                                        </td>
-                                        <td className="px-3 py-1.5 text-right font-mono text-[9px] text-on-surface-variant">
-                                            {hit.responseTime}ms
-                                        </td>
-                                    </tr>
-                                ))}
+                                {stats?.recentHits
+                                    .filter(h => !securityMode || h.status >= 400)
+                                    .slice(0, 50).map((hit, i) => (
+                                        <tr key={i} className={`${theme === 'dark' ? 'hover:bg-white/[0.02]' : 'hover:bg-black/[0.02]'} transition-colors group`}>
+                                            <td className="px-3 py-1.5 font-mono text-[9px] text-on-surface-variant">
+                                                {new Date(hit.timestamp).toLocaleTimeString()}
+                                            </td>
+                                            <td className="px-3 py-1.5 text-[10px] font-bold truncate max-w-[150px]" title={hit.domain || undefined}>
+                                                {hit.domain}
+                                            </td>
+                                            <td className="px-3 py-1.5 text-[10px] font-medium truncate max-w-[300px]" title={hit.path}>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${hit.method === 'GET' ? 'bg-green-500/10 text-green-500' :
+                                                        hit.method === 'POST' ? 'bg-blue-500/10 text-blue-500' :
+                                                            'bg-purple-500/10 text-purple-500'
+                                                        }`}>
+                                                        {hit.method}
+                                                    </span>
+                                                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${hit.status.toString().startsWith('2') ? 'bg-green-500/10 text-green-500' :
+                                                        hit.status.toString().startsWith('3') ? 'bg-blue-500/10 text-blue-500' :
+                                                            'bg-red-500/10 text-red-500'
+                                                        }`}>
+                                                        {hit.status}
+                                                    </span>
+                                                    <span className="truncate">{hit.path}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-3 py-1.5 text-[9px] font-mono text-on-surface-variant">
+                                                {hit.ip}
+                                            </td>
+                                            <td className="px-3 py-1.5 text-right font-mono text-[9px] text-on-surface-variant">
+                                                {hit.responseTime}ms
+                                            </td>
+                                        </tr>
+                                    ))}
                             </tbody>
                         </table>
                     </div>
@@ -827,7 +915,8 @@ function ExpandableStatsCard({
     expanded,
     onToggle,
     itemsToShow,
-    onShowMore
+    onShowMore,
+    className
 }: {
     title: string,
     icon: React.ReactNode,
@@ -838,7 +927,8 @@ function ExpandableStatsCard({
     expanded: boolean,
     onToggle: () => void,
     itemsToShow: number,
-    onShowMore: () => void
+    onShowMore: () => void,
+    className?: string
 }) {
     const { theme } = useTheme();
     const colorClasses: Record<string, string> = {
@@ -854,7 +944,7 @@ function ExpandableStatsCard({
     const hasMore = items.length > itemsToShow && !expanded;
 
     return (
-        <div className="bg-surface/30 border border-outline/10 rounded-[32px] p-6 flex flex-col">
+        <div className={`bg-surface/30 border border-outline/10 rounded-[32px] p-6 flex flex-col ${className || ''}`}>
             <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-2">
                     <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${colorClasses[color] || colorClasses.primary}`}>
