@@ -1026,6 +1026,24 @@ class ProxyServiceImpl(
             ))
             snippet.lines().joinToString("\n    ") { it }
         }
+        
+        val cidrHitsConfig = run {
+            val template = getCachedTemplate("templates/proxy/cidr-logging.conf")
+            val directives = mutableListOf<String>()
+            
+            if (dualLogging || !rsyslogEnabled) {
+                directives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_cidr.log", logFormat))
+            }
+            
+            if (rsyslogEnabled) {
+                directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_cidr,severity=crit,nohostname $logFormat;")
+            }
+            
+            val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
+                "cidrLoggingDirectives" to directives.joinToString("\n    ")
+            ))
+            snippet.lines().joinToString("\n    ") { it }
+        }
 
         val burstLoggingConfig = run {
             val template = getCachedTemplate("templates/proxy/burst-logging.conf")
@@ -1048,6 +1066,7 @@ class ProxyServiceImpl(
         return mapOf(
             "standardLoggingConfig" to standardLoggingConfig,
             "dangerHitsConfig" to dangerHitsConfig,
+            "cidrHitsConfig" to cidrHitsConfig,
             "burstLoggingConfig" to burstLoggingConfig
         )
     }
@@ -1152,6 +1171,10 @@ class ProxyServiceImpl(
                 put("rateLimitConfig", if (host.paths.isEmpty()) serverRateLimit else "")
                 put("mainLocationConfig", generateMainLocationConfig(true))
                 put("silentDropConfig", silentDropConfig)
+                // Append CIDR logger to danger config placeholder to avoid modifying main templates
+                val dangerConfig = loggingReplacements["dangerHitsConfig"] ?: ""
+                val cidrConfig = loggingReplacements["cidrHitsConfig"] ?: ""
+                put("dangerHitsConfig", "$dangerConfig\n    $cidrConfig")
             }
             ResourceLoader.replacePlaceholders(httpsTemplate, replacements)
         } else ""
@@ -1165,6 +1188,10 @@ class ProxyServiceImpl(
             put("rateLimitConfig", if (host.ssl || host.paths.isNotEmpty()) "" else serverRateLimit)
             put("mainLocationConfig", generateMainLocationConfig(false, httpRedirect))
             put("silentDropConfig", silentDropConfig)
+            // Append CIDR logger to danger config placeholder
+            val dangerConfig = loggingReplacements["dangerHitsConfig"] ?: ""
+            val cidrConfig = loggingReplacements["cidrHitsConfig"] ?: ""
+            put("dangerHitsConfig", "$dangerConfig\n    $cidrConfig")
         }
         val httpConfig = ResourceLoader.replacePlaceholders(httpTemplate, httpReplacements)
 
