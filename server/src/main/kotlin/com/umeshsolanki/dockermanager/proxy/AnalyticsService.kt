@@ -375,7 +375,7 @@ class AnalyticsServiceImpl(
 
     private fun updateStatsNatively() {
         val logFiles = logDir.listFiles { _, name -> 
-            name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || name == "nginx_main_access.log"
+            name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || name.endsWith("_cidr.log") || name == "nginx_main_access.log"
         } ?: return
 
         val hitsToInsert = mutableListOf<ProxyHit>()
@@ -754,6 +754,10 @@ class AnalyticsServiceImpl(
             else if (file.name.endsWith("_danger_$targetDate.log")) {
                 matchingFiles.add(file)
             }
+            // Match domain-specific rotated CIDR files: domain_cidr_YYYY-MM-DD.log
+            else if (file.name.endsWith("_cidr_$targetDate.log")) {
+                matchingFiles.add(file)
+            }
             // Match nginx_main rotated files: nginx_main_access_YYYY-MM-DD.log
             else if (file.name == "nginx_main_access_$targetDate.log") {
                 matchingFiles.add(file)
@@ -769,7 +773,7 @@ class AnalyticsServiceImpl(
         if (targetDate == today) {
             return allFiles.filter { 
                 it.name == "access.log" || it.name.endsWith("_access.log") || 
-                it.name.endsWith("_danger.log") || it.name == "nginx_main_access.log"
+                it.name.endsWith("_danger.log") || it.name.endsWith("_cidr.log") || it.name == "nginx_main_access.log"
             }
         }
 
@@ -1294,16 +1298,24 @@ class AnalyticsServiceImpl(
         val targetDate = date ?: java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
         
         // Select files based on type and date
-        val logFiles = if (type == "danger") {
-            logDir.listFiles { _, name -> 
-                (name.endsWith("_danger.log") || name.endsWith("_danger_$targetDate.log"))
-            }?.toList() ?: emptyList()
-        } else {
-            // Default to access logs
-            logDir.listFiles { _, name -> 
-                (name == "access.log" || name.endsWith("_access.log") || name == "nginx_main_access.log" ||
-                 name == "access_$targetDate.log" || name.endsWith("_access_$targetDate.log") || name == "nginx_main_access_$targetDate.log")
-            }?.toList() ?: emptyList()
+        val logFiles = when (type) {
+            "danger" -> {
+                logDir.listFiles { _, name -> 
+                    (name.endsWith("_danger.log") || name.endsWith("_danger_$targetDate.log"))
+                }?.toList() ?: emptyList()
+            }
+            "cidr" -> {
+                logDir.listFiles { _, name -> 
+                    (name.endsWith("_cidr.log") || name.endsWith("_cidr_$targetDate.log"))
+                }?.toList() ?: emptyList()
+            }
+            else -> {
+                // Default to access logs
+                logDir.listFiles { _, name -> 
+                    (name == "access.log" || name.endsWith("_access.log") || name == "nginx_main_access.log" ||
+                     name == "access_$targetDate.log" || name.endsWith("_access_$targetDate.log") || name == "nginx_main_access_$targetDate.log")
+                }?.toList() ?: emptyList()
+            }
         }
         
         val lineRegex = """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)".*$""".toRegex()
