@@ -361,115 +361,121 @@ function PostgresTab({ onInstalled, status }: { onInstalled: () => void, status?
         }
     };
 
-    return (
-        <div className="flex flex-col gap-6">
-            <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] p-8 text-center">
-                <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <Database className="text-primary" size={40} />
-                </div>
-                <h2 className="text-2xl font-bold mb-2">PostgreSQL Management</h2>
-
-                {status && (
-                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full mb-4 font-bold text-xs ${status.isInstalled ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-surface border border-outline/10 text-on-surface-variant'}`}>
-                        <div className={`w-2 h-2 rounded-full ${status.status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
-                        {status.status ? status.status.toUpperCase() : 'UNKNOWN'}
+    if (!status?.isInstalled) {
+        return (
+            <div className="flex flex-col gap-6">
+                <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] p-8 text-center py-20">
+                    <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <Database className="text-primary" size={40} />
                     </div>
-                )}
-
-                <p className="text-on-surface-variant/60 max-w-md mx-auto mb-8">
-                    Deploy and manage PostgreSQL instances using Docker Compose. Includes support for custom Dockerfiles and automated secret management.
-                </p>
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                    <Button
-                        onClick={handleInstallPostgres}
-                        disabled={isInstalling}
-                        className="flex items-center gap-2 bg-primary text-on-primary px-8 py-3 rounded-2xl font-bold"
-                    >
-                        {isInstalling ? <RefreshCw className="animate-spin" size={20} /> : <Plus size={20} />}
-                        {status?.isInstalled ? 'Re-Deploy / Update' : 'Deploy Postgres (Compose)'}
-                    </Button>
-
-                    {status?.isInstalled && (
-                        <div className="flex gap-4">
-                            {config?.storageBackend === 'file' ? (
-                                <Button
-                                    onClick={async () => {
-                                        if (confirm("Switch to Database storage?")) {
-                                            setIsInstalling(true);
-                                            try {
-                                                const res = await DockerClient.switchToPostgresDbStorage();
-                                                if (res.success) {
-                                                    toast.success(res.message);
-                                                    const newConfig = await DockerClient.getSystemConfig();
-                                                    setConfig(newConfig);
-                                                } else {
-                                                    toast.error(res.message);
-                                                }
-                                            } finally {
-                                                setIsInstalling(false);
-                                            }
-                                        }
-                                    }}
-                                    disabled={isInstalling}
-                                    className="flex items-center gap-2 bg-indigo-500 text-white px-6 py-3 rounded-2xl font-bold"
-                                >
-                                    <Database size={20} />
-                                    Activate DB Storage
-                                </Button>
-                            ) : (
-                                <Button
-                                    onClick={async () => {
-                                        if (confirm("Switch to File storage?")) {
-                                            setIsInstalling(true);
-                                            try {
-                                                const res = await DockerClient.switchToPostgresFileStorage();
-                                                if (res.success) {
-                                                    toast.success(res.message);
-                                                    const newConfig = await DockerClient.getSystemConfig();
-                                                    setConfig(newConfig);
-                                                } else {
-                                                    toast.error(res.message);
-                                                }
-                                            } finally {
-                                                setIsInstalling(false);
-                                            }
-                                        }
-                                    }}
-                                    disabled={isInstalling}
-                                    className="flex items-center gap-2 bg-orange-500/10 text-orange-500 border border-orange-500/20 px-6 py-3 rounded-2xl font-bold"
-                                >
-                                    <RefreshCw size={20} />
-                                    Back to File
-                                </Button>
-                            )}
-
-                            <Button
-                                onClick={handleResetPostgres}
-                                disabled={isInstalling}
-                                className="flex items-center gap-2 bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 px-6 py-3 rounded-2xl font-bold"
-                            >
-                                <RefreshCw size={20} />
-                                Reset Config
-                            </Button>
-                        </div>
-                    )}
+                    <h2 className="text-2xl font-bold mb-2">PostgreSQL Management</h2>
+                    <p className="text-on-surface-variant/60 max-w-md mx-auto mb-8">
+                        Deploy and manage PostgreSQL instances using Docker Compose. Includes support for custom Dockerfiles and automated secret management.
+                    </p>
+                    <div className="flex justify-center">
+                        <Button
+                            onClick={handleInstallPostgres}
+                            disabled={isInstalling}
+                            className="flex items-center gap-2 bg-primary text-on-primary px-8 py-3 rounded-2xl font-bold"
+                        >
+                            {isInstalling ? <RefreshCw className="animate-spin" size={20} /> : <Plus size={20} />}
+                            Deploy Postgres (Compose)
+                        </Button>
+                    </div>
                 </div>
             </div>
+        );
+    }
 
-            {status?.isInstalled && <PostgresDataBrowser />}
+    return (
+        <div className="flex flex-col gap-6">
+            {/* Main Feature: Data Browser */}
+            <PostgresDataBrowser defaultOpen={true} />
 
-            <div className="bg-blue-500/10 border border-blue-500/20 rounded-[32px] p-6">
-                <div className="flex items-start gap-4 text-foreground">
-                    <Info className="text-blue-500 shrink-0 mt-1" size={20} />
-                    <div className="space-y-2 text-foreground">
-                        <h3 className="font-bold text-lg text-foreground">About PostgreSQL Deployment</h3>
-                        <ul className="text-sm text-on-surface-variant space-y-1 list-disc list-inside">
-                            <li>Managed via Docker Compose project "postgres"</li>
-                            <li>Data persists in "postgres_data" volume</li>
-                            <li>Default port is 5432</li>
-                            <li>Automated password generation and management</li>
-                            <li><strong>Reset Config</strong> will regenerate the docker-compose.yml and .env features, but keeps data.</li>
-                        </ul>
+            {/* Compact Admin/Status Section */}
+            <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-2xl p-4">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full font-bold text-xs ${status.status === 'active' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'}`}>
+                            <div className={`w-2 h-2 rounded-full ${status.status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+                            {status.status ? status.status.toUpperCase() : 'UNKNOWN'}
+                        </div>
+                        <div className="text-xs text-on-surface-variant flex items-center gap-4">
+                            <span className="flex items-center gap-1"><Server size={12} /> Port: 5432</span>
+                            <span className="flex items-center gap-1"><Database size={12} /> Storage: {config?.storageBackend === 'file' ? 'File System' : 'Database Volume'}</span>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        {config?.storageBackend === 'file' ? (
+                            <Button
+                                onClick={async () => {
+                                    if (confirm("Switch to Database storage?")) {
+                                        setIsInstalling(true);
+                                        try {
+                                            const res = await DockerClient.switchToPostgresDbStorage();
+                                            if (res.success) {
+                                                toast.success(res.message);
+                                                const newConfig = await DockerClient.getSystemConfig();
+                                                setConfig(newConfig);
+                                            } else {
+                                                toast.error(res.message);
+                                            }
+                                        } finally {
+                                            setIsInstalling(false);
+                                        }
+                                    }
+                                }}
+                                disabled={isInstalling}
+                                className="flex items-center gap-1 bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 px-3 py-1.5 rounded-lg text-xs font-bold"
+                            >
+                                <Database size={14} />
+                                Use DB Storage
+                            </Button>
+                        ) : (
+                            <Button
+                                onClick={async () => {
+                                    if (confirm("Switch to File storage?")) {
+                                        setIsInstalling(true);
+                                        try {
+                                            const res = await DockerClient.switchToPostgresFileStorage();
+                                            if (res.success) {
+                                                toast.success(res.message);
+                                                const newConfig = await DockerClient.getSystemConfig();
+                                                setConfig(newConfig);
+                                            } else {
+                                                toast.error(res.message);
+                                            }
+                                        } finally {
+                                            setIsInstalling(false);
+                                        }
+                                    }
+                                }}
+                                disabled={isInstalling}
+                                className="flex items-center gap-1 bg-orange-500/10 text-orange-500 border border-orange-500/20 px-3 py-1.5 rounded-lg text-xs font-bold"
+                            >
+                                <RefreshCw size={14} />
+                                Use File Storage
+                            </Button>
+                        )}
+
+                        <Button
+                            onClick={handleResetPostgres}
+                            disabled={isInstalling}
+                            className="flex items-center gap-1 bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 px-3 py-1.5 rounded-lg text-xs font-bold"
+                        >
+                            <RefreshCw size={14} />
+                            Reset Config
+                        </Button>
+
+                        <Button
+                            onClick={handleInstallPostgres}
+                            disabled={isInstalling}
+                            className="flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 rounded-lg text-xs font-bold"
+                        >
+                            <RefreshCw size={14} />
+                            Re-Deploy
+                        </Button>
                     </div>
                 </div>
             </div>
@@ -477,12 +483,12 @@ function PostgresTab({ onInstalled, status }: { onInstalled: () => void, status?
     );
 }
 
-function PostgresDataBrowser() {
+function PostgresDataBrowser({ defaultOpen = false }: { defaultOpen?: boolean }) {
     const [tables, setTables] = useState<string[]>([]);
     const [selectedTable, setSelectedTable] = useState<string | null>(null);
     const [tableData, setTableData] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(false);
-    const [isOpen, setIsOpen] = useState(false);
+    const [isOpen, setIsOpen] = useState(defaultOpen);
     const [error, setError] = useState<string | null>(null);
 
     // Sorting & Pagination
@@ -521,10 +527,10 @@ function PostgresDataBrowser() {
     };
 
     useEffect(() => {
-        if (isOpen) {
+        if (isOpen || defaultOpen) {
             fetchTables();
         }
-    }, [isOpen]);
+    }, [isOpen, defaultOpen]);
 
     useEffect(() => {
         if (selectedTable) {
@@ -560,30 +566,43 @@ function PostgresDataBrowser() {
     };
 
     return (
-        <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] overflow-hidden">
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className="w-full flex items-center justify-between p-6 hover:bg-white/5 transition-colors"
-            >
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-surface-variant/20 flex items-center justify-center">
-                        <Table size={18} className="text-on-surface" />
+        <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] overflow-hidden flex flex-col flex-1 min-h-[600px]">
+            {!defaultOpen && (
+                <button
+                    onClick={() => setIsOpen(!isOpen)}
+                    className="w-full flex items-center justify-between p-6 hover:bg-white/5 transition-colors"
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-surface-variant/20 flex items-center justify-center">
+                            <Table size={18} className="text-on-surface" />
+                        </div>
+                        <div className="text-left">
+                            <h3 className="font-bold text-lg">Database Browser</h3>
+                            <p className="text-sm text-on-surface-variant">View tables and data</p>
+                        </div>
                     </div>
-                    <div className="text-left">
-                        <h3 className="font-bold text-lg">Database Browser</h3>
-                        <p className="text-sm text-on-surface-variant">View tables and data</p>
+                    <div className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>
+                        <Plus className="rotate-45" size={24} />
                     </div>
-                </div>
-                <div className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>
-                    <Plus className="rotate-45" size={24} />
-                </div>
-            </button>
+                </button>
+            )}
 
-            {isOpen && (
-                <div className="px-6 pb-6 animate-in slide-in-from-top-2 duration-200">
-                    <div className="flex flex-col md:flex-row gap-6">
+            {(isOpen || defaultOpen) && (
+                <div className={`px-6 pb-6 ${defaultOpen ? 'pt-6 flex-1 flex flex-col' : 'animate-in slide-in-from-top-2 duration-200'}`}>
+                    {defaultOpen && (
+                        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-white/5">
+                            <div className="w-10 h-10 rounded-full bg-surface-variant/20 flex items-center justify-center">
+                                <Table size={18} className="text-on-surface" />
+                            </div>
+                            <div className="text-left">
+                                <h3 className="font-bold text-lg">Database Browser</h3>
+                                <p className="text-sm text-on-surface-variant">View tables and data</p>
+                            </div>
+                        </div>
+                    )}
+                    <div className={`flex flex-col md:flex-row gap-6 ${defaultOpen ? 'h-full' : 'h-[600px]'}`}>
                         {/* Sidebar: Table List */}
-                        <div className="w-full md:w-1/4 bg-[#1e1e1e] rounded-2xl p-4 border border-white/5 h-[600px] overflow-y-auto">
+                        <div className={`w-full md:w-1/4 bg-[#1e1e1e] rounded-2xl p-4 border border-white/5 ${defaultOpen ? 'h-full' : 'h-[600px]'} overflow-y-auto`}>
                             <h4 className="font-bold text-sm text-on-surface mb-4 flex items-center justify-between">
                                 <span>Tables ({tables.length})</span>
                                 <button onClick={fetchTables} title="Refresh Tables" className="hover:text-primary transition-colors"><RefreshCw size={14} /></button>
@@ -603,7 +622,7 @@ function PostgresDataBrowser() {
                         </div>
 
                         {/* Main Content: Data View */}
-                        <div className="w-full md:w-3/4 bg-[#1e1e1e] rounded-2xl p-4 border border-white/5 h-[600px] overflow-hidden flex flex-col">
+                        <div className={`w-full md:w-3/4 bg-[#1e1e1e] rounded-2xl p-4 border border-white/5 ${defaultOpen ? 'h-full' : 'h-[600px]'} overflow-hidden flex flex-col`}>
                             {selectedTable ? (
                                 <>
                                     <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-4">

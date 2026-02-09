@@ -292,10 +292,14 @@ class JailManagerServiceImpl(
                     // This implements a simple "errors per interval" rate limit.
                     // A proper sliding window is more complex but this should suffice to prevent
                     // long-term accumulation of errors.
-                    val interval = AppConfig.settings.monitoringIntervalMinutes * 60_000L
+                    // Use proxy specific window
+                    val windowMinutes = AppConfig.settings.proxyJailWindowMinutes
+                    val interval = windowMinutes * 60_000L
+                    
                     delay(interval)
+                    
                     if (proxyViolationsInWindow.isNotEmpty()) {
-                        logger.debug("Clearing ${proxyViolationsInWindow.size} proxy violation records (window reset)")
+                        logger.debug("Clearing ${proxyViolationsInWindow.size} proxy violation records (window reset: ${windowMinutes}m)")
                         proxyViolationsInWindow.clear()
                     }
                 } catch (e: Exception) {

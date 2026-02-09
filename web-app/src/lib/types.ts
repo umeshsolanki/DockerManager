@@ -582,6 +582,7 @@ export interface SystemConfig {
   proxyStatsIntervalMs: number;
   proxyJailEnabled: boolean;
   proxyJailThresholdNon200: number;
+  proxyJailWindowMinutes: number;
   proxyJailRules: ProxyJailRule[];
   proxyDefaultReturn404: boolean;
   storageBackend: string;

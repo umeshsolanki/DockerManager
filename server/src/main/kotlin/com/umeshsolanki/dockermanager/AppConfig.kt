@@ -90,6 +90,7 @@ data class AppSettings(
     // Proxy Specific Security
     val proxyJailEnabled: Boolean = true,
     val proxyJailThresholdNon200: Int = 20,
+    val proxyJailWindowMinutes: Int = 5,
     val proxyJailRules: List<ProxyJailRule> = DEFAULT_PROXY_JAIL_RULES,
     val proxyDefaultReturn404: Boolean = false,
     
@@ -359,12 +360,14 @@ object AppConfig {
     fun updateProxySecuritySettings(
         enabled: Boolean,
         thresholdNon200: Int,
-        rules: List<ProxyJailRule>
+        rules: List<ProxyJailRule>,
+        windowMinutes: Int? = null
     ) = synchronized(lock) {
         _settings = _settings.copy(
             proxyJailEnabled = enabled,
             proxyJailThresholdNon200 = thresholdNon200,
-            proxyJailRules = rules
+            proxyJailRules = rules,
+            proxyJailWindowMinutes = windowMinutes ?: _settings.proxyJailWindowMinutes
         )
         saveSettings()
     }

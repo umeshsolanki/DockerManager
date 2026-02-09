@@ -398,6 +398,18 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                             <button onClick={handleSaveSystem} className="w-full mt-2 bg-red-500 text-white py-2.5 rounded-xl font-semibold text-sm hover:bg-red-600 transition-colors">Save Security Settings</button>
                         </SettingsCard>
 
+                        {/* Proxy Security */}
+                        <SettingsCard title="Proxy Security (Traffic Analysis)" subtitle="Block malicious traffic" icon={ShieldCheck} iconColor="purple-500">
+                            <SettingsToggle label="Proxy Auto-Jail" description="Block IPs based on traffic violations" checked={form.proxyJailEnabled} onChange={(v: boolean) => updateForm('proxyJailEnabled', v)} color="bg-purple-500" />
+                            {form.proxyJailEnabled && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <SettingsInput label="Error Threshold (Window)" value={form.proxyJailThresholdNon200} onChange={(v: number) => updateForm('proxyJailThresholdNon200', v)} type="number" note="Max 4xx errors allowed" />
+                                    <SettingsInput label="Analysis Window (min)" value={form.proxyJailWindowMinutes} onChange={(v: number) => updateForm('proxyJailWindowMinutes', v)} type="number" note="Time window for error counting" />
+                                </div>
+                            )}
+                            <button onClick={handleSaveSystem} className="w-full mt-2 bg-purple-500 text-white py-2.5 rounded-xl font-semibold text-sm hover:bg-purple-600 transition-colors">Save Proxy Security</button>
+                        </SettingsCard>
+
                         {/* ClickHouse */}
                         <SettingsCard title="ClickHouse Analytics" subtitle="High-performance warehousing" icon={Database} iconColor="blue-500">
                             <SettingsToggle label="Enable ClickHouse" description="Offload logs to ClickHouse" checked={form.clickhouseSettings.enabled} onChange={(v: boolean) => updateNestedForm('clickhouseSettings', 'enabled', v)} />
