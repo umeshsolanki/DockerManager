@@ -67,7 +67,7 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
                 className={`nav-rail-item ${selectedScreen === 'Settings' ? 'nav-rail-item-active' : 'text-on-surface-variant'}`}
                 title="Settings"
             >
-                <Settings size={18} />
+                <Settings size={18} className="shrink-0" />
                 <span className="text-[10px] font-medium leading-none">Settings</span>
             </button>
 
@@ -76,7 +76,7 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
                 className="nav-rail-item text-red-400 hover:text-red-300 transition-colors mt-2"
                 title="Logout"
             >
-                <LogOut size={18} />
+                <LogOut size={18} className="shrink-0" />
                 <span className="text-[10px] font-medium text-on-surface-variant/60 leading-none">Log Out</span>
             </button>
         </div>

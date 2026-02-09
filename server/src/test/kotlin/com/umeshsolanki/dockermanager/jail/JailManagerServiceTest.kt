@@ -37,7 +37,8 @@ class JailManagerServiceTest {
         mockIpInfoService = mockk<IIpInfoService>(relaxed = true)
         jailManagerService = JailManagerServiceImpl(
             mockFirewallService, mockIpInfoService,
-            ipReputationService = mockk<IIpReputationService>(relaxed = true)
+            ipReputationService = mockk<IIpReputationService>(relaxed = true),
+            kafkaService = mockk<com.umeshsolanki.dockermanager.kafka.IKafkaService>(relaxed = true)
         )
         
         // Mock the firewall list to return empty by default

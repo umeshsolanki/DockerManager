@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Link, Save, CheckCircle, Info, Database, Server, Terminal, RefreshCw, Settings2, Globe, XCircle, ShieldCheck, ShieldAlert, Key, LogOut, Maximize2, Minimize2 } from 'lucide-react';
+import { Link, Save, CheckCircle, Info, Database, Server, Terminal, RefreshCw, Settings2, Globe, ShieldAlert, Key, LogOut, Maximize2, ShieldCheck, HardDrive } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { SystemConfig, TwoFactorSetupResponse, StorageInfo } from '@/lib/types';
 import dynamic from 'next/dynamic';
@@ -11,131 +11,151 @@ import { Modal } from '../ui/Modal';
 
 const WebShell = dynamic(() => import('../Terminal'), { ssr: false });
 
+// --- Reusable Components ---
+
+const SettingsCard = ({ title, subtitle, icon: Icon, iconColor = "primary", children, className = "" }: any) => {
+    const colorClasses: any = {
+        primary: "bg-primary/10 text-primary",
+        secondary: "bg-secondary/10 text-secondary",
+        "red-500": "bg-red-500/10 text-red-500",
+        "blue-500": "bg-blue-500/10 text-blue-500",
+        "amber-500": "bg-amber-500/10 text-amber-500",
+        "green-500": "bg-green-500/10 text-green-500",
+        "purple-500": "bg-purple-500/10 text-purple-500"
+    };
+
+    return (
+        <div className={`bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm ${className}`}>
+            <div className="flex items-center gap-3 mb-4">
+                {Icon && (
+                    <div className={`p-3 rounded-xl ${colorClasses[iconColor] || colorClasses.primary}`}>
+                        <Icon size={20} />
+                    </div>
+                )}
+                <div>
+                    <h2 className="text-lg font-bold">{title}</h2>
+                    {subtitle && <p className="text-xs text-on-surface-variant mt-0.5">{subtitle}</p>}
+                </div>
+            </div>
+            <div className="space-y-4">
+                {children}
+            </div>
+        </div>
+    );
+};
+
+const SettingsInput = ({ label, value, onChange, placeholder, type = "text", note, disabled = false, className = "" }: any) => (
+    <div className={`space-y-2 ${className}`}>
+        {label && <label className="text-xs font-semibold text-on-surface-variant px-1">{label}</label>}
+        <div className="relative">
+            <input
+                type={type}
+                value={value ?? ''}
+                onChange={(e) => onChange(type === 'number' ? (parseInt(e.target.value) || 0) : e.target.value)}
+                placeholder={placeholder}
+                disabled={disabled}
+                className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50"
+            />
+        </div>
+        {note && <p className="text-[10px] text-on-surface-variant/60 px-1 italic">{note}</p>}
+    </div>
+);
+
+const SettingsToggle = ({ label, description, checked, onChange, color = "bg-primary" }: any) => (
+    <div className={`flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:bg-surface-variant/20`}>
+        <div className="flex-1 pr-4">
+            <p className="text-sm font-semibold text-on-surface">{label}</p>
+            {description && <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">{description}</p>}
+        </div>
+        <button
+            onClick={() => onChange(!checked)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ring-2 ring-offset-2 ring-offset-surface ring-transparent flex-shrink-0 ${checked ? color : 'bg-surface-variant'}`}
+        >
+            <span className={`${checked ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`} />
+        </button>
+    </div>
+);
+
+const TabButton = ({ id, label, icon: Icon, active, onClick }: any) => (
+    <button
+        onClick={() => onClick(id)}
+        className={`flex items-center gap-2 px-4 py-2 rounded-t-xl text-xs font-semibold transition-all whitespace-nowrap ${active
+            ? 'bg-primary text-primary-foreground shadow-md border-b-2 border-primary'
+            : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
+            }`}
+    >
+        <Icon size={16} />
+        <span>{label}</span>
+    </button>
+);
+
+// --- Main Component ---
+
 interface SettingsScreenProps {
     onLogout?: () => void;
 }
 
 export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
-    const [activeTab, setActiveTab] = useState<'terminal' | 'connection' | 'account' | 'system' | 'info'>('terminal');
+    const [activeTab, setActiveTab] = useState<'terminal' | 'connection' | 'account' | 'system' | 'info' | 'kafka'>('terminal');
     const [serverUrl, setServerUrl] = useState(DockerClient.getServerUrl());
-    const [dockerSocket, setDockerSocket] = useState('');
-    const [jamesUrl, setJamesUrl] = useState('');
-    const [dockerBuildKit, setDockerBuildKit] = useState(true);
-    const [dockerCliBuild, setDockerCliBuild] = useState(true);
-    const [autoStorageRefresh, setAutoStorageRefresh] = useState(false);
-    const [autoStorageRefreshInterval, setAutoStorageRefreshInterval] = useState(15);
-    const [kafkaEnabled, setKafkaEnabled] = useState(false);
-    const [kafkaBootstrap, setKafkaBootstrap] = useState('localhost:9092');
-    const [kafkaAdminHost, setKafkaAdminHost] = useState('localhost:9092');
-    const [kafkaTopic, setKafkaTopic] = useState('ip-blocking-requests');
-    const [kafkaReputationTopic, setKafkaReputationTopic] = useState('ip-reputation-events');
-    const [kafkaGroupId, setKafkaGroupId] = useState('docker-manager-jailer');
-    const [dbPersistenceLogsEnabled, setDbPersistenceLogsEnabled] = useState(true);
-    const [syslogEnabled, setSyslogEnabled] = useState(false);
-    const [syslogServerHost, setSyslogServerHost] = useState('127.0.0.1');
-    const [syslogServerInternal, setSyslogServerInternal] = useState('');
-    const [syslogPort, setSyslogPort] = useState(514);
-    const [proxyRsyslogEnabled, setProxyRsyslogEnabled] = useState(false);
-    const [proxyDualLoggingEnabled, setProxyDualLoggingEnabled] = useState(false);
-    const [jsonLoggingEnabled, setJsonLoggingEnabled] = useState(false);
-    const [nginxLogDir, setNginxLogDir] = useState('');
-    const [logBufferingEnabled, setLogBufferingEnabled] = useState(false);
-    const [logBufferSizeKb, setLogBufferSizeKb] = useState(32);
-    const [logFlushIntervalSeconds, setLogFlushIntervalSeconds] = useState(60);
-    const [jailEnabled, setJailEnabled] = useState(true);
-    const [jailThreshold, setJailThreshold] = useState(5);
-    const [jailDurationMinutes, setJailDurationMinutes] = useState(30);
-    const [exponentialJailEnabled, setExponentialJailEnabled] = useState(true);
-    const [maxJailDurationMinutes, setMaxJailDurationMinutes] = useState(10080);
-    const [clickhouseEnabled, setClickhouseEnabled] = useState(false);
-    const [clickhouseHost, setClickhouseHost] = useState('localhost');
-    const [clickhousePort, setClickhousePort] = useState(8123);
-    const [clickhouseDatabase, setClickhouseDatabase] = useState('docker_manager');
-    const [clickhouseUser, setClickhouseUser] = useState('default');
-    const [clickhousePassword, setClickhousePassword] = useState('');
-    const [clickhouseBatchSize, setClickhouseBatchSize] = useState(5000);
-    const [clickhouseFlushInterval, setClickhouseFlushInterval] = useState(5000);
     const [message, setMessage] = useState('');
-    const [config, setConfig] = useState<SystemConfig | null>(null);
+    const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null); // Original config
+    const [form, setForm] = useState<SystemConfig | null>(null); // Editable config
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [isShellOpen, setIsShellOpen] = useState(false);
     const [storageInfo, setStorageInfo] = useState<StorageInfo | null>(null);
+    const [dbStatuses, setDbStatuses] = useState<any[]>([]);
 
     // Auth & 2FA state
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [verifyPassword, setVerifyPassword] = useState('');
     const [updatingPassword, setUpdatingPassword] = useState(false);
-
     const [newUsername, setNewUsername] = useState('');
     const [updatingUsername, setUpdatingUsername] = useState(false);
-
     const [twoFactorSetup, setTwoFactorSetup] = useState<TwoFactorSetupResponse | null>(null);
     const [verificationCode, setVerificationCode] = useState('');
     const [configuring2FA, setConfiguring2FA] = useState(false);
-
-    const [dbStatuses, setDbStatuses] = useState<any[]>([]);
 
     const fetchConfig = async () => {
         setLoading(true);
         try {
             const data = await DockerClient.getSystemConfig();
-            setConfig(data);
+            setSystemConfig(data);
             if (data) {
-                setDockerSocket(data.dockerSocket);
-                setJamesUrl(data.jamesWebAdminUrl);
-                setDockerBuildKit(data.dockerBuildKit);
-                setDockerCliBuild(data.dockerCliBuild);
-                setAutoStorageRefresh(data.autoStorageRefresh);
-                setAutoStorageRefreshInterval(data.autoStorageRefreshIntervalMinutes);
-                if (data.kafkaSettings) {
-                    setKafkaEnabled(data.kafkaSettings.enabled);
-                    setKafkaBootstrap(data.kafkaSettings.bootstrapServers);
-                    setKafkaAdminHost(data.kafkaSettings.adminHost);
-                    setKafkaTopic(data.kafkaSettings.topic);
-                    setKafkaReputationTopic(data.kafkaSettings.reputationTopic || 'ip-reputation-events');
-                    setKafkaGroupId(data.kafkaSettings.groupId);
-                }
-                setDbPersistenceLogsEnabled(data.dbPersistenceLogsEnabled ?? true);
-                setSyslogEnabled(data.syslogEnabled);
-                setSyslogServerHost(data.syslogServer);
-                setSyslogServerInternal(data.syslogServerInternal || '');
-                setSyslogPort(data.syslogPort);
-                setProxyRsyslogEnabled(data.proxyRsyslogEnabled);
-                setProxyDualLoggingEnabled(data.proxyDualLoggingEnabled || false);
-                setJsonLoggingEnabled(data.jsonLoggingEnabled || false);
-                setNginxLogDir(data.nginxLogDir);
-                setLogBufferingEnabled(data.logBufferingEnabled || false);
-                setLogBufferSizeKb(data.logBufferSizeKb || 32);
-                setLogFlushIntervalSeconds(data.logFlushIntervalSeconds || 60);
-                setJailEnabled(data.jailEnabled ?? true);
-                setJailThreshold(data.jailThreshold || 5);
-                setJailDurationMinutes(data.jailDurationMinutes || 30);
-                setExponentialJailEnabled(data.exponentialJailEnabled ?? true);
-                setMaxJailDurationMinutes(data.maxJailDurationMinutes || 10080);
-                if (data.clickhouseSettings) {
-                    setClickhouseEnabled(data.clickhouseSettings.enabled);
-                    setClickhouseHost(data.clickhouseSettings.host);
-                    setClickhousePort(data.clickhouseSettings.port);
-                    setClickhouseDatabase(data.clickhouseSettings.database);
-                    setClickhouseUser(data.clickhouseSettings.user);
-                    setClickhousePassword(data.clickhouseSettings.password || '');
-                    setClickhouseBatchSize(data.clickhouseSettings.batchSize);
-                    setClickhouseFlushInterval(data.clickhouseSettings.flushIntervalMs);
-                }
+                // Initialize form with defaults where needed to avoid controlled/uncontrolled warnings
+                setForm({
+                    ...data,
+                    clickhouseSettings: data.clickhouseSettings || {
+                        enabled: false,
+                        host: 'localhost',
+                        port: 8123,
+                        database: 'default',
+                        user: 'default',
+                        password: '',
+                        batchSize: 5000,
+                        flushIntervalMs: 5000
+                    },
+                    kafkaSettings: data.kafkaSettings || {
+                        enabled: false,
+                        bootstrapServers: 'localhost:9092',
+                        adminHost: 'localhost:9092',
+                        topic: 'ip-blocking-requests',
+                        reputationTopic: 'ip-reputation-events',
+                        groupId: 'docker-manager-jailer'
+                    }
+                });
             }
 
-
-            // Fetch DB statuses
             const statuses = await DockerClient.getDatabaseStatus();
             setDbStatuses(statuses);
 
-            // Fetch Storage Info
             const storage = await DockerClient.getStorageInfo();
             setStorageInfo(storage);
         } catch (e) {
             console.error(e);
+            showMessage('Failed to load configuration');
         } finally {
             setLoading(false);
         }
@@ -145,194 +165,119 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
         fetchConfig();
     }, []);
 
+    const showMessage = (msg: string) => {
+        setMessage(msg);
+        setTimeout(() => setMessage(''), 3000);
+    };
+
     const handleSaveServer = () => {
         DockerClient.setServerUrl(serverUrl);
-        setMessage('Server URL saved successfully!');
-        setTimeout(() => setMessage(''), 3000);
+        showMessage('Server URL saved successfully!');
         fetchConfig();
     };
 
+    const updateForm = (key: keyof SystemConfig, value: any) => {
+        if (!form) return;
+        setForm(prev => ({ ...prev!, [key]: value }));
+    };
+
+    const updateNestedForm = (parent: 'clickhouseSettings' | 'kafkaSettings', key: string, value: any) => {
+        if (!form) return;
+        setForm(prev => ({
+            ...prev!,
+            [parent]: {
+                ...(prev![parent] as any),
+                [key]: value
+            }
+        }));
+    };
+
     const handleSaveSystem = async () => {
+        if (!form) return;
         setSaving(true);
         try {
-            const result = await DockerClient.updateSystemConfig({
-                dockerSocket: dockerSocket,
-                jamesWebAdminUrl: jamesUrl,
-                dockerBuildKit: dockerBuildKit,
-                dockerCliBuild: dockerCliBuild,
-                autoStorageRefresh: autoStorageRefresh,
-                autoStorageRefreshIntervalMinutes: autoStorageRefreshInterval,
-                kafkaSettings: {
-                    enabled: kafkaEnabled,
-                    bootstrapServers: kafkaBootstrap,
-                    adminHost: kafkaAdminHost,
-                    topic: kafkaTopic,
-                    reputationTopic: kafkaReputationTopic,
-                    groupId: kafkaGroupId
-                },
-                dbPersistenceLogsEnabled: dbPersistenceLogsEnabled,
-                syslogEnabled: syslogEnabled,
-                syslogServer: syslogServerHost,
-                syslogServerInternal: syslogServerInternal || undefined,
-                syslogPort: syslogPort,
-                proxyRsyslogEnabled: proxyRsyslogEnabled,
-                proxyDualLoggingEnabled: proxyDualLoggingEnabled,
-                jsonLoggingEnabled: jsonLoggingEnabled,
-                nginxLogDir: nginxLogDir,
-                logBufferingEnabled: logBufferingEnabled,
-                logBufferSizeKb: logBufferSizeKb,
-                logFlushIntervalSeconds: logFlushIntervalSeconds,
-                jailEnabled: jailEnabled,
-                jailThreshold: jailThreshold,
-                jailDurationMinutes: jailDurationMinutes,
-                exponentialJailEnabled: exponentialJailEnabled,
-                maxJailDurationMinutes: maxJailDurationMinutes,
-                clickhouseSettings: {
-                    enabled: clickhouseEnabled,
-                    host: clickhouseHost,
-                    port: clickhousePort,
-                    database: clickhouseDatabase,
-                    user: clickhouseUser,
-                    password: clickhousePassword,
-                    batchSize: clickhouseBatchSize,
-                    flushIntervalMs: clickhouseFlushInterval
-                }
-            });
+            const result = await DockerClient.updateSystemConfig(form);
             if (result.success) {
-                setMessage('System settings updated successfully!');
+                showMessage('System settings updated successfully!');
                 fetchConfig();
             } else {
-                setMessage('Failed to update system settings');
+                showMessage('Failed to update system settings');
             }
         } catch (e) {
             console.error(e);
-            setMessage('Error saving system settings');
+            showMessage('Error saving system settings');
         } finally {
             setSaving(false);
-            setTimeout(() => setMessage(''), 3000);
         }
     };
 
+    // ... Auth handlers ...
     const handleUpdatePassword = async () => {
-        if (newPassword !== verifyPassword) {
-            setMessage('Passwords do not match');
-            setTimeout(() => setMessage(''), 3000);
-            return;
-        }
-
+        if (newPassword !== verifyPassword) return showMessage('Passwords do not match');
         setUpdatingPassword(true);
         try {
-            const result = await DockerClient.updatePassword({
-                currentPassword,
-                newPassword
-            });
+            const result = await DockerClient.updatePassword({ currentPassword, newPassword });
             if (result.success) {
-                setMessage('Password updated successfully! Logging out...');
+                showMessage('Password updated! Logging out...');
                 setTimeout(() => onLogout?.(), 2000);
             } else {
-                setMessage(result.message || 'Failed to update password');
-                setTimeout(() => setMessage(''), 3000);
+                showMessage(result.message || 'Failed to update password');
             }
-        } catch (e) {
-            setMessage('Error updating password');
-            setTimeout(() => setMessage(''), 3000);
-        } finally {
-            setUpdatingPassword(false);
-        }
+        } catch { showMessage('Error updating password'); } finally { setUpdatingPassword(false); }
     };
 
     const handleUpdateUsername = async () => {
         const trimmed = newUsername.trim();
-        if (!trimmed) {
-            setMessage('Username cannot be empty');
-            return;
-        }
-
+        if (!trimmed) return showMessage('Username cannot be empty');
         setUpdatingUsername(true);
         try {
-            const result = await DockerClient.updateUsername({
-                currentPassword,
-                newUsername: trimmed
-            });
+            const result = await DockerClient.updateUsername({ currentPassword, newUsername: trimmed });
             if (result.success) {
-                setMessage('Username updated successfully! Logging out...');
+                showMessage('Username updated! Logging out...');
                 setTimeout(() => onLogout?.(), 2000);
             } else {
-                setMessage(result.message || 'Failed to update username');
-                setCurrentPassword(''); // Clear for retry
-                setTimeout(() => setMessage(''), 3000);
+                showMessage(result.message || 'Failed to update username');
+                setCurrentPassword('');
             }
-        } catch (e) {
-            setMessage('Error updating username');
-            setTimeout(() => setMessage(''), 3000);
-        } finally {
-            setUpdatingUsername(false);
-        }
+        } catch { showMessage('Error updating username'); } finally { setUpdatingUsername(false); }
     };
 
     const handleSetup2FA = async () => {
         try {
             const response = await DockerClient.setup2FA();
             setTwoFactorSetup(response);
-        } catch (e) {
-            setMessage('Failed to initiate 2FA setup');
-            setTimeout(() => setMessage(''), 3000);
-        }
+        } catch { showMessage('Failed to initiate 2FA setup'); }
     };
 
     const handleEnable2FA = async () => {
         if (!twoFactorSetup) return;
         setConfiguring2FA(true);
         try {
-            const result = await DockerClient.enable2FA({
-                secret: twoFactorSetup.secret,
-                code: verificationCode
-            });
+            const result = await DockerClient.enable2FA({ secret: twoFactorSetup.secret, code: verificationCode });
             if (result.success) {
-                setMessage('2FA enabled successfully!');
+                showMessage('2FA enabled successfully!');
                 setTwoFactorSetup(null);
                 setVerificationCode('');
                 fetchConfig();
             } else {
-                setMessage(result.message || 'Invalid verification code');
+                showMessage(result.message || 'Invalid verification code');
             }
-        } catch (e) {
-            setMessage('Error enabling 2FA');
-        } finally {
-            setConfiguring2FA(false);
-            setTimeout(() => setMessage(''), 3000);
-        }
+        } catch { showMessage('Error enabling 2FA'); } finally { setConfiguring2FA(false); }
     };
 
     const handleDisable2FA = async () => {
         const password = prompt("Please enter your current administrator password to disable 2FA:");
         if (!password) return;
-
         try {
             const result = await DockerClient.disable2FA(password);
             if (result.success) {
-                setMessage('Two-factor authentication disabled.');
+                showMessage('Two-factor authentication disabled.');
                 fetchConfig();
             } else {
-                setMessage(result.message || 'Failed to disable 2FA');
+                showMessage(result.message || 'Failed to disable 2FA');
             }
-        } catch (e) {
-            setMessage('Error disabling 2FA');
-        } finally {
-            setTimeout(() => setMessage(''), 3000);
-        }
+        } catch { showMessage('Error disabling 2FA'); }
     };
-
-    const handleUseDefault = () => {
-        const DEFAULT_URL = "http://192.168.1.3:9091";
-        setServerUrl(DEFAULT_URL);
-        DockerClient.setServerUrl(DEFAULT_URL);
-        setMessage('Reset to default server URL');
-        setTimeout(() => setMessage(''), 3000);
-        fetchConfig();
-    };
-
-
 
     return (
         <div className="flex flex-col h-full overflow-y-auto pb-6">
@@ -342,1377 +287,181 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                     {loading && <RefreshCw className="animate-spin text-primary" size={20} />}
                 </div>
                 <div className="flex items-center gap-2">
-                    {onLogout && (
-                        <button
-                            onClick={onLogout}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-xl transition-all text-xs font-semibold border border-red-500/20"
-                        >
-                            <LogOut size={14} />
-                            <span>Log Out</span>
-                        </button>
-                    )}
-                    <button
-                        onClick={fetchConfig}
-                        className="p-2 hover:bg-surface rounded-xl transition-all text-on-surface-variant hover:text-primary border border-outline/10 hover:border-primary/20"
-                        disabled={loading}
-                        title="Refresh settings"
-                    >
+                    <button onClick={fetchConfig} className="p-2 hover:bg-surface rounded-xl transition-all text-on-surface-variant hover:text-primary border border-outline/10" disabled={loading}>
                         <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
                     </button>
+                    {onLogout && (
+                        <button onClick={onLogout} className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-xl transition-all text-xs font-semibold border border-red-500/20">
+                            <LogOut size={14} /> <span>Log Out</span>
+                        </button>
+                    )}
                 </div>
             </div>
 
             {message && (
                 <div className="fixed top-6 right-6 z-50 animate-in fade-in slide-in-from-top-2 duration-300">
                     <div className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2.5 rounded-xl shadow-lg font-semibold text-sm">
-                        <CheckCircle size={18} />
-                        <span>{message}</span>
+                        <CheckCircle size={18} /> <span>{message}</span>
                     </div>
                 </div>
             )}
 
-            {/* Tabs Navigation */}
             <div className="flex items-center gap-2 mb-4 border-b border-outline/10 pb-2 overflow-x-auto">
-                <button
-                    onClick={() => setActiveTab('terminal')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-t-xl text-xs font-semibold transition-all whitespace-nowrap ${activeTab === 'terminal'
-                        ? 'bg-primary text-primary-foreground shadow-md border-b-2 border-primary'
-                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
-                        }`}
-                >
-                    <Terminal size={16} />
-                    <span>Terminal</span>
-                </button>
-                <button
-                    onClick={() => setActiveTab('connection')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-t-xl text-xs font-semibold transition-all whitespace-nowrap ${activeTab === 'connection'
-                        ? 'bg-primary text-primary-foreground shadow-md border-b-2 border-primary'
-                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
-                        }`}
-                >
-                    <Server size={16} />
-                    <span>Connection</span>
-                </button>
-                <button
-                    onClick={() => setActiveTab('account')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-t-xl text-xs font-semibold transition-all whitespace-nowrap ${activeTab === 'account'
-                        ? 'bg-primary text-primary-foreground shadow-md border-b-2 border-primary'
-                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
-                        }`}
-                >
-                    <Key size={16} />
-                    <span>Account</span>
-                </button>
-                <button
-                    onClick={() => setActiveTab('system')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-t-xl text-xs font-semibold transition-all whitespace-nowrap ${activeTab === 'system'
-                        ? 'bg-primary text-primary-foreground shadow-md border-b-2 border-primary'
-                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
-                        }`}
-                >
-                    <Settings2 size={16} />
-                    <span>System</span>
-                </button>
-                <button
-                    onClick={() => setActiveTab('info')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-t-xl text-xs font-semibold transition-all whitespace-nowrap ${activeTab === 'info'
-                        ? 'bg-primary text-primary-foreground shadow-md border-b-2 border-primary'
-                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
-                        }`}
-                >
-                    <Info size={16} />
-                    <span>Info</span>
-                </button>
-                <button
-                    onClick={() => setActiveTab('kafka' as any)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-t-xl text-xs font-semibold transition-all whitespace-nowrap ${activeTab === 'kafka' as any
-                        ? 'bg-primary text-primary-foreground shadow-md border-b-2 border-primary'
-                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
-                        }`}
-                >
-                    <RefreshCw size={16} />
-                    <span>Kafka</span>
-                </button>
+                <TabButton id="terminal" label="Terminal" icon={Terminal} active={activeTab === 'terminal'} onClick={setActiveTab} />
+                <TabButton id="connection" label="Connection" icon={Server} active={activeTab === 'connection'} onClick={setActiveTab} />
+                <TabButton id="account" label="Account" icon={Key} active={activeTab === 'account'} onClick={setActiveTab} />
+                <TabButton id="system" label="System" icon={Settings2} active={activeTab === 'system'} onClick={setActiveTab} />
+                <TabButton id="kafka" label="Kafka" icon={RefreshCw} active={activeTab === 'kafka'} onClick={setActiveTab} />
+                <TabButton id="info" label="Info" icon={Info} active={activeTab === 'info'} onClick={setActiveTab} />
             </div>
 
-            {/* Tab Content */}
             <div className="flex-1 overflow-y-auto">
                 {activeTab === 'terminal' && (
                     <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-6 shadow-lg backdrop-blur-sm">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-primary/10 rounded-xl text-primary">
-                                    <Terminal size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold">Server Terminal</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">Interactive web terminal for host management</p>
-                                </div>
+                        <SettingsCard title="Server Terminal" subtitle="Interactive web terminal" icon={Terminal}>
+                            <div className="p-4 bg-surface/80 rounded-xl border border-outline/5">
+                                <p className="text-sm text-on-surface leading-relaxed">External shell session to the host server.</p>
                             </div>
-                            <div className="space-y-4">
-                                <div className="p-4 bg-surface/80 rounded-xl border border-outline/5">
-                                    <p className="text-sm text-on-surface leading-relaxed">
-                                        Launch an interactive terminal session to execute commands, manage files, and monitor system resources directly from your browser.
-                                    </p>
-                                </div>
-                                <div className="flex justify-center">
-                                    <button
-                                        onClick={() => setIsShellOpen(true)}
-                                        className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-semibold px-5 py-2.5 rounded-xl hover:opacity-90 transition-all active:scale-[0.98] shadow-lg shadow-primary/20 text-sm"
-                                    >
-                                        <Terminal size={18} />
-                                        <span>Launch Terminal</span>
-                                    </button>
-                                </div>
+                            <div className="flex justify-center">
+                                <button onClick={() => setIsShellOpen(true)} className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-semibold px-5 py-2.5 rounded-xl hover:opacity-90 shadow-lg text-sm">
+                                    <Terminal size={18} /> <span>Launch Terminal</span>
+                                </button>
                             </div>
-                        </div>
+                        </SettingsCard>
                     </div>
                 )}
 
                 {activeTab === 'connection' && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        {/* Client Configuration */}
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-primary/10 rounded-xl text-primary">
-                                    <Server size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold">Client Connection</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">Manager server URL</p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-semibold text-on-surface-variant px-1">Server URL</label>
-                                    <div className="relative">
-                                        <Link className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={18} />
-                                        <input
-                                            type="text"
-                                            value={serverUrl}
-                                            onChange={(e) => setServerUrl(e.target.value)}
-                                            placeholder="http://192.168.1.100:9091"
-                                            className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 pl-11 pr-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="flex gap-3 pt-2">
-                                    <button
-                                        onClick={handleSaveServer}
-                                        className="flex-1 flex items-center justify-center gap-2 bg-primary text-primary-foreground font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition-all active:scale-[0.98] shadow-md shadow-primary/20 text-sm"
-                                    >
-                                        <Save size={16} />
-                                        <span>Save</span>
-                                    </button>
-                                    <button
-                                        onClick={handleUseDefault}
-                                        className="flex-1 flex items-center justify-center gap-2 bg-surface border border-outline/20 text-on-surface font-semibold px-4 py-2.5 rounded-xl hover:bg-surface-variant transition-all active:scale-[0.98] text-sm"
-                                    >
-                                        <span>Reset</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* System Configuration (Server-side) */}
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-secondary/10 rounded-xl text-secondary">
-                                    <Settings2 size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold">System Settings</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">Server configuration</p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-semibold text-on-surface-variant px-1">Docker Socket</label>
-                                    <div className="relative">
-                                        <Database className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={18} />
-                                        <input
-                                            type="text"
-                                            value={dockerSocket}
-                                            onChange={(e) => setDockerSocket(e.target.value)}
-                                            placeholder="/var/run/docker.sock"
-                                            className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 pl-11 pr-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-xs font-semibold text-on-surface-variant px-1">James Admin URL</label>
-                                    <div className="relative">
-                                        <Globe className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={18} />
-                                        <input
-                                            type="text"
-                                            value={jamesUrl}
-                                            onChange={(e) => setJamesUrl(e.target.value)}
-                                            placeholder="http://localhost:8001"
-                                            className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 pl-11 pr-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
-                                        />
-                                    </div>
-                                </div>
-
-                                <button
-                                    onClick={handleSaveSystem}
-                                    disabled={saving || loading}
-                                    className="w-full flex items-center justify-center gap-2 bg-secondary text-secondary-foreground font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition-all active:scale-[0.98] shadow-md shadow-secondary/20 disabled:opacity-50 text-sm mt-2"
-                                >
-                                    {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
-                                    <span>Apply Settings</span>
+                        <SettingsCard title="Client Connection" subtitle="Manager server URL" icon={Server}>
+                            <SettingsInput label="Server URL" value={serverUrl} onChange={setServerUrl} placeholder="http://core-server:9091" />
+                            <div className="flex gap-3 pt-2">
+                                <button onClick={handleSaveServer} className="flex-1 flex items-center justify-center gap-2 bg-primary text-primary-foreground font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 shadow-md text-sm">
+                                    <Save size={16} /> <span>Save</span>
                                 </button>
+                                <button onClick={() => { setServerUrl("http://192.168.1.3:9091"); handleSaveServer(); }} className="flex-1 bg-surface border border-outline/20 text-on-surface font-semibold px-4 py-2.5 rounded-xl hover:bg-surface-variant text-sm">Reset</button>
                             </div>
-                        </div>
+                        </SettingsCard>
 
-                        {/* Remote Syslog Configuration */}
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm mt-6">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-primary/10 rounded-xl text-primary">
-                                    <Terminal size={20} />
-                                </div>
-                                <div className="flex-1">
-                                    <h2 className="text-lg font-bold">Remote Syslog</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">Nginx & system remote logging targets</p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between p-4 bg-primary/5 rounded-xl border border-primary/20 transition-all hover:bg-primary/10">
-                                    <div className="flex-1 pr-4">
-                                        <p className="text-sm font-bold text-on-surface">Enable Proxy Syslog</p>
-                                        <p className="text-xs text-on-surface-variant leading-relaxed">Stream Nginx logs to a remote server</p>
-                                    </div>
-                                    <button
-                                        onClick={() => setProxyRsyslogEnabled(!proxyRsyslogEnabled)}
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 flex-shrink-0 ${proxyRsyslogEnabled ? 'bg-primary' : 'bg-surface border border-outline/30'}`}
-                                    >
-                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${proxyRsyslogEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-                                    </button>
-                                </div>
-                                <div className={`flex items-center justify-between p-4 bg-surface/50 rounded-xl border border-outline/10 transition-all ${!proxyRsyslogEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
-                                    <div className="flex-1 pr-4">
-                                        <p className="text-sm font-bold text-on-surface">Dual Logging (Local + Syslog)</p>
-                                        <p className="text-xs text-on-surface-variant leading-relaxed">Keep local logs even when syslog is enabled</p>
-                                    </div>
-                                    <button
-                                        onClick={() => setProxyDualLoggingEnabled(!proxyDualLoggingEnabled)}
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 flex-shrink-0 ${proxyDualLoggingEnabled ? 'bg-primary' : 'bg-surface border border-outline/30'}`}
-                                    >
-                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${proxyDualLoggingEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-                                    </button>
-                                </div>
-                                <div className="flex items-center justify-between p-4 bg-surface/50 rounded-xl border border-outline/10 transition-all">
-                                    <div className="flex-1 pr-4">
-                                        <p className="text-sm font-bold text-on-surface">JSON Logging</p>
-                                        <p className="text-xs text-on-surface-variant leading-relaxed">Use structured JSON format for access logs (easier parsing)</p>
-                                    </div>
-                                    <button
-                                        onClick={() => setJsonLoggingEnabled(!jsonLoggingEnabled)}
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 flex-shrink-0 ${jsonLoggingEnabled ? 'bg-primary' : 'bg-surface border border-outline/30'}`}
-                                    >
-                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${jsonLoggingEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-                                    </button>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-semibold text-on-surface-variant px-1">Syslog Host (External)</label>
-                                        <input
-                                            type="text"
-                                            value={syslogServerHost}
-                                            onChange={(e) => setSyslogServerHost(e.target.value)}
-                                            placeholder="192.168.1.10"
-                                            className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
-                                        />
-                                        <p className="text-[10px] text-on-surface-variant/60 px-1 italic">Public or LAN IP of the rsyslog server</p>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-semibold text-on-surface-variant px-1">Syslog Host (Internal/Docker)</label>
-                                        <input
-                                            type="text"
-                                            value={syslogServerInternal}
-                                            onChange={(e) => setSyslogServerInternal(e.target.value)}
-                                            placeholder="host.docker.internal"
-                                            className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
-                                        />
-                                        <p className="text-[10px] text-on-surface-variant/60 px-1 italic">Reach host from container (optional)</p>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-xs font-semibold text-on-surface-variant px-1">Syslog Port</label>
-                                    <input
-                                        type="number"
-                                        value={syslogPort}
-                                        onChange={(e) => setSyslogPort(parseInt(e.target.value))}
-                                        placeholder="514"
-                                        className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
-                                    />
-                                </div>
-
-                                <button
-                                    onClick={handleSaveSystem}
-                                    disabled={saving || loading}
-                                    className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition-all active:scale-[0.98] shadow-md shadow-primary/20 disabled:opacity-50 text-sm mt-2"
-                                >
-                                    {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
-                                    <span>Update Syslog Configuration</span>
+                        {form && (
+                            <SettingsCard title="System Settings" subtitle="Core Docker configuration" icon={Settings2} iconColor="secondary">
+                                <SettingsInput label="Docker Socket" value={form.dockerSocket} onChange={(v: string) => updateForm('dockerSocket', v)} />
+                                <SettingsInput label="James Admin URL" value={form.jamesWebAdminUrl} onChange={(v: string) => updateForm('jamesWebAdminUrl', v)} />
+                                <button onClick={handleSaveSystem} disabled={saving} className="w-full flex items-center justify-center gap-2 bg-secondary text-secondary-foreground font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 shadow-md disabled:opacity-50 text-sm mt-2">
+                                    {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />} <span>Apply Settings</span>
                                 </button>
-                            </div>
-                        </div>
+                            </SettingsCard>
+                        )}
                     </div>
                 )}
 
-                {activeTab === 'account' && (
+                {activeTab === 'system' && form && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        {/* Authentication Management */}
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-red-500/10 rounded-xl text-red-500">
-                                    <Key size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold">Account Security</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">Password & username</p>
-                                </div>
+                        {/* Remote Syslog */}
+                        <SettingsCard title="Logging Configuration" subtitle="Syslog & JSON Logging" icon={Terminal}>
+                            <SettingsToggle label="Enable Proxy Syslog" description="Stream Nginx logs to remote server" checked={form.proxyRsyslogEnabled} onChange={(v: boolean) => updateForm('proxyRsyslogEnabled', v)} />
+                            <SettingsToggle label="Dual Logging" description="Keep local logs + Syslog" checked={form.proxyDualLoggingEnabled} onChange={(v: boolean) => updateForm('proxyDualLoggingEnabled', v)} />
+                            <SettingsToggle label="JSON Logging" description="Structured log format" checked={form.jsonLoggingEnabled} onChange={(v: boolean) => updateForm('jsonLoggingEnabled', v)} />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <SettingsInput label="Syslog Host (External)" value={form.syslogServer} onChange={(v: string) => updateForm('syslogServer', v)} />
+                                <SettingsInput label="Syslog Host (Internal)" value={form.syslogServerInternal} onChange={(v: string) => updateForm('syslogServerInternal', v)} note="host.docker.internal" />
                             </div>
+                            <SettingsInput label="Syslog Port" value={form.syslogPort} onChange={(v: number) => updateForm('syslogPort', v)} type="number" />
 
-                            <div className="space-y-5">
-                                {/* Password Section */}
-                                <div className="space-y-3">
-                                    <h3 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Change Password</h3>
-                                    <div className="space-y-3">
-                                        <input
-                                            type="password"
-                                            placeholder="Current Password"
-                                            value={currentPassword}
-                                            onChange={(e) => setCurrentPassword(e.target.value)}
-                                            className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                                        />
-                                        <input
-                                            type="password"
-                                            placeholder="New Password"
-                                            value={newPassword}
-                                            onChange={(e) => setNewPassword(e.target.value)}
-                                            className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                                        />
-                                        <input
-                                            type="password"
-                                            placeholder="Verify New Password"
-                                            value={verifyPassword}
-                                            onChange={(e) => setVerifyPassword(e.target.value)}
-                                            className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                                        />
-                                        <button
-                                            onClick={handleUpdatePassword}
-                                            disabled={updatingPassword || !newPassword || !currentPassword}
-                                            className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl font-semibold text-sm hover:opacity-90 transition-all disabled:opacity-50 shadow-lg shadow-primary/20 active:scale-[0.98]"
-                                        >
-                                            {updatingPassword ? 'Updating...' : 'Update Password'}
-                                        </button>
-                                    </div>
-                                </div>
+                            <div className="h-px bg-outline/10 my-2" />
 
-                                <div className="h-px bg-outline/10" />
-
-                                {/* Username Section */}
-                                <div className="space-y-3">
-                                    <h3 className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Change Username</h3>
-                                    <div className="p-3 bg-blue-500/5 rounded-xl border border-blue-500/10">
-                                        <p className="text-xs text-blue-300 font-medium">
-                                            Current Username: <span className="text-white font-bold uppercase ml-1">{config?.username || 'admin'}</span>
-                                        </p>
-                                    </div>
-                                    <input
-                                        type="text"
-                                        placeholder="New Username"
-                                        value={newUsername}
-                                        onChange={(e) => setNewUsername(e.target.value)}
-                                        className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                                    />
-                                    <button
-                                        onClick={handleUpdateUsername}
-                                        disabled={updatingUsername || !newUsername || !currentPassword}
-                                        className="w-full bg-surface border border-outline/30 text-on-surface py-2.5 rounded-xl font-semibold text-sm hover:bg-white/5 transition-all disabled:opacity-50 active:scale-[0.98]"
-                                    >
-                                        {updatingUsername ? 'Updating...' : 'Update Username'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 2FA Configuration */}
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-blue-500/10 rounded-xl text-blue-500">
-                                    <ShieldCheck size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold">Two-Factor Authentication</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">Extra security layer</p>
-                                </div>
-                            </div>
-
-                            {config?.twoFactorEnabled ? (
-                                <div className="space-y-4">
-                                    <div className="flex items-center gap-2 p-4 bg-green-500/10 rounded-xl border border-green-500/20">
-                                        <ShieldCheck size={18} className="text-green-500" />
-                                        <span className="text-xs font-semibold text-green-500 uppercase tracking-wider">Active & Secure</span>
-                                    </div>
-                                    <p className="text-sm text-on-surface-variant leading-relaxed">
-                                        Your account is protected with two-factor authentication. You will be prompted for a security code when logging in from remote locations.
-                                    </p>
-                                    <button
-                                        onClick={handleDisable2FA}
-                                        className="w-full bg-red-500/10 text-red-500 py-2.5 rounded-xl font-semibold text-sm hover:bg-red-500/20 transition-all border border-red-500/20 active:scale-[0.98]"
-                                    >
-                                        Disable 2FA
-                                    </button>
-                                </div>
-                            ) : (
-                                <>
-                                    {!twoFactorSetup ? (
-                                        <div className="space-y-4">
-                                            <p className="text-sm text-on-surface-variant leading-relaxed">
-                                                Add an extra layer of security by enabling TOTP-based two-factor authentication. Use an authenticator app like Google Authenticator or Authy.
-                                            </p>
-                                            <button
-                                                onClick={handleSetup2FA}
-                                                className="w-full bg-blue-500 text-white py-2.5 rounded-xl font-semibold text-sm hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20 active:scale-[0.98]"
-                                            >
-                                                Configure 2FA
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                            <p className="text-xs font-semibold text-center text-on-surface-variant uppercase tracking-wider">Setup Verification</p>
-                                            <div className="bg-white p-4 rounded-2xl mx-auto w-fit shadow-xl shadow-black/20">
-                                                <img
-                                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(twoFactorSetup.qrUri)}`}
-                                                    alt="2FA QR Code"
-                                                    className="w-40 h-40"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <div className="flex items-center justify-between px-1">
-                                                    <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Manual Secret</label>
-                                                    <span className="text-[10px] text-blue-400 font-semibold uppercase">Base32</span>
-                                                </div>
-                                                <code className="block bg-surface p-3 rounded-xl text-xs break-all font-mono border border-outline/10 text-primary/80">
-                                                    {twoFactorSetup.secret}
-                                                </code>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <div className="flex gap-2">
-                                                    <input
-                                                        type="text"
-                                                        placeholder="000 000"
-                                                        value={verificationCode}
-                                                        onChange={(e) => setVerificationCode(e.target.value)}
-                                                        className="flex-1 bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-sm font-mono text-center tracking-[0.3em] font-bold focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-                                                        maxLength={6}
-                                                    />
-                                                    <button
-                                                        onClick={handleEnable2FA}
-                                                        disabled={configuring2FA || verificationCode.length !== 6}
-                                                        className="bg-primary text-primary-foreground px-6 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 hover:opacity-90 active:scale-[0.98] transition-all"
-                                                    >
-                                                        Enable
-                                                    </button>
-                                                </div>
-                                                <p className="text-xs text-on-surface-variant/60 text-center italic">
-                                                    Tip: Ensure your phone&apos;s time is synchronized with the network.
-                                                </p>
-                                            </div>
-                                            <button
-                                                onClick={() => setTwoFactorSetup(null)}
-                                                className="w-full text-xs text-on-surface-variant hover:text-red-400 transition-colors uppercase font-semibold tracking-wider pt-1"
-                                            >
-                                                Cancel Setup
-                                            </button>
-                                        </div>
-                                    )}
-                                </>
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'system' && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        {/* Environment Information */}
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-indigo-500/10 rounded-xl text-indigo-500">
-                                    <Info size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold">Environment</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">System configuration</p>
-                                </div>
-                            </div>
-
-                            {config ? (
-                                <div className="grid grid-cols-1 gap-3">
-                                    <div className="p-4 bg-surface/80 rounded-xl border border-outline/5 overflow-hidden">
-                                        <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Docker Binary</p>
-                                        <p className="text-on-surface font-mono text-sm truncate" title={config.dockerCommand}>{config.dockerCommand}</p>
-                                    </div>
-                                    <div className="p-4 bg-surface/80 rounded-xl border border-outline/5 overflow-hidden">
-                                        <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Docker Compose</p>
-                                        <p className="text-on-surface font-mono text-sm truncate" title={config.dockerComposeCommand}>{config.dockerComposeCommand}</p>
-                                    </div>
-                                    <div className="p-4 bg-surface/80 rounded-xl border border-outline/5 overflow-hidden">
-                                        <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Data Root</p>
-                                        <p className="text-on-surface font-mono text-sm truncate" title={config.dataRoot}>{config.dataRoot}</p>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-semibold text-on-surface-variant px-1">Nginx Logs Directory</label>
-                                        <div className="relative">
-                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">
-                                                <Terminal size={18} />
-                                            </div>
-                                            <input
-                                                type="text"
-                                                value={nginxLogDir}
-                                                onChange={(e) => setNginxLogDir(e.target.value)}
-                                                placeholder="/path/to/nginx/logs"
-                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 pl-11 pr-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm font-mono"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="flex flex-col items-center justify-center py-8 text-center">
-                                    <p className="text-sm text-on-surface-variant italic">No server information available.</p>
+                            <SettingsToggle label="Log Buffering" description="Buffer Nginx logs for performance" checked={form.logBufferingEnabled} onChange={(v: boolean) => updateForm('logBufferingEnabled', v)} />
+                            {form.logBufferingEnabled && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <SettingsInput label="Buffer Size (KB)" value={form.logBufferSizeKb} onChange={(v: number) => updateForm('logBufferSizeKb', v)} type="number" />
+                                    <SettingsInput label="Flush Interval (s)" value={form.logFlushIntervalSeconds} onChange={(v: number) => updateForm('logFlushIntervalSeconds', v)} type="number" />
                                 </div>
                             )}
-                        </div>
 
-                        {/* Storage Configuration */}
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className={`p-3 rounded-xl ${config?.storageBackend === 'database' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-primary/10 text-primary'}`}>
-                                    <Database size={20} />
+                            <SettingsToggle label="Database Log Persistence" description="Store logs in DB" checked={form.dbPersistenceLogsEnabled} onChange={(v: boolean) => updateForm('dbPersistenceLogsEnabled', v)} />
+
+                            <button onClick={handleSaveSystem} className="w-full mt-2 bg-primary text-primary-foreground py-2.5 rounded-xl font-semibold text-sm">Update Logging</button>
+                        </SettingsCard>
+
+                        {/* Security */}
+                        <SettingsCard title="Security & Jailing" subtitle="Automated threat mitigation" icon={ShieldAlert} iconColor="red-500">
+                            <SettingsToggle label="Auto-Jail Enabled" description="Block IPs after multiple violations" checked={form.jailEnabled} onChange={(v: boolean) => updateForm('jailEnabled', v)} color="bg-red-500" />
+                            {form.jailEnabled && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <SettingsInput label="Threshold" value={form.jailThreshold} onChange={(v: number) => updateForm('jailThreshold', v)} type="number" />
+                                    <SettingsInput label="Duration (min)" value={form.jailDurationMinutes} onChange={(v: number) => updateForm('jailDurationMinutes', v)} type="number" />
                                 </div>
-                                <div>
-                                    <h2 className="text-lg font-bold">Storage Configuration</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">Manage application data storage</p>
+                            )}
+                            <SettingsToggle label="Exponential Backoff" description="Double jail time on repeats" checked={form.exponentialJailEnabled} onChange={(v: boolean) => updateForm('exponentialJailEnabled', v)} color="bg-red-500" />
+                            {form.exponentialJailEnabled && <SettingsInput label="Max Duration (min)" value={form.maxJailDurationMinutes} onChange={(v: number) => updateForm('maxJailDurationMinutes', v)} type="number" />}
+
+                            <button onClick={handleSaveSystem} className="w-full mt-2 bg-red-500 text-white py-2.5 rounded-xl font-semibold text-sm hover:bg-red-600 transition-colors">Save Security Settings</button>
+                        </SettingsCard>
+
+                        {/* ClickHouse */}
+                        <SettingsCard title="ClickHouse Analytics" subtitle="High-performance warehousing" icon={Database} iconColor="blue-500">
+                            <SettingsToggle label="Enable ClickHouse" description="Offload logs to ClickHouse" checked={form.clickhouseSettings.enabled} onChange={(v: boolean) => updateNestedForm('clickhouseSettings', 'enabled', v)} />
+                            {form.clickhouseSettings.enabled && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <SettingsInput label="Host" value={form.clickhouseSettings.host} onChange={(v: string) => updateNestedForm('clickhouseSettings', 'host', v)} />
+                                    <SettingsInput label="Port" value={form.clickhouseSettings.port} onChange={(v: number) => updateNestedForm('clickhouseSettings', 'port', v)} type="number" />
+                                    <SettingsInput label="Database" value={form.clickhouseSettings.database} onChange={(v: string) => updateNestedForm('clickhouseSettings', 'database', v)} />
+                                    <SettingsInput label="User" value={form.clickhouseSettings.user} onChange={(v: string) => updateNestedForm('clickhouseSettings', 'user', v)} />
+                                    <SettingsInput label="Password" value={form.clickhouseSettings.password} onChange={(v: string) => updateNestedForm('clickhouseSettings', 'password', v)} type="password" />
+                                    <SettingsInput label="Batch Size" value={form.clickhouseSettings.batchSize} onChange={(v: number) => updateNestedForm('clickhouseSettings', 'batchSize', v)} type="number" />
                                 </div>
-                            </div>
+                            )}
+                            <button onClick={handleSaveSystem} className="w-full mt-2 bg-primary text-primary-foreground py-2.5 rounded-xl font-semibold text-sm">Update ClickHouse</button>
+                        </SettingsCard>
 
-                            <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 mb-4">
-                                <div>
-                                    <p className="text-sm font-semibold text-on-surface">Storage Backend</p>
-                                    <p className="text-xs text-on-surface-variant mt-1">Primary source for settings and configurations</p>
-                                </div>
-                                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${config?.storageBackend === 'database' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-primary/10 text-primary border-primary/20'}`}>
-                                    <Database size={14} />
-                                    <span className="text-xs font-bold uppercase tracking-wider">
-                                        {config?.storageBackend === 'database' ? 'PostgreSQL Database' : 'Local File JSON'}
-                                    </span>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                {config?.storageBackend === 'database' ? (
-                                    <button
-                                        className="flex items-center justify-center gap-2 bg-red-500/10 text-red-500 border border-red-500/20 py-2.5 rounded-xl font-semibold text-sm hover:bg-red-500/20 transition-all active:scale-[0.98]"
-                                        onClick={async () => {
-                                            if (confirm("Are you sure you want to disconnect from Database and switch back to File storage?")) {
-                                                setLoading(true);
-                                                try {
-                                                    const res = await DockerClient.switchToPostgresFileStorage();
-                                                    if (res.success) {
-                                                        setMessage('Switched to file storage successfully');
-                                                        fetchConfig();
-                                                    } else {
-                                                        alert(res.message || 'Failed to switch storage');
-                                                    }
-                                                } catch (e) {
-                                                    console.error(e);
-                                                } finally {
-                                                    setLoading(false);
-                                                }
-                                            }
-                                        }}
-                                    >
-                                        <RefreshCw size={16} />
-                                        <span>Switch to File</span>
-                                    </button>
-                                ) : (
-                                    <button
-                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm transition-all active:scale-[0.98] ${dbStatuses.find(s => s.type === 'postgres' && s.isInstalled)
-                                            ? 'bg-indigo-500 text-white hover:bg-indigo-600 shadow-lg shadow-indigo-500/20'
-                                            : 'bg-surface text-on-surface border border-outline/20 opacity-50 cursor-not-allowed'
-                                            }`}
-                                        disabled={!dbStatuses.find(s => s.type === 'postgres' && s.isInstalled)}
-                                        onClick={async () => {
-                                            if (confirm("Switch to Database storage? This will use the existing PostgreSQL installation.")) {
-                                                setLoading(true);
-                                                try {
-                                                    const res = await DockerClient.switchToPostgresDbStorage();
-                                                    if (res.success) {
-                                                        setMessage('Switched to database storage successfully');
-                                                        fetchConfig();
-                                                    } else {
-                                                        alert(res.message || 'Failed to switch storage. Ensure you have a valid database config.');
-                                                    }
-                                                } catch (e) {
-                                                    console.error(e);
-                                                } finally {
-                                                    setLoading(false);
-                                                }
-                                            }
-                                        }}
-                                        title={dbStatuses.find(s => s.type === 'postgres' && s.isInstalled) ? "Switch back to using PostgreSQL for settings" : "Use the DB management screen to install/enable database"}
-                                    >
-                                        <Database size={16} />
-                                        <span>Switch to DB</span>
-                                    </button>
-                                )}
-                                <button
-                                    className="flex items-center justify-center gap-2 bg-surface text-on-surface border border-outline/20 py-2.5 rounded-xl font-semibold text-sm hover:bg-surface-variant transition-all active:scale-[0.98]"
-                                    onClick={fetchConfig}
-                                >
-                                    <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-                                    <span>Sync Settings</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Logging Configuration */}
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-blue-500/10 rounded-xl text-blue-500">
-                                    <Terminal size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold">Logging Configuration</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">Control log data persistence</p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:border-primary/20">
-                                    <div>
-                                        <p className="text-sm font-semibold text-on-surface">Database Log Persistence</p>
-                                        <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">Only suspicious/error proxy logs will be stored in the database</p>
-                                    </div>
-                                    <button
-                                        onClick={() => setDbPersistenceLogsEnabled(!dbPersistenceLogsEnabled)}
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ring-2 ring-offset-2 ring-offset-surface ring-transparent active:ring-primary/20 ${dbPersistenceLogsEnabled ? 'bg-primary' : 'bg-surface-variant'}`}
-                                    >
-                                        <span
-                                            className={`${dbPersistenceLogsEnabled ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
-                                        />
-                                    </button>
-                                </div>
-
-                                <div className="p-4 bg-primary/5 rounded-xl border border-primary/10 mb-4">
-                                    <div className="flex items-start gap-3">
-                                        <div className="p-1.5 bg-primary/10 rounded-lg text-primary mt-0.5">
-                                            <Info size={14} />
-                                        </div>
-                                        <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                                            Disabling persistence only affects database storage for proxy events. Visualizations and real-time statistics will remain active in memory as long as the server is running.
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="h-px bg-outline/10 my-4" />
-
-                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:border-primary/20">
-                                    <div>
-                                        <p className="text-sm font-semibold text-on-surface">Log Buffering</p>
-                                        <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">Buffer Nginx access logs for better performance</p>
-                                    </div>
-                                    <button
-                                        onClick={() => setLogBufferingEnabled(!logBufferingEnabled)}
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ring-2 ring-offset-2 ring-offset-surface ring-transparent active:ring-primary/20 ${logBufferingEnabled ? 'bg-primary' : 'bg-surface-variant'}`}
-                                    >
-                                        <span
-                                            className={`${logBufferingEnabled ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
-                                        />
-                                    </button>
-                                </div>
-
-                                {logBufferingEnabled && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-semibold text-on-surface-variant px-1 flex justify-between">
-                                                <span>Buffer Size (KB)</span>
-                                                <span className="text-primary">{logBufferSizeKb} KB</span>
-                                            </label>
-                                            <input
-                                                type="number"
-                                                value={logBufferSizeKb}
-                                                onChange={(e) => setLogBufferSizeKb(parseInt(e.target.value) || 32)}
-                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                                            />
-                                            <p className="text-[10px] text-on-surface-variant/60 px-1 italic">Maximum size of the log buffer before flushing</p>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-semibold text-on-surface-variant px-1 flex justify-between">
-                                                <span>Flush Interval (Seconds)</span>
-                                                <span className="text-primary">{logFlushIntervalSeconds}s</span>
-                                            </label>
-                                            <input
-                                                type="number"
-                                                value={logFlushIntervalSeconds}
-                                                onChange={(e) => setLogFlushIntervalSeconds(parseInt(e.target.value) || 60)}
-                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                                            />
-                                            <p className="text-[10px] text-on-surface-variant/60 px-1 italic">Maximum time to wait before flushing the buffer</p>
-                                        </div>
-                                    </div>
-                                )}
-
-                                <button
-                                    onClick={handleSaveSystem}
-                                    disabled={saving || loading}
-                                    className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition-all active:scale-[0.98] shadow-md shadow-primary/20 disabled:opacity-50 text-sm"
-                                >
-                                    {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
-                                    <span>Save Logging Settings</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* IP Jailing & Security */}
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="p-3 bg-red-500/10 rounded-xl text-red-500">
-                                    <ShieldAlert size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold">IP Jailing & Security</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">Automated threat mitigation</p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:border-red-500/20">
-                                    <div>
-                                        <p className="text-sm font-semibold text-on-surface">Auto-Jail Enabled</p>
-                                        <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">Automatically block IPs after repeated violations</p>
-                                    </div>
-                                    <button
-                                        onClick={() => setJailEnabled(!jailEnabled)}
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ring-2 ring-offset-2 ring-offset-surface ring-transparent active:ring-red-500/20 ${jailEnabled ? 'bg-red-500' : 'bg-surface-variant'}`}
-                                    >
-                                        <span
-                                            className={`${jailEnabled ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
-                                        />
-                                    </button>
-                                </div>
-
-                                {jailEnabled && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-semibold text-on-surface-variant px-1 flex justify-between">
-                                                <span>Penalty Threshold</span>
-                                                <span className="text-primary">{jailThreshold} Attempts</span>
-                                            </label>
-                                            <input
-                                                type="number"
-                                                value={jailThreshold}
-                                                onChange={(e) => setJailThreshold(parseInt(e.target.value) || 5)}
-                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-mono"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-semibold text-on-surface-variant px-1 flex justify-between">
-                                                <span>Base Duration (Mins)</span>
-                                                <span className="text-primary">{jailDurationMinutes}m</span>
-                                            </label>
-                                            <input
-                                                type="number"
-                                                value={jailDurationMinutes}
-                                                onChange={(e) => setJailDurationMinutes(parseInt(e.target.value) || 30)}
-                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-mono"
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-
-                                <div className="h-px bg-outline/10 my-4" />
-
-                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:border-red-500/20">
-                                    <div>
-                                        <p className="text-sm font-semibold text-on-surface">Exponential Backoff</p>
-                                        <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">Double jail time on each repeat offence. Penalty resets after 1 week clean.</p>
-                                    </div>
-                                    <button
-                                        onClick={() => setExponentialJailEnabled(!exponentialJailEnabled)}
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ring-2 ring-offset-2 ring-offset-surface ring-transparent active:ring-red-500/20 ${exponentialJailEnabled ? 'bg-red-500' : 'bg-surface-variant'}`}
-                                    >
-                                        <span
-                                            className={`${exponentialJailEnabled ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
-                                        />
-                                    </button>
-                                </div>
-
-                                {exponentialJailEnabled && (
-                                    <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                                        <label className="text-xs font-semibold text-on-surface-variant px-1 flex justify-between">
-                                            <span>Max Duration (Mins)</span>
-                                            <span className="text-primary">{maxJailDurationMinutes}m (~{Math.round(maxJailDurationMinutes / 1440)} days)</span>
-                                        </label>
-                                        <input
-                                            type="number"
-                                            value={maxJailDurationMinutes}
-                                            onChange={(e) => setMaxJailDurationMinutes(parseInt(e.target.value) || 10080)}
-                                            className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-mono"
-                                        />
-                                        <p className="text-[10px] text-on-surface-variant/60 px-1 italic">Hard cap for escalated jail time to prevent infinite bans</p>
-                                    </div>
-                                )}
-
-                                <button
-                                    onClick={handleSaveSystem}
-                                    disabled={saving || loading}
-                                    className="w-full flex items-center justify-center gap-2 bg-red-500 text-white font-semibold px-4 py-2.5 rounded-xl hover:bg-red-600 transition-all active:scale-[0.98] shadow-md shadow-red-500/20 disabled:opacity-50 text-sm"
-                                >
-                                    {saving ? <RefreshCw className="animate-spin" size={16} /> : <ShieldAlert size={16} />}
-                                    <span>Save Security Settings</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* ClickHouse Analytics */}
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="p-3 bg-blue-500/10 rounded-xl text-blue-500">
-                                    <Database size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold">ClickHouse Analytics</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">High-performance warehouse for big data</p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:border-primary/20">
-                                    <div>
-                                        <p className="text-sm font-semibold text-on-surface">Enable ClickHouse</p>
-                                        <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">Offload high-volume logs to ClickHouse</p>
-                                    </div>
-                                    <button
-                                        onClick={() => setClickhouseEnabled(!clickhouseEnabled)}
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ring-2 ring-offset-2 ring-offset-surface ring-transparent active:ring-primary/20 ${clickhouseEnabled ? 'bg-primary' : 'bg-surface-variant'}`}
-                                    >
-                                        <span
-                                            className={`${clickhouseEnabled ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
-                                        />
-                                    </button>
-                                </div>
-
-                                {clickhouseEnabled && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-semibold text-on-surface-variant px-1">Host</label>
-                                            <input
-                                                type="text"
-                                                value={clickhouseHost}
-                                                onChange={(e) => setClickhouseHost(e.target.value)}
-                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                                                placeholder="localhost"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-semibold text-on-surface-variant px-1">Port</label>
-                                            <input
-                                                type="number"
-                                                value={clickhousePort}
-                                                onChange={(e) => setClickhousePort(parseInt(e.target.value) || 8123)}
-                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-semibold text-on-surface-variant px-1">Database</label>
-                                            <input
-                                                type="text"
-                                                value={clickhouseDatabase}
-                                                onChange={(e) => setClickhouseDatabase(e.target.value)}
-                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-semibold text-on-surface-variant px-1">User</label>
-                                            <input
-                                                type="text"
-                                                value={clickhouseUser}
-                                                onChange={(e) => setClickhouseUser(e.target.value)}
-                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-semibold text-on-surface-variant px-1">Password</label>
-                                            <input
-                                                type="password"
-                                                value={clickhousePassword}
-                                                onChange={(e) => setClickhousePassword(e.target.value)}
-                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                                                placeholder="••••••••"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-semibold text-on-surface-variant px-1 flex justify-between">
-                                                <span>Batch Size</span>
-                                                <span className="text-primary">{clickhouseBatchSize}</span>
-                                            </label>
-                                            <input
-                                                type="number"
-                                                value={clickhouseBatchSize}
-                                                onChange={(e) => setClickhouseBatchSize(parseInt(e.target.value) || 5000)}
-                                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-
-                                <button
-                                    onClick={handleSaveSystem}
-                                    disabled={saving || loading}
-                                    className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition-all active:scale-[0.98] shadow-md shadow-primary/20 disabled:opacity-50 text-sm"
-                                >
-                                    {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
-                                    <span>Update ClickHouse Configuration</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Disk Usage & Available Storage */}
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm lg:col-span-2">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-amber-500/10 rounded-xl text-amber-500">
-                                    <Maximize2 size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold">Disk & Storage</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">Physical storage and data root usage</p>
-                                </div>
-                                <div className="flex-1" />
-                                <button
-                                    onClick={async () => {
-                                        const res = await DockerClient.refreshStorageInfo();
-                                        if (res.status === 'success') {
-                                            alert(res.message);
-                                            // Optional: trigger a re-fetch of current data after a short delay
-                                            setTimeout(async () => {
-                                                const storage = await DockerClient.getStorageInfo();
-                                                setStorageInfo(storage);
-                                            }, 2000);
-                                        } else {
-                                            alert(res.message);
-                                        }
-                                    }}
-                                    className="flex items-center gap-2 bg-on-surface/5 hover:bg-on-surface/10 text-on-surface px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all active:scale-95"
-                                >
-                                    <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                                    <span>Force Sync</span>
-                                </button>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                                <div className="p-4 bg-surface/80 rounded-xl border border-outline/5 relative overflow-hidden group">
-                                    <div className="relative z-10">
-                                        <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-2">Total Capacity</p>
-                                        <div className="flex items-baseline gap-1">
-                                            <span className="text-2xl font-black text-on-surface">
-                                                {storageInfo ? (storageInfo.total / (1024 * 1024 * 1024)).toFixed(1) : '0.0'}
-                                            </span>
-                                            <span className="text-sm font-bold text-on-surface-variant">GB</span>
-                                        </div>
-                                    </div>
-                                    <Server className="absolute -right-2 -bottom-2 text-on-surface/[0.03] rotate-12 transition-transform group-hover:scale-110" size={80} />
-                                </div>
-
-                                <div className="p-4 bg-surface/80 rounded-xl border border-outline/5 relative overflow-hidden group">
-                                    <div className="relative z-10">
-                                        <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-2">Available Space</p>
-                                        <div className="flex items-baseline gap-1">
-                                            <span className="text-2xl font-black text-green-500">
-                                                {storageInfo ? (storageInfo.free / (1024 * 1024 * 1024)).toFixed(1) : '0.0'}
-                                            </span>
-                                            <span className="text-sm font-bold text-on-surface-variant">GB</span>
-                                        </div>
-                                    </div>
-                                    <CheckCircle className="absolute -right-2 -bottom-2 text-green-500/[0.05] rotate-12 transition-transform group-hover:scale-110" size={80} />
-                                </div>
-
-                                <div className="p-4 bg-surface/80 rounded-xl border border-outline/5 relative overflow-hidden group">
-                                    <div className="relative z-10">
-                                        <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-2">Data Root (DU)</p>
-                                        <div className="flex items-baseline gap-1">
-                                            <span className="text-2xl font-black text-primary">
-                                                {storageInfo ? (storageInfo.dataRootSize / (1024 * 1024)).toFixed(1) : '0.0'}
-                                            </span>
-                                            <span className="text-sm font-bold text-on-surface-variant">MB</span>
-                                        </div>
-                                    </div>
-                                    <Database className="absolute -right-2 -bottom-2 text-primary/[0.05] rotate-12 transition-transform group-hover:scale-110" size={80} />
-                                </div>
-                            </div>
-
+                        {/* Storage Info */}
+                        <SettingsCard title="Storage & Build" subtitle="Disk usage and buildkit" icon={HardDrive} iconColor="amber-500">
+                            <SettingsToggle label="BuildKit" description="Modern Docker build engine" checked={form.dockerBuildKit} onChange={(v: boolean) => updateForm('dockerBuildKit', v)} />
+                            <SettingsToggle label="CLI Build" description="Use Docker CLI for compose" checked={form.dockerCliBuild} onChange={(v: boolean) => updateForm('dockerCliBuild', v)} />
+                            <div className='h-px bg-outline/10 my-2' />
                             {storageInfo && (
-                                <div className="space-y-4">
-                                    {/* Usage Bar */}
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-on-surface-variant px-1">
-                                            <span>Filesystem Usage</span>
-                                            <span className={((storageInfo.used / storageInfo.total) * 100) > 90 ? 'text-red-500' : ''}>
-                                                {((storageInfo.used / storageInfo.total) * 100).toFixed(1)}% Used
-                                            </span>
-                                        </div>
-                                        <div className="h-2.5 w-full bg-surface-variant/20 rounded-full overflow-hidden border border-outline/5">
-                                            <div
-                                                className={`h-full transition-all duration-1000 ${((storageInfo.used / storageInfo.total) * 100) > 90 ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.3)]' : 'bg-primary'
-                                                    }`}
-                                                style={{ width: `${(storageInfo.used / storageInfo.total) * 100}%` }}
-                                            />
-                                        </div>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between text-xs font-bold uppercase text-on-surface-variant">
+                                        <span>Use: {((storageInfo.used / storageInfo.total) * 100).toFixed(1)}%</span>
+                                        <span>Free: {(storageInfo.free / 1024 / 1024 / 1024).toFixed(1)} GB</span>
                                     </div>
-
-                                    {/* Path Info */}
-                                    <div className="flex items-center gap-2 p-3 bg-surface/40 rounded-xl border border-outline/5 font-mono text-[10px] text-on-surface-variant">
-                                        <Info size={12} className="shrink-0" />
-                                        <span className="truncate">Root Path: {storageInfo.dataRootPath}</span>
+                                    <div className="h-2 w-full bg-surface-variant/20 rounded-full overflow-hidden">
+                                        <div className="h-full bg-amber-500" style={{ width: `${(storageInfo.used / storageInfo.total) * 100}%` }} />
                                     </div>
-
-                                    {/* System Disks List */}
-                                    {storageInfo.partitions.length > 0 && (
-                                        <div className="pt-4 border-t border-outline/10">
-                                            <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-3 px-1">Host Partitions</p>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                                {storageInfo.partitions.map((p, idx) => (
-                                                    <div key={idx} className="p-3 bg-black/20 rounded-xl border border-outline/5 hover:border-outline/20 transition-all group">
-                                                        <div className="flex items-center justify-between mb-2">
-                                                            <div className="flex items-center gap-2">
-                                                                <Server size={12} className="text-secondary" />
-                                                                <span className="text-xs font-bold font-mono text-on-surface group-hover:text-secondary transition-colors">{p.path}</span>
-                                                            </div>
-                                                            <span className={`text-[10px] font-bold ${p.usagePercentage > 90 ? 'text-red-500' : 'text-on-surface-variant'}`}>
-                                                                {p.usagePercentage.toFixed(1)}%
-                                                            </span>
-                                                        </div>
-                                                        <div className="h-1.5 w-full bg-surface-variant/20 rounded-full overflow-hidden mb-1.5">
-                                                            <div
-                                                                className={`h-full transition-all duration-700 ${p.usagePercentage > 90 ? 'bg-red-500' : 'bg-secondary'}`}
-                                                                style={{ width: `${p.usagePercentage}%` }}
-                                                            />
-                                                        </div>
-                                                        <div className="flex justify-between text-[9px] font-mono text-on-surface-variant/70">
-                                                            <span>{(p.used / (1024 * 1024 * 1024)).toFixed(1)} GB Used</span>
-                                                            <span>{(p.total / (1024 * 1024 * 1024)).toFixed(1)} GB Total</span>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Docker Usage Statistics */}
-                                    {storageInfo.dockerUsage && (
-                                        <div className="pt-4 border-t border-outline/10">
-                                            <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-3 px-1">Docker System Usage</p>
-                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                                {[
-                                                    { label: 'Images', size: storageInfo.dockerUsage.imagesSize, color: 'text-blue-400', bg: 'bg-blue-400/10' },
-                                                    { label: 'Containers', size: storageInfo.dockerUsage.containersSize, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
-                                                    { label: 'Volumes', size: storageInfo.dockerUsage.volumesSize, color: 'text-amber-400', bg: 'bg-amber-400/10' },
-                                                    { label: 'Build Cache', size: storageInfo.dockerUsage.buildCacheSize, color: 'text-purple-400', bg: 'bg-purple-400/10' }
-                                                ].map((item, idx) => (
-                                                    <div key={idx} className={`p-3 rounded-xl border border-outline/5 ${item.bg} backdrop-blur-sm group hover:scale-[1.02] transition-transform`}>
-                                                        <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest mb-1">{item.label}</p>
-                                                        <div className="flex items-baseline gap-1">
-                                                            <span className={`text-sm font-black ${item.color}`}>
-                                                                {(item.size / (1024 * 1024)).toFixed(1)}
-                                                            </span>
-                                                            <span className="text-[9px] font-bold text-on-surface-variant/60 uppercase">MB</span>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
+                                    <div className="grid grid-cols-2 gap-2 text-[10px] text-on-surface-variant">
+                                        {storageInfo.dockerUsage && Object.entries(storageInfo.dockerUsage).map(([k, v]) => (
+                                            <div key={k} className="p-2 bg-surface rounded border border-outline/5">{k}: {(Number(v) / 1024 / 1024).toFixed(1)} MB</div>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
-                        </div>
-
-                        {/* Docker Build Settings Card */}
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-blue-500/10 rounded-xl text-blue-500">
-                                    <Terminal size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold">Docker Build Settings</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">Control buildkit and CLI behavior</p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:bg-surface-variant/20">
-                                    <div className="flex-1 pr-4">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <p className="text-sm font-bold text-on-surface">BuildKit Enabled</p>
-                                            <span className="text-[10px] font-bold bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded uppercase tracking-tighter">DOCKER_BUILDKIT</span>
-                                        </div>
-                                        <p className="text-xs text-on-surface-variant leading-relaxed">Modern build engine for better performance and security</p>
-                                    </div>
-                                    <button
-                                        onClick={() => setDockerBuildKit(!dockerBuildKit)}
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 flex-shrink-0 ${dockerBuildKit ? 'bg-primary' : 'bg-surface border border-outline/30'}`}
-                                    >
-                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${dockerBuildKit ? 'translate-x-6' : 'translate-x-1'}`} />
-                                    </button>
-                                </div>
-
-                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:bg-surface-variant/20">
-                                    <div className="flex-1 pr-4">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <p className="text-sm font-bold text-on-surface">CLI Build Enabled</p>
-                                            <span className="text-[10px] font-bold bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded uppercase tracking-tighter">COMPOSE_DOCKER_CLI_BUILD</span>
-                                        </div>
-                                        <p className="text-xs text-on-surface-variant leading-relaxed">Use native Docker CLI for building compose projects</p>
-                                    </div>
-                                    <button
-                                        onClick={() => setDockerCliBuild(!dockerCliBuild)}
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 flex-shrink-0 ${dockerCliBuild ? 'bg-primary' : 'bg-surface border border-outline/30'}`}
-                                    >
-                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${dockerCliBuild ? 'translate-x-6' : 'translate-x-1'}`} />
-                                    </button>
-                                </div>
-
-                                <button
-                                    onClick={handleSaveSystem}
-                                    disabled={saving || loading}
-                                    className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition-all active:scale-[0.98] shadow-md shadow-primary/20 disabled:opacity-50 text-sm mt-2"
-                                >
-                                    {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
-                                    <span>Update Build Settings</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Storage Sync Settings Card */}
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-amber-500/10 rounded-xl text-amber-500">
-                                    <RefreshCw size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold">Storage Monitor</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">Background synchronization tasks</p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:bg-surface-variant/20">
-                                    <div className="flex-1 pr-4">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <p className="text-sm font-bold text-on-surface">Automatic Background Sync</p>
-                                            <span className="text-[10px] font-bold bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded uppercase tracking-tighter">{autoStorageRefreshInterval} MIN INTERVAL</span>
-                                        </div>
-                                        <p className="text-xs text-on-surface-variant leading-relaxed">Periodically update disk and docker size stats in background</p>
-                                    </div>
-                                    <button
-                                        onClick={() => setAutoStorageRefresh(!autoStorageRefresh)}
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 flex-shrink-0 ${autoStorageRefresh ? 'bg-primary' : 'bg-surface border border-outline/30'}`}
-                                    >
-                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${autoStorageRefresh ? 'translate-x-6' : 'translate-x-1'}`} />
-                                    </button>
-                                </div>
-
-                                <div className="p-4 bg-surface/80 rounded-xl border border-outline/5">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <label className="text-sm font-bold text-on-surface">Refresh Interval (Minutes)</label>
-                                        <span className="text-xs font-mono text-primary font-bold">{autoStorageRefreshInterval}m</span>
-                                    </div>
-                                    <input
-                                        type="range"
-                                        min="1"
-                                        max="120"
-                                        step="1"
-                                        value={autoStorageRefreshInterval}
-                                        onChange={(e) => setAutoStorageRefreshInterval(parseInt(e.target.value))}
-                                        className="w-full h-1.5 bg-outline/20 rounded-lg appearance-none cursor-pointer accent-primary"
-                                    />
-                                    <div className="flex justify-between mt-2 text-[10px] text-on-surface-variant font-medium">
-                                        <span>1 min</span>
-                                        <span>60 min</span>
-                                        <span>120 min</span>
-                                    </div>
-                                </div>
-
-                                <button
-                                    onClick={handleSaveSystem}
-                                    disabled={saving || loading}
-                                    className="w-full flex items-center justify-center gap-2 bg-on-surface text-surface font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition-all active:scale-[0.98] disabled:opacity-50 text-sm mt-2"
-                                >
-                                    {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
-                                    <span>Save Monitor Settings</span>
-                                </button>
-                            </div>
-                        </div>
-
+                            <button onClick={handleSaveSystem} className="w-full mt-2 bg-primary text-primary-foreground py-2.5 rounded-xl font-semibold text-sm">Update Build Settings</button>
+                        </SettingsCard>
                     </div>
                 )}
 
-                {activeTab === 'info' && (
+                {activeTab === 'kafka' && form && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        {/* Version Info */}
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-purple-500/10 rounded-xl text-purple-500">
-                                    <Info size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold">Application Version</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">Client & server versions</p>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="p-4 bg-surface/80 rounded-xl border border-outline/5 flex items-center justify-between">
-                                    <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Client</p>
-                                    <p className="text-sm font-mono font-bold text-on-surface">v{packageJson.version}</p>
-                                </div>
-                                <div className="p-4 bg-surface/80 rounded-xl border border-outline/5 flex items-center justify-between">
-                                    <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Server</p>
-                                    <p className="text-sm font-mono font-bold text-on-surface">{config ? `v${config.appVersion}` : 'Checking...'}</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'kafka' as any && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        {/* Kafka Configuration */}
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-blue-500/10 rounded-xl text-blue-500">
-                                    <RefreshCw size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold">Kafka Integration</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">External IP blocking requests</p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5">
-                                    <div className="flex-1 pr-4">
-                                        <p className="text-sm font-bold text-on-surface">Enable Consumer</p>
-                                        <p className="text-xs text-on-surface-variant leading-relaxed">Listen for IP blocking requests from other apps</p>
-                                    </div>
-                                    <button
-                                        onClick={() => setKafkaEnabled(!kafkaEnabled)}
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 flex-shrink-0 ${kafkaEnabled ? 'bg-primary' : 'bg-surface border border-outline/30'}`}
-                                    >
-                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${kafkaEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-                                    </button>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-xs font-semibold text-on-surface-variant px-1">Bootstrap Servers (Consumer)</label>
-                                    <input
-                                        type="text"
-                                        value={kafkaBootstrap}
-                                        onChange={(e) => setKafkaBootstrap(e.target.value)}
-                                        placeholder="localhost:9092"
-                                        className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-xs font-semibold text-on-surface-variant px-1">Admin/Controller Host</label>
-                                    <input
-                                        type="text"
-                                        value={kafkaAdminHost}
-                                        onChange={(e) => setKafkaAdminHost(e.target.value)}
-                                        placeholder="localhost:9092"
-                                        className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-xs font-semibold text-on-surface-variant px-1">Topic Name</label>
-                                    <input
-                                        type="text"
-                                        value={kafkaTopic}
-                                        onChange={(e) => setKafkaTopic(e.target.value)}
-                                        placeholder="ip-blocking-requests"
-                                        className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-xs font-semibold text-on-surface-variant px-1">Group ID</label>
-                                    <input
-                                        type="text"
-                                        value={kafkaGroupId}
-                                        onChange={(e) => setKafkaGroupId(e.target.value)}
-                                        placeholder="docker-manager-jailer"
-                                        className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-xs font-semibold text-on-surface-variant px-1">Reputation Events Topic</label>
-                                    <input
-                                        type="text"
-                                        value={kafkaReputationTopic}
-                                        onChange={(e) => setKafkaReputationTopic(e.target.value)}
-                                        placeholder="ip-reputation-events"
-                                        className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
-                                    />
-                                </div>
-
-                                <button
-                                    onClick={handleSaveSystem}
-                                    disabled={saving || loading}
-                                    className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition-all active:scale-[0.98] shadow-md shadow-primary/20 disabled:opacity-50 text-sm mt-2"
-                                >
-                                    {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
-                                    <span>Save Kafka Settings</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="bg-surface/50 border border-outline/10 rounded-2xl p-6 shadow-lg backdrop-blur-sm">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-primary/10 rounded-xl text-primary">
-                                    <Info size={20} />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold">Message Format</h2>
-                                    <p className="text-xs text-on-surface-variant mt-0.5">JSON payload structure</p>
-                                </div>
-                            </div>
-                            <div className="space-y-4">
-                                <p className="text-sm text-on-surface leading-relaxed">
-                                    <strong>Block Request:</strong> Publish to Topic Name
-                                </p>
-                                <pre className="p-4 bg-black/30 rounded-xl border border-white/5 font-mono text-[11px] text-blue-300 overflow-x-auto">
-                                    {`{
+                        <SettingsCard title="Kafka Integration" subtitle="Event streaming" icon={RefreshCw} iconColor="blue-500">
+                            <SettingsToggle label="Enable Consumer" description="Listen for blocking requests" checked={form.kafkaSettings.enabled} onChange={(v: boolean) => updateNestedForm('kafkaSettings', 'enabled', v)} />
+                            <SettingsInput label="Bootstrap Servers" value={form.kafkaSettings.bootstrapServers} onChange={(v: string) => updateNestedForm('kafkaSettings', 'bootstrapServers', v)} />
+                            <SettingsInput label="Admin Host" value={form.kafkaSettings.adminHost} onChange={(v: string) => updateNestedForm('kafkaSettings', 'adminHost', v)} />
+                            <SettingsInput label="Topic" value={form.kafkaSettings.topic} onChange={(v: string) => updateNestedForm('kafkaSettings', 'topic', v)} />
+                            <SettingsInput label="Reputation Topic" value={form.kafkaSettings.reputationTopic} onChange={(v: string) => updateNestedForm('kafkaSettings', 'reputationTopic', v)} />
+                            <button onClick={handleSaveSystem} className="w-full mt-2 bg-primary text-primary-foreground py-2.5 rounded-xl font-semibold text-sm">Save Kafka Settings</button>
+                        </SettingsCard>
+                        <SettingsCard title="Message Format" subtitle="JSON payload structure" icon={Info}>
+                            <p className="text-sm text-on-surface leading-relaxed mb-2"><strong>Block Request:</strong> Publish to Topic Name</p>
+                            <pre className="p-4 bg-black/30 rounded-xl border border-white/5 font-mono text-[11px] text-blue-300 overflow-x-auto mb-4">
+                                {`{
   "ip": "1.2.3.4",
   "durationMinutes": 30,
   "reason": "Suspicious activity"
 }`}
-                                </pre>
-
-                                <p className="text-sm text-on-surface leading-relaxed mt-4">
-                                    <strong>Reputation Event:</strong> Emitted on Reputation Topic
-                                </p>
-                                <pre className="p-4 bg-black/30 rounded-xl border border-white/5 font-mono text-[11px] text-green-300 overflow-x-auto">
-                                    {`{
+                            </pre>
+                            <p className="text-sm text-on-surface leading-relaxed mb-2"><strong>Reputation Event:</strong> Emitted on Reputation Topic</p>
+                            <pre className="p-4 bg-black/30 rounded-xl border border-white/5 font-mono text-[11px] text-green-300 overflow-x-auto">
+                                {`{
   "type": "BLOCK",
   "ip": "1.2.3.4",
   "timestamp": 1675862400000,
@@ -1721,38 +470,70 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
   "tags": ["scanner"],
   "dangerTags": ["high-risk"]
 }`}
-                                </pre>
-                                <div className="p-4 bg-surface/80 rounded-xl border border-outline/5">
-                                    <p className="text-xs text-on-surface leading-relaxed italic">
-                                        Note: Kafka consumer will auto-restart when settings are applied.
-                                    </p>
+                            </pre>
+                        </SettingsCard>
+                    </div>
+                )}
+
+                {activeTab === 'account' && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <SettingsCard title="Account Security" subtitle="Credentials management" icon={Key} iconColor="red-500">
+                            <h3 className="text-xs font-semibold uppercase tracking-wider mb-2">Change Password</h3>
+                            <input type="password" placeholder="Current Password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} className="w-full bg-surface border border-outline/20 rounded-xl px-3 py-2 text-sm mb-2" />
+                            <input type="password" placeholder="New Password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full bg-surface border border-outline/20 rounded-xl px-3 py-2 text-sm mb-2" />
+                            <input type="password" placeholder="Verify Password" value={verifyPassword} onChange={e => setVerifyPassword(e.target.value)} className="w-full bg-surface border border-outline/20 rounded-xl px-3 py-2 text-sm mb-2" />
+                            <button onClick={handleUpdatePassword} disabled={updatingPassword} className="w-full bg-primary text-primary-foreground py-2 rounded-xl text-sm font-bold">Update Password</button>
+
+                            <div className="h-px bg-outline/10 my-4" />
+
+                            <h3 className="text-xs font-semibold uppercase tracking-wider mb-2">Change Username</h3>
+                            <input type="text" placeholder="New Username" value={newUsername} onChange={e => setNewUsername(e.target.value)} className="w-full bg-surface border border-outline/20 rounded-xl px-3 py-2 text-sm mb-2" />
+                            <button onClick={handleUpdateUsername} disabled={updatingUsername} className="w-full bg-surface border border-outline/20 py-2 rounded-xl text-sm font-bold">Update Username</button>
+                        </SettingsCard>
+
+                        <SettingsCard title="Two-Factor Authentication" subtitle="TOTP Security" icon={ShieldCheck} iconColor="blue-500">
+                            {systemConfig?.twoFactorEnabled ? (
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-2 text-green-500 font-bold bg-green-500/10 p-3 rounded-xl"><CheckCircle size={16} /> 2FA Active</div>
+                                    <button onClick={handleDisable2FA} className="w-full bg-red-500/10 text-red-500 py-2 rounded-xl text-sm font-bold">Disable 2FA</button>
                                 </div>
+                            ) : (
+                                !twoFactorSetup ? (
+                                    <button onClick={handleSetup2FA} className="w-full bg-blue-500 text-white py-2 rounded-xl text-sm font-bold">Setup 2FA</button>
+                                ) : (
+                                    <div className="space-y-4 text-center">
+                                        <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(twoFactorSetup.qrUri)}`} className="mx-auto rounded-xl" />
+                                        <p className="text-xs font-mono bg-surface p-2 rounded">{twoFactorSetup.secret}</p>
+                                        <div className="flex gap-2">
+                                            <input value={verificationCode} onChange={e => setVerificationCode(e.target.value)} placeholder="000000" className="flex-1 bg-surface border border-outline/20 rounded-xl px-3 py-2 text-center font-mono tracking-widest" maxLength={6} />
+                                            <button onClick={handleEnable2FA} disabled={configuring2FA} className="bg-primary text-white px-4 rounded-xl text-sm font-bold">Enable</button>
+                                        </div>
+                                    </div>
+                                )
+                            )}
+                        </SettingsCard>
+                    </div>
+                )}
+
+                {activeTab === 'info' && (
+                    <div className="grid grid-cols-1 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <SettingsCard title="About" icon={Info}>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="p-4 bg-surface/50 rounded-xl">Client Version: <span className="font-mono font-bold">{packageJson.version}</span></div>
+                                <div className="p-4 bg-surface/50 rounded-xl">Server Version: <span className="font-mono font-bold">{systemConfig ? systemConfig.appVersion : '...'}</span></div>
                             </div>
-                        </div>
+                        </SettingsCard>
                     </div>
                 )}
             </div>
 
-            {
-                isShellOpen && (
-                    <Modal
-                        onClose={() => setIsShellOpen(false)}
-                        title="Server Terminal"
-                        description="Interactive shell session"
-                        icon={<Terminal size={24} />}
-                        maxWidth="max-w-6xl"
-                        className="h-[80vh] flex flex-col"
-                    >
-                        <div className="flex-1 bg-black rounded-2xl overflow-hidden mt-4 border border-outline/10 p-2">
-                            <WebShell
-                                url={`${DockerClient.getServerUrl()}/shell/server`}
-                                onClose={() => setIsShellOpen(false)}
-                            />
-                        </div>
-                    </Modal>
-                )
-            }
-
-        </div >
+            {isShellOpen && (
+                <Modal onClose={() => setIsShellOpen(false)} title="Server Terminal" icon={<Terminal size={24} />} className="h-[80vh] flex flex-col" maxWidth="max-w-6xl">
+                    <div className="flex-1 bg-black rounded-2xl overflow-hidden mt-4 border border-outline/10 p-2">
+                        <WebShell url={`${DockerClient.getServerUrl()}/shell/server`} onClose={() => setIsShellOpen(false)} />
+                    </div>
+                </Modal>
+            )}
+        </div>
     );
 }

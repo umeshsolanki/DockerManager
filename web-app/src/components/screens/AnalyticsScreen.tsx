@@ -389,24 +389,26 @@ export default function AnalyticsScreen() {
                     <button
                         onClick={() => setSelectedHost('global')}
                         className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${selectedHost === 'global'
-                                ? 'bg-primary text-on-primary shadow-lg shadow-primary/20'
-                                : 'text-on-surface-variant hover:bg-white/5'
+                            ? 'bg-primary text-on-primary shadow-lg shadow-primary/20'
+                            : 'text-on-surface-variant hover:bg-white/5'
                             }`}
                     >
                         Global
                     </button>
-                    {Object.keys(stats.hostwiseStats || {}).sort().map(host => (
-                        <button
-                            key={host}
-                            onClick={() => setSelectedHost(host)}
-                            className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${selectedHost === host
+                    {Object.keys(stats.hostwiseStats || {})
+                        .sort((a, b) => (stats.hostwiseStats?.[b]?.totalHits || 0) - (stats.hostwiseStats?.[a]?.totalHits || 0))
+                        .map(host => (
+                            <button
+                                key={host}
+                                onClick={() => setSelectedHost(host)}
+                                className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${selectedHost === host
                                     ? 'bg-primary text-on-primary shadow-lg shadow-primary/20'
                                     : 'text-on-surface-variant hover:bg-white/5'
-                                }`}
-                        >
-                            {host}
-                        </button>
-                    ))}
+                                    }`}
+                            >
+                                {host}
+                            </button>
+                        ))}
                 </div>
             )}
 

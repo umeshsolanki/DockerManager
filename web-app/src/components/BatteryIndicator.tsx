@@ -22,7 +22,7 @@ export default function BatteryIndicator() {
     if (!status || status.percentage < 0) return null;
 
     return (
-        <div className="flex flex-col items-center gap-1 py-4">
+        <div className="flex flex-col items-center gap-1 py-4 shrink-0">
             {status.isCharging ? (
                 <BatteryCharging size={20} className="text-green-500" />
             ) : status.percentage > 80 ? (

@@ -20,14 +20,17 @@ import org.jetbrains.exposed.sql.insert
  */
 object ServiceContainer {
     // Core services
+    // Core services
     val ipReputationService: com.umeshsolanki.dockermanager.ip.IIpReputationService = com.umeshsolanki.dockermanager.ip.IpReputationServiceImpl()
     
     val firewallService: IFirewallService = FirewallServiceImpl(ipReputationService)
     
     val ipInfoService: com.umeshsolanki.dockermanager.ip.IIpInfoService = com.umeshsolanki.dockermanager.ip.IpInfoServiceImpl()
     
+    val kafkaService: IKafkaService = KafkaServiceImpl()
+
     // Dependent services
-    val jailManagerService: IJailManagerService = JailManagerServiceImpl(firewallService, ipInfoService, ipReputationService)
+    val jailManagerService: IJailManagerService = JailManagerServiceImpl(firewallService, ipInfoService, ipReputationService, kafkaService)
 
     // Workers
     val ipEnrichmentWorker = com.umeshsolanki.dockermanager.jail.IpEnrichmentWorker(firewallService, ipInfoService)
@@ -41,16 +44,57 @@ object ServiceContainer {
 
     val proxyService: IProxyService = ProxyServiceImpl(jailManagerService, sslService)
     
-    val kafkaService: IKafkaService = KafkaServiceImpl().apply {
-        registerHandler(object : KafkaMessageHandler {
+    init {
+        kafkaService.registerHandler(object : KafkaMessageHandler {
             override fun canHandle(topic: String): Boolean = true // Handle all topics to check rules
             override fun handle(topic: String, key: String?, value: String) {
+                val logger = org.slf4j.LoggerFactory.getLogger("KafkaHandler")
                 try {
                     val settings = AppConfig.settings
+                    
+                    // Original IP blocking logic if topic match
+                    if (topic == settings.kafkaSettings.topic) {
+                        logger.info("Received blocking request on topic $topic. Value: $value")
+                        try {
+                            // First try to parse as generic JSON to validate it's not garbage
+                            val request = try {
+                                AppConfig.json.decodeFromString<IpBlockRequest>(value)
+                            } catch (e: Exception) {
+                                logger.error("Failed to decode IpBlockRequest: ${e.message}. Value: $value", e)
+                                return
+                            }
+                            
+                            logger.info("Decoded request: $request. Executing jailIP...")
+                            
+                            // Use service scope or runBlocking if appropriate, but here we launch async
+                            // Better to use a defined scope for the container if possible, but for now using GlobalScope with explicit error handling
+                            kotlinx.coroutines.GlobalScope.launch {
+                                try {
+                                    val success = jailManagerService.performJailExecution(
+                                        ip = request.ip,
+                                        durationMinutes = request.durationMinutes,
+                                        reason = request.reason
+                                    )
+                                    if (success) {
+                                        logger.info("Successfully jailed IP ${request.ip} from Kafka request")
+                                    } else {
+                                        logger.warn("Failed to jail IP ${request.ip} (jailIP returned false)")
+                                    }
+                                } catch (e: Exception) {
+                                    logger.error("Error executing jailIP for ${request.ip}", e)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            logger.error("Unexpected error processing blocking request", e)
+                        }
+                    }
+
+                    // Process rules for other topics (or same topic if needed)
+                    // Note: This logic was previously wrapping specifically the blocking logic, but it should be independent or sequential
                     val processedEvent = KafkaRuleProcessor.process(topic, value, settings.kafkaRules)
                     
                     // Store in DB if any rule says so (default is true for now)
-                    if (processedEvent.appliedRules.isNotEmpty() || topic == settings.kafkaSettings.topic) {
+                    if (processedEvent.appliedRules.isNotEmpty()) {
                          // Save to database
                          kotlinx.coroutines.GlobalScope.launch {
                              try {
@@ -65,28 +109,13 @@ object ServiceContainer {
                                      }
                                  }
                              } catch (e: Exception) {
-                                 org.slf4j.LoggerFactory.getLogger("KafkaHandler").error("Failed to store processed event", e)
+                                 logger.error("Failed to store processed event", e)
                              }
                          }
                     }
 
-                    // Original IP blocking logic if topic match
-                    if (topic == settings.kafkaSettings.topic) {
-                        try {
-                            val request = AppConfig.json.decodeFromString<IpBlockRequest>(processedEvent.processedValue)
-                            kotlinx.coroutines.GlobalScope.launch {
-                                jailManagerService.jailIP(
-                                    ip = request.ip,
-                                    durationMinutes = request.durationMinutes,
-                                    reason = request.reason
-                                )
-                            }
-                        } catch (e: Exception) {
-                            org.slf4j.LoggerFactory.getLogger("KafkaHandler").error("Failed to process block request", e)
-                        }
-                    }
                 } catch (e: Exception) {
-                    org.slf4j.LoggerFactory.getLogger("KafkaHandler").error("Failed to process kafka message with rules", e)
+                    logger.error("Failed to process kafka message with rules", e)
                 }
             }
         })

@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap
 interface IJailManagerService {
     fun listJails(): List<JailedIP>
     suspend fun jailIP(ip: String, durationMinutes: Int, reason: String): Boolean
+    suspend fun performJailExecution(ip: String, durationMinutes: Int, reason: String): Boolean
     fun unjailIP(ip: String): Boolean
     fun getCountryCode(ip: String): String
     fun isIPJailed(ip: String): Boolean
@@ -29,7 +30,8 @@ interface IJailManagerService {
 class JailManagerServiceImpl(
     private val firewallService: IFirewallService,
     private val ipInfoService: com.umeshsolanki.dockermanager.ip.IIpInfoService,
-    private val ipReputationService: com.umeshsolanki.dockermanager.ip.IIpReputationService
+    private val ipReputationService: com.umeshsolanki.dockermanager.ip.IIpReputationService,
+    private val kafkaService: com.umeshsolanki.dockermanager.kafka.IKafkaService
 ) : IJailManagerService {
     private val logger = LoggerFactory.getLogger(JailManagerServiceImpl::class.java)
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -97,6 +99,31 @@ class JailManagerServiceImpl(
     }
 
     override suspend fun jailIP(ip: String, durationMinutes: Int, reason: String): Boolean {
+        val settings = AppConfig.settings
+        
+        // If Kafka is enabled, publish the request and let the consumer handle the actual jailing.
+        // This effectively centralizes all blocking logic through Kafka.
+        if (settings.kafkaSettings.enabled) {
+            try {
+                val request = com.umeshsolanki.dockermanager.kafka.IpBlockRequest(
+                    ip = ip,
+                    durationMinutes = durationMinutes,
+                    reason = reason
+                )
+                val json = kotlinx.serialization.json.Json.encodeToString(com.umeshsolanki.dockermanager.kafka.IpBlockRequest.serializer(), request)
+                kafkaService.publishMessage(settings.kafkaSettings, settings.kafkaSettings.topic, ip, json)
+                logger.info("Published jail request for $ip to topic ${settings.kafkaSettings.topic}")
+                return true
+            } catch (e: Exception) {
+                logger.error("Failed to publish jail request to Kafka, falling back to direct execution", e)
+            }
+        }
+        
+        // Fallback or if Kafka disabled
+        return performJailExecution(ip, durationMinutes, reason)
+    }
+
+    override suspend fun performJailExecution(ip: String, durationMinutes: Int, reason: String): Boolean {
         val settings = AppConfig.settings
         var finalDuration = durationMinutes
 
@@ -363,12 +390,24 @@ class JailManagerServiceImpl(
         
         // Threshold check (Windowed)
         if (!shouldJail) {
-            // Only count non-200, non-300 status codes as errors
-            if (status >= 400 || status == 0) {
-                val currentViolations = proxyViolationsInWindow.merge(ip, 1, Int::plus) ?: 1
+            // Only count Client Errors (4xx) as violations.
+            // Ignore Server Errors (5xx) as they are likely app issues.
+            // Ignore Nginx special codes: 444 (No Response/Blocked), 499 (Client Closed Request)
+            if (status in 400..499 && status != 444 && status != 499) {
+                
+                // Weighted Scoring
+                var weight = 1
+                
+                // Auth/Forbidden failures are more suspicious than 404s
+                if (status == 401 || status == 403 || status == 405) {
+                    weight = 5
+                }
+                
+                val currentViolations = proxyViolationsInWindow.merge(ip, weight, Int::plus) ?: weight
+                
                 if (currentViolations >= secSettings.proxyJailThresholdNon200) {
                     shouldJail = true
-                    reason = "Too many non-200 responses ($currentViolations in window)"
+                    reason = "Too many client errors ($currentViolations points in window)"
                     // Reset counter after jailing
                     proxyViolationsInWindow.remove(ip)
                 }

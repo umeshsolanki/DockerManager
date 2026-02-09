@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
     Shield,
     Globe,
@@ -8,12 +9,11 @@ import {
     Zap,
     ShieldAlert,
     TrendingUp,
-    Clock,
     Lock,
-    Users,
     MousePointerClick,
-    Server,
-    Container
+    Container,
+    ArrowRight,
+    Server
 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { BtmpStats, ProxyStats, DockerContainer } from '@/lib/types';
@@ -25,9 +25,10 @@ import {
     Tooltip,
     ResponsiveContainer
 } from 'recharts';
-import { RefreshCw } from 'lucide-react'; // Added import
+import { RefreshCw } from 'lucide-react';
 
 export default function DashboardScreen() {
+    const router = useRouter();
     const [btmpStats, setBtmpStats] = useState<BtmpStats | null>(null);
     const [proxyStats, setProxyStats] = useState<ProxyStats | null>(null);
     const [containers, setContainers] = useState<DockerContainer[]>([]);
@@ -56,6 +57,10 @@ export default function DashboardScreen() {
         const interval = setInterval(fetchData, 60000);
         return () => clearInterval(interval);
     }, []);
+
+    const navigateTo = (screen: string) => {
+        router.push(`/?screen=${screen}`);
+    };
 
     const runningContainers = containers.filter(c => c.state === 'running').length;
 
@@ -103,6 +108,7 @@ export default function DashboardScreen() {
                     value={runningContainers.toString()}
                     subValue={`Total ${containers.length}`}
                     color="primary"
+                    onClick={() => navigateTo('Containers')}
                 />
                 <StatCard
                     icon={<Shield size={20} />}
@@ -110,6 +116,7 @@ export default function DashboardScreen() {
                     value={btmpStats?.totalFailedAttempts?.toString() || '0'}
                     subValue={`${btmpStats?.jailedIps?.length || 0} Blocked`}
                     color="red"
+                    onClick={() => navigateTo('Security')}
                 />
                 <StatCard
                     icon={<MousePointerClick size={20} />}
@@ -117,6 +124,7 @@ export default function DashboardScreen() {
                     value={proxyStats?.totalHits.toLocaleString() || '0'}
                     subValue="Total Traffic"
                     color="blue"
+                    onClick={() => navigateTo('Analytics')}
                 />
                 <StatCard
                     icon={<Zap size={20} />}
@@ -124,6 +132,7 @@ export default function DashboardScreen() {
                     value={btmpStats?.topIps?.length?.toString() || '0'}
                     subValue="Unique Sources"
                     color="orange"
+                    onClick={() => navigateTo('IP')}
                 />
             </div>
 
@@ -138,6 +147,13 @@ export default function DashboardScreen() {
                             </h3>
                             <span className="text-[9px] uppercase font-bold text-on-surface-variant/30 tracking-wider">Velocity over 24h</span>
                         </div>
+                        <button
+                            onClick={() => navigateTo('Analytics')}
+                            className="p-1.5 hover:bg-white/5 rounded-lg text-on-surface-variant hover:text-primary transition-colors"
+                            title="View detailed analytics"
+                        >
+                            <ArrowRight size={16} />
+                        </button>
                     </div>
                     <div className="h-[200px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
@@ -182,16 +198,29 @@ export default function DashboardScreen() {
 
                 {/* Top Attackers List */}
                 <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[24px] p-5 flex flex-col gap-4">
-                    <div className="flex flex-col">
-                        <h3 className="text-sm font-bold flex items-center gap-2">
-                            <ShieldAlert size={16} className="text-red-400" />
-                            Threat Sources
-                        </h3>
-                        <span className="text-[9px] uppercase font-bold text-on-surface-variant/30 tracking-wider">Top attacking IPs</span>
+                    <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                            <h3 className="text-sm font-bold flex items-center gap-2">
+                                <ShieldAlert size={16} className="text-red-400" />
+                                Threat Sources
+                            </h3>
+                            <span className="text-[9px] uppercase font-bold text-on-surface-variant/30 tracking-wider">Top attacking IPs</span>
+                        </div>
+                        <button
+                            onClick={() => navigateTo('IP')}
+                            className="p-1.5 hover:bg-white/5 rounded-lg text-on-surface-variant hover:text-primary transition-colors"
+                            title="View all IPs"
+                        >
+                            <ArrowRight size={16} />
+                        </button>
                     </div>
                     <div className="flex flex-col gap-2">
                         {btmpStats?.topIps?.slice(0, 4).map(({ ip, count, country }, i) => (
-                            <div key={ip} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 group hover:border-red-500/20 transition-all">
+                            <div
+                                key={ip}
+                                onClick={() => navigateTo('IP')}
+                                className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 group hover:border-red-500/20 hover:bg-red-500/5 transition-all cursor-pointer"
+                            >
                                 <div className="flex items-center gap-3">
                                     <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-red-500/10 text-red-500 text-[10px] font-bold">
                                         #{i + 1}
@@ -213,12 +242,21 @@ export default function DashboardScreen() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Recent Security Events */}
                 <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[24px] p-5 flex flex-col gap-4">
-                    <div className="flex flex-col">
-                        <h3 className="text-sm font-bold flex items-center gap-2">
-                            <Lock size={16} className="text-orange-400" />
-                            Security Feed
-                        </h3>
-                        <span className="text-[9px] uppercase font-bold text-on-surface-variant/30 tracking-wider">Latest auth failures</span>
+                    <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                            <h3 className="text-sm font-bold flex items-center gap-2">
+                                <Lock size={16} className="text-orange-400" />
+                                Security Feed
+                            </h3>
+                            <span className="text-[9px] uppercase font-bold text-on-surface-variant/30 tracking-wider">Latest auth failures</span>
+                        </div>
+                        <button
+                            onClick={() => navigateTo('Security')}
+                            className="p-1.5 hover:bg-white/5 rounded-lg text-on-surface-variant hover:text-primary transition-colors"
+                            title="View security logs"
+                        >
+                            <ArrowRight size={16} />
+                        </button>
                     </div>
                     <div className="space-y-2">
                         {btmpStats?.recentFailures?.slice(0, 4).map((failure, i) => (
@@ -240,12 +278,21 @@ export default function DashboardScreen() {
 
                 {/* Popular Proxy Paths */}
                 <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[24px] p-5 flex flex-col gap-4">
-                    <div className="flex flex-col">
-                        <h3 className="text-sm font-bold flex items-center gap-2">
-                            <Globe size={16} className="text-blue-400" />
-                            Active Paths
-                        </h3>
-                        <span className="text-[9px] uppercase font-bold text-on-surface-variant/30 tracking-wider">Most visited routes</span>
+                    <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                            <h3 className="text-sm font-bold flex items-center gap-2">
+                                <Globe size={16} className="text-blue-400" />
+                                Active Paths
+                            </h3>
+                            <span className="text-[9px] uppercase font-bold text-on-surface-variant/30 tracking-wider">Most visited routes</span>
+                        </div>
+                        <button
+                            onClick={() => navigateTo('Analytics')}
+                            className="p-1.5 hover:bg-white/5 rounded-lg text-on-surface-variant hover:text-primary transition-colors"
+                            title="View full analytics"
+                        >
+                            <ArrowRight size={16} />
+                        </button>
                     </div>
                     <div className="space-y-2">
                         {proxyStats?.topPaths?.slice(0, 4).map(({ path, count }, i) => (
@@ -274,7 +321,14 @@ export default function DashboardScreen() {
     );
 }
 
-function StatCard({ icon, label, value, subValue, color }: { icon: React.ReactNode, label: string, value: string, subValue: string, color: 'primary' | 'red' | 'blue' | 'orange' }) {
+function StatCard({ icon, label, value, subValue, color, onClick }: {
+    icon: React.ReactNode,
+    label: string,
+    value: string,
+    subValue: string,
+    color: 'primary' | 'red' | 'blue' | 'orange',
+    onClick?: () => void
+}) {
     const colorMap = {
         primary: 'text-primary bg-primary/10 border-primary/20',
         red: 'text-red-500 bg-red-500/10 border-red-500/20',
@@ -282,8 +336,13 @@ function StatCard({ icon, label, value, subValue, color }: { icon: React.ReactNo
         orange: 'text-orange-500 bg-orange-500/10 border-orange-500/20'
     };
 
+    const Component = onClick ? 'button' : 'div';
+
     return (
-        <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 p-4 rounded-[24px] flex flex-col gap-3 hover:translate-y-[-2px] transition-all duration-300">
+        <Component
+            onClick={onClick}
+            className={`bg-surface/30 backdrop-blur-xl border border-outline/10 p-4 rounded-[24px] flex flex-col gap-3 hover:translate-y-[-2px] transition-all duration-300 text-left w-full ${onClick ? 'cursor-pointer hover:bg-white/5' : ''}`}
+        >
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center border ${colorMap[color]}`}>
                 {icon}
             </div>
@@ -292,6 +351,6 @@ function StatCard({ icon, label, value, subValue, color }: { icon: React.ReactNo
                 <span className="text-2xl font-black">{value}</span>
                 <span className="text-[9px] font-bold text-on-surface-variant/50">{subValue}</span>
             </div>
-        </div>
+        </Component>
     );
 }
