@@ -13,6 +13,8 @@ object IpReputationTable : Table("ip_reputation") {
     val blockedTimes = integer("blocked_times").default(0)
     val exponentialBlockedTimes = integer("exponential_blocked_times").default(0)
     val lastJailDuration = integer("last_jail_duration").default(0)
+    val requestCount = long("request_count").default(0)
+    val errorCount = long("error_count").default(0)
     val flaggedTimes = integer("flagged_times").default(0)
     val firstFlagged = datetime("first_flagged").nullable()
     val lastFlagged = datetime("last_flagged").nullable()
@@ -45,5 +47,7 @@ data class IpReputation(
     val isp: String? = null,
     val tags: List<String> = emptyList(), // Regular tags
     val dangerTags: List<String> = emptyList(), // Tags from danger logs
-    val range: String? = null
+    val range: String? = null,
+    val requestCount: Long = 0,
+    val errorCount: Long = 0
 )

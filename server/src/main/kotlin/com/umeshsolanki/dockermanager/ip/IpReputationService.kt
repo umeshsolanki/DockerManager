@@ -21,6 +21,7 @@ interface IIpReputationService {
     suspend fun listIpReputations(limit: Int = 100, offset: Long = 0, search: String? = null): List<IpReputation>
     suspend fun recordActivity(ipAddress: String, countryCode: String? = null, isp: String? = null, tag: String? = null, range: String? = null, dangerTag: String? = null)
     suspend fun recordBlock(ipAddress: String, reason: String, countryCode: String? = null, isp: String? = null, tag: String? = null, range: String? = null, dangerTag: String? = null, durationMinutes: Int = 0)
+    suspend fun updateStats(stats: Map<String, Pair<Long, Long>>) // Map<IP, Pair<RequestCount, ErrorCount>>
     suspend fun deleteIpReputation(ipAddress: String): Boolean
 }
 
@@ -283,6 +284,62 @@ class IpReputationServiceImpl : IIpReputationService {
         // Update cache to prevent immediate re-activity record
         activityCache[ipAddress] = System.currentTimeMillis()
     }
+
+    override suspend fun updateStats(stats: Map<String, Pair<Long, Long>>) {
+        if (stats.isEmpty()) return
+        
+        dbQuery {
+            // Process each IP update
+            val now = LocalDateTime.now()
+            
+            stats.forEach { (ipAddress, counts) ->
+                val (requests, errors) = counts
+                
+                // Try update
+                val rowsUpdated = IpReputationTable.update({ IpReputationTable.ip eq ipAddress }) {
+                    with(SqlExpressionBuilder) {
+                        it.update(IpReputationTable.requestCount, IpReputationTable.requestCount + requests)
+                        it.update(IpReputationTable.errorCount, IpReputationTable.errorCount + errors)
+                        it[lastActivity] = now
+                    }
+                }
+                
+                // If no row updated, it means IP does not exist, insert it
+                if (rowsUpdated == 0) {
+                    try {
+                        // Resolve IP info (might slow down batch, ideally should be cached or resolved outside)
+                        // For stats update, we can skip detailed lookup if not critical, or do a quick lookup
+                        // Using IpLookupService might be too slow for batch if not cached. 
+                        // But we want to have basic entries.
+                        // Let's do a quick lookup or just insert basic
+                        
+                        // We will rely on recordActivity or subsequent calls to fill details. 
+                        // Just insert basic stats.
+                        IpReputationTable.insert {
+                            it[ip] = ipAddress
+                            it[firstObserved] = now
+                            it[lastActivity] = now
+                            it[requestCount] = requests
+                            it[errorCount] = errors
+                            it[blockedTimes] = 0
+                            it[flaggedTimes] = 0
+                            it[exponentialBlockedTimes] = 0
+                            it[lastJailDuration] = 0
+                        }
+                    } catch (e: Exception) {
+                        // Race condition, try update again
+                        IpReputationTable.update({ IpReputationTable.ip eq ipAddress }) {
+                            with(SqlExpressionBuilder) {
+                                it.update(IpReputationTable.requestCount, IpReputationTable.requestCount + requests)
+                                it.update(IpReputationTable.errorCount, IpReputationTable.errorCount + errors)
+                                it[lastActivity] = now
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     
     // Helper for race condition in recordBlock
     private fun recordBlockRetry(ipAddress: String, shortReason: String, countryCode: String?, now: LocalDateTime) {
@@ -324,7 +381,9 @@ class IpReputationServiceImpl : IIpReputationService {
             isp = row[IpReputationTable.isp],
             tags = tags,
             dangerTags = row[IpReputationTable.dangerTags].split(",").map { it.trim() }.filter { it.isNotBlank() },
-            range = row[IpReputationTable.range]
+            range = row[IpReputationTable.range],
+            requestCount = row[IpReputationTable.requestCount],
+            errorCount = row[IpReputationTable.errorCount]
         )
     }
 }

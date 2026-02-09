@@ -46,6 +46,7 @@ interface IAnalyticsService {
 
 class AnalyticsServiceImpl(
     private val jailManagerService: IJailManagerService,
+    private val ipReputationService: com.umeshsolanki.dockermanager.ip.IIpReputationService
 ) : IAnalyticsService {
     
     private data class ParsedLogEntry(
@@ -383,6 +384,7 @@ class AnalyticsServiceImpl(
         
         // Local cache for IP lookups in this batch to avoid redundant DB hits
         val localIpInfoCache = mutableMapOf<String, com.umeshsolanki.dockermanager.system.IpInfo?>()
+        val ipBatchStats = mutableMapOf<String, Pair<Long, Long>>() // IP -> (Requests, Errors)
 
         for (logFile in logFiles) {
              try {
@@ -473,6 +475,11 @@ class AnalyticsServiceImpl(
                                 if (status >= 400 || status == 0) {
                                     hitsByIpErrorMap.merge(ip, 1L, Long::plus)
                                 }
+                                
+                                // Aggregate for reputation batch update
+                                val currentStats = ipBatchStats.getOrDefault(ip, 0L to 0L)
+                                val isError = status >= 400 || status == 0
+                                ipBatchStats[ip] = (currentStats.first + 1) to (currentStats.second + (if (isError) 1L else 0L))
 
                                 // Security Jailing check
                                 val errCount = hitsByIpErrorMap[ip] ?: 0L
@@ -551,6 +558,17 @@ class AnalyticsServiceImpl(
         }
         
         updateCachedStats()
+        
+        // Update reputation stats
+        scope.launch {
+            try {
+                if (ipBatchStats.isNotEmpty()) {
+                    ipReputationService.updateStats(ipBatchStats)
+                }
+            } catch (e: Exception) {
+                logger.error("Failed to update reputation stats", e)
+            }
+        }
     }
     
     private fun updateCachedStats() {
@@ -1445,7 +1463,7 @@ class AnalyticsServiceImpl(
 // Service object for easy access
 object AnalyticsService {
     private val service: IAnalyticsService by lazy {
-        AnalyticsServiceImpl(ServiceContainer.jailManagerService)
+        AnalyticsServiceImpl(ServiceContainer.jailManagerService, ServiceContainer.ipReputationService)
     }
     
     private val serviceImpl: AnalyticsServiceImpl by lazy {
