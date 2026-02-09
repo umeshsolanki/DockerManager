@@ -230,6 +230,14 @@ fun Route.proxyRoutes() {
             )
         }
 
+        post("/settings/danger-proxy") {
+            val request = call.receive<Map<String, String>>()
+            val enabled = request["enabled"]?.toBoolean() ?: false
+            val host = request["host"]
+            val result = ProxyService.updateDangerProxySettings(enabled, host)
+            call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.InternalServerError)
+        }
+
         post("/settings/default-behavior") {
             val request = call.receive<Map<String, Boolean>>()
             val return404 = request["return404"] ?: false

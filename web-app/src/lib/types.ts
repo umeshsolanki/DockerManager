@@ -611,11 +611,12 @@ export interface SystemConfig {
   maxJailDurationMinutes: number;
   logFlushIntervalSeconds: number;
   clickhouseSettings: ClickHouseSettings;
+  emailClientConfig: EmailClientConfig;
 }
 
 export interface UpdateSystemConfigRequest {
   dockerSocket: string;
-  jamesWebAdminUrl: string;
+  jamesWebAdminUrl?: string;
   dockerBuildKit?: boolean;
   dockerCliBuild?: boolean;
   autoStorageRefresh?: boolean;
@@ -641,12 +642,46 @@ export interface UpdateSystemConfigRequest {
   maxJailDurationMinutes?: number;
 }
 
-export interface JamesContainerStatus {
-  exists: boolean;
-  running: boolean;
-  containerId?: string;
-  status: string;
-  uptime?: string;
+export interface ImapConfig {
+  host: string;
+  port: number;
+  username: string;
+  password?: string;
+  useSsl: boolean;
+  useTls: boolean;
+}
+
+export interface EmailMessage {
+  id: string;
+  subject: string;
+  from: string;
+  to: string;
+  date: string;
+  body?: string;
+  hasAttachments: boolean;
+  unread: boolean;
+}
+
+export interface EmailFolder {
+  name: string;
+  fullName: string;
+  messageCount: number;
+  unreadCount: number;
+}
+
+export interface EmailClientConfig {
+  smtpConfig: SmtpConfig;
+  imapConfig: ImapConfig;
+}
+
+export interface SmtpConfig {
+  host: string;
+  port: number;
+  username: string;
+  password?: string;
+  fromAddress: string;
+  useTls: boolean;
+  useSsl: boolean;
 }
 
 export interface EmailGroup {

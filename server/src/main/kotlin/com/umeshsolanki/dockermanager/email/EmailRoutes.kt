@@ -22,6 +22,30 @@ fun Route.emailRoutes() {
             call.respond(ProxyActionResult(true, "Email configuration updated"))
         }
 
+        // Email Client Configuration
+        get("/client/config") {
+            call.respond(EmailService.getEmailClientConfig())
+        }
+
+        post("/client/config") {
+            val config = call.receive<EmailClientConfig>()
+            EmailService.updateEmailClientConfig(config)
+            call.respond(ProxyActionResult(true, "Email client configuration updated"))
+        }
+
+        // Client IMAP Operations
+        get("/client/folders") {
+            val config = EmailService.getEmailClientConfig().imapConfig
+            call.respond(EmailService.listFolders(config))
+        }
+
+        get("/client/folders/{folder}/messages") {
+            val folder = call.parameters["folder"] ?: "INBOX"
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 50
+            val config = EmailService.getEmailClientConfig().imapConfig
+            call.respond(EmailService.listMessages(config, folder, limit))
+        }
+
         // Test SMTP Connection
         post("/test") {
             val request = call.receive<EmailTestRequest>()

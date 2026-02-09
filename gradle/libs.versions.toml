@@ -56,11 +56,14 @@ androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", vers
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "androidx-appcompat" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version = "1.10.1" }
+kotlinx-coroutines-reactor = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactor", version = "1.10.1" }
+kotlinx-coroutines-reactive = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactive", version = "1.10.1" }
 
 exposed-core = { module = "org.jetbrains.exposed:exposed-core", version = "0.58.0" }
 exposed-jdbc = { module = "org.jetbrains.exposed:exposed-jdbc", version = "0.58.0" }
 exposed-dao = { module = "org.jetbrains.exposed:exposed-dao", version = "0.58.0" }
 exposed-java-time = { module = "org.jetbrains.exposed:exposed-java-time", version = "0.58.0" }
+exposed-migration = { module = "org.jetbrains.exposed:exposed-migration", version = "0.58.0" }
 postgresql = { module = "org.postgresql:postgresql", version = "42.7.2" }
 hikaricp = { module = "com.zaxxer:HikariCP", version = "5.1.0" }
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
@@ -69,6 +72,9 @@ mariadb = { module = "org.mariadb.jdbc:mariadb-java-client", version.ref = "mari
 sqlite = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite" }
 kafka-clients = { module = "org.apache.kafka:kafka-clients", version = "3.7.0" }
 clickhouse-jdbc = { module = "com.clickhouse:clickhouse-jdbc", version.ref = "clickhouse" }
+exposed-r2dbc = { module = "org.jetbrains.exposed:exposed-r2dbc", version = "1.0.0" }
+r2dbc-postgresql = { module = "io.r2dbc:r2dbc-postgresql", version = "1.0.5.RELEASE" }
+r2dbc-pool = { module = "io.r2dbc:r2dbc-pool", version = "1.0.1.RELEASE" }
 
 [plugins]
 shadowJar = { id = "com.gradleup.shadow", version.ref = "shadow" }

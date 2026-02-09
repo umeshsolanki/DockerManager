@@ -7,12 +7,12 @@ import {
     CreateEmailUserRequest, UpdateEmailUserPasswordRequest, SystemConfig,
     UpdateSystemConfigRequest, EmailMailbox, NetworkDetails, EmailTestRequest,
     EmailTestResult, AuthRequest, AuthResponse, UpdatePasswordRequest,
-    UpdateUsernameRequest, TwoFactorSetupResponse, Enable2FARequest, EmailGroup, EmailUserDetail, JamesContainerStatus,
+    UpdateUsernameRequest, TwoFactorSetupResponse, Enable2FARequest, EmailGroup, EmailUserDetail,
     FileItem, RedisConfig, RedisStatus, RedisTestResult, RedisConfigUpdateResult,
     DockerStack, StackService, StackTask, DeployStackRequest, MigrateComposeToStackRequest, StopStackRequest,
     SaveProjectFileRequest, KafkaTopicInfo, KafkaMessage, CreateNetworkRequest, StorageInfo,
     ExternalDbConfig, SqlQueryRequest, KafkaRule, KafkaProcessedEvent, CustomPage,
-    IpReputation, SavedQuery
+    IpReputation, SavedQuery, EmailFolder, EmailMessage, EmailClientConfig
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -350,37 +350,12 @@ export const DockerClient = {
     ensureProxyContainer: () => safeReq('/proxy/container/ensure', { method: 'POST' }),
 
     // --- Email Engine (James) ---
-    listEmailDomains: () => req<EmailDomain[]>('/emails/domains', {}, []),
-    createEmailDomain: (d: string) => safeReq(`/emails/domains/${d}`, { method: 'PUT' }),
-    deleteEmailDomain: (d: string) => safeReq(`/emails/domains/${d}`, { method: 'DELETE' }),
-    listEmailUsers: () => req<EmailUser[]>('/emails/users', {}, []),
-    createEmailUser: (u: string, b: CreateEmailUserRequest) => safeReq(`/emails/users/${u}`, { method: 'PUT', body: JSON.stringify(b) }),
-    deleteEmailUser: (u: string) => safeReq(`/emails/users/${u}`, { method: 'DELETE' }),
-    updateEmailUserPassword: (u: string, b: UpdateEmailUserPasswordRequest) => safeReq(`/emails/users/${u}/password`, { method: 'PATCH', body: JSON.stringify(b) }),
-    listEmailMailboxes: (u: string) => req<EmailMailbox[]>(`/emails/users/${u}/mailboxes`, {}, []),
-    createEmailMailbox: (u: string, m: string) => safeReq(`/emails/users/${u}/mailboxes/${m}`, { method: 'PUT' }),
-    deleteEmailMailbox: (u: string, m: string) => safeReq(`/emails/users/${u}/mailboxes/${m}`, { method: 'DELETE' }),
-    listEmailGroups: () => req<EmailGroup[]>('/emails/groups', {}, []),
-    createEmailGroup: (g: string, m: string) => safeReq(`/emails/groups/${g}/${m}`, { method: 'PUT' }),
-    getEmailGroupMembers: (g: string) => req<string[]>(`/emails/groups/${g}`, {}, []),
-    addEmailGroupMember: (g: string, m: string) => safeReq(`/emails/groups/${g}/${m}`, { method: 'PUT' }),
-    removeEmailGroupMember: (g: string, m: string) => safeReq(`/emails/groups/${g}/${m}`, { method: 'DELETE' }),
-    getEmailUserQuota: (u: string) => req<EmailUserDetail | null>(`/emails/quota/${u}`, {}, null),
-    setEmailUserQuota: (u: string, t: string, v: number) => safeReq(`/emails/quota/${u}/${t}`, { method: 'PUT', body: v.toString() }),
-    deleteEmailUserQuota: (u: string) => safeReq(`/emails/quota/${u}`, { method: 'DELETE' }),
-
-    getJamesStatus: () => safeReq<JamesContainerStatus>('/emails/james/status'),
-    ensureJamesConfig: () => safeReq('/emails/james/config', { method: 'POST' }),
-    getJamesComposeConfig: () => safeReq<{ content: string }>('/emails/james/compose').then(r => r.content || ''),
-    updateJamesComposeConfig: (content: string) => safeReq('/emails/james/compose', { method: 'POST', body: JSON.stringify({ name: 'james', content }) }),
-    startJames: () => safeReq('/emails/james/start', { method: 'POST' }),
-    stopJames: () => safeReq('/emails/james/stop', { method: 'POST' }),
-    restartJames: () => safeReq('/emails/james/restart', { method: 'POST' }),
-    listJamesConfigFiles: () => req<string[]>('/emails/james/files', {}, []),
-    getJamesConfigContent: (f: string) => req<{ content: string }>(`/emails/james/files/${f}`, {}, { content: '' }).then(r => r.content),
-    updateJamesConfigContent: (f: string, c: string) => safeReq(`/emails/james/files/${f}`, { method: 'POST', body: JSON.stringify({ content: c }) }),
-    getDefaultJamesConfigContent: (f: string) => req<{ content: string }>(`/emails/james/files/${f}/default`, {}, { content: '' }).then(r => r.content),
-    testJamesEmail: (b: EmailTestRequest) => req<EmailTestResult>('/emails/james/test', { method: 'POST', body: JSON.stringify(b) }, { success: false, message: 'Network error', logs: [] }),
+    // --- Email Client ---
+    getEmailClientConfig: () => req<EmailClientConfig | null>('/emails/client/config', {}, null),
+    updateEmailClientConfig: (config: EmailClientConfig) => safeReq('/emails/client/config', { method: 'POST', body: JSON.stringify(config) }),
+    listEmailFolders: () => req<EmailFolder[]>('/emails/client/folders', {}, []),
+    listEmailMessages: (folder: string, limit = 50) => req<EmailMessage[]>(`/emails/client/folders/${encodeURIComponent(folder)}/messages?limit=${limit}`, {}, []),
+    sendTestEmail: (b: EmailTestRequest) => req<EmailTestResult>('/emails/test', { method: 'POST', body: JSON.stringify(b) }, { success: false, message: 'Network error', logs: [] }),
 
     // --- File Manager ---
     getFileContent: (path: string, mode: 'head' | 'tail' = 'head', maxBytes = 512 * 1024) => req<{ content: string }>(`/files/content?path=${encodeURIComponent(path)}&mode=${mode}&maxBytes=${maxBytes}`, {}, { content: '' }).then(r => r.content),

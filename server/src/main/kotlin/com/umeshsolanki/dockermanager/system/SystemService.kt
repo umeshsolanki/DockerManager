@@ -10,6 +10,8 @@ import kotlinx.serialization.encodeToString
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.transaction
+import com.umeshsolanki.dockermanager.database.SettingsTable
+import java.sql.ResultSet
 import kotlinx.coroutines.*
 import java.util.concurrent.TimeUnit
 
@@ -398,56 +400,28 @@ object SystemService {
                 isRunning.set(false)
             }
         }
+    }
 
-        private fun saveStatsToDb(stats: StorageStats) {
-            try {
-                val json = AppConfig.json.encodeToString(stats)
-                transaction {
-                    val existing = com.umeshsolanki.dockermanager.database.SettingsTable
-                        .selectAll().where { com.umeshsolanki.dockermanager.database.SettingsTable.key eq "LATEST_STORAGE_STATS" }
-                        .singleOrNull()
-                    
-                    if (existing != null) {
-                        com.umeshsolanki.dockermanager.database.SettingsTable.update({ 
-                            com.umeshsolanki.dockermanager.database.SettingsTable.key eq "LATEST_STORAGE_STATS" 
-                        }) { stmt ->
-                            stmt[com.umeshsolanki.dockermanager.database.SettingsTable.value] = json
-                            stmt[com.umeshsolanki.dockermanager.database.SettingsTable.updatedAt] = java.time.LocalDateTime.now()
-                        }
-                    } else {
-                        com.umeshsolanki.dockermanager.database.SettingsTable.insert { stmt ->
-                            stmt[com.umeshsolanki.dockermanager.database.SettingsTable.key] = "LATEST_STORAGE_STATS"
-                            stmt[com.umeshsolanki.dockermanager.database.SettingsTable.value] = json
-                            stmt[com.umeshsolanki.dockermanager.database.SettingsTable.updatedAt] = java.time.LocalDateTime.now()
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                logger.error("Failed to save storage stats to DB", e)
-            }
+    private fun saveStatsToDb(stats: BackgroundStorageMonitor.StorageStats) {
+        try {
+            val json = AppConfig.json.encodeToString(BackgroundStorageMonitor.StorageStats.serializer(), stats)
+            AppConfig.saveStorageStats(json)
+        } catch (e: Exception) {
+            logger.error("Failed to save storage stats to DB", e)
         }
+    }
 
-        private fun loadStatsFromDb(): StorageStats {
-            try {
-                val json = transaction {
-                    com.umeshsolanki.dockermanager.database.SettingsTable
-                        .selectAll().where { com.umeshsolanki.dockermanager.database.SettingsTable.key eq "LATEST_STORAGE_STATS" }
-                        .singleOrNull()
-                        ?.get(com.umeshsolanki.dockermanager.database.SettingsTable.value)
-                }
-                return if (json != null) {
-                    AppConfig.json.decodeFromString<StorageStats>(json)
-                } else {
-                    StorageStats()
-                }
-            } catch (e: Exception) {
-                logger.error("Failed to load storage stats from DB", e)
-                return StorageStats()
+    private fun loadStatsFromDb(): BackgroundStorageMonitor.StorageStats {
+        try {
+            val json = AppConfig.loadStorageStats()
+            return if (json != null) {
+                AppConfig.json.decodeFromString(BackgroundStorageMonitor.StorageStats.serializer(), json)
+            } else {
+                BackgroundStorageMonitor.StorageStats()
             }
-        }
-
-        private fun parseSizeToBytes(sizeStr: String): Long {
-            return SystemService.parseSizeToBytes(sizeStr)
+        } catch (e: Exception) {
+            logger.error("Failed to load storage stats from DB", e)
+            return BackgroundStorageMonitor.StorageStats()
         }
     }
 }

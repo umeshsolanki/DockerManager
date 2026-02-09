@@ -9,6 +9,7 @@ import com.umeshsolanki.dockermanager.cache.CacheService
 import com.umeshsolanki.dockermanager.database.DatabaseFactory
 import com.umeshsolanki.dockermanager.database.SettingsTable
 import com.umeshsolanki.dockermanager.email.AlertConfig
+import com.umeshsolanki.dockermanager.email.EmailClientConfig
 import com.umeshsolanki.dockermanager.proxy.ProxyJailRuleType
 import com.umeshsolanki.dockermanager.kafka.KafkaSettings
 import com.umeshsolanki.dockermanager.kafka.KafkaRule
@@ -73,7 +74,7 @@ data class ClickHouseSettings(
 @Serializable
 data class AppSettings(
     val dockerSocket: String = SystemConstants.DOCKER_SOCKET_DEFAULT,
-    val jamesWebAdminUrl: String = NetworkConstants.JAMES_WEB_ADMIN_DEFAULT,
+    val jamesWebAdminUrl: String = "http://localhost:8000",
     // Jail Settings
     val jailEnabled: Boolean = true,
     val jailThreshold: Int = 5,
@@ -133,8 +134,15 @@ data class AppSettings(
     val logBufferSizeKb: Int = 512, // Default 512kb
     val logFlushIntervalSeconds: Int = 5, // Default 5s
     
+    // Danger Proxy Settings (Global)
+    val dangerProxyEnabled: Boolean = false,
+    val dangerProxyHost: String? = null,
+    
     // ClickHouse for big data analytics
-    val clickhouseSettings: ClickHouseSettings = ClickHouseSettings()
+    val clickhouseSettings: ClickHouseSettings = ClickHouseSettings(),
+    
+    // Email Client Configuration
+    val emailClientConfig: EmailClientConfig = EmailClientConfig()
 )
 
 object AppConfig {
@@ -312,7 +320,25 @@ object AppConfig {
         dockerCliBuild: Boolean? = null,
         autoStorageRefresh: Boolean? = null,
         autoStorageRefreshIntervalMinutes: Int? = null,
-        kafkaSettings: KafkaSettings? = null
+        kafkaSettings: KafkaSettings? = null,
+        dbPersistenceLogsEnabled: Boolean? = null,
+        syslogEnabled: Boolean? = null,
+        syslogServer: String? = null,
+        syslogServerInternal: String? = null,
+        syslogPort: Int? = null,
+        proxyRsyslogEnabled: Boolean? = null,
+        proxyDualLoggingEnabled: Boolean? = null,
+        jsonLoggingEnabled: Boolean? = null,
+        nginxLogDir: String? = null,
+        clickhouseSettings: ClickHouseSettings? = null,
+        logBufferingEnabled: Boolean? = null,
+        logBufferSizeKb: Int? = null,
+        logFlushIntervalSeconds: Int? = null,
+        jailEnabled: Boolean? = null,
+        jailThreshold: Int? = null,
+        jailDurationMinutes: Int? = null,
+        exponentialJailEnabled: Boolean? = null,
+        maxJailDurationMinutes: Int? = null
     ) = synchronized(lock) {
         _settings = _settings.copy(
             dockerSocket = dockerSocket ?: _settings.dockerSocket,
@@ -321,7 +347,25 @@ object AppConfig {
             dockerCliBuild = dockerCliBuild ?: _settings.dockerCliBuild,
             autoStorageRefresh = autoStorageRefresh ?: _settings.autoStorageRefresh,
             autoStorageRefreshIntervalMinutes = autoStorageRefreshIntervalMinutes ?: _settings.autoStorageRefreshIntervalMinutes,
-            kafkaSettings = kafkaSettings ?: _settings.kafkaSettings
+            kafkaSettings = kafkaSettings ?: _settings.kafkaSettings,
+            dbPersistenceLogsEnabled = dbPersistenceLogsEnabled ?: _settings.dbPersistenceLogsEnabled,
+            syslogEnabled = syslogEnabled ?: _settings.syslogEnabled,
+            syslogServer = syslogServer ?: _settings.syslogServer,
+            syslogServerInternal = syslogServerInternal ?: _settings.syslogServerInternal,
+            syslogPort = syslogPort ?: _settings.syslogPort,
+            proxyRsyslogEnabled = proxyRsyslogEnabled ?: _settings.proxyRsyslogEnabled,
+            proxyDualLoggingEnabled = proxyDualLoggingEnabled ?: _settings.proxyDualLoggingEnabled,
+            jsonLoggingEnabled = jsonLoggingEnabled ?: _settings.jsonLoggingEnabled,
+            nginxLogDir = nginxLogDir ?: _settings.nginxLogDir,
+            clickhouseSettings = clickhouseSettings ?: _settings.clickhouseSettings,
+            logBufferingEnabled = logBufferingEnabled ?: _settings.logBufferingEnabled,
+            logBufferSizeKb = logBufferSizeKb ?: _settings.logBufferSizeKb,
+            logFlushIntervalSeconds = logFlushIntervalSeconds ?: _settings.logFlushIntervalSeconds,
+            jailEnabled = jailEnabled ?: _settings.jailEnabled,
+            jailThreshold = jailThreshold ?: _settings.jailThreshold,
+            jailDurationMinutes = jailDurationMinutes ?: _settings.jailDurationMinutes,
+            exponentialJailEnabled = exponentialJailEnabled ?: _settings.exponentialJailEnabled,
+            maxJailDurationMinutes = maxJailDurationMinutes ?: _settings.maxJailDurationMinutes
         )
         saveSettings()
     }
@@ -398,6 +442,17 @@ object AppConfig {
         saveSettings()
     }
 
+    fun updateDangerProxySettings(
+        enabled: Boolean? = null,
+        host: String? = null
+    ) = synchronized(lock) {
+        _settings = _settings.copy(
+            dangerProxyEnabled = enabled ?: _settings.dangerProxyEnabled,
+            dangerProxyHost = if (host == null) _settings.dangerProxyHost else host
+        )
+        saveSettings()
+    }
+
     fun updateFileBookmarks(bookmarks: List<String>) = synchronized(lock) {
         _settings = _settings.copy(
             fileBookmarks = bookmarks
@@ -447,6 +502,36 @@ object AppConfig {
     }
     
     val alertConfig: AlertConfig get() = _settings.alertConfig
+
+    fun updateEmailClientConfig(config: EmailClientConfig) {
+        _settings = _settings.copy(emailClientConfig = config)
+        saveSettings()
+    }
+
+    fun saveStorageStats(json: String) {
+        transaction {
+            SettingsTable.selectAll().where { SettingsTable.key eq "LATEST_STORAGE_STATS" }.singleOrNull()?.let {
+                SettingsTable.update({ SettingsTable.key eq "LATEST_STORAGE_STATS" }) { stmt ->
+                    stmt[SettingsTable.value] = json
+                    stmt[SettingsTable.updatedAt] = java.time.LocalDateTime.now()
+                }
+            } ?: run {
+                SettingsTable.insert { stmt ->
+                    stmt[SettingsTable.key] = "LATEST_STORAGE_STATS"
+                    stmt[SettingsTable.value] = json
+                    stmt[SettingsTable.updatedAt] = java.time.LocalDateTime.now()
+                }
+            }
+        }
+    }
+
+    fun loadStorageStats(): String? {
+        return transaction {
+            SettingsTable.selectAll().where { SettingsTable.key eq "LATEST_STORAGE_STATS" }
+                .singleOrNull()
+                ?.get(SettingsTable.value)
+        }
+    }
 
     private fun saveSettings() {
         // Save to DB
@@ -510,6 +595,9 @@ object AppConfig {
 
     val dockerSocket: String
         get() = _settings.dockerSocket
+
+    val jamesWebAdminUrl: String
+        get() = _settings.jamesWebAdminUrl
 
 
     //backup dirs
@@ -575,19 +663,6 @@ object AppConfig {
             if (File(SystemConstants.NFT_BIN_SBIN).exists()) return SystemConstants.NFT_BIN_SBIN
             return SystemConstants.NFT_COMMAND
         }
-
-    // James
-    val jamesDir: File get() = File(dataRoot, FileConstants.JAMES)
-    val jamesConfigDir: File get() = File(jamesDir, FileConstants.CONF)
-    val jamesVarDir: File get() = File(jamesDir, FileConstants.VAR)
-    
-    // Mailcow
-    val mailcowDir: File get() = File(dataRoot, FileConstants.MAILCOW)
-    val mailcowConfigDir: File get() = File(mailcowDir, FileConstants.CONF)
-    val mailcowDataDir: File get() = File(mailcowDir, "data")
-
-    val jamesWebAdminUrl: String
-        get() = _settings.jamesWebAdminUrl
 
     val appVersion: String by lazy {
         try {

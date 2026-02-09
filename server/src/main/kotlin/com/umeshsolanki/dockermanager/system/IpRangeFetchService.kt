@@ -8,7 +8,7 @@ import io.ktor.client.call.*
 import io.ktor.client.engine.java.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
-import io.ktor.http.*
+import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.*
 import com.umeshsolanki.dockermanager.database.DatabaseFactory.dbQuery
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq

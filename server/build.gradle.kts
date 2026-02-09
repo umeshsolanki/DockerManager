@@ -63,12 +63,15 @@ dependencies {
     implementation(libs.exposed.java.time)
     implementation(libs.postgresql)
     implementation(libs.hikaricp)
+    implementation(libs.exposed.migration)
+    implementation(libs.kotlinx.coroutines.reactor)
+    implementation(libs.kotlinx.coroutines.reactive)
 
     implementation(libs.docker.java)
     implementation(libs.docker.java.transport)
     implementation(libs.firebase.admin)
     implementation(libs.jakarta.mail)
-    
+
     // Redis for caching
     implementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
     implementation(libs.gson)

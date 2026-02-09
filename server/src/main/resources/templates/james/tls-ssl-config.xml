@@ -1,4 +1,0 @@
-<tls socketTLS="true" startTLS="false">
-    <privateKey>file://conf/privkey.pem</privateKey>
-    <certificates>file://conf/fullchain.pem</certificates>
-</tls>

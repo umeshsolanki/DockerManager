@@ -68,22 +68,39 @@ data class EmailTestResult(
 )
 
 @Serializable
-data class JamesContainerStatus(
-    val exists: Boolean,
-    val running: Boolean,
-    val containerId: String? = null,
-    val status: String? = null,
-    val uptime: String? = null
+data class ImapConfig(
+    val host: String = "",
+    val port: Int = 993,
+    val username: String = "",
+    val password: String = "",
+    val useSsl: Boolean = true,
+    val useTls: Boolean = false
 )
 
 @Serializable
-data class MailcowContainerStatus(
-    val exists: Boolean,
-    val running: Boolean,
-    val containerId: String? = null,
-    val status: String? = null,
-    val uptime: String? = null,
-    val webmailUrl: String? = null
+data class EmailMessage(
+    val id: String,
+    val subject: String,
+    val from: String,
+    val to: String,
+    val date: String,
+    val body: String? = null,
+    val hasAttachments: Boolean = false,
+    val unread: Boolean = false
+)
+
+@Serializable
+data class EmailFolder(
+    val name: String,
+    val fullName: String,
+    val messageCount: Int = 0,
+    val unreadCount: Int = 0
+)
+
+@Serializable
+data class EmailClientConfig(
+    val smtpConfig: SmtpConfig = SmtpConfig(),
+    val imapConfig: ImapConfig = ImapConfig()
 )
 
 @Serializable

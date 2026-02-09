@@ -82,6 +82,7 @@ object ProxyService {
     fun regenerateAllHostConfigs() = service.regenerateAllHostConfigs()
 
     fun getProxySecuritySettings() = AppConfig.settings
+    fun updateDangerProxySettings(enabled: Boolean, host: String?) = service.updateDangerProxySettings(enabled, host)
     fun getProxyLogs(hostId: String, type: String, lines: Int) = service.getProxyLogs(hostId, type, lines)
 
     // Analytics History
@@ -134,6 +135,7 @@ interface IProxyService {
         logBufferSizeKb: Int? = null,
         logFlushIntervalSeconds: Int? = null
     ): Pair<Boolean, String>
+    fun updateDangerProxySettings(enabled: Boolean, host: String?): Pair<Boolean, String>
     fun regenerateAllHostConfigs(): Pair<Boolean, String>
     fun getProxyLogs(hostId: String, type: String, lines: Int): String
 
@@ -1021,8 +1023,17 @@ class ProxyServiceImpl(
                 directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_danger,severity=crit,nohostname $logFormat;")
             }
             
+            val dangerAction = if (settings.dangerProxyEnabled && !settings.dangerProxyHost.isNullOrBlank()) {
+                "mirror /_danger_mirror;\n    return 444;"
+            } else {
+                "return 444;"
+            }
+
             val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                "dangerLoggingDirectives" to directives.joinToString("\n    ")
+                "dangerLoggingDirectives" to directives.joinToString("\n    "),
+                "dangerAction" to dangerAction,
+                "dangerProxyHost" to (settings.dangerProxyHost ?: "127.0.0.1"),
+                "request_uri" to "\$request_uri"
             ))
             snippet.lines().joinToString("\n    ") { it }
         }
@@ -1407,6 +1418,17 @@ class ProxyServiceImpl(
 
     override fun restartProxyContainer(): Pair<Boolean, String> {
         return executeContainerCommand("restart", "Restarting", "restarted")
+    }
+
+    override fun updateDangerProxySettings(enabled: Boolean, host: String?): Pair<Boolean, String> {
+        return try {
+            AppConfig.updateDangerProxySettings(enabled, host)
+            regenerateAllHostConfigs()
+            reloadNginx()
+        } catch (e: Exception) {
+            logger.error("Error updating danger proxy settings", e)
+            false to "Error: ${e.message}"
+        }
     }
 
     private fun executeContainerCommand(

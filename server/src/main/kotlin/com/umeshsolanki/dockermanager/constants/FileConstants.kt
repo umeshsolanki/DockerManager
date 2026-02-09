@@ -23,8 +23,6 @@ object FileConstants {
     const val LIVE = "live"
     const val CERTS = "certs"
     const val FIREWALL = "firewall"
-    const val JAMES = "james"
-    const val MAILCOW = "mailcow"
     const val VAR = "var"
     
     // File names (within directories)

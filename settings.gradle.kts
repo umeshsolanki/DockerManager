@@ -26,6 +26,7 @@ dependencyResolutionManagement {
         }
         mavenCentral()
         maven { url = uri("https://packages.jetbrains.team/maven/p/pty4j/maven") }
+        maven { url = uri("https://maven.pkg.jetbrains.space/public/p/exposed/exposed") }
     }
 }
 
