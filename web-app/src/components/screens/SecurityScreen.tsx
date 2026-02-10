@@ -546,6 +546,7 @@ export default function SecurityScreen() {
                                                 onClick={async () => {
                                                     const recommended = await DockerClient.getRecommendedProxyRules();
                                                     setProxyConfig(prev => prev ? { ...prev, proxyJailRules: recommended } : null);
+                                                    setIsEditing(true);
                                                     toast.info(`Loaded ${recommended.length} recommended rules - Click Apply to save`);
                                                 }}
                                                 className="flex items-center gap-1.5 px-3 py-1 bg-secondary/10 text-secondary hover:bg-secondary/20 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border border-secondary/20"
@@ -581,6 +582,7 @@ export default function SecurityScreen() {
                                                 onClick={() => {
                                                     const newRules = (proxyConfig?.proxyJailRules || []).filter(r => r.id !== rule.id);
                                                     setProxyConfig(prev => prev ? { ...prev, proxyJailRules: newRules } : null);
+                                                    setIsEditing(true);
                                                 }}
                                                 className="p-2 text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
                                             >
@@ -599,6 +601,7 @@ export default function SecurityScreen() {
                                     <button
                                         onClick={() => {
                                             updateProxySecurity({ proxyJailRules: proxyConfig.proxyJailRules });
+                                            setIsEditing(false);
                                             toast.success('Security rules applied');
                                         }}
                                         className="w-full mt-4 bg-primary text-on-primary py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
