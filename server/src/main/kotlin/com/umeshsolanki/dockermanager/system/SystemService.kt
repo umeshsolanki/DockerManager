@@ -157,6 +157,16 @@ object SystemService {
             )
         }
 
+        // Proxy Security Settings
+        if (request.proxyJailEnabled != null || request.proxyJailThresholdNon200 != null || request.proxyJailWindowMinutes != null) {
+            AppConfig.updateProxySecuritySettings(
+                enabled = request.proxyJailEnabled ?: AppConfig.settings.proxyJailEnabled,
+                thresholdNon200 = request.proxyJailThresholdNon200 ?: AppConfig.settings.proxyJailThresholdNon200,
+                rules = AppConfig.settings.proxyJailRules, // Rules not updated via this endpoint usually
+                windowMinutes = request.proxyJailWindowMinutes ?: AppConfig.settings.proxyJailWindowMinutes
+            )
+        }
+
         // Slow updates: Background service management
         serviceScope.launch {
             try {

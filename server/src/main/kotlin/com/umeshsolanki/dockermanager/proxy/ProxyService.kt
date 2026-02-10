@@ -62,10 +62,11 @@ object ProxyService {
         enabled: Boolean,
         thresholdNon200: Int,
         rules: List<ProxyJailRule>,
+        windowMinutes: Int? = null,
         thresholdDanger: Int? = null,
         thresholdBurst: Int? = null,
         thresholdCidr: Int? = null
-    ) = service.updateSecuritySettings(enabled, thresholdNon200, rules, thresholdDanger, thresholdBurst, thresholdCidr)
+    ) = service.updateSecuritySettings(enabled, thresholdNon200, rules, windowMinutes, thresholdDanger, thresholdBurst, thresholdCidr)
 
     fun updateDefaultBehavior(return404: Boolean) = service.updateDefaultBehavior(return404)
 
@@ -149,6 +150,7 @@ interface IProxyService {
         enabled: Boolean,
         thresholdNon200: Int,
         rules: List<ProxyJailRule>,
+        windowMinutes: Int? = null,
         thresholdDanger: Int? = null,
         thresholdBurst: Int? = null,
         thresholdCidr: Int? = null
@@ -235,6 +237,7 @@ class ProxyServiceImpl(
         enabled: Boolean,
         thresholdNon200: Int,
         rules: List<ProxyJailRule>,
+        windowMinutes: Int?,
         thresholdDanger: Int?,
         thresholdBurst: Int?,
         thresholdCidr: Int?
@@ -243,6 +246,7 @@ class ProxyServiceImpl(
             enabled = enabled,
             thresholdNon200 = thresholdNon200,
             rules = rules,
+            windowMinutes = windowMinutes,
             thresholdDanger = thresholdDanger,
             thresholdBurst = thresholdBurst,
             thresholdCidr = thresholdCidr
