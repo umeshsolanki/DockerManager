@@ -1549,16 +1549,6 @@ class ProxyServiceImpl(
         return executeContainerCommand("restart", "Restarting", "restarted")
     }
 
-    override fun updateDangerProxySettings(enabled: Boolean, host: String?): Pair<Boolean, String> {
-        return try {
-            AppConfig.updateDangerProxySettings(enabled, host)
-            regenerateAllHostConfigs()
-            reloadNginx()
-        } catch (e: Exception) {
-            logger.error("Error updating danger proxy settings", e)
-            false to "Error: ${e.message}"
-        }
-    }
 
     private fun executeContainerCommand(
         action: String,

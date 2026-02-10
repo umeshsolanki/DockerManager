@@ -128,7 +128,12 @@ object SystemService {
         jailThreshold = AppConfig.settings.jailThreshold,
         jailDurationMinutes = AppConfig.settings.jailDurationMinutes,
         exponentialJailEnabled = AppConfig.settings.exponentialJailEnabled,
-        maxJailDurationMinutes = AppConfig.settings.maxJailDurationMinutes
+        maxJailDurationMinutes = AppConfig.settings.maxJailDurationMinutes,
+        proxyJailEnabled = AppConfig.settings.proxyJailEnabled,
+        proxyJailThresholdNon200 = AppConfig.settings.proxyJailThresholdNon200,
+        proxyJailWindowMinutes = AppConfig.settings.proxyJailWindowMinutes,
+        dangerProxyEnabled = AppConfig.settings.dangerProxyEnabled,
+        dangerProxyHost = AppConfig.settings.dangerProxyHost
     )
     
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineName("SystemService"))

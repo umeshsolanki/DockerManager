@@ -40,7 +40,14 @@ data class SystemConfig(
     val jailThreshold: Int,
     val jailDurationMinutes: Int,
     val exponentialJailEnabled: Boolean,
-    val maxJailDurationMinutes: Int
+    val maxJailDurationMinutes: Int,
+    // Proxy Jail
+    val proxyJailEnabled: Boolean,
+    val proxyJailThresholdNon200: Int,
+    val proxyJailWindowMinutes: Int,
+    // Danger Proxy
+    val dangerProxyEnabled: Boolean,
+    val dangerProxyHost: String?
 )
 
 @Serializable
@@ -67,7 +74,14 @@ data class UpdateSystemConfigRequest(
     val jailThreshold: Int? = null,
     val jailDurationMinutes: Int? = null,
     val exponentialJailEnabled: Boolean? = null,
-    val maxJailDurationMinutes: Int? = null
+    val maxJailDurationMinutes: Int? = null,
+    // Proxy Jail
+    val proxyJailEnabled: Boolean? = null,
+    val proxyJailThresholdNon200: Int? = null,
+    val proxyJailWindowMinutes: Int? = null,
+    // Danger Proxy
+    val dangerProxyEnabled: Boolean? = null,
+    val dangerProxyHost: String? = null
 )
 
 @Serializable
