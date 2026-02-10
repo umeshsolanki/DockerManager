@@ -225,6 +225,7 @@ fun Route.proxyRoutes() {
                 enabled = request.proxyJailEnabled,
                 thresholdNon200 = request.proxyJailThresholdNon200,
                 rules = request.proxyJailRules,
+                windowMinutes = request.proxyJailWindowMinutes,
                 thresholdDanger = request.proxyJailThresholdDanger,
                 thresholdBurst = request.proxyJailThresholdBurst,
                 thresholdCidr = request.proxyJailThresholdCidr,
