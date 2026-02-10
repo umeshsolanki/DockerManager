@@ -456,7 +456,7 @@ object AppConfig {
     ) = synchronized(lock) {
         _settings = _settings.copy(
             dangerProxyEnabled = enabled ?: _settings.dangerProxyEnabled,
-            dangerProxyHost = if (host == null) _settings.dangerProxyHost else host
+            dangerProxyHost = host ?: _settings.dangerProxyHost
         )
         saveSettings()
     }
