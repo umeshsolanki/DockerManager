@@ -12,6 +12,8 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
 import io.ktor.server.response.respondText
+import org.slf4j.LoggerFactory
+import kotlinx.coroutines.*
 
 fun Route.proxyRoutes() {
     route("/proxy") {
@@ -363,5 +365,25 @@ fun Route.proxyRoutes() {
             )
         }
 
+        // Security Mirror Collector (Terminates mirrored requests from Nginx)
+        route("/security/mirror") {
+            val logger = LoggerFactory.getLogger("SecurityMirror")
+            
+            get("{...}") {
+                // We just log that we received a mirror hit. 
+                // In production, this could be sent to Kafka/ClickHouse
+                val uri = call.request.uri
+                val ip = call.request.headers["X-Real-IP"] ?: call.request.local.remoteHost
+                val reason = call.request.headers["X-Mirror-Reason"] ?: "unknown"
+                val status = call.request.headers["X-Mirror-Status"] ?: "0"
+                
+                logger.debug("Security Mirror Hit: IP=$ip, Reason=$reason, Status=$status, URI=$uri")
+                call.respondText("ok")
+            }
+            
+            post("{...}") {
+                call.respondText("ok")
+            }
+        }
     }
 }

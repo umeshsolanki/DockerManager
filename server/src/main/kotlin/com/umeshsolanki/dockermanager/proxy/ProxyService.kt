@@ -3,6 +3,7 @@
 package com.umeshsolanki.dockermanager.proxy
 
 import com.umeshsolanki.dockermanager.AppConfig
+import com.umeshsolanki.dockermanager.SERVER_PORT
 import com.umeshsolanki.dockermanager.ServiceContainer
 import com.umeshsolanki.dockermanager.cache.CacheService
 import com.umeshsolanki.dockermanager.database.SettingsTable
@@ -1195,7 +1196,7 @@ class ProxyServiceImpl(
              }
 
              val mirrorConfig = ResourceLoader.replacePlaceholders(mirrorTemplate, mapOf(
-                 "dangerProxyHost" to (settings.dangerProxyHost ?: "127.0.0.1")
+                 "dangerProxyHost" to (settings.dangerProxyHost ?: "127.0.0.1:$SERVER_PORT")
              ))
 
              val checksSnippet = ResourceLoader.replacePlaceholders(template, mapOf(
