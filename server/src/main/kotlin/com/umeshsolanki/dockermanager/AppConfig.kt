@@ -143,7 +143,10 @@ data class AppSettings(
     val clickhouseSettings: ClickHouseSettings = ClickHouseSettings(),
     
     // Email Client Configuration
-    val emailClientConfig: EmailClientConfig = EmailClientConfig()
+    val emailClientConfig: EmailClientConfig = EmailClientConfig(),
+
+    // Recommended Rules (The "defaults" loaded via UI)
+    val recommendedProxyJailRules: List<ProxyJailRule> = DEFAULT_PROXY_JAIL_RULES
 )
 
 object AppConfig {
@@ -412,7 +415,8 @@ object AppConfig {
         thresholdBurst: Int? = null,
         thresholdCidr: Int? = null,
         dangerProxyEnabled: Boolean? = null,
-        dangerProxyHost: String? = null
+        dangerProxyHost: String? = null,
+        recommendedRules: List<ProxyJailRule>? = null
     ) = synchronized(lock) {
         _settings = _settings.copy(
             proxyJailEnabled = enabled,
@@ -423,7 +427,8 @@ object AppConfig {
             proxyJailThresholdBurst = if (thresholdBurst != null) thresholdBurst else _settings.proxyJailThresholdBurst,
             proxyJailThresholdCidr = if (thresholdCidr != null) thresholdCidr else _settings.proxyJailThresholdCidr,
             dangerProxyEnabled = if (dangerProxyEnabled != null) dangerProxyEnabled else _settings.dangerProxyEnabled,
-            dangerProxyHost = if (dangerProxyHost != null) dangerProxyHost else _settings.dangerProxyHost
+            dangerProxyHost = if (dangerProxyHost != null) dangerProxyHost else _settings.dangerProxyHost,
+            recommendedProxyJailRules = if (recommendedRules != null) recommendedRules else _settings.recommendedProxyJailRules
         )
         saveSettings()
     }

@@ -29,7 +29,7 @@ fun Route.systemRoutes() {
         }
         
         get("/proxy/recommended-rules") {
-            call.respond(DEFAULT_PROXY_JAIL_RULES)
+            call.respond(AppConfig.settings.recommendedProxyJailRules)
         }
         
         ipRangeRoutes()

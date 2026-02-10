@@ -619,6 +619,7 @@ export interface SystemConfig {
   logFlushIntervalSeconds: number;
   clickhouseSettings: ClickHouseSettings;
   emailClientConfig: EmailClientConfig;
+  recommendedProxyJailRules: ProxyJailRule[];
 }
 
 export interface UpdateSystemConfigRequest {

@@ -29,6 +29,7 @@ export default function SecurityScreen() {
     const [nftablesJson, setNftablesJson] = useState<any>(null);
     const [isNftablesRaw, setIsNftablesRaw] = useState(false);
     const [expandedChain, setExpandedChain] = useState<string | null>('INPUT');
+    const [rulesSubTab, setRulesSubTab] = useState<'active' | 'defaults'>('active');
 
     const { trigger } = useActionTrigger();
 
@@ -474,8 +475,24 @@ export default function SecurityScreen() {
                                 <h3 className="text-xl font-bold truncate">Security Policy Control</h3>
                                 <p className="text-[10px] text-on-surface-variant uppercase font-black tracking-widest mt-1 opacity-50">Infrastructure Hardening</p>
                             </div>
-                            <div className="p-3 bg-primary/10 text-primary rounded-2xl">
-                                <ShieldCheck size={24} />
+                            <div className="flex items-center gap-4">
+                                <div className="flex bg-white/5 p-1 rounded-2xl border border-white/5">
+                                    <button
+                                        onClick={() => setRulesSubTab('active')}
+                                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${rulesSubTab === 'active' ? 'bg-primary text-on-primary shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}
+                                    >
+                                        Active
+                                    </button>
+                                    <button
+                                        onClick={() => setRulesSubTab('defaults')}
+                                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${rulesSubTab === 'defaults' ? 'bg-secondary text-on-secondary shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}
+                                    >
+                                        Defaults
+                                    </button>
+                                </div>
+                                <div className="p-3 bg-primary/10 text-primary rounded-2xl">
+                                    <ShieldCheck size={24} />
+                                </div>
                             </div>
                         </div>
 
@@ -544,12 +561,17 @@ export default function SecurityScreen() {
                             <div className="bg-white/[0.03] border border-white/5 rounded-[32px] p-8">
                                 <div className="flex items-center justify-between mb-8">
                                     <h4 className="text-[10px] font-black uppercase text-on-surface-variant tracking-widest flex items-center gap-2">
-                                        <Globe size={14} className="text-primary" />
-                                        Active Guard Rails
+                                        <Globe size={14} className={rulesSubTab === 'active' ? 'text-primary' : 'text-secondary'} />
+                                        {rulesSubTab === 'active' ? 'Active Guard Rails' : 'Default Guard Rails'}
                                     </h4>
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-bold text-primary bg-primary/10 px-3 py-1 rounded-full">{proxyConfig?.proxyJailRules?.length || 0} Rules Active</span>
-                                        {(!proxyConfig?.proxyJailRules || proxyConfig.proxyJailRules.length === 0) && (
+                                        <span className={`text-[10px] font-bold ${rulesSubTab === 'active' ? 'text-primary bg-primary/10' : 'text-secondary bg-secondary/10'} px-3 py-1 rounded-full`}>
+                                            {rulesSubTab === 'active'
+                                                ? (proxyConfig?.proxyJailRules?.length || 0) + ' Rules Active'
+                                                : (proxyConfig?.recommendedProxyJailRules?.length || 0) + ' Rules in Defaults'
+                                            }
+                                        </span>
+                                        {rulesSubTab === 'active' && (!proxyConfig?.proxyJailRules || proxyConfig.proxyJailRules.length === 0) && (
                                             <button
                                                 onClick={async () => {
                                                     const recommended = await DockerClient.getRecommendedProxyRules();
@@ -565,8 +587,8 @@ export default function SecurityScreen() {
                                     </div>
                                 </div>
                                 <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 scrollbar-invisible">
-                                    {proxyConfig?.proxyJailRules?.map((rule) => (
-                                        <div key={rule.id} className="group bg-white/5 border border-white/5 p-4 rounded-2xl hover:border-primary/30 transition-all flex items-center justify-between">
+                                    {(rulesSubTab === 'active' ? proxyConfig?.proxyJailRules : proxyConfig?.recommendedProxyJailRules)?.map((rule) => (
+                                        <div key={rule.id} className={`group bg-white/5 border border-white/5 p-4 rounded-2xl ${rulesSubTab === 'active' ? 'hover:border-primary/30' : 'hover:border-secondary/30'} transition-all flex items-center justify-between`}>
                                             <div className="flex items-center gap-4 min-w-0">
                                                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${rule.type === 'USER_AGENT' ? 'bg-pink-500/10 text-pink-500' :
                                                     rule.type === 'METHOD' ? 'bg-orange-500/10 text-orange-500' :
@@ -581,16 +603,17 @@ export default function SecurityScreen() {
                                                 <div className="min-w-0">
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant/70 font-mono">{rule.type}</span>
-                                                        {rule.description && <span className="text-[10px] font-bold text-primary truncate max-w-[200px]">{rule.description}</span>}
+                                                        {rule.description && <span className={`text-[10px] font-bold ${rulesSubTab === 'active' ? 'text-primary' : 'text-secondary'} truncate max-w-[200px]`}>{rule.description}</span>}
                                                     </div>
                                                     <div className="text-sm font-mono font-bold truncate text-on-surface break-all">{rule.pattern}</div>
                                                 </div>
                                             </div>
                                             <button
                                                 onClick={() => {
-                                                    const newRules = (proxyConfig?.proxyJailRules || []).filter(r => r.id !== rule.id);
-                                                    setProxyConfig(prev => prev ? { ...prev, proxyJailRules: newRules } : null);
-
+                                                    const field = rulesSubTab === 'active' ? 'proxyJailRules' : 'recommendedProxyJailRules';
+                                                    const rules = (proxyConfig as any)?.[field] || [];
+                                                    const newRules = rules.filter((r: any) => r.id !== rule.id);
+                                                    setProxyConfig(prev => prev ? { ...prev, [field]: newRules } : null);
                                                 }}
                                                 className="p-2 text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
                                             >
@@ -598,22 +621,26 @@ export default function SecurityScreen() {
                                             </button>
                                         </div>
                                     ))}
-                                    {(!proxyConfig?.proxyJailRules || proxyConfig.proxyJailRules.length === 0) && (
-                                        <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-white/5 rounded-3xl bg-white/[0.02]">
-                                            <Shield size={48} className="text-on-surface-variant/10 mb-4" />
-                                            <p className="text-sm font-bold text-on-surface-variant">No edge security rules defined.</p>
-                                        </div>
-                                    )}
+                                    {(!(rulesSubTab === 'active' ? proxyConfig?.proxyJailRules : proxyConfig?.recommendedProxyJailRules) ||
+                                        (rulesSubTab === 'active' ? proxyConfig?.proxyJailRules : proxyConfig?.recommendedProxyJailRules)?.length === 0) && (
+                                            <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-white/5 rounded-3xl bg-white/[0.02]">
+                                                <Shield size={48} className="text-on-surface-variant/10 mb-4" />
+                                                <p className="text-sm font-bold text-on-surface-variant">No rules defined in this set.</p>
+                                            </div>
+                                        )}
                                 </div>
-                                {proxyConfig?.proxyJailRules && proxyConfig.proxyJailRules.length > 0 && (
+                                {((rulesSubTab === 'active' ? proxyConfig?.proxyJailRules : proxyConfig?.recommendedProxyJailRules)?.length || 0) > 0 && (
                                     <button
                                         onClick={() => {
-                                            updateProxySecurity({ proxyJailRules: proxyConfig.proxyJailRules });
-                                            toast.success('Security rules applied');
+                                            const payload = rulesSubTab === 'active'
+                                                ? { proxyJailRules: proxyConfig?.proxyJailRules }
+                                                : { recommendedProxyJailRules: proxyConfig?.recommendedProxyJailRules };
+                                            updateProxySecurity(payload as any);
+                                            toast.success(`${rulesSubTab === 'active' ? 'Active' : 'Default'} rules applied`);
                                         }}
-                                        className="w-full mt-4 bg-primary text-on-primary py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                                        className={`w-full mt-4 ${rulesSubTab === 'active' ? 'bg-primary text-on-primary shadow-primary/20' : 'bg-secondary text-on-secondary shadow-secondary/20'} py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all`}
                                     >
-                                        Apply Changes
+                                        Apply {rulesSubTab === 'active' ? 'Active' : 'Default'} Changes
                                     </button>
                                 )}
                             </div>
@@ -642,7 +669,9 @@ export default function SecurityScreen() {
                                         description
                                     };
 
-                                    updateProxySecurity({ proxyJailRules: [...(proxyConfig?.proxyJailRules || []), newRule] });
+                                    const field = rulesSubTab === 'active' ? 'proxyJailRules' : 'recommendedProxyJailRules';
+                                    const currentRules = (proxyConfig as any)?.[field] || [];
+                                    updateProxySecurity({ [field]: [...currentRules, newRule] } as any);
                                     form.reset();
                                 }}>
                                     <div className="space-y-1.5">
