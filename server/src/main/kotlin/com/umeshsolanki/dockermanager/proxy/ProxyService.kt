@@ -1098,7 +1098,7 @@ class ProxyServiceImpl(
         val logFormat = "main" // Always use main, as it's dynamically defined now
         val syslogServer =
             "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
-        val syslogTag = tag.replace(Regex("[^a-zA-Z0-9_]"), "_")
+        val syslogTag = tag.replace(Regex("[^a-zA-Z0-9_]"), "_").take(24).trimEnd('_')
 
         val standardLoggingConfig = run {
             val template = getCachedTemplate("templates/proxy/standard-logging.conf")
@@ -1231,7 +1231,7 @@ class ProxyServiceImpl(
             }
 
             if (rsyslogEnabled) {
-                directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_client_error,severity=notice,nohostname $logFormat;")
+                directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_clerr,severity=notice,nohostname $logFormat;")
             }
 
             val snippet = ResourceLoader.replacePlaceholders(
