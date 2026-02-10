@@ -67,70 +67,73 @@ export default function IpReputationScreen() {
     };
 
     return (
-        <div className="flex flex-col gap-6 pb-8 max-w-[1600px] mx-auto">
-            <header className="flex items-center justify-between">
-                <div className="flex flex-col gap-1">
-                    <h1 className="text-3xl font-black tracking-tight flex items-center gap-3">
-                        <Globe className="text-primary" size={28} />
-                        IP Reputation
-                    </h1>
-                    <p className="text-on-surface-variant/70 font-medium">
-                        Monitor and manage IP reputation based on activity and block history.
-                    </p>
+        <div className="flex flex-col gap-6 pb-10 max-w-[1600px] mx-auto">
+            {/* Header */}
+            <header className="flex items-center justify-between p-6 bg-white/[0.02] border border-white/5 rounded-3xl backdrop-blur-xl shadow-2xl">
+                <div className="flex items-center gap-4">
+                    <div className="p-4 bg-gradient-to-br from-primary/20 to-primary/5 rounded-2xl border border-primary/20 shadow-lg">
+                        <Globe className="text-primary" size={32} strokeWidth={2.5} />
+                    </div>
+                    <div>
+                        <h1 className="text-4xl font-black tracking-tight">IP Reputation</h1>
+                        <p className="text-sm text-on-surface-variant/60 font-medium mt-1">
+                            Monitor and manage IP reputation based on activity and block history.
+                        </p>
+                    </div>
                 </div>
                 <div className="flex items-center gap-3">
                     <button
                         onClick={fetchReputations}
                         disabled={isLoading}
-                        className="p-2.5 bg-surface border border-outline/10 rounded-xl hover:bg-surface-variant/50 transition-all text-on-surface-variant hover:text-primary active:scale-95 disabled:opacity-50"
+                        className="p-3 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 hover:border-primary/30 transition-all text-on-surface-variant hover:text-primary active:scale-95 disabled:opacity-50 shadow-lg hover:shadow-primary/20"
                         title="Refresh"
                     >
-                        <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
+                        <RefreshCw size={20} strokeWidth={2.5} className={isLoading ? 'animate-spin' : ''} />
                     </button>
                 </div>
             </header>
 
 
-            {/* IP Geolocation Settings (Compact) */}
-            <div className="bg-surface/50 border border-outline/10 rounded-2xl shadow-sm backdrop-blur-md overflow-hidden group">
+            {/* IP Geolocation Settings */}
+            <div className="bg-white/[0.02] border border-white/5 rounded-3xl shadow-2xl backdrop-blur-xl overflow-hidden">
                 {/* Header Row */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between p-4 gap-4">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-secondary/10 rounded-lg text-secondary border border-secondary/20">
-                            <Globe size={18} />
+                <div className="flex flex-col md:flex-row md:items-center justify-between p-6 gap-4">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-gradient-to-br from-secondary/20 to-secondary/5 rounded-2xl border border-secondary/20 shadow-lg">
+                            <Globe size={24} strokeWidth={2.5} className="text-secondary" />
                         </div>
                         <div>
-                            <h2 className="text-sm font-bold text-on-surface flex items-center gap-2">
+                            <h2 className="text-lg font-black text-on-surface flex items-center gap-3">
                                 IP Geolocation Data
-                                <span className="px-2 py-0.5 rounded-md bg-surface-variant/50 border border-outline/5 text-[10px] text-on-surface-variant/80 font-mono">
+                                <span className="px-3 py-1 rounded-xl bg-secondary/10 border border-secondary/20 text-xs text-secondary font-bold">
                                     {ipRangesCount.toLocaleString()} Ranges
                                 </span>
                             </h2>
-                            <p className="text-[10px] text-on-surface-variant font-medium">Manage IP range databases for country/ISP identification</p>
+                            <p className="text-xs text-on-surface-variant/60 font-medium mt-1">Manage IP range databases for country/ISP identification</p>
                         </div>
                     </div>
 
                     <div className="flex items-center gap-2">
                         <button
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-variant/50 border border-outline/10 rounded-lg text-xs font-bold transition-all active:scale-95 text-on-surface"
+                            className="flex items-center gap-2 px-4 py-2.5 bg-secondary/10 hover:bg-secondary/20 border border-secondary/20 rounded-2xl text-sm font-bold transition-all active:scale-95 text-secondary shadow-lg hover:shadow-secondary/20"
                             onClick={() => setShowIpImportModal(true)}
                         >
-                            <Save size={14} className="text-secondary" />
+                            <Plus size={16} strokeWidth={2.5} />
                             <span>Import CSV</span>
                         </button>
                     </div>
                 </div>
 
                 {/* Actions Row */}
-                <div className="bg-surface/30 px-4 py-2.5 border-t border-outline/5 flex flex-col md:flex-row items-center gap-4">
+                <div className="bg-black/20 px-6 py-4 border-t border-white/5 flex flex-col md:flex-row items-center gap-4">
                     {/* Auto Fetchers */}
-                    <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto no-scrollbar pb-1 md:pb-0">
-                        <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider whitespace-nowrap mr-1">Auto-Fetch:</span>
+                    <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto no-scrollbar">
+                        <span className="text-xs font-black text-on-surface-variant/70 uppercase tracking-widest whitespace-nowrap">Auto-Fetch:</span>
                         {[
-                            { id: 'cloudflare', name: 'CF', full: 'Cloudflare', color: 'text-[#F38020] border-[#F38020]/20 hover:bg-[#F38020]/10' },
-                            { id: 'aws', name: 'AWS', full: 'AWS', color: 'text-[#FF9900] border-[#FF9900]/20 hover:bg-[#FF9900]/10' },
-                            { id: 'google', name: 'GCP', full: 'Google', color: 'text-[#4285F4] border-[#4285F4]/20 hover:bg-[#4285F4]/10' },
-                            { id: 'digitalocean', name: 'DO', full: 'DigitalOcean', color: 'text-[#0080FF] border-[#0080FF]/20 hover:bg-[#0080FF]/10' }
+                            { id: 'cloudflare', name: 'CF', full: 'Cloudflare', color: 'text-[#F38020] border-[#F38020]/30 hover:bg-[#F38020]/20' },
+                            { id: 'aws', name: 'AWS', full: 'AWS', color: 'text-[#FF9900] border-[#FF9900]/30 hover:bg-[#FF9900]/20' },
+                            { id: 'google', name: 'GCP', full: 'Google', color: 'text-[#4285F4] border-[#4285F4]/30 hover:bg-[#4285F4]/20' },
+                            { id: 'digitalocean', name: 'DO', full: 'DigitalOcean', color: 'text-[#0080FF] border-[#0080FF]/30 hover:bg-[#0080FF]/20' }
                         ].map((provider) => (
                             <button
                                 key={provider.id}
@@ -155,7 +158,7 @@ export default function IpReputationScreen() {
                                         setImportingIpRanges(false);
                                     }
                                 }}
-                                className={`px-2.5 py-1 rounded-md border text-[10px] font-bold transition-all active:scale-95 disabled:opacity-50 whitespace-nowrap ${provider.color}`}
+                                className={`px-4 py-2 rounded-xl border text-xs font-bold transition-all active:scale-95 disabled:opacity-50 whitespace-nowrap shadow-md ${provider.color}`}
                                 title={`Fetch ${provider.full} Ranges`}
                             >
                                 {provider.name}
@@ -163,7 +166,7 @@ export default function IpReputationScreen() {
                         ))}
                     </div>
 
-                    <div className="hidden md:block w-px h-5 bg-outline/10"></div>
+                    <div className="hidden md:block w-px h-6 bg-white/10"></div>
 
                     {/* Custom URL */}
                     <div className="flex items-center gap-2 flex-1 w-full md:w-auto min-w-0">
@@ -171,7 +174,7 @@ export default function IpReputationScreen() {
                             <input
                                 type="text"
                                 placeholder="https://example.com/ips.csv"
-                                className="w-full bg-surface border border-outline/10 rounded-lg px-2.5 py-1 text-[10px] focus:outline-none focus:border-secondary transition-all h-7"
+                                className="w-full bg-black/20 border border-white/10 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:border-secondary/50 focus:ring-2 focus:ring-secondary/20 transition-all font-medium placeholder:text-white/30"
                                 id="custom-ip-url"
                             />
                         </div>
@@ -199,7 +202,7 @@ export default function IpReputationScreen() {
                                 }
                             }}
                             disabled={importingIpRanges}
-                            className="px-3 py-1 bg-secondary text-on-secondary rounded-lg text-[10px] font-bold hover:opacity-90 active:scale-95 disabled:opacity-50 h-7 whitespace-nowrap"
+                            className="px-5 py-2.5 bg-secondary text-on-secondary rounded-2xl text-sm font-bold hover:opacity-90 active:scale-95 disabled:opacity-50 whitespace-nowrap shadow-lg shadow-secondary/30"
                         >
                             Fetch
                         </button>
@@ -208,23 +211,23 @@ export default function IpReputationScreen() {
             </div>
 
             {/* Controls */}
-            <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-surface/30 p-4 rounded-2xl border border-outline/10">
+            <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white/[0.02] p-5 rounded-3xl border border-white/5 backdrop-blur-xl shadow-xl">
                 <div className="relative w-full md:w-96">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50" size={18} />
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/50" size={20} strokeWidth={2.5} />
                     <input
                         type="text"
                         placeholder="Search IP, Country, Reason..."
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        className="w-full bg-surface-variant/30 border border-outline/10 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                        className="w-full bg-black/20 border border-white/10 rounded-2xl pl-12 pr-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all placeholder:text-white/30"
                     />
                 </div>
-                <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-on-surface-variant/70 uppercase tracking-wide">Show:</span>
+                <div className="flex items-center gap-3">
+                    <span className="text-xs font-black text-on-surface-variant/70 uppercase tracking-widest">Show:</span>
                     <select
                         value={limit}
                         onChange={(e) => setLimit(Number(e.target.value))}
-                        className="bg-surface-variant/30 border border-outline/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
+                        className="bg-black/20 border border-white/10 rounded-xl px-4 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer"
                     >
                         <option value={20}>20</option>
                         <option value={50}>50</option>
@@ -235,9 +238,9 @@ export default function IpReputationScreen() {
             </div>
 
             {/* Compact List */}
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3">
                 {/* Table Header */}
-                <div className="grid grid-cols-12 gap-4 px-4 py-2 text-xs font-bold text-on-surface-variant/50 uppercase tracking-wider">
+                <div className="grid grid-cols-12 gap-4 px-6 py-3 text-xs font-black text-on-surface-variant/60 uppercase tracking-widest bg-white/[0.02] border border-white/5 rounded-2xl">
                     <div className="col-span-3">IP Address</div>
                     <div className="col-span-2">Country</div>
                     <div className="col-span-2 text-center">Blocked</div>
@@ -246,24 +249,24 @@ export default function IpReputationScreen() {
                 </div>
 
                 {reputations.length === 0 && !isLoading ? (
-                    <div className="flex flex-col items-center justify-center py-20 text-on-surface-variant/40 border-2 border-dashed border-outline/10 rounded-3xl bg-surface/10">
-                        <Globe size={48} className="mb-4 opacity-50" />
-                        <span className="text-lg font-bold">No reputation records found</span>
-                        <span className="text-sm">IPs will appear here when activity or blocks are recorded.</span>
+                    <div className="flex flex-col items-center justify-center py-24 text-on-surface-variant/40 border-2 border-dashed border-white/10 rounded-3xl bg-white/[0.02]">
+                        <Globe size={64} className="mb-4 opacity-30" strokeWidth={1.5} />
+                        <span className="text-xl font-black">No reputation records found</span>
+                        <span className="text-sm font-medium mt-1">IPs will appear here when activity or blocks are recorded.</span>
                     </div>
                 ) : (
                     reputations.map((rep) => (
-                        <div key={rep.ip} className="group bg-surface hover:bg-surface-variant/5 border border-outline/10 rounded-xl p-3 transition-all hover:border-primary/20 shadow-sm">
+                        <div key={rep.ip} className="group bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-2xl p-4 transition-all hover:border-primary/30 shadow-lg hover:shadow-primary/10">
                             <div className="grid grid-cols-12 gap-4 items-center">
                                 {/* IP & Risk */}
                                 <div className="col-span-3 flex items-center gap-3">
-                                    <div className={`p-1.5 rounded-lg ${rep.blockedTimes > 0 ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
-                                        {rep.blockedTimes > 0 ? <Shield size={14} /> : <Activity size={14} />}
+                                    <div className={`p-2 rounded-xl border ${rep.blockedTimes > 0 ? 'bg-red-500/10 text-red-500 border-red-500/30' : 'bg-green-500/10 text-green-500 border-green-500/30'} shadow-md`}>
+                                        {rep.blockedTimes > 0 ? <Shield size={16} strokeWidth={2.5} /> : <Activity size={16} strokeWidth={2.5} />}
                                     </div>
                                     <div className="flex flex-col">
                                         <span className="font-mono text-sm font-bold text-on-surface">{rep.ip}</span>
                                         {rep.reasons && rep.reasons.length > 0 && (
-                                            <span className="text-[10px] text-on-surface-variant/70 truncate max-w-[150px]" title={rep.reasons.join(', ')}>
+                                            <span className="text-[10px] text-on-surface-variant/70 truncate max-w-[150px] font-medium" title={rep.reasons.join(', ')}>
                                                 {rep.reasons[0]} {rep.reasons.length > 1 && `+${rep.reasons.length - 1}`}
                                             </span>
                                         )}
@@ -273,34 +276,34 @@ export default function IpReputationScreen() {
                                 {/* Country */}
                                 <div className="col-span-2">
                                     {rep.country ? (
-                                        <div className="flex items-center gap-1.5 text-xs font-medium text-on-surface-variant">
-                                            <MapPin size={12} className="opacity-70" />
+                                        <div className="flex items-center gap-2 text-sm font-bold text-on-surface-variant">
+                                            <MapPin size={14} strokeWidth={2.5} className="opacity-70" />
                                             {rep.country}
                                         </div>
                                     ) : (
-                                        <span className="text-xs text-on-surface-variant/30 italic">Unknown</span>
+                                        <span className="text-sm text-on-surface-variant/30 italic font-medium">Unknown</span>
                                     )}
                                 </div>
 
-                                {/* Compacter Block Stats */}
+                                {/* Block Stats */}
                                 <div className="col-span-2 text-center">
                                     <div className="inline-flex flex-col items-center">
-                                        <span className={`text-sm font-black ${rep.blockedTimes > 0 ? 'text-red-500' : 'text-on-surface-variant/50'}`}>
+                                        <span className={`text-lg font-black ${rep.blockedTimes > 0 ? 'text-red-500' : 'text-on-surface-variant/40'}`}>
                                             {rep.blockedTimes}
                                         </span>
-                                        <span className="text-[9px] font-bold text-on-surface-variant/40 uppercase">Blocks</span>
+                                        <span className="text-[9px] font-black text-on-surface-variant/50 uppercase tracking-wider">Blocks</span>
                                     </div>
                                 </div>
 
                                 {/* Activity Times */}
-                                <div className="col-span-3 flex flex-col justify-center text-[10px] text-on-surface-variant/70 gap-0.5">
-                                    <div className="flex items-center gap-1.5">
-                                        <Activity size={10} />
+                                <div className="col-span-3 flex flex-col justify-center text-xs text-on-surface-variant/70 gap-1 font-medium">
+                                    <div className="flex items-center gap-2">
+                                        <Activity size={12} strokeWidth={2.5} />
                                         <span>Active: {new Date(rep.lastActivity).toLocaleString()}</span>
                                     </div>
                                     {rep.lastBlocked && (
-                                        <div className="flex items-center gap-1.5 text-red-400/80">
-                                            <Shield size={10} />
+                                        <div className="flex items-center gap-2 text-red-400/80">
+                                            <Shield size={12} strokeWidth={2.5} />
                                             <span>Blocked: {new Date(rep.lastBlocked).toLocaleString()}</span>
                                         </div>
                                     )}
@@ -310,10 +313,10 @@ export default function IpReputationScreen() {
                                 <div className="col-span-2 flex justify-end">
                                     <button
                                         onClick={() => handleDelete(rep.ip)}
-                                        className="p-1.5 rounded-lg text-on-surface-variant/50 hover:bg-red-500/10 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                                        className="p-2 rounded-xl text-on-surface-variant/50 hover:bg-red-500/20 hover:text-red-500 hover:border-red-500/30 transition-all opacity-0 group-hover:opacity-100 border border-transparent"
                                         title="Delete Record"
                                     >
-                                        <Trash2 size={14} />
+                                        <Trash2 size={16} strokeWidth={2.5} />
                                     </button>
                                 </div>
                             </div>
@@ -323,21 +326,21 @@ export default function IpReputationScreen() {
             </div>
 
             {/* Pagination */}
-            <div className="flex justify-center gap-2 py-4">
+            <div className="flex justify-center gap-3 py-4">
                 <button
                     disabled={offset === 0}
                     onClick={() => setOffset(Math.max(0, offset - limit))}
-                    className="px-4 py-2 rounded-lg bg-surface border border-outline/10 text-sm font-bold disabled:opacity-50 hover:bg-surface-variant/50"
+                    className="px-6 py-3 rounded-2xl bg-white/[0.02] border border-white/5 text-sm font-bold disabled:opacity-40 hover:bg-white/[0.05] hover:border-primary/30 transition-all shadow-lg disabled:cursor-not-allowed"
                 >
                     Previous
                 </button>
-                <div className="px-4 py-2 bg-surface-variant/20 rounded-lg text-sm font-mono flex items-center">
+                <div className="px-6 py-3 bg-primary/10 border border-primary/20 rounded-2xl text-sm font-black flex items-center text-primary">
                     {offset} - {offset + limit}
                 </div>
                 <button
                     disabled={reputations.length < limit}
                     onClick={() => setOffset(offset + limit)}
-                    className="px-4 py-2 rounded-lg bg-surface border border-outline/10 text-sm font-bold disabled:opacity-50 hover:bg-surface-variant/50"
+                    className="px-6 py-3 rounded-2xl bg-white/[0.02] border border-white/5 text-sm font-bold disabled:opacity-40 hover:bg-white/[0.05] hover:border-primary/30 transition-all shadow-lg disabled:cursor-not-allowed"
                 >
                     Next
                 </button>
