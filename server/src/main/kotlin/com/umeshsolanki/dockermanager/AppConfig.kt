@@ -418,12 +418,12 @@ object AppConfig {
             proxyJailEnabled = enabled,
             proxyJailThresholdNon200 = thresholdNon200,
             proxyJailRules = rules,
-            proxyJailWindowMinutes = windowMinutes ?: _settings.proxyJailWindowMinutes,
-            proxyJailThresholdDanger = thresholdDanger ?: _settings.proxyJailThresholdDanger,
-            proxyJailThresholdBurst = thresholdBurst ?: _settings.proxyJailThresholdBurst,
-            proxyJailThresholdCidr = thresholdCidr ?: _settings.proxyJailThresholdCidr,
-            dangerProxyEnabled = dangerProxyEnabled ?: _settings.dangerProxyEnabled,
-            dangerProxyHost = dangerProxyHost ?: _settings.dangerProxyHost
+            proxyJailWindowMinutes = if (windowMinutes != null) windowMinutes else _settings.proxyJailWindowMinutes,
+            proxyJailThresholdDanger = if (thresholdDanger != null) thresholdDanger else _settings.proxyJailThresholdDanger,
+            proxyJailThresholdBurst = if (thresholdBurst != null) thresholdBurst else _settings.proxyJailThresholdBurst,
+            proxyJailThresholdCidr = if (thresholdCidr != null) thresholdCidr else _settings.proxyJailThresholdCidr,
+            dangerProxyEnabled = if (dangerProxyEnabled != null) dangerProxyEnabled else _settings.dangerProxyEnabled,
+            dangerProxyHost = if (dangerProxyHost != null) dangerProxyHost else _settings.dangerProxyHost
         )
         saveSettings()
     }
