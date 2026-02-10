@@ -1094,162 +1094,69 @@ class ProxyServiceImpl(
         val settings = AppConfig.settings
         val rsyslogEnabled = settings.proxyRsyslogEnabled
         val dualLogging = settings.proxyDualLoggingEnabled
-        settings.jsonLoggingEnabled
-        val logFormat = "main" // Always use main, as it's dynamically defined now
-        val syslogServer =
-            "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
-        val syslogTag = tag.replace(Regex("[^a-zA-Z0-9_]"), "_").take(24).trimEnd('_')
+        val logFormat = "main" 
+        val syslogServer = "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
+        
+        // Use a FIXED tag for syslog to avoid length issues, the domain is already in the log payload ($host)
+        val fixedSyslogTag = "DockerManagerProxy"
 
         val standardLoggingConfig = run {
             val template = getCachedTemplate("templates/proxy/standard-logging.conf")
-
             val accessLogDirectives = mutableListOf<String>()
             val errorLogDirectives = mutableListOf<String>()
 
-            // 1. Local Logging (Enabled if dual logging OR rsyslog is disabled)
             if (dualLogging || !rsyslogEnabled) {
-                accessLogDirectives.add(
-                    getAccessLogDirective(
-                        "/usr/local/openresty/nginx/logs/${tag}_access.log",
-                        logFormat
-                    )
-                )
+                accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_access.log", logFormat))
                 errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/${tag}_error.log warn;")
             }
 
-            // 2. Remote Syslog (Enabled if rsyslog is enabled)
             if (rsyslogEnabled) {
-                accessLogDirectives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_access,severity=info,nohostname $logFormat;")
-                errorLogDirectives.add("error_log syslog:server=$syslogServer,tag=${syslogTag}_error,nohostname warn;")
+                accessLogDirectives.add("access_log syslog:server=$syslogServer,tag=${fixedSyslogTag},severity=info,nohostname $logFormat;")
+                errorLogDirectives.add("error_log syslog:server=$syslogServer,tag=${fixedSyslogTag}_err,nohostname warn;")
             }
 
             val snippet = ResourceLoader.replacePlaceholders(
                 template, mapOf(
-                    "accessLogDirective" to accessLogDirectives.joinToString("\n"),
-                    "errorLogDirective" to errorLogDirectives.joinToString("\n")
+                    "accessLogDirective" to accessLogDirectives.joinToString("\n    "),
+                    "errorLogDirective" to errorLogDirectives.joinToString("\n    ")
                 )
             )
             snippet.lines().joinToString("\n    ") { it }
         }
 
-        val dangerHitsConfig = run {
-            val template = getCachedTemplate("templates/proxy/danger-logging.conf")
-            val directives = mutableListOf<String>()
+        // Generate unified security configuration
+        val securityChecksConfig = run {
+             val template = getCachedTemplate("templates/proxy/security-checks.conf")
+             val mirrorTemplate = getCachedTemplate("templates/proxy/security-mirror.conf")
+             
+             val securityLoggingDirectives = mutableListOf<String>()
+             if (dualLogging || !rsyslogEnabled) {
+                 securityLoggingDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_security.log", logFormat))
+             }
+             if (rsyslogEnabled) {
+                 securityLoggingDirectives.add("access_log syslog:server=$syslogServer,tag=${fixedSyslogTag}_sec,severity=notice,nohostname $logFormat;")
+             }
 
-            if (dualLogging || !rsyslogEnabled) {
-                directives.add(
-                    getAccessLogDirective(
-                        "/usr/local/openresty/nginx/logs/${tag}_danger.log",
-                        logFormat
-                    )
-                )
-            }
+             val mirrorConfig = ResourceLoader.replacePlaceholders(mirrorTemplate, mapOf(
+                 "dangerProxyHost" to (settings.dangerProxyHost ?: "127.0.0.1")
+             ))
 
-            if (rsyslogEnabled) {
-                directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_danger,severity=crit,nohostname $logFormat;")
-            }
-
-            val dangerAction =
-                if (settings.dangerProxyEnabled && !settings.dangerProxyHost.isNullOrBlank()) {
-                    "mirror /_danger_mirror;\n    return 444;"
-                } else {
-                    "return 444;"
-                }
-
-            val snippet = ResourceLoader.replacePlaceholders(
-                template, mapOf(
-                    "dangerLoggingDirectives" to directives.joinToString("\n    "),
-                    "dangerAction" to dangerAction,
-                    "dangerProxyHost" to (settings.dangerProxyHost ?: "127.0.0.1"),
-                    "request_uri" to "\$request_uri"
-                )
-            )
-            snippet.lines().joinToString("\n    ") { it }
-        }
-
-        val cidrHitsConfig = run {
-            val template = getCachedTemplate("templates/proxy/cidr-logging.conf")
-            val directives = mutableListOf<String>()
-
-            if (dualLogging || !rsyslogEnabled) {
-                directives.add(
-                    getAccessLogDirective(
-                        "/usr/local/openresty/nginx/logs/${tag}_cidr.log",
-                        logFormat
-                    )
-                )
-            }
-
-            if (rsyslogEnabled) {
-                directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_cidr,severity=crit,nohostname $logFormat;")
-            }
-
-            val snippet = ResourceLoader.replacePlaceholders(
-                template, mapOf(
-                    "cidrLoggingDirectives" to directives.joinToString("\n    ")
-                )
-            )
-            snippet.lines().joinToString("\n    ") { it }
-        }
-
-        val burstLoggingConfig = run {
-            val template = getCachedTemplate("templates/proxy/burst-logging.conf")
-            val directives = mutableListOf<String>()
-
-            if (dualLogging || !rsyslogEnabled) {
-                directives.add(
-                    getAccessLogDirective(
-                        "/usr/local/openresty/nginx/logs/${tag}_burst.log",
-                        logFormat
-                    )
-                )
-            }
-
-            if (rsyslogEnabled) {
-                directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_burst,severity=warn $logFormat;")
-            }
-
-            val snippet = ResourceLoader.replacePlaceholders(
-                template, mapOf(
-                    "burstLoggingDirectives" to directives.joinToString("\n    ")
-                )
-            )
-            snippet.lines().joinToString("\n    ") { it }
-        }
-
-        val clientErrorHitsConfig = run {
-            val template = getCachedTemplate("templates/proxy/client-error-logging.conf")
-            val directives = mutableListOf<String>()
-
-            if (dualLogging || !rsyslogEnabled) {
-                directives.add(
-                    getAccessLogDirective(
-                        "/usr/local/openresty/nginx/logs/${tag}_client_errors.log",
-                        logFormat
-                    )
-                )
-            }
-
-            if (rsyslogEnabled) {
-                directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_clerr,severity=notice,nohostname $logFormat;")
-            }
-
-            val snippet = ResourceLoader.replacePlaceholders(
-                template, mapOf(
-                    "clientErrorLoggingDirectives" to directives.joinToString("\n    "),
-                    "dangerProxyHost" to (settings.dangerProxyHost ?: "127.0.0.1"),
-                    "request_uri" to "\$request_uri"
-                )
-            )
-            snippet.lines().joinToString("\n    ") { it }
+             val checksSnippet = ResourceLoader.replacePlaceholders(template, mapOf(
+                 "securityLoggingDirectives" to securityLoggingDirectives.joinToString("\n    ")
+             ))
+             
+             // Combine checks and mirror
+             "$checksSnippet\n\n    $mirrorConfig"
         }
 
         return mapOf(
             "standardLoggingConfig" to standardLoggingConfig,
-            "dangerHitsConfig" to dangerHitsConfig,
-            "cidrHitsConfig" to cidrHitsConfig,
-            "burstLoggingConfig" to burstLoggingConfig,
-            "clientErrorHitsConfig" to clientErrorHitsConfig
+            "securityChecksConfig" to securityChecksConfig,
+            "rsyslogConfig" to "", // Clean up old placeholders
+            "dangerHitsConfig" to "",
+            "cidrHitsConfig" to "",
+            "burstLoggingConfig" to "",
+            "clientErrorHitsConfig" to ""
         )
     }
 
@@ -1953,10 +1860,35 @@ class ProxyServiceImpl(
 
         loggingConfig.append(standardLoggingContent.lines().joinToString("\n    ") { it })
 
+        // Generate Security Maps
+        val securityMaps = StringBuilder()
+        
+        // Map for Path-based violations
+        securityMaps.append("    map \$request_uri \$security_violation_reason {\n")
+        securityMaps.append("        default \"\";\n")
+        for (rule in settings.proxyJailRules.filter { it.type == AppConfig.ProxyJailRuleType.PATH }) {
+             val pattern = rule.pattern
+                 .replace("\"", "\\\"")
+                 .let { if (it.startsWith("^") || it.contains("|") || it.contains("$") || it.contains("(")) "~*$it" else it }
+             securityMaps.append("        \"$pattern\" \"${rule.description?.replace("\"", "\\\"") ?: "path_violation"}\";\n")
+        }
+        securityMaps.append("    }\n\n")
+
+        // Map for User-Agent violations
+        securityMaps.append("    map \$http_user_agent \$ua_violation {\n")
+        securityMaps.append("        default \"\";\n")
+        for (rule in settings.proxyJailRules.filter { it.type == AppConfig.ProxyJailRuleType.USER_AGENT }) {
+             val pattern = rule.pattern.replace("\"", "\\\"")
+                 .let { if (it.contains("|") || it.contains("[") || it.contains("(")) "~*$it" else it }
+             securityMaps.append("        \"$pattern\" \"1\";\n")
+        }
+        securityMaps.append("    }\n")
+
         return ResourceLoader.replacePlaceholders(
             template, mapOf(
                 "loggingConfig" to loggingConfig.toString(),
-                "logFormatDefinition" to logFormatDefinition
+                "logFormatDefinition" to logFormatDefinition,
+                "securityMaps" to securityMaps.toString()
             )
         )
     }
