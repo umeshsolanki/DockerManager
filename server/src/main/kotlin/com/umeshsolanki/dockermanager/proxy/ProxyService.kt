@@ -65,8 +65,10 @@ object ProxyService {
         windowMinutes: Int? = null,
         thresholdDanger: Int? = null,
         thresholdBurst: Int? = null,
-        thresholdCidr: Int? = null
-    ) = service.updateSecuritySettings(enabled, thresholdNon200, rules, windowMinutes, thresholdDanger, thresholdBurst, thresholdCidr)
+        thresholdCidr: Int? = null,
+        dangerProxyEnabled: Boolean? = null,
+        dangerProxyHost: String? = null
+    ) = service.updateSecuritySettings(enabled, thresholdNon200, rules, windowMinutes, thresholdDanger, thresholdBurst, thresholdCidr, dangerProxyEnabled, dangerProxyHost)
 
     fun updateDefaultBehavior(return404: Boolean) = service.updateDefaultBehavior(return404)
 
