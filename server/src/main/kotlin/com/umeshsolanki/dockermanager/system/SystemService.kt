@@ -160,6 +160,15 @@ object SystemService {
         // Slow updates: Background service management
         serviceScope.launch {
             try {
+                // Update Danger Proxy Settings
+                if (request.dangerProxyEnabled != null || request.dangerProxyHost != null) {
+                    AppConfig.updateDangerProxySettings(request.dangerProxyEnabled, request.dangerProxyHost)
+                    ServiceContainer.proxyService.updateDangerProxySettings(
+                        request.dangerProxyEnabled ?: AppConfig.settings.dangerProxyEnabled,
+                        request.dangerProxyHost ?: AppConfig.settings.dangerProxyHost
+                    )
+                }
+
                 // Handle Logging Settings (Includes Nginx Reload)
                 if (request.dbPersistenceLogsEnabled != null || request.nginxLogDir != null ||
                     request.logBufferingEnabled != null || request.logBufferSizeKb != null || request.logFlushIntervalSeconds != null) {

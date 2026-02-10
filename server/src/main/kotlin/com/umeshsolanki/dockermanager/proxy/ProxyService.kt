@@ -343,6 +343,35 @@ class ProxyServiceImpl(
         }
     }
 
+    override fun updateDangerProxySettings(enabled: Boolean, host: String?): Pair<Boolean, String> {
+        return try {
+            AppConfig.updateDangerProxySettings(enabled, host)
+
+            // Danger settings are used in security-mirror.conf which is included in nginx.conf
+            // But we actually inject it into templates, so we need to ensure security configs are updated.
+            // The dangerProxyHost variable is used inside security-mirror.conf.
+            // We need to re-generate the security configs that use this variable.
+            
+            // security-mirror.conf uses ${dangerProxyHost}
+            // we need a method to regenerate global security configs.
+            ensureNginxMainConfig(forceOverwrite = true) 
+            ensureDefaultServer()
+            
+            // Reload nginx to pick up changes
+            val reloadResult = reloadNginx()
+            if (!reloadResult.first) {
+                 if (reloadResult.second.contains("Proxy container is not running", ignoreCase = true)) {
+                     return true to "Danger settings saved (Proxy not running)"
+                 }
+                 return false to "Settings saved but failed to reload Nginx: ${reloadResult.second}"
+            }
+            true to "Danger proxy settings updated successfully"
+        } catch (e: Exception) {
+            logger.error("Failed to update danger proxy settings", e)
+            false to "Internal error updating danger settings: ${e.message}"
+        }
+    }
+
     override fun getProxyLogs(hostId: String, type: String, lines: Int): String {
         return try {
             val hosts = loadHosts()
