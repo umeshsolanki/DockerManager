@@ -93,7 +93,7 @@ data class AppSettings(
     val proxyJailThresholdBurst: Int = 20,  // Jail after 10 rate limit hits
     val proxyJailThresholdCidr: Int = 3,   // Instant jail for CIDR violation
     val proxyJailWindowMinutes: Int = 5,
-    val proxyJailRules: List<ProxyJailRule> = DEFAULT_PROXY_JAIL_RULES,
+    val proxyJailRules: List<ProxyJailRule> = emptyList(), // Default to empty, let admin configure
     val proxyDefaultReturn404: Boolean = false,
     
     // Redis Cache Configuration
@@ -251,10 +251,10 @@ object AppConfig {
                     isDbActive = true
                     var loaded = json.decodeFromString<AppSettings>(dbSettingsJson)
                     
-                    // Inject defaults if empty
-                    if (loaded.proxyJailEnabled && loaded.proxyJailRules.isEmpty()) {
+                    // Auto-injection removed to let admin control rules
+                    /*if (loaded.proxyJailEnabled && loaded.proxyJailRules.isEmpty()) {
                         loaded = loaded.copy(proxyJailRules = DEFAULT_PROXY_JAIL_RULES)
-                    }
+                    }*/
 
                     // FORCE DISABLE REDIS FOR NOW
                     CacheService.initialize(loaded.redisConfig.copy(enabled = false))
@@ -270,10 +270,10 @@ object AppConfig {
             logger.info("Loading settings from file (migration/fallback): ${settingsFile.absolutePath}")
             var loadedFromFile = jsonPersistence.load()
             
-            // Inject defaults if empty
-            if (loadedFromFile.proxyJailEnabled && loadedFromFile.proxyJailRules.isEmpty()) {
+            // Auto-injection removed to let admin control rules
+            /*if (loadedFromFile.proxyJailEnabled && loadedFromFile.proxyJailRules.isEmpty()) {
                 loadedFromFile = loadedFromFile.copy(proxyJailRules = DEFAULT_PROXY_JAIL_RULES)
-            }
+            }*/
             
             // 4. Migrate to DB
             if (shouldTryDb) {
@@ -410,7 +410,9 @@ object AppConfig {
         windowMinutes: Int? = null,
         thresholdDanger: Int? = null,
         thresholdBurst: Int? = null,
-        thresholdCidr: Int? = null
+        thresholdCidr: Int? = null,
+        dangerProxyEnabled: Boolean? = null,
+        dangerProxyHost: String? = null
     ) = synchronized(lock) {
         _settings = _settings.copy(
             proxyJailEnabled = enabled,
@@ -419,7 +421,9 @@ object AppConfig {
             proxyJailWindowMinutes = windowMinutes ?: _settings.proxyJailWindowMinutes,
             proxyJailThresholdDanger = thresholdDanger ?: _settings.proxyJailThresholdDanger,
             proxyJailThresholdBurst = thresholdBurst ?: _settings.proxyJailThresholdBurst,
-            proxyJailThresholdCidr = thresholdCidr ?: _settings.proxyJailThresholdCidr
+            proxyJailThresholdCidr = thresholdCidr ?: _settings.proxyJailThresholdCidr,
+            dangerProxyEnabled = dangerProxyEnabled ?: _settings.dangerProxyEnabled,
+            dangerProxyHost = dangerProxyHost ?: _settings.dangerProxyHost
         )
         saveSettings()
     }

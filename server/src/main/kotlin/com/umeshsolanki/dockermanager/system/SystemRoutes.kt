@@ -27,6 +27,11 @@ fun Route.systemRoutes() {
             SystemService.refreshStorageInfo()
             call.respond(mapOf("status" to "success", "message" to "Storage sync triggered in background"))
         }
+        
+        get("/proxy/recommended-rules") {
+            call.respond(DEFAULT_PROXY_JAIL_RULES)
+        }
+        
         ipRangeRoutes()
     }
 }

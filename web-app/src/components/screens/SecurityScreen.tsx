@@ -535,7 +535,21 @@ export default function SecurityScreen() {
                                         <Globe size={14} className="text-primary" />
                                         Active Guard Rails
                                     </h4>
-                                    <span className="text-[10px] font-bold text-primary bg-primary/10 px-3 py-1 rounded-full">{proxyConfig?.proxyJailRules?.length || 0} Rules Active</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-bold text-primary bg-primary/10 px-3 py-1 rounded-full">{proxyConfig?.proxyJailRules?.length || 0} Rules Active</span>
+                                        {(!proxyConfig?.proxyJailRules || proxyConfig.proxyJailRules.length === 0) && (
+                                            <button
+                                                onClick={async () => {
+                                                    const recommended = await DockerClient.getRecommendedProxyRules();
+                                                    updateProxySecurity({ proxyJailRules: recommended });
+                                                    toast.success(`Loaded ${recommended.length} recommended rules`);
+                                                }}
+                                                className="flex items-center gap-1.5 px-3 py-1 bg-secondary/10 text-secondary hover:bg-secondary/20 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border border-secondary/20"
+                                            >
+                                                <Plus size={12} /> Load Recommended
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 scrollbar-invisible">
                                     {proxyConfig?.proxyJailRules?.map((rule) => (

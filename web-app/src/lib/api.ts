@@ -12,7 +12,7 @@ import {
     DockerStack, StackService, StackTask, DeployStackRequest, MigrateComposeToStackRequest, StopStackRequest,
     SaveProjectFileRequest, KafkaTopicInfo, KafkaMessage, CreateNetworkRequest, StorageInfo,
     ExternalDbConfig, SqlQueryRequest, KafkaRule, KafkaProcessedEvent, CustomPage,
-    IpReputation, SavedQuery, EmailFolder, EmailMessage, EmailClientConfig
+    IpReputation, SavedQuery, EmailFolder, EmailMessage, EmailClientConfig, ProxyJailRule
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -203,6 +203,7 @@ export const DockerClient = {
     // --- System, Logs, Security ---
     getBatteryStatus: () => req<BatteryStatus | null>('/system/battery', {}, null),
     getSystemConfig: () => req<SystemConfig | null>('/system/config', {}, null),
+    getRecommendedProxyRules: () => req<ProxyJailRule[]>('/system/proxy/recommended-rules', {}, []),
     updateSystemConfig: (body: UpdateSystemConfigRequest) => req<{ success: boolean }>('/system/config', { method: 'POST', body: JSON.stringify(body) }, { success: false }),
     importIpRanges: (csv: string) => safeReq('/system/ip-ranges/import', { method: 'POST', body: csv, headers: { 'Content-Type': 'text/plain' } }),
     fetchIpRanges: (provider: 'cloudflare' | 'aws' | 'google' | 'digitalocean' | 'custom', url?: string, customProvider?: string) => {
