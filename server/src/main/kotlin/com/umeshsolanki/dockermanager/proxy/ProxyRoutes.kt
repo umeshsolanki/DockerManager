@@ -222,7 +222,12 @@ fun Route.proxyRoutes() {
         post("/security/settings") {
             val request = call.receive<AppSettings>()
             ProxyService.updateSecuritySettings(
-                request.proxyJailEnabled, request.proxyJailThresholdNon200, request.proxyJailRules
+                enabled = request.proxyJailEnabled,
+                thresholdNon200 = request.proxyJailThresholdNon200,
+                rules = request.proxyJailRules,
+                thresholdDanger = request.proxyJailThresholdDanger,
+                thresholdBurst = request.proxyJailThresholdBurst,
+                thresholdCidr = request.proxyJailThresholdCidr
             )
             call.respond(
                 HttpStatusCode.OK,

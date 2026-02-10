@@ -1,6 +1,5 @@
 package com.umeshsolanki.dockermanager.docker
 
-import com.umeshsolanki.dockermanager.jail.BtmpService
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
@@ -47,25 +46,5 @@ fun Route.logRoutes() {
             val content = DockerService.getSystemSyslogLogs(tail, filter)
             call.respondText(content)
         }
-        get("/system/btmp-stats") {
-            call.respond(BtmpService.getStats())
-        }
-        post("/system/btmp-stats/refresh") {
-            call.respond(BtmpService.refreshStats())
-        }
-        post("/system/btmp-stats/auto-jail") {
-            val enabled = call.request.queryParameters["enabled"]?.toBoolean() ?: false
-            val threshold = call.request.queryParameters["threshold"]?.toInt() ?: 5
-            val duration = call.request.queryParameters["duration"]?.toInt() ?: 30
-            BtmpService.updateAutoJailSettings(enabled, threshold, duration)
-            call.respond(HttpStatusCode.OK)
-        }
-        post("/system/btmp-stats/monitoring") {
-            val active = call.request.queryParameters["active"]?.toBoolean() ?: true
-            val interval = call.request.queryParameters["interval"]?.toInt() ?: 5
-            BtmpService.updateMonitoringSettings(active, interval)
-            call.respond(HttpStatusCode.OK)
-        }
-
     }
 }

@@ -42,7 +42,7 @@ val DEFAULT_PROXY_JAIL_RULES = listOf(
     ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.\\./|/etc/|/proc/|/sys/|/usr/bin|/windows/|/boot/", description = "Path traversal attempt"),
     
     // Block common CMS/framework admin panels (SPA doesn't have these)
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "/admin|/wp-admin|/administrator|phpmyadmin|/manager|/console|/actuator/|/jolokia", description = "Admin panel/framework probe"),
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "/admin|/wp-admin|/administrator|phpmyadmin|/manager|/console|/actuator/|/jolokia|/cgi-bin", description = "Admin panel or CGI probe"),
     
     // Block dangerous backend file extensions (SPA uses only JS/CSS/HTML assets)
     ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.(php|asp|aspx|jsp|cgi|pl|py|rb|sh|bat|cmd|exe)$", description = "Backend script execution attempt"),
@@ -81,8 +81,6 @@ data class AppSettings(
     val jailDurationMinutes: Int = 30,
     val exponentialJailEnabled: Boolean = true,
     val maxJailDurationMinutes: Int = 10080, // 1 week
-    val monitoringActive: Boolean = true,
-    val monitoringIntervalMinutes: Int = 5,
     val fcmServiceAccountPath: String = FileConstants.FCM_SERVICE_ACCOUNT_JSON,
     val proxyStatsActive: Boolean = true,
     val proxyStatsIntervalMs: Long = 10000L,
@@ -91,6 +89,9 @@ data class AppSettings(
     // Proxy Specific Security
     val proxyJailEnabled: Boolean = true,
     val proxyJailThresholdNon200: Int = 20,
+    val proxyJailThresholdDanger: Int = 20,  // Instant jail for path traversal/danger
+    val proxyJailThresholdBurst: Int = 20,  // Jail after 10 rate limit hits
+    val proxyJailThresholdCidr: Int = 3,   // Instant jail for CIDR violation
     val proxyJailWindowMinutes: Int = 5,
     val proxyJailRules: List<ProxyJailRule> = DEFAULT_PROXY_JAIL_RULES,
     val proxyDefaultReturn404: Boolean = false,
@@ -338,7 +339,10 @@ object AppConfig {
         jailThreshold: Int? = null,
         jailDurationMinutes: Int? = null,
         exponentialJailEnabled: Boolean? = null,
-        maxJailDurationMinutes: Int? = null
+        maxJailDurationMinutes: Int? = null,
+        proxyJailThresholdDanger: Int? = null,
+        proxyJailThresholdBurst: Int? = null,
+        proxyJailThresholdCidr: Int? = null
     ) = synchronized(lock) {
         _settings = _settings.copy(
             dockerSocket = dockerSocket ?: _settings.dockerSocket,
@@ -365,7 +369,10 @@ object AppConfig {
             jailThreshold = jailThreshold ?: _settings.jailThreshold,
             jailDurationMinutes = jailDurationMinutes ?: _settings.jailDurationMinutes,
             exponentialJailEnabled = exponentialJailEnabled ?: _settings.exponentialJailEnabled,
-            maxJailDurationMinutes = maxJailDurationMinutes ?: _settings.maxJailDurationMinutes
+            maxJailDurationMinutes = maxJailDurationMinutes ?: _settings.maxJailDurationMinutes,
+            proxyJailThresholdDanger = proxyJailThresholdDanger ?: _settings.proxyJailThresholdDanger,
+            proxyJailThresholdBurst = proxyJailThresholdBurst ?: _settings.proxyJailThresholdBurst,
+            proxyJailThresholdCidr = proxyJailThresholdCidr ?: _settings.proxyJailThresholdCidr
         )
         saveSettings()
     }
@@ -374,8 +381,6 @@ object AppConfig {
         enabled: Boolean,
         threshold: Int,
         durationMinutes: Int,
-        monitoringActive: Boolean? = null,
-        monitoringIntervalMinutes: Int? = null,
         exponentialEnabled: Boolean? = null,
         maxDuration: Int? = null
     ) = synchronized(lock) {
@@ -383,9 +388,6 @@ object AppConfig {
             jailEnabled = enabled,
             jailThreshold = threshold,
             jailDurationMinutes = durationMinutes,
-            monitoringActive = monitoringActive ?: _settings.monitoringActive,
-            monitoringIntervalMinutes = monitoringIntervalMinutes
-                ?: _settings.monitoringIntervalMinutes,
             exponentialJailEnabled = exponentialEnabled ?: _settings.exponentialJailEnabled,
             maxJailDurationMinutes = maxDuration ?: _settings.maxJailDurationMinutes
         )
@@ -405,13 +407,19 @@ object AppConfig {
         enabled: Boolean,
         thresholdNon200: Int,
         rules: List<ProxyJailRule>,
-        windowMinutes: Int? = null
+        windowMinutes: Int? = null,
+        thresholdDanger: Int? = null,
+        thresholdBurst: Int? = null,
+        thresholdCidr: Int? = null
     ) = synchronized(lock) {
         _settings = _settings.copy(
             proxyJailEnabled = enabled,
             proxyJailThresholdNon200 = thresholdNon200,
             proxyJailRules = rules,
-            proxyJailWindowMinutes = windowMinutes ?: _settings.proxyJailWindowMinutes
+            proxyJailWindowMinutes = windowMinutes ?: _settings.proxyJailWindowMinutes,
+            proxyJailThresholdDanger = thresholdDanger ?: _settings.proxyJailThresholdDanger,
+            proxyJailThresholdBurst = thresholdBurst ?: _settings.proxyJailThresholdBurst,
+            proxyJailThresholdCidr = thresholdCidr ?: _settings.proxyJailThresholdCidr
         )
         saveSettings()
     }

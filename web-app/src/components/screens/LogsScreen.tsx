@@ -916,18 +916,30 @@ export default function LogsScreen() {
 
                                         <div className="space-y-6">
                                             <div>
-                                                <div className="flex justify-between text-[10px] font-bold uppercase text-on-surface-variant mb-2">
-                                                    <span>Failure Threshold</span>
-                                                    <span className="text-red-400">{jailThreshold} Attempts</span>
+                                                <div className="flex items-center gap-3">
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        max="100"
+                                                        value={jailThreshold || ''}
+                                                        onChange={e => setJailThreshold(parseInt(e.target.value) || 0)}
+                                                        className="w-24 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:outline-none focus:border-red-500/50 transition-all text-red-400"
+                                                    />
+                                                    <span className="text-[10px] font-black text-red-400/50 uppercase">Failures</span>
                                                 </div>
-                                                <input type="range" min="1" max="20" value={jailThreshold} onChange={e => setJailThreshold(parseInt(e.target.value))} className="w-full accent-red-500" />
                                             </div>
                                             <div>
-                                                <div className="flex justify-between text-[10px] font-bold uppercase text-on-surface-variant mb-2">
-                                                    <span>Jail Duration</span>
-                                                    <span className="text-red-400">{jailDuration} Minutes</span>
+                                                <div className="flex items-center gap-3">
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        max="10080"
+                                                        value={jailDuration || ''}
+                                                        onChange={e => setJailDuration(parseInt(e.target.value) || 0)}
+                                                        className="w-24 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:outline-none focus:border-red-500/50 transition-all text-red-400"
+                                                    />
+                                                    <span className="text-[10px] font-black text-red-400/50 uppercase">Minutes</span>
                                                 </div>
-                                                <input type="range" min="1" max="240" step="5" value={jailDuration} onChange={e => setJailDuration(parseInt(e.target.value))} className="w-full accent-red-500" />
                                             </div>
 
                                             <div className="border-t border-outline/5 pt-6 space-y-4">
@@ -945,11 +957,17 @@ export default function LogsScreen() {
                                                 </div>
 
                                                 <div>
-                                                    <div className="flex justify-between text-[10px] font-bold uppercase text-on-surface-variant mb-2">
-                                                        <span>Sync Interval</span>
-                                                        <span className="text-primary">{refreshInterval} Minutes</span>
+                                                    <div className="flex items-center gap-3">
+                                                        <input
+                                                            type="number"
+                                                            min="1"
+                                                            max="60"
+                                                            value={refreshInterval || ''}
+                                                            onChange={e => setRefreshInterval(parseInt(e.target.value) || 0)}
+                                                            className="w-24 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:outline-none focus:border-primary/50 transition-all text-primary"
+                                                        />
+                                                        <span className="text-[10px] font-black text-primary/50 uppercase">Minutes</span>
                                                     </div>
-                                                    <input type="range" min="1" max="60" value={refreshInterval} onChange={e => setRefreshInterval(parseInt(e.target.value))} className="w-full accent-primary" />
                                                 </div>
 
                                                 <button

@@ -3,7 +3,7 @@ package com.umeshsolanki.dockermanager.auth
 import com.umeshsolanki.dockermanager.AppConfig
 import com.umeshsolanki.dockermanager.TwoFactorSetupResponse
 import com.umeshsolanki.dockermanager.fcm.FcmService
-import com.umeshsolanki.dockermanager.jail.BtmpService
+import com.umeshsolanki.dockermanager.jail.JailManagerService
 import com.umeshsolanki.dockermanager.utils.JsonPersistence
 import org.slf4j.LoggerFactory
 import java.io.File
@@ -94,7 +94,7 @@ object AuthService {
     ): AuthResult {
         // Guard against jailed IPs
         remoteHost?.let { ip ->
-            if (BtmpService.isIPJailed(ip)) {
+            if (JailManagerService.isIPJailed(ip)) {
                 logger.warn("Blocking login attempt from jailed IP: $ip")
                 return AuthResult.InvalidCredentials
             }
@@ -106,12 +106,12 @@ object AuthService {
         if (result is AuthResult.InvalidCredentials || result is AuthResult.Invalid2FA) {
             remoteHost?.let { ip ->
                 if (!AppConfig.isLocalIP(ip)) {
-                    BtmpService.recordFailedAttempt(username ?: "unknown", ip)
+                    JailManagerService.recordFailedLoginAttempt(ip)
                 }
             }
         } else if (result is AuthResult.Success) {
             remoteHost?.let { ip ->
-                BtmpService.clearFailedAttempts(ip)
+                JailManagerService.clearFailedAttempts(ip)
             }
         }
 

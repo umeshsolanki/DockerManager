@@ -5,18 +5,18 @@ package com.umeshsolanki.dockermanager.proxy
 import com.umeshsolanki.dockermanager.AppConfig
 import com.umeshsolanki.dockermanager.ServiceContainer
 import com.umeshsolanki.dockermanager.cache.CacheService
+import com.umeshsolanki.dockermanager.database.SettingsTable
 import com.umeshsolanki.dockermanager.jail.IJailManagerService
 import com.umeshsolanki.dockermanager.utils.CommandExecutor
+import com.umeshsolanki.dockermanager.utils.ExecuteResult
 import com.umeshsolanki.dockermanager.utils.JsonPersistence
 import com.umeshsolanki.dockermanager.utils.ResourceLoader
-import com.umeshsolanki.dockermanager.utils.ExecuteResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.*
-import com.umeshsolanki.dockermanager.database.SettingsTable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
@@ -58,19 +58,27 @@ object ProxyService {
     fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null) =
         service.updateStatsSettings(active, intervalMs, filterLocalIps)
 
-    fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>) =
-        service.updateSecuritySettings(enabled, thresholdNon200, rules)
+    fun updateSecuritySettings(
+        enabled: Boolean,
+        thresholdNon200: Int,
+        rules: List<ProxyJailRule>,
+        thresholdDanger: Int? = null,
+        thresholdBurst: Int? = null,
+        thresholdCidr: Int? = null
+    ) = service.updateSecuritySettings(enabled, thresholdNon200, rules, thresholdDanger, thresholdBurst, thresholdCidr)
 
     fun updateDefaultBehavior(return404: Boolean) = service.updateDefaultBehavior(return404)
 
-    fun updateRsyslogSettings(enabled: Boolean, dualLogging: Boolean) = service.updateRsyslogSettings(enabled, dualLogging)
+    fun updateRsyslogSettings(enabled: Boolean, dualLogging: Boolean) =
+        service.updateRsyslogSettings(enabled, dualLogging)
+
     fun updateLoggingSettings(
         dbPersistenceLogsEnabled: Boolean? = null,
         nginxLogDir: String? = null,
         jsonLoggingEnabled: Boolean? = null,
         logBufferingEnabled: Boolean? = null,
         logBufferSizeKb: Int? = null,
-        logFlushIntervalSeconds: Int? = null
+        logFlushIntervalSeconds: Int? = null,
     ) = service.updateLoggingSettings(
         dbPersistenceLogsEnabled,
         nginxLogDir,
@@ -79,11 +87,15 @@ object ProxyService {
         logBufferSizeKb,
         logFlushIntervalSeconds
     )
+
     fun regenerateAllHostConfigs() = service.regenerateAllHostConfigs()
 
     fun getProxySecuritySettings() = AppConfig.settings
-    fun updateDangerProxySettings(enabled: Boolean, host: String?) = service.updateDangerProxySettings(enabled, host)
-    fun getProxyLogs(hostId: String, type: String, lines: Int) = service.getProxyLogs(hostId, type, lines)
+    fun updateDangerProxySettings(enabled: Boolean, host: String?) =
+        service.updateDangerProxySettings(enabled, host)
+
+    fun getProxyLogs(hostId: String, type: String, lines: Int) =
+        service.getProxyLogs(hostId, type, lines)
 
     // Analytics History
     fun getHistoricalStats(date: String) = service.getHistoricalStats(date)
@@ -93,6 +105,15 @@ object ProxyService {
 
     fun forceReprocessLogs(date: String) = service.forceReprocessLogs(date)
     fun updateStatsForAllDaysInCurrentLog() = service.updateStatsForAllDaysInCurrentLog()
+    fun processMirrorRequest(
+        ip: String,
+        userAgent: String,
+        method: String,
+        path: String,
+        status: Int,
+        headers: Map<String, String>,
+        body: String?,
+    ) = service.processMirrorRequest(ip, userAgent, method, path, status, headers, body)
 }
 
 interface IProxyService {
@@ -124,7 +145,14 @@ interface IProxyService {
     fun updateComposeConfig(content: String): Pair<Boolean, String>
     fun resetComposeConfig(): Pair<Boolean, String>
     fun updateStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null)
-    fun updateSecuritySettings(enabled: Boolean, thresholdNon200: Int, rules: List<ProxyJailRule>)
+    fun updateSecuritySettings(
+        enabled: Boolean,
+        thresholdNon200: Int,
+        rules: List<ProxyJailRule>,
+        thresholdDanger: Int? = null,
+        thresholdBurst: Int? = null,
+        thresholdCidr: Int? = null
+    )
     fun updateDefaultBehavior(return404: Boolean): Pair<Boolean, String>
     fun updateRsyslogSettings(enabled: Boolean, dualLogging: Boolean): Pair<Boolean, String>
     fun updateLoggingSettings(
@@ -133,11 +161,21 @@ interface IProxyService {
         jsonLoggingEnabled: Boolean? = null,
         logBufferingEnabled: Boolean? = null,
         logBufferSizeKb: Int? = null,
-        logFlushIntervalSeconds: Int? = null
+        logFlushIntervalSeconds: Int? = null,
     ): Pair<Boolean, String>
+
     fun updateDangerProxySettings(enabled: Boolean, host: String?): Pair<Boolean, String>
     fun regenerateAllHostConfigs(): Pair<Boolean, String>
     fun getProxyLogs(hostId: String, type: String, lines: Int): String
+    fun processMirrorRequest(
+        ip: String,
+        userAgent: String,
+        method: String,
+        path: String,
+        status: Int,
+        headers: Map<String, String>,
+        body: String? = null,
+    )
 
     // Analytics History
     fun getHistoricalStats(date: String): DailyProxyStats?
@@ -145,12 +183,12 @@ interface IProxyService {
     fun getStatsForDateRange(startDate: String, endDate: String): List<DailyProxyStats>
     fun forceReprocessLogs(date: String): DailyProxyStats?
     fun updateStatsForAllDaysInCurrentLog(): Map<String, Boolean>
-    
+
 }
 
 class ProxyServiceImpl(
     private val jailManagerService: IJailManagerService,
-    private val sslService: ISSLService
+    private val sslService: ISSLService,
 ) : IProxyService {
     private val logger = org.slf4j.LoggerFactory.getLogger(ProxyServiceImpl::class.java)
     private val configDir = AppConfig.nginxConfigDir
@@ -160,7 +198,7 @@ class ProxyServiceImpl(
         defaultContent = emptyList(),
         loggerName = ProxyServiceImpl::class.java.name
     )
-    
+
 
     val proxyDockerComposeDir: File
         get() {
@@ -178,10 +216,10 @@ class ProxyServiceImpl(
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val commandExecutor = CommandExecutor(loggerName = ProxyServiceImpl::class.java.name)
-    
+
     // Template cache to avoid redundant resource loads
     private val templateCache = ConcurrentHashMap<String, String>()
-    
+
     // In-memory cache for proxy hosts
     @Volatile
     private var cachedHosts: MutableList<ProxyHost>? = null
@@ -197,24 +235,38 @@ class ProxyServiceImpl(
         enabled: Boolean,
         thresholdNon200: Int,
         rules: List<ProxyJailRule>,
+        thresholdDanger: Int?,
+        thresholdBurst: Int?,
+        thresholdCidr: Int?
     ) {
-        AppConfig.updateProxySecuritySettings(enabled, thresholdNon200, rules)
+        AppConfig.updateProxySecuritySettings(
+            enabled = enabled,
+            thresholdNon200 = thresholdNon200,
+            rules = rules,
+            thresholdDanger = thresholdDanger,
+            thresholdBurst = thresholdBurst,
+            thresholdCidr = thresholdCidr
+        )
     }
 
     override fun updateDefaultBehavior(return404: Boolean): Pair<Boolean, String> {
         return try {
             AppConfig.updateProxyDefaultBehavior(return404)
             ensureDefaultServer() // Regenerates config
-            
+
             // Reload nginx
             val reloadResult = reloadNginx()
             if (!reloadResult.first) {
-                if (reloadResult.second.contains("Proxy container is not running", ignoreCase = true)) {
+                if (reloadResult.second.contains(
+                        "Proxy container is not running",
+                        ignoreCase = true
+                    )
+                ) {
                     return true to "Settings saved (Proxy not running)"
                 }
                 return false to "Settings saved but failed to reload Nginx: ${reloadResult.second}"
             }
-            
+
             true to "Default behavior updated successfully"
         } catch (e: Exception) {
             logger.error("Failed to update default behavior", e)
@@ -222,16 +274,23 @@ class ProxyServiceImpl(
         }
     }
 
-    override fun updateRsyslogSettings(enabled: Boolean, dualLogging: Boolean): Pair<Boolean, String> {
+    override fun updateRsyslogSettings(
+        enabled: Boolean,
+        dualLogging: Boolean,
+    ): Pair<Boolean, String> {
         return try {
             AppConfig.updateProxyRsyslogSettings(enabled, dualLogging)
             ensureNginxMainConfig(forceOverwrite = true)
             ensureDefaultServer()
             regenerateAllHostConfigs()
-            
+
             val reloadResult = reloadNginx()
             if (!reloadResult.first) {
-                if (reloadResult.second.contains("Proxy container is not running", ignoreCase = true)) {
+                if (reloadResult.second.contains(
+                        "Proxy container is not running",
+                        ignoreCase = true
+                    )
+                ) {
                     return true to "Rsyslog settings saved (Proxy not running)"
                 }
                 return false to "Settings saved but failed to reload Nginx: ${reloadResult.second}"
@@ -249,7 +308,7 @@ class ProxyServiceImpl(
         jsonLoggingEnabled: Boolean?,
         logBufferingEnabled: Boolean?,
         logBufferSizeKb: Int?,
-        logFlushIntervalSeconds: Int?
+        logFlushIntervalSeconds: Int?,
     ): Pair<Boolean, String> {
         return try {
             AppConfig.updateLoggingSettings(
@@ -260,15 +319,19 @@ class ProxyServiceImpl(
                 logBufferSizeKb,
                 logFlushIntervalSeconds
             )
-            
+
             // If buffering settings changed, we need to regenerate configs
             ensureNginxMainConfig(forceOverwrite = true)
             ensureDefaultServer()
             regenerateAllHostConfigs()
-            
+
             val reloadResult = reloadNginx()
             if (!reloadResult.first) {
-                if (reloadResult.second.contains("Proxy container is not running", ignoreCase = true)) {
+                if (reloadResult.second.contains(
+                        "Proxy container is not running",
+                        ignoreCase = true
+                    )
+                ) {
                     return true to "Logging settings saved (Proxy not running)"
                 }
                 return false to "Settings saved but failed to reload Nginx: ${reloadResult.second}"
@@ -284,29 +347,29 @@ class ProxyServiceImpl(
         return try {
             val hosts = loadHosts()
             val host = hosts.find { it.id == hostId } ?: return "Host not found"
-            
+
             // Determine log file name
             // Note: Standard logging uses 'access' and 'error'
             // Danger logging uses 'danger'
             // Burst logging uses 'burst'
-            val logType = when(type) {
+            val logType = when (type) {
                 "access" -> "access"
-                "error" -> "error" 
+                "error" -> "error"
                 "danger" -> "danger"
                 "burst" -> "burst"
                 else -> "access"
             }
-            
+
             // The local file tag is effectively the domain
             val tag = host.domain
-            
+
             // Construct file path
             val logFile = File(File(AppConfig.nginxDir, "logs"), "${tag}_${logType}.log")
-            
+
             if (!logFile.exists()) {
                 return "Log file not found: ${logFile.name}"
             }
-            
+
             // Read tail
             executeCommand("tail -n $lines ${logFile.absolutePath}")
         } catch (e: Exception) {
@@ -321,7 +384,7 @@ class ProxyServiceImpl(
             val hosts = loadHosts()
             var failCount = 0
             var lastError = ""
-            
+
             for (host in hosts) {
                 if (host.enabled) {
                     val configResult = generateNginxConfig(host)
@@ -332,7 +395,7 @@ class ProxyServiceImpl(
                     }
                 }
             }
-            
+
             if (failCount > 0) {
                 false to "Failed to regenerate $failCount host configs. Last error: $lastError"
             } else {
@@ -341,6 +404,35 @@ class ProxyServiceImpl(
         } catch (e: Exception) {
             logger.error("Error regenerating all host configs", e)
             false to "Internal error: ${e.message}"
+        }
+    }
+
+    override fun processMirrorRequest(
+        ip: String,
+        userAgent: String,
+        method: String,
+        path: String,
+        status: Int,
+        headers: Map<String, String>,
+        body: String?,
+    ) {
+        scope.launch {
+            try {
+                // Instantly record activity and check for violation
+                // Status is passed from Nginx (e.g. 403 for danger, 429 for burst)
+                jailManagerService.checkProxySecurityViolation(
+                    ip = ip,
+                    userAgent = userAgent,
+                    method = method,
+                    path = path,
+                    status = status,
+                    errorCount = 1L
+                )
+                
+                logger.debug("Asynchronously processed security mirror ($status) for IP: $ip, Path: $path")
+            } catch (e: Exception) {
+                logger.error("Error in asynchronous mirror processing for IP: $ip", e)
+            }
         }
     }
 
@@ -373,13 +465,13 @@ class ProxyServiceImpl(
                 try {
                     val dbHostsJson = transaction {
                         SettingsTable.selectAll().where { SettingsTable.key eq "PROXY_HOSTS" }
-                            .singleOrNull()
-                            ?.get(SettingsTable.value)
+                            .singleOrNull()?.get(SettingsTable.value)
                     }
 
                     if (dbHostsJson != null) {
                         logger.debug("Proxy hosts loaded from Database")
-                        hosts = AppConfig.json.decodeFromString<List<ProxyHost>>(dbHostsJson).toMutableList()
+                        hosts = AppConfig.json.decodeFromString<List<ProxyHost>>(dbHostsJson)
+                            .toMutableList()
                     }
                 } catch (e: Exception) {
                     logger.warn("Failed to load proxy hosts from DB: ${e.message}")
@@ -395,7 +487,8 @@ class ProxyServiceImpl(
                             mutableListOf()
                         } else {
                             try {
-                                AppConfig.json.decodeFromString<List<ProxyHost>>(content).toMutableList()
+                                AppConfig.json.decodeFromString<List<ProxyHost>>(content)
+                                    .toMutableList()
                             } catch (e: Exception) {
                                 if (e.message?.contains("upstream") == true) {
                                     logger.warn("Detected old proxy host format missing 'upstream' field, attempting migration...")
@@ -421,9 +514,12 @@ class ProxyServiceImpl(
                     try {
                         val content = AppConfig.json.encodeToString(hosts)
                         transaction {
-                            val existing = SettingsTable.selectAll().where { SettingsTable.key eq "PROXY_HOSTS" }.singleOrNull()
+                            val existing = SettingsTable.selectAll()
+                                .where { SettingsTable.key eq "PROXY_HOSTS" }.singleOrNull()
                             if (existing != null) {
-                                SettingsTable.update({ SettingsTable.key eq "PROXY_HOSTS" }) { stmt -> stmt[SettingsTable.value] = content }
+                                SettingsTable.update({ SettingsTable.key eq "PROXY_HOSTS" }) { stmt ->
+                                    stmt[SettingsTable.value] = content
+                                }
                             } else {
                                 SettingsTable.insert { stmt ->
                                     stmt[SettingsTable.key] = "PROXY_HOSTS"
@@ -502,8 +598,8 @@ class ProxyServiceImpl(
                 val paths = jsonObject["paths"]?.jsonArray?.mapNotNull { pathElement ->
                     val pathObj = pathElement.jsonObject
                     PathRoute(
-                        id = pathObj["id"]?.jsonPrimitive?.content
-                        ?: UUID.randomUUID().toString(),
+                        id = pathObj["id"]?.jsonPrimitive?.content ?: UUID.randomUUID()
+                        .toString(),
                         path = pathObj["path"]?.jsonPrimitive?.content ?: "",
                         target = pathObj["target"]?.jsonPrimitive?.content ?: "",
                         websocketEnabled = pathObj["websocketEnabled"]?.jsonPrimitive?.booleanOrNull
@@ -571,7 +667,9 @@ class ProxyServiceImpl(
                 try {
                     val content = AppConfig.json.encodeToString(hosts)
                     transaction {
-                        val existing = SettingsTable.selectAll().where { SettingsTable.key eq "PROXY_HOSTS" }.singleOrNull()
+                        val existing =
+                            SettingsTable.selectAll().where { SettingsTable.key eq "PROXY_HOSTS" }
+                                .singleOrNull()
                         if (existing != null) {
                             SettingsTable.update({ SettingsTable.key eq "PROXY_HOSTS" }) { stmt ->
                                 stmt[SettingsTable.value] = content
@@ -630,7 +728,7 @@ class ProxyServiceImpl(
 
         for (host in hosts) {
             if (!host.enabled) continue
-            
+
             host.rateLimit?.let { rl ->
                 if (rl.enabled) {
                     val zoneName = "limit_${host.id.replace("-", "")}"
@@ -659,7 +757,8 @@ class ProxyServiceImpl(
     override fun listHosts(): List<ProxyHost> = loadHosts()
 
     private fun String.sanitizeNginx(): String {
-        return this.replace(";", "").replace("{", "").replace("}", "").replace("\n", "").replace("\r", "").replace("#", "")
+        return this.replace(";", "").replace("{", "").replace("}", "").replace("\n", "")
+            .replace("\r", "").replace("#", "")
     }
 
     private fun validateStaticPath(path: String): Pair<Boolean, String> {
@@ -672,7 +771,10 @@ class ProxyServiceImpl(
         return true to ""
     }
 
-    private fun validateProxyTargetUrl(url: String, description: String = "Target"): Pair<Boolean, String> {
+    private fun validateProxyTargetUrl(
+        url: String,
+        description: String = "Target",
+    ): Pair<Boolean, String> {
         if (url.any { it.isISOControl() || it == '\n' || it == '\r' }) {
             return false to "$description URL contains invalid characters"
         }
@@ -697,7 +799,10 @@ class ProxyServiceImpl(
         }
 
         // Prevent path traversal and risky characters in the path itself
-        if (pathRoute.path.contains("..") || pathRoute.path.contains(";") || pathRoute.path.contains("{")) {
+        if (pathRoute.path.contains("..") || pathRoute.path.contains(";") || pathRoute.path.contains(
+                "{"
+            )
+        ) {
             return false to "Invalid characters in path"
         }
 
@@ -709,12 +814,12 @@ class ProxyServiceImpl(
             // Validate target URL format only for PROXY routes
             val urlValidation = validateProxyTargetUrl(pathRoute.target)
             if (!urlValidation.first) return urlValidation
-            
+
             // Validate custom Nginx config if present
             if (!pathRoute.customConfig.isNullOrBlank()) {
-                 if (pathRoute.customConfig.contains("include ") || pathRoute.customConfig.contains("lua_file")) {
-                     return false to "Include/Lua not allowed in custom config"
-                 }
+                if (pathRoute.customConfig.contains("include ") || pathRoute.customConfig.contains("lua_file")) {
+                    return false to "Include/Lua not allowed in custom config"
+                }
             }
         }
         return true to ""
@@ -772,7 +877,7 @@ class ProxyServiceImpl(
 
 
             val hosts = loadHosts()
-            
+
             // Check for duplicate domain
             if (hosts.any { it.domain == host.domain && it.id != host.id }) {
                 return false to "A proxy host with domain '${host.domain}' already exists"
@@ -812,7 +917,11 @@ class ProxyServiceImpl(
             }
             val reloadResult = reloadNginx()
             if (!reloadResult.first) {
-                if (reloadResult.second.contains("Proxy container is not running", ignoreCase = true)) {
+                if (reloadResult.second.contains(
+                        "Proxy container is not running",
+                        ignoreCase = true
+                    )
+                ) {
                     logger.warn("Host deleted but proxy was not running (Nginx reload skipped)")
                     return true
                 }
@@ -884,7 +993,7 @@ class ProxyServiceImpl(
     ): Pair<Boolean, String> {
         val configResult = generateNginxConfig(host)
         if (!configResult.first) return configResult
-        
+
         // Save hosts first
         try {
             saveHosts(hosts)
@@ -892,20 +1001,20 @@ class ProxyServiceImpl(
             logger.error("Failed to save proxy hosts", e)
             return false to "Failed to save proxy hosts: ${e.message}"
         }
-        
+
         // Ensure proxy container exists before reloading
         if (!ensureProxyContainerExists()) {
             logger.warn("Proxy container does not exist, but config was generated and saved")
             return true to "Config generated and saved, but proxy container is not running. Please start the proxy container."
         }
-        
+
         // Reload nginx
         val reloadResult = reloadNginx()
         if (!reloadResult.first) {
             logger.error("Failed to reload nginx: ${reloadResult.second}")
             return false to "Config generated and saved, but failed to reload nginx: ${reloadResult.second}"
         }
-        
+
         return configResult
     }
 
@@ -934,7 +1043,11 @@ class ProxyServiceImpl(
                 }
                 val reloadResult = reloadNginx()
                 if (!reloadResult.first) {
-                    if (reloadResult.second.contains("Proxy container is not running", ignoreCase = true)) {
+                    if (reloadResult.second.contains(
+                            "Proxy container is not running",
+                            ignoreCase = true
+                        )
+                    ) {
                         logger.warn("Host disabled but proxy was not running (Nginx reload skipped)")
                         return true
                     }
@@ -973,7 +1086,7 @@ class ProxyServiceImpl(
     private fun getAccessLogDirective(path: String, format: String): String {
         val settings = AppConfig.settings
         if (!settings.logBufferingEnabled) return "access_log $path $format;"
-        
+
         return "access_log $path $format buffer=${settings.logBufferSizeKb}k flush=${settings.logFlushIntervalSeconds}s;"
     }
 
@@ -981,20 +1094,26 @@ class ProxyServiceImpl(
         val settings = AppConfig.settings
         val rsyslogEnabled = settings.proxyRsyslogEnabled
         val dualLogging = settings.proxyDualLoggingEnabled
-        val jsonLogging = settings.jsonLoggingEnabled
+        settings.jsonLoggingEnabled
         val logFormat = "main" // Always use main, as it's dynamically defined now
-        val syslogServer = "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
+        val syslogServer =
+            "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
         val syslogTag = tag.replace(Regex("[^a-zA-Z0-9_]"), "_")
 
         val standardLoggingConfig = run {
             val template = getCachedTemplate("templates/proxy/standard-logging.conf")
-            
+
             val accessLogDirectives = mutableListOf<String>()
             val errorLogDirectives = mutableListOf<String>()
 
             // 1. Local Logging (Enabled if dual logging OR rsyslog is disabled)
             if (dualLogging || !rsyslogEnabled) {
-                accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_access.log", logFormat))
+                accessLogDirectives.add(
+                    getAccessLogDirective(
+                        "/usr/local/openresty/nginx/logs/${tag}_access.log",
+                        logFormat
+                    )
+                )
                 errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/${tag}_error.log warn;")
             }
 
@@ -1004,73 +1123,124 @@ class ProxyServiceImpl(
                 errorLogDirectives.add("error_log syslog:server=$syslogServer,tag=${syslogTag}_error,nohostname warn;")
             }
 
-            val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                "accessLogDirective" to accessLogDirectives.joinToString("\n"),
-                "errorLogDirective" to errorLogDirectives.joinToString("\n")
-            ))
+            val snippet = ResourceLoader.replacePlaceholders(
+                template, mapOf(
+                    "accessLogDirective" to accessLogDirectives.joinToString("\n"),
+                    "errorLogDirective" to errorLogDirectives.joinToString("\n")
+                )
+            )
             snippet.lines().joinToString("\n    ") { it }
         }
 
         val dangerHitsConfig = run {
             val template = getCachedTemplate("templates/proxy/danger-logging.conf")
             val directives = mutableListOf<String>()
-            
+
             if (dualLogging || !rsyslogEnabled) {
-                directives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_danger.log", logFormat))
+                directives.add(
+                    getAccessLogDirective(
+                        "/usr/local/openresty/nginx/logs/${tag}_danger.log",
+                        logFormat
+                    )
+                )
             }
-            
+
             if (rsyslogEnabled) {
                 directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_danger,severity=crit,nohostname $logFormat;")
             }
-            
-            val dangerAction = if (settings.dangerProxyEnabled && !settings.dangerProxyHost.isNullOrBlank()) {
-                "mirror /_danger_mirror;\n    return 444;"
-            } else {
-                "return 444;"
-            }
 
-            val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                "dangerLoggingDirectives" to directives.joinToString("\n    "),
-                "dangerAction" to dangerAction,
-                "dangerProxyHost" to (settings.dangerProxyHost ?: "127.0.0.1"),
-                "request_uri" to "\$request_uri"
-            ))
+            val dangerAction =
+                if (settings.dangerProxyEnabled && !settings.dangerProxyHost.isNullOrBlank()) {
+                    "mirror /_danger_mirror;\n    return 444;"
+                } else {
+                    "return 444;"
+                }
+
+            val snippet = ResourceLoader.replacePlaceholders(
+                template, mapOf(
+                    "dangerLoggingDirectives" to directives.joinToString("\n    "),
+                    "dangerAction" to dangerAction,
+                    "dangerProxyHost" to (settings.dangerProxyHost ?: "127.0.0.1"),
+                    "request_uri" to "\$request_uri"
+                )
+            )
             snippet.lines().joinToString("\n    ") { it }
         }
-        
+
         val cidrHitsConfig = run {
             val template = getCachedTemplate("templates/proxy/cidr-logging.conf")
             val directives = mutableListOf<String>()
-            
+
             if (dualLogging || !rsyslogEnabled) {
-                directives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_cidr.log", logFormat))
+                directives.add(
+                    getAccessLogDirective(
+                        "/usr/local/openresty/nginx/logs/${tag}_cidr.log",
+                        logFormat
+                    )
+                )
             }
-            
+
             if (rsyslogEnabled) {
                 directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_cidr,severity=crit,nohostname $logFormat;")
             }
-            
-            val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                "cidrLoggingDirectives" to directives.joinToString("\n    ")
-            ))
+
+            val snippet = ResourceLoader.replacePlaceholders(
+                template, mapOf(
+                    "cidrLoggingDirectives" to directives.joinToString("\n    ")
+                )
+            )
             snippet.lines().joinToString("\n    ") { it }
         }
 
         val burstLoggingConfig = run {
             val template = getCachedTemplate("templates/proxy/burst-logging.conf")
             val directives = mutableListOf<String>()
-            
+
             if (dualLogging || !rsyslogEnabled) {
-                directives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_burst.log", logFormat))
+                directives.add(
+                    getAccessLogDirective(
+                        "/usr/local/openresty/nginx/logs/${tag}_burst.log",
+                        logFormat
+                    )
+                )
             }
-            
+
             if (rsyslogEnabled) {
                 directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_burst,severity=warn $logFormat;")
             }
 
-            val snippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                "burstLoggingDirectives" to directives.joinToString("\n    ")
-            ))
+            val snippet = ResourceLoader.replacePlaceholders(
+                template, mapOf(
+                    "burstLoggingDirectives" to directives.joinToString("\n    ")
+                )
+            )
+            snippet.lines().joinToString("\n    ") { it }
+        }
+
+        val clientErrorHitsConfig = run {
+            val template = getCachedTemplate("templates/proxy/client-error-logging.conf")
+            val directives = mutableListOf<String>()
+
+            if (dualLogging || !rsyslogEnabled) {
+                directives.add(
+                    getAccessLogDirective(
+                        "/usr/local/openresty/nginx/logs/${tag}_client_errors.log",
+                        logFormat
+                    )
+                )
+            }
+
+            if (rsyslogEnabled) {
+                directives.add("access_log syslog:server=$syslogServer,tag=${syslogTag}_client_error,severity=notice,nohostname $logFormat;")
+            }
+
+            val snippet = ResourceLoader.replacePlaceholders(
+                template, mapOf(
+                    "clientErrorLoggingDirectives" to directives.joinToString("\n    "),
+                    "dangerProxyHost" to (settings.dangerProxyHost ?: "127.0.0.1"),
+                    "request_uri" to "\$request_uri"
+                )
+            )
             snippet.lines().joinToString("\n    ") { it }
         }
 
@@ -1078,7 +1248,8 @@ class ProxyServiceImpl(
             "standardLoggingConfig" to standardLoggingConfig,
             "dangerHitsConfig" to dangerHitsConfig,
             "cidrHitsConfig" to cidrHitsConfig,
-            "burstLoggingConfig" to burstLoggingConfig
+            "burstLoggingConfig" to burstLoggingConfig,
+            "clientErrorHitsConfig" to clientErrorHitsConfig
         )
     }
 
@@ -1097,9 +1268,11 @@ class ProxyServiceImpl(
         val ipConfig = if (host.allowedIps.isNotEmpty()) {
             val template = getCachedTemplate("templates/proxy/ip-restrictions.conf")
             val allowDirectives = host.allowedIps.joinToString("\n        ") { "allow $it;" }
-            val content = ResourceLoader.replacePlaceholders(template, mapOf(
-                "allowDirectives" to allowDirectives
-            ))
+            val content = ResourceLoader.replacePlaceholders(
+                template, mapOf(
+                    "allowDirectives" to allowDirectives
+                )
+            )
             content.lines().joinToString("\n") { if (it.isBlank()) it else "        $it" }.trim()
         } else ""
 
@@ -1108,11 +1281,13 @@ class ProxyServiceImpl(
             if (rl.enabled) {
                 val template = getCachedTemplate("templates/proxy/rate-limit-config.conf")
                 val zoneName = "limit_${host.id.replace("-", "")}"
-                val content = ResourceLoader.replacePlaceholders(template, mapOf(
-                    "zoneName" to zoneName,
-                    "burst" to rl.burst.toString(),
-                    "noDelay" to if (rl.nodelay) " nodelay" else ""
-                ))
+                val content = ResourceLoader.replacePlaceholders(
+                    template, mapOf(
+                        "zoneName" to zoneName,
+                        "burst" to rl.burst.toString(),
+                        "noDelay" to if (rl.nodelay) " nodelay" else ""
+                    )
+                )
                 "    $content"
             } else ""
         } ?: ""
@@ -1139,8 +1314,9 @@ class ProxyServiceImpl(
             )
 
             val content = ResourceLoader.replacePlaceholders(template, replacements)
-            val indentedContent = content.lines()
-                .joinToString("\n") { if (it.isBlank()) it else "        $it" }.trim()
+            val indentedContent =
+                content.lines().joinToString("\n") { if (it.isBlank()) it else "        $it" }
+                    .trim()
 
             return if (redirect.isNotEmpty()) "${redirect}${indentedContent}" else indentedContent
         }
@@ -1167,7 +1343,8 @@ class ProxyServiceImpl(
 
             val containerCert = translateToContainerPath(hostCert)
             val containerKey = translateToContainerPath(hostKey)
-            val hstsHeader = if (host.hstsEnabled) "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;" else ""
+            val hstsHeader =
+                if (host.hstsEnabled) "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;" else ""
 
             val httpsTemplate = getCachedTemplate("templates/proxy/server-https.conf")
             val replacements = loggingReplacements.toMutableMap().apply {
@@ -1182,10 +1359,11 @@ class ProxyServiceImpl(
                 put("rateLimitConfig", if (host.paths.isEmpty()) serverRateLimit else "")
                 put("mainLocationConfig", generateMainLocationConfig(true))
                 put("silentDropConfig", silentDropConfig)
-                // Append CIDR logger to danger config placeholder to avoid modifying main templates
+                // Append CIDR logger and Client Error logger to danger config placeholder to avoid modifying main templates
                 val dangerConfig = loggingReplacements["dangerHitsConfig"] ?: ""
                 val cidrConfig = loggingReplacements["cidrHitsConfig"] ?: ""
-                put("dangerHitsConfig", "$dangerConfig\n    $cidrConfig")
+                val clientErrorConfig = loggingReplacements["clientErrorHitsConfig"] ?: ""
+                put("dangerHitsConfig", "$dangerConfig\n    $cidrConfig\n    $clientErrorConfig")
             }
             ResourceLoader.replacePlaceholders(httpsTemplate, replacements)
         } else ""
@@ -1199,10 +1377,11 @@ class ProxyServiceImpl(
             put("rateLimitConfig", if (host.ssl || host.paths.isNotEmpty()) "" else serverRateLimit)
             put("mainLocationConfig", generateMainLocationConfig(false, httpRedirect))
             put("silentDropConfig", silentDropConfig)
-            // Append CIDR logger to danger config placeholder
+            // Append CIDR logger and Client Error logger to danger config placeholder
             val dangerConfig = loggingReplacements["dangerHitsConfig"] ?: ""
             val cidrConfig = loggingReplacements["cidrHitsConfig"] ?: ""
-            put("dangerHitsConfig", "$dangerConfig\n    $cidrConfig")
+            val clientErrorConfig = loggingReplacements["clientErrorHitsConfig"] ?: ""
+            put("dangerHitsConfig", "$dangerConfig\n    $cidrConfig\n    $clientErrorConfig")
         }
         val httpConfig = ResourceLoader.replacePlaceholders(httpTemplate, httpReplacements)
 
@@ -1239,11 +1418,15 @@ class ProxyServiceImpl(
 
             val ipConfig = if (pathRoute.allowedIps.isNotEmpty()) {
                 val template = getCachedTemplate("templates/proxy/ip-restrictions.conf")
-                val allowDirectives = pathRoute.allowedIps.joinToString("\n        ") { "allow ${it.sanitizeNginx()};" }
-                val content = ResourceLoader.replacePlaceholders(template, mapOf(
-                    "allowDirectives" to allowDirectives
-                ))
-                content.lines().joinToString("\n") { if (it.isBlank()) it else "        $it" }.trim()
+                val allowDirectives =
+                    pathRoute.allowedIps.joinToString("\n        ") { "allow ${it.sanitizeNginx()};" }
+                val content = ResourceLoader.replacePlaceholders(
+                    template, mapOf(
+                        "allowDirectives" to allowDirectives
+                    )
+                )
+                content.lines().joinToString("\n") { if (it.isBlank()) it else "        $it" }
+                    .trim()
             } else ""
 
             // Generate Rate Limiting config for this path (indented 8 spaces)
@@ -1251,11 +1434,13 @@ class ProxyServiceImpl(
                 if (rl.enabled) {
                     val template = getCachedTemplate("templates/proxy/rate-limit-config.conf")
                     val zoneName = "limit_${pathRoute.id.replace("-", "")}"
-                    val content = ResourceLoader.replacePlaceholders(template, mapOf(
-                        "zoneName" to zoneName,
-                        "burst" to rl.burst.toString(),
-                        "noDelay" to if (rl.nodelay) " nodelay" else ""
-                    ))
+                    val content = ResourceLoader.replacePlaceholders(
+                        template, mapOf(
+                            "zoneName" to zoneName,
+                            "burst" to rl.burst.toString(),
+                            "noDelay" to if (rl.nodelay) " nodelay" else ""
+                        )
+                    )
                     "        $content"
                 } else ""
             } ?: ""
@@ -1315,32 +1500,36 @@ class ProxyServiceImpl(
     private fun reloadNginx(): Pair<Boolean, String> {
         return try {
             logger.info("Reloading Nginx...")
-            
+
             // Check if container is running first
-            val checkCmd = "${AppConfig.dockerCommand} ps --filter name=$PROXY_CONTAINER_NAME --filter status=running --format '{{.Names}}'"
+            val checkCmd =
+                "${AppConfig.dockerCommand} ps --filter name=$PROXY_CONTAINER_NAME --filter status=running --format '{{.Names}}'"
             val runningCheck = executeCommand(checkCmd).trim()
             if (runningCheck != PROXY_CONTAINER_NAME) {
                 return false to "Proxy container is not running"
             }
-            
-            val reloadCmd = "${AppConfig.dockerCommand} exec $PROXY_CONTAINER_NAME openresty -s reload"
+
+            val reloadCmd =
+                "${AppConfig.dockerCommand} exec $PROXY_CONTAINER_NAME openresty -s reload"
             val result = executeCommand(reloadCmd)
-            
+
             // Check if reload was successful (nginx reload returns empty string on success)
             // Also check for common error patterns
-            if (result.contains("error", ignoreCase = true) || 
-                result.contains("failed", ignoreCase = true) ||
-                result.contains("invalid", ignoreCase = true)) {
+            if (result.contains("error", ignoreCase = true) || result.contains(
+                    "failed",
+                    ignoreCase = true
+                ) || result.contains("invalid", ignoreCase = true)
+            ) {
                 logger.error("Nginx reload failed: $result")
                 return false to result.ifBlank { "Nginx reload failed" }
             }
-            
+
             if (result.isNotBlank()) {
                 logger.info("Nginx Reload Output: $result")
             } else {
                 logger.info("Nginx reloaded successfully")
             }
-            
+
             true to "Nginx reloaded successfully"
         } catch (e: Exception) {
             logger.error("Error reloading nginx", e)
@@ -1361,10 +1550,10 @@ class ProxyServiceImpl(
             logger.info("Building proxy Docker image using compose...")
             // Ensure we have the latest nginx.conf before building, as it's mounted
             ensureNginxMainConfig(forceOverwrite = true)
-            
+
             // Re-generate config files for all enabled hosts
             regenerateAllHostConfigs()
-            
+
             val composeFile = ensureComposeFile()
             val buildCmd =
                 "${AppConfig.dockerComposeCommand} -f ${composeFile.absolutePath} build proxy"
@@ -1457,7 +1646,7 @@ class ProxyServiceImpl(
     private fun executeComposeCommand(
         command: String,
         truncateOutput: Boolean = false,
-        env: Map<String, String> = emptyMap()
+        env: Map<String, String> = emptyMap(),
     ): ExecuteResult {
         val processBuilder = ProcessBuilder("sh", "-c", command).directory(proxyDockerComposeDir)
             .redirectErrorStream(true)
@@ -1604,16 +1793,15 @@ class ProxyServiceImpl(
     }
 
 
-
     override fun resetComposeConfig(): Pair<Boolean, String> {
         return try {
             val composeFile = File(proxyDockerComposeDir, "docker-compose.yml")
             val dockerfile = File(proxyDockerComposeDir, "Dockerfile.proxy")
-            
+
             logger.info("Resetting proxy compose configuration...")
             composeFile.writeText(getDefaultComposeConfig())
             dockerfile.writeText(getDefaultDockerfileConfig())
-            
+
             true to "Reset compose configuration to defaults"
         } catch (e: Exception) {
             logger.error("Error resetting compose config", e)
@@ -1691,7 +1879,10 @@ class ProxyServiceImpl(
         if (!shouldUpdate) {
             val content = nginxConf.readText()
             // Check for critical new definitions that might be missing in old configs
-            if (!content.contains("\$is_allowed") || !content.contains("\$connection_upgrade") || !content.contains("syslog:server")) {
+            if (!content.contains("\$is_allowed") || !content.contains("\$connection_upgrade") || !content.contains(
+                    "syslog:server"
+                )
+            ) {
                 logger.info("Critical variables or syslog missing in nginx.conf (migration needed)")
                 shouldUpdate = true
             }
@@ -1721,41 +1912,53 @@ class ProxyServiceImpl(
         } else {
             getCachedTemplate("templates/proxy/log-format-standard.conf")
         }
-        
+
         val loggingConfig = StringBuilder()
-        
+
         val standardLoggingTemplate = getCachedTemplate("templates/proxy/standard-logging.conf")
-        val standardLoggingSnippet = ResourceLoader.replacePlaceholders(standardLoggingTemplate, mapOf(
-            "tag" to "nginx_main",
-            "accessLogDirective" to "access_log /usr/local/openresty/nginx/logs/access.log main;",
-            "errorLogDirective" to "error_log /usr/local/openresty/nginx/logs/error.log warn;"
-        ))
+        ResourceLoader.replacePlaceholders(
+            standardLoggingTemplate, mapOf(
+                "tag" to "nginx_main",
+                "accessLogDirective" to "access_log /usr/local/openresty/nginx/logs/access.log main;",
+                "errorLogDirective" to "error_log /usr/local/openresty/nginx/logs/error.log warn;"
+            )
+        )
         loggingConfig.append("    ")
         val accessLogDirectives = mutableListOf<String>()
         val errorLogDirectives = mutableListOf<String>()
 
         if (settings.proxyDualLoggingEnabled || !rsyslogEnabled) {
-            accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/access.log", "main"))
+            accessLogDirectives.add(
+                getAccessLogDirective(
+                    "/usr/local/openresty/nginx/logs/access.log",
+                    "main"
+                )
+            )
             errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/error.log warn;")
         }
 
         if (rsyslogEnabled) {
-            val syslogServer = "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
+            val syslogServer =
+                "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
             accessLogDirectives.add("access_log syslog:server=$syslogServer,tag=nginx_main_access,severity=info,nohostname main;")
             errorLogDirectives.add("error_log syslog:server=$syslogServer,tag=nginx_main_error,nohostname warn;")
         }
 
-        val standardLoggingContent = ResourceLoader.replacePlaceholders(standardLoggingTemplate, mapOf(
-            "accessLogDirective" to accessLogDirectives.joinToString("\n    "),
-            "errorLogDirective" to errorLogDirectives.joinToString("\n    ")
-        ))
-        
+        val standardLoggingContent = ResourceLoader.replacePlaceholders(
+            standardLoggingTemplate, mapOf(
+                "accessLogDirective" to accessLogDirectives.joinToString("\n    "),
+                "errorLogDirective" to errorLogDirectives.joinToString("\n    ")
+            )
+        )
+
         loggingConfig.append(standardLoggingContent.lines().joinToString("\n    ") { it })
-        
-        return ResourceLoader.replacePlaceholders(template, mapOf(
-            "loggingConfig" to loggingConfig.toString(),
-            "logFormatDefinition" to logFormatDefinition
-        ))
+
+        return ResourceLoader.replacePlaceholders(
+            template, mapOf(
+                "loggingConfig" to loggingConfig.toString(),
+                "logFormatDefinition" to logFormatDefinition
+            )
+        )
     }
 
     /**
@@ -1772,9 +1975,14 @@ class ProxyServiceImpl(
             } else {
                 "templates/proxy/default-server.conf"
             }
-            
+
             val defaultServerTemplate = getCachedTemplate(templateName)
-            val loggingReplacements = getLoggingReplacements("default_server")
+            val loggingReplacements = getLoggingReplacements("default_server").toMutableMap().apply {
+                val dangerConfig = this["dangerHitsConfig"] ?: ""
+                val cidrConfig = this["cidrHitsConfig"] ?: ""
+                val clientErrorConfig = this["clientErrorHitsConfig"] ?: ""
+                put("dangerHitsConfig", "$dangerConfig\n    $cidrConfig\n    $clientErrorConfig")
+            }
 
             val finalContent = ResourceLoader.replacePlaceholders(
                 defaultServerTemplate, loggingReplacements
@@ -1795,8 +2003,7 @@ class ProxyServiceImpl(
         val indexFile = File(wwwHtmlDir, "index.html")
         if (!indexFile.exists()) {
             try {
-                val defaultPageTemplate =
-                    getCachedTemplate("templates/proxy/default-index.html")
+                val defaultPageTemplate = getCachedTemplate("templates/proxy/default-index.html")
                 indexFile.writeText(defaultPageTemplate)
                 logger.info("Created default HTML page: ${indexFile.absolutePath}")
             } catch (e: Exception) {
@@ -1842,14 +2049,15 @@ class ProxyServiceImpl(
     private fun checkImageExists(): Boolean {
         return try {
             // First check if container exists - if it does, the image must exist
-            val containerExistsCmd = "${AppConfig.dockerCommand} ps -a --filter name=$PROXY_CONTAINER_NAME --format '{{.Names}}'"
+            val containerExistsCmd =
+                "${AppConfig.dockerCommand} ps -a --filter name=$PROXY_CONTAINER_NAME --format '{{.Names}}'"
             val containerExists = executeCommand(containerExistsCmd).trim() == PROXY_CONTAINER_NAME
-            
+
             if (containerExists) {
                 // Container exists, so image must exist
                 return true
             }
-            
+
             // Check for the image using the actual image name (use Kotlin string interpolation, not shell variables)
             val imageName = "$PROXY_IMAGE_NAME:$PROXY_IMAGE_TAG"
             val cmd = "${AppConfig.dockerCommand} images -q $imageName"
@@ -1889,8 +2097,7 @@ class ProxyServiceImpl(
 
             val configs = listDnsConfigs().toMutableList()
             val newConfig = config.copy(
-                id = UUID.randomUUID().toString(),
-                createdAt = System.currentTimeMillis()
+                id = UUID.randomUUID().toString(), createdAt = System.currentTimeMillis()
             )
             configs.add(newConfig)
             dnsConfigPersistence.save(configs)

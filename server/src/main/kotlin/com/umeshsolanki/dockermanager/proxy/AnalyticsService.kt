@@ -192,43 +192,6 @@ class AnalyticsServiceImpl(
         }
     }
 
-    /**
-     * Determines if a request is suspicious and should be logged to database
-     * Criteria:
-     * - 4xx or 5xx status codes (errors)
-     * - Non-standard HTTP methods
-     * - Suspicious paths (matching jail rules)
-     * - Suspicious user agents (scanners, bots)
-     */
-    private fun isSuspiciousRequest(hit: ProxyHit): Boolean {
-        // Log all error responses
-        if (hit.status >= 400) return true
-        
-        // Check for non-standard methods
-        val standardMethods = setOf("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD")
-        if (hit.method !in standardMethods) return true
-        
-        // Check for suspicious paths using jail rules
-        val rules = AppConfig.settings.proxyJailRules
-        for (rule in rules) {
-            when (rule.type) {
-                ProxyJailRuleType.PATH -> {
-                    if (rule.pattern.toRegex(RegexOption.IGNORE_CASE).containsMatchIn(hit.path)) {
-                        return true
-                    }
-                }
-                ProxyJailRuleType.USER_AGENT -> {
-                    val ua = hit.userAgent ?: ""
-                    if (rule.pattern.toRegex(RegexOption.IGNORE_CASE).containsMatchIn(ua)) {
-                        return true
-                    }
-                }
-                else -> {} // Skip METHOD and STATUS_CODE rules for log filtering
-            }
-        }
-        
-        return false
-    }
 
     private fun startDailyResetWorker() {
         scope.launch {
@@ -481,17 +444,6 @@ class AnalyticsServiceImpl(
                                 val isError = status >= 400 || status == 0
                                 ipBatchStats[ip] = (currentStats.first + 1) to (currentStats.second + (if (isError) 1L else 0L))
 
-                                // Security Jailing check
-                                val errCount = hitsByIpErrorMap[ip] ?: 0L
-                                jailManagerService.checkProxySecurityViolation(
-                                    ip = ip,
-                                    userAgent = ua,
-                                    method = method,
-                                    path = path,
-                                    status = status,
-                                    errorCount = errCount
-                                )
-
                                 try {
                                     val timestamp = logLineDateFormat.parse(dateStr)
                                     val hourKey = hourKeyFormat.format(timestamp)
@@ -514,10 +466,6 @@ class AnalyticsServiceImpl(
                                     ClickHouseService.log(hit)
                                     while (recentHitsList.size > MAX_RECENT_HITS) {
                                         recentHitsList.removeLast()
-                                    }
-                                    
-                                    if (isSuspiciousRequest(hit)) {
-                                        hitsToInsert.add(hit)
                                     }
                                 } catch (e: Exception) { }
                         }

@@ -38,11 +38,16 @@ class JailManagerServiceImpl(
     private var unjailJob: Job? = null
     private val countryCache = ConcurrentHashMap<String, String>()
     
-    // Failed login attempt tracking (for BtmpService)
+    // Failed login attempt tracking
     private val failedAttemptsInWindow = ConcurrentHashMap<String, Int>()
     
-    // Channel for queuing specific IPs that need immediate enrichment (optional, but good for responsiveness)
-    // For now, periodic scan is sufficient as requested.
+    // specialized mirror tracking
+    private val dangerViolationsInWindow = ConcurrentHashMap<String, Int>()
+    private val burstViolationsInWindow = ConcurrentHashMap<String, Int>()
+    private val cidrViolationsInWindow = ConcurrentHashMap<String, Int>()
+    
+    // Generic proxy error tracking (4xx/5xx from logs)
+    private val proxyViolationsInWindow = ConcurrentHashMap<String, Int>()
 
     init {
         startUnjailWorker()
@@ -239,8 +244,6 @@ class JailManagerServiceImpl(
         failedAttemptsInWindow.remove(ip)
     }
     
-    // Proxy security violation checking
-    private val proxyViolationsInWindow = ConcurrentHashMap<String, Int>()
     
     // Cached Rules Optimization
     private data class CachedRule(
@@ -288,20 +291,18 @@ class JailManagerServiceImpl(
         scope.launch {
             while (isActive) {
                 try {
-                    // Reset violation counts every monitoring interval (default 5 mins)
-                    // This implements a simple "errors per interval" rate limit.
-                    // A proper sliding window is more complex but this should suffice to prevent
-                    // long-term accumulation of errors.
-                    // Use proxy specific window
                     val windowMinutes = AppConfig.settings.proxyJailWindowMinutes
                     val interval = windowMinutes * 60_000L
                     
                     delay(interval)
                     
-                    if (proxyViolationsInWindow.isNotEmpty()) {
-                        logger.debug("Clearing ${proxyViolationsInWindow.size} proxy violation records (window reset: ${windowMinutes}m)")
-                        proxyViolationsInWindow.clear()
-                    }
+                    proxyViolationsInWindow.clear()
+                    failedAttemptsInWindow.clear()
+                    dangerViolationsInWindow.clear()
+                    burstViolationsInWindow.clear()
+                    cidrViolationsInWindow.clear()
+                    
+                    logger.debug("Cleared all violation records (window reset: ${windowMinutes}m)")
                 } catch (e: Exception) {
                     logger.error("Error in ViolationCleanup worker", e)
                     delay(60_000)
@@ -334,17 +335,49 @@ class JailManagerServiceImpl(
         var shouldJail = false
         var reason = ""
         
-        // 1. Check Composite Rules (PATH + STATUS) - Most specific, check first
-        for (cached in cachedCompositeRules) {
-            val pathMatches = cached.regex?.containsMatchIn(path) == true
-            val statusMatches = cached.rule.statusCodePattern?.let {
-                it.toRegex().containsMatchIn(status.toString())
-            } ?: true // If no status pattern, just check path
+        // specialized MIRROR violation tracking
+        if (!shouldJail) {
+            when (status) {
+                403 -> { // Danger
+                    val count = dangerViolationsInWindow.merge(ip, 1, Int::plus) ?: 1
+                    if (count >= secSettings.proxyJailThresholdDanger) {
+                        shouldJail = true
+                        reason = "Danger/Path violations ($count)"
+                        dangerViolationsInWindow.remove(ip)
+                    }
+                }
+                429 -> { // Burst
+                    val count = burstViolationsInWindow.merge(ip, 1, Int::plus) ?: 1
+                    if (count >= secSettings.proxyJailThresholdBurst) {
+                        shouldJail = true
+                        reason = "Rate Limit violations ($count)"
+                        burstViolationsInWindow.remove(ip)
+                    }
+                }
+                444 -> { // CIDR
+                    val count = cidrViolationsInWindow.merge(ip, 1, Int::plus) ?: 1
+                    if (count >= secSettings.proxyJailThresholdCidr) {
+                        shouldJail = true
+                        reason = "Blocked CIDR violations ($count)"
+                        cidrViolationsInWindow.remove(ip)
+                    }
+                }
+            }
+        }
 
-            if (pathMatches && statusMatches) {
-                shouldJail = true
-                reason = "Matched COMPOSITE rule: ${cached.rule.description ?: cached.rule.pattern}"
-                break
+        // 1. Check Composite Rules (PATH + STATUS) - Most specific, check first
+        if (!shouldJail) {
+            for (cached in cachedCompositeRules) {
+                val pathMatches = cached.regex?.containsMatchIn(path) == true
+                val statusMatches = cached.rule.statusCodePattern?.let {
+                    it.toRegex().containsMatchIn(status.toString())
+                } ?: true // If no status pattern, just check path
+
+                if (pathMatches && statusMatches) {
+                    shouldJail = true
+                    reason = "Matched COMPOSITE rule: ${cached.rule.description ?: cached.rule.pattern}"
+                    break
+                }
             }
         }
 
@@ -457,4 +490,3 @@ object JailManagerService {
     // Access to underlying IP DB
     // fun getIpInfo(ip: String) = (service as JailManagerServiceImpl).ipInfoService.getIpInfo(ip) // Accessor if needed
 }
-

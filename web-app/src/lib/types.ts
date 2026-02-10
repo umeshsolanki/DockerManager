@@ -251,6 +251,7 @@ export interface FirewallRule {
   protocol: string;
   comment?: string;
   createdAt: number;
+  expiresAt?: number;
 }
 
 export interface BlockIPRequest {
@@ -258,6 +259,7 @@ export interface BlockIPRequest {
   port?: string;
   protocol: string;
   comment?: string;
+  expiresAt?: number;
 }
 
 export interface IptablesRule {
@@ -582,6 +584,9 @@ export interface SystemConfig {
   proxyStatsIntervalMs: number;
   proxyJailEnabled: boolean;
   proxyJailThresholdNon200: number;
+  proxyJailThresholdDanger: number;
+  proxyJailThresholdBurst: number;
+  proxyJailThresholdCidr: number;
   proxyJailWindowMinutes: number;
   proxyJailRules: ProxyJailRule[];
   proxyDefaultReturn404: boolean;
@@ -640,6 +645,9 @@ export interface UpdateSystemConfigRequest {
   jailDurationMinutes?: number;
   exponentialJailEnabled?: boolean;
   maxJailDurationMinutes?: number;
+  proxyJailThresholdDanger?: number;
+  proxyJailThresholdBurst?: number;
+  proxyJailThresholdCidr?: number;
 }
 
 export interface ImapConfig {
