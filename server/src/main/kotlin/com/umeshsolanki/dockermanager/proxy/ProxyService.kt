@@ -1930,6 +1930,7 @@ class ProxyServiceImpl(
              val pattern = rule.pattern
                  .replace("\"", "\\\"")
                  .let { 
+                     // Ensure it's treated as a regex
                      if (it.startsWith("~")) it 
                      else "~*$it" 
                  }
@@ -1938,16 +1939,12 @@ class ProxyServiceImpl(
         securityMaps.append("    }\n\n")
 
         // Map for User-Agent violations
-        securityMaps.append("    map \$http_user_agent \$ua_violation_reason {\n")
+        securityMaps.append("    map \$http_user_agent \$ua_violation {\n")
         securityMaps.append("        default \"\";\n")
         for (rule in settings.proxyJailRules.filter { it.type == ProxyJailRuleType.USER_AGENT }) {
              val pattern = rule.pattern.replace("\"", "\\\"")
-                 .let { 
-                     if (it.startsWith("~") || it.contains("|") || it.contains("[") || it.contains("(")) {
-                         if (it.startsWith("~")) it else "~*$it"
-                     } else it 
-                 }
-             securityMaps.append("        \"$pattern\" \"${rule.description?.replace("\"", "\\\"") ?: "malicious_user_agent"}\";\n")
+                 .let { if (it.contains("|") || it.contains("[") || it.contains("(")) "~*$it" else it }
+             securityMaps.append("        \"$pattern\" \"1\";\n")
         }
         securityMaps.append("    }\n")
 
