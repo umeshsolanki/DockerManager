@@ -1866,7 +1866,7 @@ class ProxyServiceImpl(
         // Map for Path-based violations
         securityMaps.append("    map \$request_uri \$security_violation_reason {\n")
         securityMaps.append("        default \"\";\n")
-        for (rule in settings.proxyJailRules.filter { it.type == AppConfig.ProxyJailRuleType.PATH }) {
+        for (rule in settings.proxyJailRules.filter { it.type == ProxyJailRuleType.PATH }) {
              val pattern = rule.pattern
                  .replace("\"", "\\\"")
                  .let { if (it.startsWith("^") || it.contains("|") || it.contains("$") || it.contains("(")) "~*$it" else it }
@@ -1877,7 +1877,7 @@ class ProxyServiceImpl(
         // Map for User-Agent violations
         securityMaps.append("    map \$http_user_agent \$ua_violation {\n")
         securityMaps.append("        default \"\";\n")
-        for (rule in settings.proxyJailRules.filter { it.type == AppConfig.ProxyJailRuleType.USER_AGENT }) {
+        for (rule in settings.proxyJailRules.filter { it.type == ProxyJailRuleType.USER_AGENT }) {
              val pattern = rule.pattern.replace("\"", "\\\"")
                  .let { if (it.contains("|") || it.contains("[") || it.contains("(")) "~*$it" else it }
              securityMaps.append("        \"$pattern\" \"1\";\n")
