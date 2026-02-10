@@ -132,6 +132,12 @@ object SystemService {
         proxyJailEnabled = AppConfig.settings.proxyJailEnabled,
         proxyJailThresholdNon200 = AppConfig.settings.proxyJailThresholdNon200,
         proxyJailWindowMinutes = AppConfig.settings.proxyJailWindowMinutes,
+        proxyJailThresholdDanger = AppConfig.settings.proxyJailThresholdDanger,
+        proxyJailThresholdBurst = AppConfig.settings.proxyJailThresholdBurst,
+        proxyJailThresholdCidr = AppConfig.settings.proxyJailThresholdCidr,
+        proxyJailRules = AppConfig.settings.proxyJailRules,
+        recommendedProxyJailRules = AppConfig.settings.recommendedProxyJailRules,
+        proxyDefaultReturn404 = AppConfig.settings.proxyDefaultReturn404,
         dangerProxyEnabled = AppConfig.settings.dangerProxyEnabled,
         dangerProxyHost = AppConfig.settings.dangerProxyHost
     )
@@ -163,13 +169,24 @@ object SystemService {
         }
 
         // Proxy Security Settings
-        if (request.proxyJailEnabled != null || request.proxyJailThresholdNon200 != null || request.proxyJailWindowMinutes != null) {
+        if (request.proxyJailEnabled != null || request.proxyJailThresholdNon200 != null || request.proxyJailWindowMinutes != null ||
+            request.proxyJailThresholdDanger != null || request.proxyJailThresholdBurst != null || request.proxyJailThresholdCidr != null ||
+            request.proxyJailRules != null || request.recommendedProxyJailRules != null || request.proxyDefaultReturn404 != null) {
+            
             AppConfig.updateProxySecuritySettings(
                 enabled = request.proxyJailEnabled ?: AppConfig.settings.proxyJailEnabled,
                 thresholdNon200 = request.proxyJailThresholdNon200 ?: AppConfig.settings.proxyJailThresholdNon200,
-                rules = AppConfig.settings.proxyJailRules, // Rules not updated via this endpoint usually
-                windowMinutes = request.proxyJailWindowMinutes ?: AppConfig.settings.proxyJailWindowMinutes
+                rules = request.proxyJailRules ?: AppConfig.settings.proxyJailRules,
+                windowMinutes = request.proxyJailWindowMinutes ?: AppConfig.settings.proxyJailWindowMinutes,
+                thresholdDanger = request.proxyJailThresholdDanger ?: AppConfig.settings.proxyJailThresholdDanger,
+                thresholdBurst = request.proxyJailThresholdBurst ?: AppConfig.settings.proxyJailThresholdBurst,
+                thresholdCidr = request.proxyJailThresholdCidr ?: AppConfig.settings.proxyJailThresholdCidr,
+                recommendedRules = request.recommendedProxyJailRules ?: AppConfig.settings.recommendedProxyJailRules
             )
+
+            if (request.proxyDefaultReturn404 != null) {
+                AppConfig.updateProxyDefaultBehavior(request.proxyDefaultReturn404)
+            }
         }
 
         // Slow updates: Background service management

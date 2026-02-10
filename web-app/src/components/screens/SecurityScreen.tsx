@@ -662,6 +662,15 @@ export default function SecurityScreen() {
 
                                     if (!pattern) return toast.error('Pattern is required');
 
+                                    // Basic regex validation for types that use regex
+                                    if (type === 'USER_AGENT' || type === 'PATH') {
+                                        try {
+                                            new RegExp(pattern);
+                                        } catch (e) {
+                                            return toast.error('Invalid regex pattern: ' + (e as Error).message);
+                                        }
+                                    }
+
                                     const newRule: ProxyJailRule = {
                                         id: Math.random().toString(36).substr(2, 9),
                                         type: type as ProxyJailRuleType,

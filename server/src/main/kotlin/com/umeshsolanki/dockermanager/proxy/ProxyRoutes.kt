@@ -220,23 +220,25 @@ fun Route.proxyRoutes() {
         }
 
         post("/security/settings") {
-            val request = call.receive<AppSettings>()
-            ProxyService.updateSecuritySettings(
-                enabled = request.proxyJailEnabled,
-                thresholdNon200 = request.proxyJailThresholdNon200,
-                rules = request.proxyJailRules,
-                windowMinutes = request.proxyJailWindowMinutes,
-                thresholdDanger = request.proxyJailThresholdDanger,
-                thresholdBurst = request.proxyJailThresholdBurst,
-                thresholdCidr = request.proxyJailThresholdCidr,
-                dangerProxyEnabled = request.dangerProxyEnabled,
-                dangerProxyHost = request.dangerProxyHost,
-                recommendedRules = request.recommendedProxyJailRules
+            val request = call.receive<UpdateProxySecurityRequest>()
+            val result = ProxyService.updateSecuritySettings(
+                enabled = request.proxyJailEnabled ?: AppConfig.settings.proxyJailEnabled,
+                thresholdNon200 = request.proxyJailThresholdNon200 ?: AppConfig.settings.proxyJailThresholdNon200,
+                rules = request.proxyJailRules ?: AppConfig.settings.proxyJailRules,
+                windowMinutes = request.proxyJailWindowMinutes ?: AppConfig.settings.proxyJailWindowMinutes,
+                thresholdDanger = request.proxyJailThresholdDanger ?: AppConfig.settings.proxyJailThresholdDanger,
+                thresholdBurst = request.proxyJailThresholdBurst ?: AppConfig.settings.proxyJailThresholdBurst,
+                thresholdCidr = request.proxyJailThresholdCidr ?: AppConfig.settings.proxyJailThresholdCidr,
+                dangerProxyEnabled = request.dangerProxyEnabled ?: AppConfig.settings.dangerProxyEnabled,
+                dangerProxyHost = request.dangerProxyHost ?: AppConfig.settings.dangerProxyHost,
+                recommendedRules = request.recommendedProxyJailRules ?: AppConfig.settings.recommendedProxyJailRules
             )
-            call.respond(
-                HttpStatusCode.OK,
-                ProxyActionResult(true, "Proxy security settings updated")
-            )
+            
+            if (result.first) {
+                call.respond(HttpStatusCode.OK, ProxyActionResult(true, result.second))
+            } else {
+                call.respond(HttpStatusCode.BadRequest, ProxyActionResult(false, result.second))
+            }
         }
 
         post("/settings/danger-proxy") {

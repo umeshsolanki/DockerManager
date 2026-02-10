@@ -418,6 +418,18 @@ object AppConfig {
         dangerProxyHost: String? = null,
         recommendedRules: List<ProxyJailRule>? = null
     ) = synchronized(lock) {
+        // Validate Regexes
+        val allRulesToCheck = (rules + (recommendedRules ?: emptyList()))
+        for (rule in allRulesToCheck) {
+            if (rule.type == ProxyJailRuleType.PATH || rule.type == ProxyJailRuleType.USER_AGENT) {
+                try {
+                    Regex(rule.pattern)
+                } catch (e: Exception) {
+                    throw IllegalArgumentException("Invalid regex in rule '${rule.description ?: rule.id}': ${e.message}")
+                }
+            }
+        }
+
         _settings = _settings.copy(
             proxyJailEnabled = enabled,
             proxyJailThresholdNon200 = thresholdNon200,

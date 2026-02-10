@@ -16,8 +16,14 @@ fun Route.systemRoutes() {
         }
         post("/config") {
             val request = call.receive<UpdateSystemConfigRequest>()
-            SystemService.updateSystemConfig(request)
-            call.respond(mapOf("success" to true))
+            try {
+                SystemService.updateSystemConfig(request)
+                call.respond(mapOf("success" to true))
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("success" to false, "error" to e.message))
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("success" to false, "error" to "Internal server error"))
+            }
         }
         get("/storage") {
             call.respond(SystemService.getStorageInfo())

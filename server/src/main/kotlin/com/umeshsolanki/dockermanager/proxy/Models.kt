@@ -213,3 +213,17 @@ data class WebSocketConnection(
     val authenticated: Boolean = true,
     var duration: Long? = null // Duration in milliseconds, null if still connected
 )
+
+@Serializable
+data class UpdateProxySecurityRequest(
+    val proxyJailEnabled: Boolean? = null,
+    val proxyJailThresholdNon200: Int? = null,
+    val proxyJailRules: List<ProxyJailRule>? = null,
+    val proxyJailWindowMinutes: Int? = null,
+    val proxyJailThresholdDanger: Int? = null,
+    val proxyJailThresholdBurst: Int? = null,
+    val proxyJailThresholdCidr: Int? = null,
+    val dangerProxyEnabled: Boolean? = null,
+    val dangerProxyHost: String? = null,
+    val recommendedProxyJailRules: List<ProxyJailRule>? = null
+)

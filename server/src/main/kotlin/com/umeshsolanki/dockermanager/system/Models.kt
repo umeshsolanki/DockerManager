@@ -45,6 +45,12 @@ data class SystemConfig(
     val proxyJailEnabled: Boolean,
     val proxyJailThresholdNon200: Int,
     val proxyJailWindowMinutes: Int,
+    val proxyJailThresholdDanger: Int,
+    val proxyJailThresholdBurst: Int,
+    val proxyJailThresholdCidr: Int,
+    val proxyJailRules: List<com.umeshsolanki.dockermanager.proxy.ProxyJailRule>,
+    val recommendedProxyJailRules: List<com.umeshsolanki.dockermanager.proxy.ProxyJailRule>,
+    val proxyDefaultReturn404: Boolean,
     // Danger Proxy
     val dangerProxyEnabled: Boolean,
     val dangerProxyHost: String?
@@ -79,6 +85,12 @@ data class UpdateSystemConfigRequest(
     val proxyJailEnabled: Boolean? = null,
     val proxyJailThresholdNon200: Int? = null,
     val proxyJailWindowMinutes: Int? = null,
+    val proxyJailThresholdDanger: Int? = null,
+    val proxyJailThresholdBurst: Int? = null,
+    val proxyJailThresholdCidr: Int? = null,
+    val proxyJailRules: List<com.umeshsolanki.dockermanager.proxy.ProxyJailRule>? = null,
+    val recommendedProxyJailRules: List<com.umeshsolanki.dockermanager.proxy.ProxyJailRule>? = null,
+    val proxyDefaultReturn404: Boolean? = null,
     // Danger Proxy
     val dangerProxyEnabled: Boolean? = null,
     val dangerProxyHost: String? = null

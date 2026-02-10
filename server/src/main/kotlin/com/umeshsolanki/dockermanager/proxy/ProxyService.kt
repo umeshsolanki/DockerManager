@@ -159,7 +159,7 @@ interface IProxyService {
         dangerProxyEnabled: Boolean? = null,
         dangerProxyHost: String? = null,
         recommendedRules: List<ProxyJailRule>? = null
-    )
+    ): Pair<Boolean, String>
     fun updateDefaultBehavior(return404: Boolean): Pair<Boolean, String>
     fun updateRsyslogSettings(enabled: Boolean, dualLogging: Boolean): Pair<Boolean, String>
     fun updateLoggingSettings(
@@ -249,7 +249,19 @@ class ProxyServiceImpl(
         dangerProxyEnabled: Boolean?,
         dangerProxyHost: String?,
         recommendedRules: List<ProxyJailRule>?
-    ) {
+    ): Pair<Boolean, String> {
+        // Validate Regexes
+        val allRulesToCheck = (rules + (recommendedRules ?: emptyList()))
+        for (rule in allRulesToCheck) {
+            if (rule.type == ProxyJailRuleType.PATH || rule.type == ProxyJailRuleType.USER_AGENT) {
+                try {
+                    Regex(rule.pattern)
+                } catch (e: Exception) {
+                    return false to "Invalid regex in rule '${rule.description ?: rule.id}': ${e.message}"
+                }
+            }
+        }
+
         AppConfig.updateProxySecuritySettings(
             enabled = enabled,
             thresholdNon200 = thresholdNon200,
@@ -262,6 +274,7 @@ class ProxyServiceImpl(
             dangerProxyHost = dangerProxyHost,
             recommendedRules = recommendedRules
         )
+        return true to "Security settings updated"
     }
 
     override fun updateDefaultBehavior(return404: Boolean): Pair<Boolean, String> {
