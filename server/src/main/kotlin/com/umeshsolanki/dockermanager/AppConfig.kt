@@ -41,8 +41,8 @@ val DEFAULT_PROXY_JAIL_RULES = listOf(
     // Block path traversal attempts (immediate jail)
     ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.\\./|/etc/|/proc/|/sys/|/usr/bin|/windows/|/boot/", description = "Path traversal attempt"),
     
-    // Block common CMS/framework admin panels (SPA doesn't have these)
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "/admin|/wp-admin|/administrator|phpmyadmin|/manager|/console|/actuator/|/jolokia|/cgi-bin", description = "Admin panel or CGI probe"),
+    // Block common CMS/framework admin panels and security probes
+    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "/admin|/wp-admin|/administrator|phpmyadmin|/manager|/console|/actuator/|/jolokia|/cgi-bin|/autodiscover|/owa|/ecp|/scripts|/phpinfo|/\\.vscode|/\\.idea", description = "Security probe or admin access"),
     
     // Block dangerous backend file extensions (SPA uses only JS/CSS/HTML assets)
     ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.(php|asp|aspx|jsp|cgi|pl|py|rb|sh|bat|cmd|exe)$", description = "Backend script execution attempt"),
