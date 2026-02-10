@@ -15,29 +15,29 @@ const WebShell = dynamic(() => import('../Terminal'), { ssr: false });
 
 const SettingsCard = ({ title, subtitle, icon: Icon, iconColor = "primary", children, className = "" }: any) => {
     const colorClasses: any = {
-        primary: "bg-primary/10 text-primary",
-        secondary: "bg-secondary/10 text-secondary",
-        "red-500": "bg-red-500/10 text-red-500",
-        "blue-500": "bg-blue-500/10 text-blue-500",
-        "amber-500": "bg-amber-500/10 text-amber-500",
-        "green-500": "bg-green-500/10 text-green-500",
-        "purple-500": "bg-purple-500/10 text-purple-500"
+        primary: "bg-gradient-to-br from-primary/20 to-primary/5 text-primary border-primary/20",
+        secondary: "bg-gradient-to-br from-secondary/20 to-secondary/5 text-secondary border-secondary/20",
+        "red-500": "bg-gradient-to-br from-red-500/20 to-red-500/5 text-red-500 border-red-500/20",
+        "blue-500": "bg-gradient-to-br from-blue-500/20 to-blue-500/5 text-blue-500 border-blue-500/20",
+        "amber-500": "bg-gradient-to-br from-amber-500/20 to-amber-500/5 text-amber-500 border-amber-500/20",
+        "green-500": "bg-gradient-to-br from-green-500/20 to-green-500/5 text-green-500 border-green-500/20",
+        "purple-500": "bg-gradient-to-br from-purple-500/20 to-purple-500/5 text-purple-500 border-purple-500/20"
     };
 
     return (
-        <div className={`bg-surface/50 border border-outline/10 rounded-2xl p-5 shadow-lg backdrop-blur-sm ${className}`}>
-            <div className="flex items-center gap-3 mb-4">
+        <div className={`bg-white/[0.02] border border-white/5 rounded-3xl p-6 backdrop-blur-xl shadow-2xl hover:shadow-primary/5 transition-all duration-300 ${className}`}>
+            <div className="flex items-center gap-4 mb-6">
                 {Icon && (
-                    <div className={`p-3 rounded-xl ${colorClasses[iconColor] || colorClasses.primary}`}>
-                        <Icon size={20} />
+                    <div className={`p-4 rounded-2xl border ${colorClasses[iconColor] || colorClasses.primary} shadow-lg`}>
+                        <Icon size={24} strokeWidth={2.5} />
                     </div>
                 )}
                 <div>
-                    <h2 className="text-lg font-bold">{title}</h2>
-                    {subtitle && <p className="text-xs text-on-surface-variant mt-0.5">{subtitle}</p>}
+                    <h2 className="text-xl font-black text-on-surface tracking-tight">{title}</h2>
+                    {subtitle && <p className="text-xs text-on-surface-variant/60 mt-1 font-medium">{subtitle}</p>}
                 </div>
             </div>
-            <div className="space-y-4">
+            <div className="space-y-5">
                 {children}
             </div>
         </div>
@@ -46,32 +46,32 @@ const SettingsCard = ({ title, subtitle, icon: Icon, iconColor = "primary", chil
 
 const SettingsInput = ({ label, value, onChange, placeholder, type = "text", note, disabled = false, className = "" }: any) => (
     <div className={`space-y-2 ${className}`}>
-        {label && <label className="text-xs font-semibold text-on-surface-variant px-1">{label}</label>}
-        <div className="relative">
+        {label && <label className="text-xs font-bold text-on-surface-variant/70 px-1 uppercase tracking-wider">{label}</label>}
+        <div className="relative group">
             <input
                 type={type}
                 value={value ?? ''}
                 onChange={(e) => onChange(type === 'number' ? (parseInt(e.target.value) || 0) : e.target.value)}
                 placeholder={placeholder}
                 disabled={disabled}
-                className="w-full bg-surface border border-outline/20 rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50"
+                className="w-full bg-black/20 border border-white/10 rounded-2xl py-3 px-4 text-sm font-medium focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 focus:bg-black/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-white/30"
             />
         </div>
-        {note && <p className="text-[10px] text-on-surface-variant/60 px-1 italic">{note}</p>}
+        {note && <p className="text-[10px] text-on-surface-variant/50 px-2 italic font-medium">{note}</p>}
     </div>
 );
 
 const SettingsToggle = ({ label, description, checked, onChange, color = "bg-primary" }: any) => (
-    <div className={`flex items-center justify-between p-4 bg-surface/80 rounded-xl border border-outline/5 transition-all hover:bg-surface-variant/20`}>
+    <div className={`flex items-center justify-between p-5 bg-white/[0.02] rounded-2xl border border-white/5 transition-all hover:border-white/10 hover:bg-white/[0.04] group`}>
         <div className="flex-1 pr-4">
-            <p className="text-sm font-semibold text-on-surface">{label}</p>
-            {description && <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">{description}</p>}
+            <p className="text-sm font-bold text-on-surface">{label}</p>
+            {description && <p className="text-xs text-on-surface-variant/60 mt-1.5 leading-relaxed font-medium">{description}</p>}
         </div>
         <button
             onClick={() => onChange(!checked)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ring-2 ring-offset-2 ring-offset-surface ring-transparent flex-shrink-0 ${checked ? color : 'bg-surface-variant'}`}
+            className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all focus:outline-none ring-2 ring-offset-2 ring-offset-transparent ring-transparent flex-shrink-0 shadow-lg ${checked ? `${color} shadow-primary/30` : 'bg-white/10'} group-hover:scale-105`}
         >
-            <span className={`${checked ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`} />
+            <span className={`${checked ? 'translate-x-6' : 'translate-x-1'} inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform`} />
         </button>
     </div>
 );
@@ -79,12 +79,12 @@ const SettingsToggle = ({ label, description, checked, onChange, color = "bg-pri
 const TabButton = ({ id, label, icon: Icon, active, onClick }: any) => (
     <button
         onClick={() => onClick(id)}
-        className={`flex items-center gap-2 px-4 py-2 rounded-t-xl text-xs font-semibold transition-all whitespace-nowrap ${active
-            ? 'bg-primary text-primary-foreground shadow-md border-b-2 border-primary'
-            : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
+        className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl text-xs font-black transition-all whitespace-nowrap uppercase tracking-wider ${active
+            ? 'bg-primary text-primary-foreground shadow-xl shadow-primary/30 scale-105'
+            : 'text-on-surface-variant/60 hover:text-on-surface hover:bg-white/5 hover:scale-102'
             }`}
     >
-        <Icon size={16} />
+        <Icon size={16} strokeWidth={2.5} />
         <span>{label}</span>
     </button>
 );
@@ -280,19 +280,34 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     };
 
     return (
-        <div className="flex flex-col h-full overflow-y-auto pb-6">
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                    <h1 className="text-2xl font-bold">Settings</h1>
-                    {loading && <RefreshCw className="animate-spin text-primary" size={20} />}
+        <div className="flex flex-col h-full overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-white/5 bg-white/[0.02] backdrop-blur-xl">
+                <div className="flex items-center gap-4">
+                    <div className="p-3 bg-gradient-to-br from-primary/20 to-primary/5 rounded-2xl border border-primary/20">
+                        <Settings2 size={28} className="text-primary" strokeWidth={2.5} />
+                    </div>
+                    <div>
+                        <h1 className="text-3xl font-black tracking-tight">Settings</h1>
+                        <p className="text-sm text-on-surface-variant/60 font-medium mt-0.5">System configuration and preferences</p>
+                    </div>
+                    {loading && <RefreshCw className="animate-spin text-primary ml-2" size={22} strokeWidth={2.5} />}
                 </div>
-                <div className="flex items-center gap-2">
-                    <button onClick={fetchConfig} className="p-2 hover:bg-surface rounded-xl transition-all text-on-surface-variant hover:text-primary border border-outline/10" disabled={loading}>
-                        <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={fetchConfig}
+                        className="p-3 hover:bg-white/5 rounded-2xl transition-all text-on-surface-variant hover:text-primary border border-white/5 hover:border-primary/30 shadow-lg hover:shadow-primary/20"
+                        disabled={loading}
+                        title="Refresh settings"
+                    >
+                        <RefreshCw size={20} className={loading ? 'animate-spin' : ''} strokeWidth={2.5} />
                     </button>
                     {onLogout && (
-                        <button onClick={onLogout} className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-xl transition-all text-xs font-semibold border border-red-500/20">
-                            <LogOut size={14} /> <span>Log Out</span>
+                        <button
+                            onClick={onLogout}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-2xl transition-all text-sm font-bold border border-red-500/20 shadow-lg hover:shadow-red-500/20 uppercase tracking-wider"
+                        >
+                            <LogOut size={16} strokeWidth={2.5} /> <span>Logout</span>
                         </button>
                     )}
                 </div>
@@ -300,13 +315,14 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
 
             {message && (
                 <div className="fixed top-6 right-6 z-50 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2.5 rounded-xl shadow-lg font-semibold text-sm">
-                        <CheckCircle size={18} /> <span>{message}</span>
+                    <div className="flex items-center gap-2.5 bg-primary text-primary-foreground px-5 py-3 rounded-2xl shadow-2xl shadow-primary/50 font-bold text-sm border border-primary/20">
+                        <CheckCircle size={20} strokeWidth={2.5} /> <span>{message}</span>
                     </div>
                 </div>
             )}
 
-            <div className="flex items-center gap-2 mb-4 border-b border-outline/10 pb-2 overflow-x-auto">
+            {/* Tabs */}
+            <div className="flex items-center gap-2 px-6 pt-4 pb-2 overflow-x-auto scrollbar-thin">
                 <TabButton id="terminal" label="Terminal" icon={Terminal} active={activeTab === 'terminal'} onClick={setActiveTab} />
                 <TabButton id="global" label="Global" icon={Globe} active={activeTab === 'global'} onClick={setActiveTab} />
                 <TabButton id="logs" label="Logs & Data" icon={Database} active={activeTab === 'logs'} onClick={setActiveTab} />
@@ -316,7 +332,8 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                 <TabButton id="info" label="Info" icon={Info} active={activeTab === 'info'} onClick={setActiveTab} />
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {activeTab === 'terminal' && (
                     <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <SettingsCard title="Server Terminal" subtitle="Interactive web terminal" icon={Terminal}>
