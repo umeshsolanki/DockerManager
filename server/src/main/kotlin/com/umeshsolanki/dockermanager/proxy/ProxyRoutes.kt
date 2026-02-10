@@ -227,7 +227,9 @@ fun Route.proxyRoutes() {
                 rules = request.proxyJailRules,
                 thresholdDanger = request.proxyJailThresholdDanger,
                 thresholdBurst = request.proxyJailThresholdBurst,
-                thresholdCidr = request.proxyJailThresholdCidr
+                thresholdCidr = request.proxyJailThresholdCidr,
+                dangerProxyEnabled = request.dangerProxyEnabled,
+                dangerProxyHost = request.dangerProxyHost
             )
             call.respond(
                 HttpStatusCode.OK,
