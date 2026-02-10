@@ -509,7 +509,8 @@ export default function SecurityScreen() {
                                                 type="number"
                                                 value={proxyConfig?.proxyJailThresholdNon200 ?? 20}
                                                 onChange={(e) => setProxyConfig(prev => prev ? { ...prev, proxyJailThresholdNon200: parseInt(e.target.value) || 0 } : null)}
-                                                onBlur={(e) => updateProxySecurity({ proxyJailThresholdNon200: parseInt(e.target.value) || 20 })}
+                                                onFocus={() => setIsEditing(true)}
+                                                onBlur={(e) => { setIsEditing(false); updateProxySecurity({ proxyJailThresholdNon200: parseInt(e.target.value) || 20 }); }}
                                                 className="w-24 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:outline-none focus:border-primary/50 transition-all"
                                             />
                                             <span className="text-[10px] font-black text-primary uppercase opacity-50">Points</span>
@@ -522,7 +523,8 @@ export default function SecurityScreen() {
                                                 type="number"
                                                 value={proxyConfig?.proxyJailThresholdDanger ?? 1}
                                                 onChange={(e) => setProxyConfig(prev => prev ? { ...prev, proxyJailThresholdDanger: parseInt(e.target.value) || 0 } : null)}
-                                                onBlur={(e) => updateProxySecurity({ proxyJailThresholdDanger: parseInt(e.target.value) || 1 })}
+                                                onFocus={() => setIsEditing(true)}
+                                                onBlur={(e) => { setIsEditing(false); updateProxySecurity({ proxyJailThresholdDanger: parseInt(e.target.value) || 1 }); }}
                                                 className="w-20 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:outline-none focus:border-red-500/50 transition-all"
                                             />
                                             <span className="text-[10px] font-black text-red-500 uppercase opacity-50">Hits</span>
