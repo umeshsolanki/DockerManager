@@ -453,6 +453,15 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                             <div key={k} className="p-2 bg-surface rounded border border-outline/5">{k}: {(Number(v) / 1024 / 1024).toFixed(1)} MB</div>
                                         ))}
                                     </div>
+                                    <button onClick={async () => {
+                                        try {
+                                            await DockerClient.refreshStorageInfo();
+                                            fetchConfig();
+                                            showMessage('Storage info refreshed');
+                                        } catch { showMessage('Failed to refresh storage'); }
+                                    }} className="w-full flex items-center justify-center gap-2 bg-surface hover:bg-surface-variant border border-outline/10 py-1.5 rounded-lg text-xs font-semibold mt-2 transition-colors">
+                                        <RefreshCw size={12} /> <span>Refresh Disk Usage</span>
+                                    </button>
                                 </div>
                             )}
                             <button onClick={handleSaveSystem} className="w-full mt-2 bg-primary text-primary-foreground py-2.5 rounded-xl font-semibold text-sm">Update Build Settings</button>
