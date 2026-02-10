@@ -59,15 +59,14 @@ export default function SecurityScreen() {
         }
     };
 
-    const [isEditing, setIsEditing] = useState(false);
+    const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
 
     useEffect(() => {
         fetchData();
-        const interval = setInterval(() => {
-            if (!isEditing) fetchData();
-        }, 15000);
+        if (!autoRefreshEnabled) return;
+        const interval = setInterval(() => fetchData(), 30000);
         return () => clearInterval(interval);
-    }, [isEditing]);
+    }, [autoRefreshEnabled]);
 
     const handleUnblockIP = async (id: string) => {
         await trigger(() => DockerClient.unblockIP(id), {
@@ -118,6 +117,13 @@ export default function SecurityScreen() {
                         <TabButton id="jails" label="Active Jails" icon={<ShieldAlert size={16} />} active={activeTab === 'jails'} onClick={(id) => setActiveTab(id as any)} title="Active Jails" />
                         <TabButton id="rules" label="Rules" icon={<Settings size={16} />} active={activeTab === 'rules'} onClick={(id) => setActiveTab(id as any)} title="Edge Rules" />
                     </TabsList>
+                    <button
+                        onClick={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
+                        className={`p-2 rounded-xl transition-all ${autoRefreshEnabled ? 'bg-primary/10 text-primary' : 'bg-white/5 text-on-surface-variant hover:bg-white/10'}`}
+                        title={autoRefreshEnabled ? 'Auto-refresh ON (30s)' : 'Auto-refresh OFF'}
+                    >
+                        <RefreshCw size={16} className={autoRefreshEnabled ? 'animate-spin-slow' : ''} />
+                    </button>
                     <ActionIconButton onClick={() => fetchData(true)} icon={<RefreshCw />} title="Refresh Security Data" />
                 </div>
             </header>
@@ -509,8 +515,8 @@ export default function SecurityScreen() {
                                                 type="number"
                                                 value={proxyConfig?.proxyJailThresholdNon200 ?? 20}
                                                 onChange={(e) => setProxyConfig(prev => prev ? { ...prev, proxyJailThresholdNon200: parseInt(e.target.value) || 0 } : null)}
-                                                onFocus={() => setIsEditing(true)}
-                                                onBlur={(e) => { setIsEditing(false); updateProxySecurity({ proxyJailThresholdNon200: parseInt(e.target.value) || 20 }); }}
+
+                                                onBlur={(e) => { updateProxySecurity({ proxyJailThresholdNon200: parseInt(e.target.value) || 20 }); }}
                                                 className="w-24 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:outline-none focus:border-primary/50 transition-all"
                                             />
                                             <span className="text-[10px] font-black text-primary uppercase opacity-50">Points</span>
@@ -523,8 +529,8 @@ export default function SecurityScreen() {
                                                 type="number"
                                                 value={proxyConfig?.proxyJailThresholdDanger ?? 1}
                                                 onChange={(e) => setProxyConfig(prev => prev ? { ...prev, proxyJailThresholdDanger: parseInt(e.target.value) || 0 } : null)}
-                                                onFocus={() => setIsEditing(true)}
-                                                onBlur={(e) => { setIsEditing(false); updateProxySecurity({ proxyJailThresholdDanger: parseInt(e.target.value) || 1 }); }}
+
+                                                onBlur={(e) => { updateProxySecurity({ proxyJailThresholdDanger: parseInt(e.target.value) || 1 }); }}
                                                 className="w-20 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:outline-none focus:border-red-500/50 transition-all"
                                             />
                                             <span className="text-[10px] font-black text-red-500 uppercase opacity-50">Hits</span>
@@ -548,7 +554,7 @@ export default function SecurityScreen() {
                                                 onClick={async () => {
                                                     const recommended = await DockerClient.getRecommendedProxyRules();
                                                     setProxyConfig(prev => prev ? { ...prev, proxyJailRules: recommended } : null);
-                                                    setIsEditing(true);
+
                                                     toast.info(`Loaded ${recommended.length} recommended rules - Click Apply to save`);
                                                 }}
                                                 className="flex items-center gap-1.5 px-3 py-1 bg-secondary/10 text-secondary hover:bg-secondary/20 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border border-secondary/20"
@@ -584,7 +590,7 @@ export default function SecurityScreen() {
                                                 onClick={() => {
                                                     const newRules = (proxyConfig?.proxyJailRules || []).filter(r => r.id !== rule.id);
                                                     setProxyConfig(prev => prev ? { ...prev, proxyJailRules: newRules } : null);
-                                                    setIsEditing(true);
+
                                                 }}
                                                 className="p-2 text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
                                             >
@@ -603,7 +609,6 @@ export default function SecurityScreen() {
                                     <button
                                         onClick={() => {
                                             updateProxySecurity({ proxyJailRules: proxyConfig.proxyJailRules });
-                                            setIsEditing(false);
                                             toast.success('Security rules applied');
                                         }}
                                         className="w-full mt-4 bg-primary text-on-primary py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
@@ -691,8 +696,8 @@ export default function SecurityScreen() {
                                                 type="number"
                                                 value={proxyConfig?.proxyJailWindowMinutes ?? 1}
                                                 onChange={(e) => setProxyConfig(prev => prev ? { ...prev, proxyJailWindowMinutes: parseInt(e.target.value) || 1 } : null)}
-                                                onFocus={() => setIsEditing(true)}
-                                                onBlur={(e) => { setIsEditing(false); updateProxySecurity({ proxyJailWindowMinutes: parseInt(e.target.value) || 1 }); }}
+
+                                                onBlur={(e) => { updateProxySecurity({ proxyJailWindowMinutes: parseInt(e.target.value) || 1 }); }}
                                                 className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:outline-none focus:border-primary/50 transition-all"
                                             />
                                             <span className="text-[10px] font-black text-on-surface-variant uppercase opacity-50">Min</span>
@@ -722,8 +727,8 @@ export default function SecurityScreen() {
                                                 <input
                                                     value={proxyConfig?.dangerProxyHost ?? ''}
                                                     onChange={(e) => setProxyConfig(prev => prev ? { ...prev, dangerProxyHost: e.target.value } : null)}
-                                                    onFocus={() => setIsEditing(true)}
-                                                    onBlur={(e) => { setIsEditing(false); updateProxySecurity({ dangerProxyHost: e.target.value }); }}
+
+                                                    onBlur={(e) => { updateProxySecurity({ dangerProxyHost: e.target.value }); }}
                                                     placeholder="host:port"
                                                     className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-xs font-mono font-bold focus:outline-none focus:border-primary/50"
                                                 />
