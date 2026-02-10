@@ -407,6 +407,14 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                     <SettingsInput label="Analysis Window (min)" value={form.proxyJailWindowMinutes} onChange={(v: number) => updateForm('proxyJailWindowMinutes', v)} type="number" note="Time window for error counting" />
                                 </div>
                             )}
+
+                            <div className="h-px bg-outline/10 my-4" />
+
+                            <SettingsToggle label="Security Mirroring (Danger Proxy)" description="Mirror blocked/suspicious traffic to backend" checked={form.dangerProxyEnabled} onChange={(v: boolean) => updateForm('dangerProxyEnabled', v)} color="bg-purple-500" />
+                            {form.dangerProxyEnabled && (
+                                <SettingsInput label="Mirror Host (Docker Manager Backend)" value={form.dangerProxyHost} onChange={(v: string) => updateForm('dangerProxyHost', v)} placeholder="host.docker.internal:9091" note="Host for security mirror endpoint" />
+                            )}
+
                             <button onClick={handleSaveSystem} className="w-full mt-2 bg-purple-500 text-white py-2.5 rounded-xl font-semibold text-sm hover:bg-purple-600 transition-colors">Save Proxy Security</button>
                         </SettingsCard>
 

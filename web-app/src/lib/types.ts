@@ -597,6 +597,8 @@ export interface SystemConfig {
   autoStorageRefreshIntervalMinutes: number;
   kafkaSettings: KafkaSettings;
   dbPersistenceLogsEnabled: boolean;
+  dangerProxyEnabled?: boolean;
+  dangerProxyHost?: string;
   osName: string;
   syslogEnabled: boolean;
   syslogServer: string;
@@ -648,6 +650,8 @@ export interface UpdateSystemConfigRequest {
   proxyJailThresholdDanger?: number;
   proxyJailThresholdBurst?: number;
   proxyJailThresholdCidr?: number;
+  dangerProxyEnabled?: boolean;
+  dangerProxyHost?: string;
 }
 
 export interface ImapConfig {
