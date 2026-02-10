@@ -153,7 +153,9 @@ interface IProxyService {
         windowMinutes: Int? = null,
         thresholdDanger: Int? = null,
         thresholdBurst: Int? = null,
-        thresholdCidr: Int? = null
+        thresholdCidr: Int? = null,
+        dangerProxyEnabled: Boolean? = null,
+        dangerProxyHost: String? = null
     )
     fun updateDefaultBehavior(return404: Boolean): Pair<Boolean, String>
     fun updateRsyslogSettings(enabled: Boolean, dualLogging: Boolean): Pair<Boolean, String>
@@ -240,7 +242,9 @@ class ProxyServiceImpl(
         windowMinutes: Int?,
         thresholdDanger: Int?,
         thresholdBurst: Int?,
-        thresholdCidr: Int?
+        thresholdCidr: Int?,
+        dangerProxyEnabled: Boolean?,
+        dangerProxyHost: String?
     ) {
         AppConfig.updateProxySecuritySettings(
             enabled = enabled,
@@ -249,7 +253,9 @@ class ProxyServiceImpl(
             windowMinutes = windowMinutes,
             thresholdDanger = thresholdDanger,
             thresholdBurst = thresholdBurst,
-            thresholdCidr = thresholdCidr
+            thresholdCidr = thresholdCidr,
+            dangerProxyEnabled = dangerProxyEnabled,
+            dangerProxyHost = dangerProxyHost
         )
     }
 

@@ -77,6 +77,7 @@ export default function LogsScreen() {
     const [isAutoJailEnabled, setIsAutoJailEnabled] = useState(false);
     const [refreshInterval, setRefreshInterval] = useState(5);
     const [isMonitoringActive, setIsMonitoringActive] = useState(true);
+    const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
 
     useEffect(() => {
         if (btmpStats) {
@@ -184,15 +185,15 @@ export default function LogsScreen() {
         setIsReadingLog(false);
     };
 
-    // Auto-refresh removed to preserve scroll state - use manual refresh button instead
-    /*useEffect(() => {
+    useEffect(() => {
+        if (!autoRefreshEnabled) return;
         const interval = setInterval(() => {
             if (viewMode === 'SYSTEM') fetchLogs(currentPath);
             else if (viewMode === 'SYSLOG') fetchSyslog();
             else if (viewMode === 'JOURNAL') fetchJournal();
         }, 30000);
         return () => clearInterval(interval);
-    }, [currentPath, viewMode, selectedUnit]);*/
+    }, [currentPath, viewMode, selectedUnit, autoRefreshEnabled]);
 
     const handleUpdateSecurityConfig = async () => {
         setIsLoading(true);
@@ -255,7 +256,17 @@ export default function LogsScreen() {
                         Journalctl
                     </button>
                 </div>
-                {(isLoading || isSyslogLoading || isJournalLoading) && <RefreshCw className="animate-spin text-primary" size={24} />}
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${autoRefreshEnabled ? 'bg-primary/10 text-primary border border-primary/30' : 'bg-white/5 text-on-surface-variant border border-white/10'}`}
+                        title={autoRefreshEnabled ? 'Auto-refresh ON (30s)' : 'Auto-refresh OFF'}
+                    >
+                        <RefreshCw size={14} className={autoRefreshEnabled ? 'animate-spin-slow' : ''} />
+                        Auto
+                    </button>
+                    {(isLoading || isSyslogLoading || isJournalLoading) && <RefreshCw className="animate-spin text-primary" size={24} />}
+                </div>
             </div>
 
             {/* Security Insights Dashboard with Collapse/Expand */}
