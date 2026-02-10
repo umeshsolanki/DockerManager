@@ -545,8 +545,8 @@ export default function SecurityScreen() {
                                             <button
                                                 onClick={async () => {
                                                     const recommended = await DockerClient.getRecommendedProxyRules();
-                                                    updateProxySecurity({ proxyJailRules: recommended });
-                                                    toast.success(`Loaded ${recommended.length} recommended rules`);
+                                                    setProxyConfig(prev => prev ? { ...prev, proxyJailRules: recommended } : null);
+                                                    toast.info(`Loaded ${recommended.length} recommended rules - Click Apply to save`);
                                                 }}
                                                 className="flex items-center gap-1.5 px-3 py-1 bg-secondary/10 text-secondary hover:bg-secondary/20 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border border-secondary/20"
                                             >
@@ -580,7 +580,7 @@ export default function SecurityScreen() {
                                             <button
                                                 onClick={() => {
                                                     const newRules = (proxyConfig?.proxyJailRules || []).filter(r => r.id !== rule.id);
-                                                    updateProxySecurity({ proxyJailRules: newRules });
+                                                    setProxyConfig(prev => prev ? { ...prev, proxyJailRules: newRules } : null);
                                                 }}
                                                 className="p-2 text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
                                             >
@@ -595,6 +595,17 @@ export default function SecurityScreen() {
                                         </div>
                                     )}
                                 </div>
+                                {proxyConfig?.proxyJailRules && proxyConfig.proxyJailRules.length > 0 && (
+                                    <button
+                                        onClick={() => {
+                                            updateProxySecurity({ proxyJailRules: proxyConfig.proxyJailRules });
+                                            toast.success('Security rules applied');
+                                        }}
+                                        className="w-full mt-4 bg-primary text-on-primary py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                                    >
+                                        Apply Changes
+                                    </button>
+                                )}
                             </div>
                         </div>
 
