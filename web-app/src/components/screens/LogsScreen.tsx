@@ -184,14 +184,15 @@ export default function LogsScreen() {
         setIsReadingLog(false);
     };
 
-    useEffect(() => {
+    // Auto-refresh removed to preserve scroll state - use manual refresh button instead
+    /*useEffect(() => {
         const interval = setInterval(() => {
             if (viewMode === 'SYSTEM') fetchLogs(currentPath);
             else if (viewMode === 'SYSLOG') fetchSyslog();
             else if (viewMode === 'JOURNAL') fetchJournal();
         }, 30000);
         return () => clearInterval(interval);
-    }, [currentPath, viewMode, selectedUnit]);
+    }, [currentPath, viewMode, selectedUnit]);*/
 
     const handleUpdateSecurityConfig = async () => {
         setIsLoading(true);

@@ -59,11 +59,15 @@ export default function SecurityScreen() {
         }
     };
 
+    const [isEditing, setIsEditing] = useState(false);
+
     useEffect(() => {
         fetchData();
-        const interval = setInterval(() => fetchData(), 15000);
+        const interval = setInterval(() => {
+            if (!isEditing) fetchData();
+        }, 15000);
         return () => clearInterval(interval);
-    }, []);
+    }, [isEditing]);
 
     const handleUnblockIP = async (id: string) => {
         await trigger(() => DockerClient.unblockIP(id), {
@@ -671,7 +675,8 @@ export default function SecurityScreen() {
                                                 type="number"
                                                 value={proxyConfig?.proxyJailWindowMinutes ?? 1}
                                                 onChange={(e) => setProxyConfig(prev => prev ? { ...prev, proxyJailWindowMinutes: parseInt(e.target.value) || 1 } : null)}
-                                                onBlur={(e) => updateProxySecurity({ proxyJailWindowMinutes: parseInt(e.target.value) || 1 })}
+                                                onFocus={() => setIsEditing(true)}
+                                                onBlur={(e) => { setIsEditing(false); updateProxySecurity({ proxyJailWindowMinutes: parseInt(e.target.value) || 1 }); }}
                                                 className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:outline-none focus:border-primary/50 transition-all"
                                             />
                                             <span className="text-[10px] font-black text-on-surface-variant uppercase opacity-50">Min</span>
@@ -701,7 +706,8 @@ export default function SecurityScreen() {
                                                 <input
                                                     value={proxyConfig?.dangerProxyHost ?? ''}
                                                     onChange={(e) => setProxyConfig(prev => prev ? { ...prev, dangerProxyHost: e.target.value } : null)}
-                                                    onBlur={(e) => updateProxySecurity({ dangerProxyHost: e.target.value })}
+                                                    onFocus={() => setIsEditing(true)}
+                                                    onBlur={(e) => { setIsEditing(false); updateProxySecurity({ dangerProxyHost: e.target.value }); }}
                                                     placeholder="host:port"
                                                     className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-xs font-mono font-bold focus:outline-none focus:border-primary/50"
                                                 />
