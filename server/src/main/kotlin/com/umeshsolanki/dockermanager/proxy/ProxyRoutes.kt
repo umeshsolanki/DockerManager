@@ -375,18 +375,60 @@ fun Route.securityMirrorRoutes() {
         val logger = LoggerFactory.getLogger("SecurityMirror")
         
         get("{...}") {
-            // We just log that we received a mirror hit. 
-            // In production, this could be sent to Kafka/Clickhouse
             val uri = call.request.uri
             val ip = call.request.headers["X-Real-IP"] ?: call.request.local.remoteHost
             val reason = call.request.headers["X-Mirror-Reason"] ?: "unknown"
-            val status = call.request.headers["X-Mirror-Status"] ?: "0"
+            val status = (call.request.headers["X-Mirror-Status"] ?: "0").toIntOrNull() ?: 0
+            val userAgent = call.request.headers["User-Agent"] ?: ""
+            val method = "GET"
             
-            logger.debug("Security Mirror Hit: IP=$ip, Reason=$reason, Status=$status, URI=$uri")
+            // Priority: X-Mirror-URI (robust), then current path
+            val path = call.request.headers["X-Mirror-URI"] ?: uri.removePrefix("/security/mirror")
+            
+            logger.debug("Security Mirror Hit: IP=$ip, Reason=$reason, Status=$status, Path=$path")
+            
+            // Extract headers as a flat map
+            val headersMap = call.request.headers.entries().associate { it.key to it.value.first() }
+            
+            // Asynchronously process security violation
+            ProxyService.processMirrorRequest(
+                ip = ip,
+                userAgent = userAgent,
+                method = method,
+                path = path,
+                status = status,
+                headers = headersMap,
+                body = null
+            )
+            
             call.respondText("ok")
         }
         
         post("{...}") {
+            val uri = call.request.uri
+            val ip = call.request.headers["X-Real-IP"] ?: call.request.local.remoteHost
+            val reason = call.request.headers["X-Mirror-Reason"] ?: "unknown"
+            val status = (call.request.headers["X-Mirror-Status"] ?: "0").toIntOrNull() ?: 0
+            val userAgent = call.request.headers["User-Agent"] ?: ""
+            val method = "POST"
+
+            // Priority: X-Mirror-URI (robust), then current path
+            val path = call.request.headers["X-Mirror-URI"] ?: uri.removePrefix("/security/mirror")
+
+            // Extract headers as a flat map
+            val headersMap = call.request.headers.entries().associate { it.key to it.value.first() }
+
+            // Asynchronously process security violation
+            ProxyService.processMirrorRequest(
+                ip = ip,
+                userAgent = userAgent,
+                method = method,
+                path = path,
+                status = status,
+                headers = headersMap,
+                body = null
+            )
+            
             call.respondText("ok")
         }
     }

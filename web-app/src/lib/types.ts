@@ -455,47 +455,7 @@ export interface DailyProxyStats {
   hostwiseStats?: Record<string, DetailedHostStats>;
 }
 
-export interface BtmpEntry {
-  user: string;
-  ip: string;
-  country?: string;
-  session: string;
-  timestampString: string;
-  timestamp: number;
-  duration: string;
-}
 
-export interface JailedIP {
-  ip: string;
-  country?: string;
-  reason: string;
-  expiresAt: number;
-}
-
-export interface TopIpEntry {
-  ip: string;
-  count: number;
-  country?: string;
-}
-
-export interface TopUserEntry {
-  user: string;
-  count: number;
-}
-
-export interface BtmpStats {
-  totalFailedAttempts: number;
-  topUsers: TopUserEntry[];
-  topIps: TopIpEntry[];
-  recentFailures: BtmpEntry[];
-  lastUpdated: number;
-  jailedIps: JailedIP[];
-  autoJailEnabled: boolean;
-  jailThreshold: number;
-  jailDurationMinutes: number;
-  refreshIntervalMinutes: number;
-  isMonitoringActive: boolean;
-}
 
 export interface EmailDomain {
   name: string;

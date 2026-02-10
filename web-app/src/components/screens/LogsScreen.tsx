@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Search, RefreshCw, FileText, XCircle, Terminal, Shield, User, Clock, Settings, Lock, Ban, ChevronDown, ChevronRight, Folder, ArrowLeft, Database, Plus } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { SystemLog, BlockIPRequest, BtmpStats } from '@/lib/types';
+import { SystemLog, BlockIPRequest } from '@/lib/types';
 import { toast } from 'sonner';
 import { Modal } from '../ui/Modal';
 
@@ -17,22 +17,18 @@ export default function LogsScreen() {
     const [awkFilter, setAwkFilter] = useState('');
     const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
     const [ipToBlock, setIpToBlock] = useState('');
-    const [btmpStats, setBtmpStats] = useState<BtmpStats | null>(null);
-    const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
-    const [statsModalType, setStatsModalType] = useState<'IPS' | 'ATTEMPTS' | 'USERS' | 'CONFIG' | 'JAILED'>('IPS');
-    const [isRefreshingBtmp, setIsRefreshingBtmp] = useState(false);
-    const [btmpSearch, setBtmpSearch] = useState('');
-    const [btmpSortBy, setBtmpSortBy] = useState<'time' | 'user' | 'ip'>('time');
+    const [selectedUnit, setSelectedUnit] = useState<string>('');
     const [tailLines, setTailLines] = useState<number>(200);
     const [since, setSince] = useState<string>('');
     const [until, setUntil] = useState<string>('');
-    const [isStatsExpanded, setIsStatsExpanded] = useState(true);
     const [viewMode, setViewMode] = useState<'SYSTEM' | 'SYSLOG' | 'JOURNAL'>('SYSTEM');
     const [syslogContent, setSyslogContent] = useState<string>('');
     const [journalContent, setJournalContent] = useState<string>('');
-    const [selectedUnit, setSelectedUnit] = useState<string>('');
     const [isJournalLoading, setIsJournalLoading] = useState(false);
     const [isSyslogLoading, setIsSyslogLoading] = useState(false);
+    const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
+    const [currentPath, setCurrentPath] = useState('');
+    const [isLinux, setIsLinux] = useState(false);
 
     const setQuickTimeRange = (range: 'today' | 'yesterday' | 'week' | 'month') => {
         const now = new Date();
@@ -72,60 +68,49 @@ export default function LogsScreen() {
         }
     };
 
-    const [jailThreshold, setJailThreshold] = useState(5);
-    const [jailDuration, setJailDuration] = useState(30);
-    const [isAutoJailEnabled, setIsAutoJailEnabled] = useState(false);
-    const [refreshInterval, setRefreshInterval] = useState(5);
-    const [isMonitoringActive, setIsMonitoringActive] = useState(true);
-    const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
-
-    useEffect(() => {
-        if (btmpStats) {
-            setIsAutoJailEnabled(btmpStats.autoJailEnabled ?? false);
-            setJailThreshold(btmpStats.jailThreshold ?? 5);
-            setJailDuration(btmpStats.jailDurationMinutes ?? 30);
-            setRefreshInterval(btmpStats.refreshIntervalMinutes ?? 5);
-            setIsMonitoringActive(btmpStats.isMonitoringActive ?? true);
-        }
-    }, [btmpStats]);
-
-    const [currentPath, setCurrentPath] = useState('');
-
-    const [isLinux, setIsLinux] = useState(false);
-
     const fetchLogs = async (path?: string) => {
         setIsLoading(true);
-        const [logsData, btmpData, systemConfig] = await Promise.all([
-            DockerClient.listSystemLogs(path || currentPath),
-            DockerClient.getBtmpStats(),
-            DockerClient.getSystemConfig()
-        ]);
-        setLogs(logsData || []);
-        if (btmpData) {
-            setBtmpStats(btmpData);
+        try {
+            const [logsData, systemConfig] = await Promise.all([
+                DockerClient.listSystemLogs(path || currentPath),
+                DockerClient.getSystemConfig()
+            ]);
+            setLogs(logsData || []);
+            if (systemConfig) {
+                setIsLinux(systemConfig.osName?.toLowerCase().includes('linux') || false);
+            }
+        } catch (e) {
+            console.error('Failed to fetch logs', e);
+        } finally {
+            setIsLoading(false);
         }
-        if (systemConfig) {
-            setIsLinux(systemConfig.osName?.toLowerCase().includes('linux') || false);
-        }
-        setIsLoading(false);
     };
 
     const fetchSyslog = async (filterOverride?: string) => {
         setIsSyslogLoading(true);
-        const filter = filterOverride !== undefined ? filterOverride : awkFilter;
-        const content = await DockerClient.getSyslogLogs(tailLines, filter);
-        setSyslogContent(content);
-        setIsSyslogLoading(false);
+        try {
+            const filter = filterOverride !== undefined ? filterOverride : awkFilter;
+            const content = await DockerClient.getSyslogLogs(tailLines, filter);
+            setSyslogContent(content);
+        } catch (e) {
+            console.error('Failed to fetch syslog', e);
+        } finally {
+            setIsSyslogLoading(false);
+        }
     };
 
     const fetchJournal = async (filterOverride?: string) => {
         setIsJournalLoading(true);
-        const filter = filterOverride !== undefined ? filterOverride : awkFilter;
-        const content = await DockerClient.getJournalLogs(tailLines, selectedUnit, filter, since, until);
-        setJournalContent(content);
-        setIsJournalLoading(false);
+        try {
+            const filter = filterOverride !== undefined ? filterOverride : awkFilter;
+            const content = await DockerClient.getJournalLogs(tailLines, selectedUnit, filter, since, until);
+            setJournalContent(content);
+        } catch (e) {
+            console.error('Failed to fetch journal', e);
+        } finally {
+            setIsJournalLoading(false);
+        }
     };
-
 
     useEffect(() => {
         if (viewMode === 'SYSTEM') {
@@ -163,16 +148,6 @@ export default function LogsScreen() {
         }));
     }, [currentPath]);
 
-    const manualRefreshBtmp = async () => {
-        setIsRefreshingBtmp(true);
-        const data = await DockerClient.refreshBtmpStats();
-        if (data) {
-            setBtmpStats(data);
-            toast.success('Login stats updated');
-        }
-        setIsRefreshingBtmp(false);
-    };
-
     const fetchLogContent = async (log: SystemLog, filter?: string) => {
         if (log.isDirectory) {
             handlePathChange(log.path);
@@ -180,9 +155,14 @@ export default function LogsScreen() {
         }
         setIsReadingLog(true);
         setSelectedLog(log);
-        const content = await DockerClient.getSystemLogContent(log.path, tailLines, filter, since, until);
-        setLogContent(content);
-        setIsReadingLog(false);
+        try {
+            const content = await DockerClient.getSystemLogContent(log.path, tailLines, filter, since, until);
+            setLogContent(content);
+        } catch (e) {
+            console.error('Failed to fetch log content', e);
+        } finally {
+            setIsReadingLog(false);
+        }
     };
 
     useEffect(() => {
@@ -194,24 +174,6 @@ export default function LogsScreen() {
         }, 30000);
         return () => clearInterval(interval);
     }, [currentPath, viewMode, selectedUnit, autoRefreshEnabled]);
-
-    const handleUpdateSecurityConfig = async () => {
-        setIsLoading(true);
-        try {
-            const success = await DockerClient.updateAutoJailSettings(isAutoJailEnabled, jailThreshold, jailDuration);
-            const monitorSuccess = await DockerClient.updateBtmpMonitoring(isMonitoringActive, refreshInterval);
-            if (success && monitorSuccess) {
-                toast.success('Security policy updated successfully');
-                await fetchLogs();
-            } else {
-                toast.error('Some settings failed to update');
-            }
-        } catch (e) {
-            toast.error('Failed to update security configuration');
-        } finally {
-            setIsLoading(false);
-        }
-    };
 
     const filteredLogs = useMemo(() => {
         return logs.filter(l =>
@@ -268,139 +230,6 @@ export default function LogsScreen() {
                     {(isLoading || isSyslogLoading || isJournalLoading) && <RefreshCw className="animate-spin text-primary" size={24} />}
                 </div>
             </div>
-
-            {/* Security Insights Dashboard with Collapse/Expand */}
-            {btmpStats && btmpStats.totalFailedAttempts > 0 && (
-                <div className="mb-6 bg-white/5 border border-outline/10 rounded-3xl overflow-hidden transition-all duration-300">
-                    <div
-                        onClick={() => setIsStatsExpanded(!isStatsExpanded)}
-                        className="p-4 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-all group"
-                    >
-                        <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-xl transition-all ${isStatsExpanded ? 'bg-red-500/20 text-red-500' : 'bg-red-500/10 text-red-500/60'}`}>
-                                <Shield size={18} />
-                            </div>
-                            <div className="flex flex-col">
-                                <span className="text-sm font-bold tracking-tight">Login Security Insights</span>
-                                <div className="flex items-center gap-3">
-                                    <span className="text-[10px] text-on-surface-variant uppercase font-bold tracking-widest opacity-60">Authentication Monitoring</span>
-                                    {!isStatsExpanded && (
-                                        <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-300">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                                            <span className="text-[10px] bg-red-500/10 text-red-500 px-2 py-0.5 rounded-full font-bold">
-                                                {btmpStats.totalFailedAttempts} FAILURES DETECTED
-                                            </span>
-                                            <span className="text-[10px] text-on-surface-variant/40">
-                                                Last attack {new Date(btmpStats.lastUpdated).toLocaleTimeString()}
-                                            </span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                            {!isStatsExpanded && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); manualRefreshBtmp(); }}
-                                    disabled={isRefreshingBtmp}
-                                    className="p-2 hover:bg-white/10 rounded-xl transition-all text-on-surface-variant group-hover:text-primary"
-                                    title="Refresh Security Data"
-                                >
-                                    <RefreshCw size={16} className={isRefreshingBtmp ? 'animate-spin' : ''} />
-                                </button>
-                            )}
-                            <div className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 text-on-surface-variant group-hover:bg-primary group-hover:text-white transition-all">
-                                {isStatsExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                            </div>
-                        </div>
-                    </div>
-
-                    {isStatsExpanded && (
-                        <div className="px-5 pb-5 animate-in fade-in zoom-in-95 duration-300">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="bg-red-500/5 border border-red-500/10 rounded-2xl p-4">
-                                    <div className="flex items-center justify-between text-red-500 mb-2">
-                                        <div className="flex items-center gap-3">
-                                            <XCircle size={18} />
-                                            <span className="text-xs font-bold uppercase tracking-wider">Failed Logins (btmp)</span>
-                                        </div>
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); manualRefreshBtmp(); }}
-                                            disabled={isRefreshingBtmp}
-                                            className="p-1 hover:bg-white/10 rounded-lg transition-all"
-                                            title="Force Refresh"
-                                        >
-                                            <RefreshCw size={12} className={isRefreshingBtmp ? 'animate-spin' : ''} />
-                                        </button>
-                                    </div>
-                                    <div className="text-3xl font-bold text-red-500">{btmpStats.totalFailedAttempts}</div>
-                                    <div className="text-[9px] text-on-surface-variant mt-1 flex justify-between">
-                                        <span>Total recorded attempts</span>
-                                        {btmpStats.lastUpdated > 0 && <span>Updated: {new Date(btmpStats.lastUpdated).toLocaleTimeString()}</span>}
-                                    </div>
-                                </div>
-
-                                <div className="bg-surface border border-outline/10 rounded-2xl p-4">
-                                    <div className="flex items-center gap-3 text-on-surface-variant mb-3">
-                                        <Shield size={18} />
-                                        <span className="text-xs font-bold uppercase tracking-wider">Top Attacking IPs</span>
-                                    </div>
-                                    <div className="space-y-2 max-h-[100px] overflow-y-hidden pr-2">
-                                        {btmpStats.topIps.slice(0, 1000).map(({ ip, count, country }) => {
-                                            const isJailed = btmpStats.jailedIps?.some(j => j.ip === ip);
-                                            return (
-                                                <div key={ip} className="flex justify-between items-center text-[10px]">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className="font-mono text-primary cursor-pointer hover:underline" onClick={() => { setIpToBlock(ip); setIsBlockModalOpen(true); }}>{ip}</span>
-                                                        {country && <span className="opacity-40 font-bold text-[8px] bg-white/5 px-1 rounded">{country}</span>}
-                                                        {isJailed && (
-                                                            <span className="flex items-center gap-0.5 text-[8px] uppercase font-black bg-red-500/10 text-red-500 px-1 rounded">
-                                                                <Lock size={8} />
-                                                                Jailed
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <span className="bg-white/5 px-1.5 py-0.5 rounded font-bold">{count}</span>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    {btmpStats.topIps.length > 4 && (
-                                        <button
-                                            onClick={() => { setStatsModalType('IPS'); setIsStatsModalOpen(true); }}
-                                            className="w-full text-center text-[9px] font-bold text-primary mt-3 hover:underline underline-offset-4"
-                                        >
-                                            VIEW ALL {btmpStats.topIps.length} IPS
-                                        </button>
-                                    )}
-                                </div>
-
-                                <div className="bg-surface border border-outline/10 rounded-2xl p-4">
-                                    <div className="flex items-center gap-3 text-on-surface-variant mb-3">
-                                        <Terminal size={18} />
-                                        <span className="text-xs font-bold uppercase tracking-wider">Recent Attempts</span>
-                                    </div>
-                                    <div className="space-y-1.5 max-h-[100px] overflow-y-hidden pr-2">
-                                        {btmpStats.recentFailures.slice(0, 1000).map((entry, i) => (
-                                            <div key={i} className="text-[9px] font-mono truncate text-on-surface-variant">
-                                                <span className="text-red-400 font-bold">FAILED</span> {entry.user} from {entry.ip}
-                                            </div>
-                                        ))}
-                                    </div>
-                                    {btmpStats.recentFailures.length > 4 && (
-                                        <button
-                                            onClick={() => { setStatsModalType('ATTEMPTS'); setIsStatsModalOpen(true); }}
-                                            className="w-full text-center text-[9px] font-bold text-primary mt-3 hover:underline underline-offset-4"
-                                        >
-                                            VIEW ALL RECENT ATTEMPTS
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
 
             <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-5">
                 <div className="relative min-w-[200px] lg:w-64">
@@ -461,555 +290,220 @@ export default function LogsScreen() {
                             onChange={(e) => setUntil(e.target.value)}
                             placeholder="Until (now)"
                             className="bg-transparent border-none text-[10px] font-mono focus:outline-none text-primary selection:bg-primary/30 w-36 placeholder:text-on-surface-variant/30"
-                            title="Until (ISO or 'yesterday')"
+                            title="Until (ISO or 'now')"
                         />
                     </div>
 
-                    <div className="flex items-center gap-1">
-                        <button
-                            onClick={() => handleApplyFilter()}
-                            disabled={isReadingLog || isLoading || isSyslogLoading || isJournalLoading}
-                            className="px-4 h-9 bg-primary/10 text-primary border border-primary/20 rounded-xl hover:bg-primary/20 transition-all font-bold text-[10px] uppercase tracking-wider disabled:opacity-50"
-                        >
-                            Apply
-                        </button>
-
-                        <button
-                            onClick={() => {
-                                const ipMatch = logContent.match(/([0-9]{1,3}\.){3}[0-9]{1,3}/);
-                                if (ipMatch) setIpToBlock(ipMatch[0]);
-                                setIsBlockModalOpen(true);
-                            }}
-                            className="w-9 h-9 flex items-center justify-center bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-500/20 transition-all"
-                            title="Block Detected IP Address"
-                        >
-                            <Ban size={16} />
-                        </button>
-
-                        <button
-                            onClick={() => fetchLogs()}
-                            className="w-9 h-9 flex items-center justify-center bg-surface/50 border border-outline/20 rounded-xl hover:bg-white/5 transition-all"
-                            title="Refresh list"
-                        >
-                            <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
-                        </button>
+                    <div className="flex bg-surface/50 border border-outline/20 rounded-xl p-1 gap-1">
+                        {(['today', 'yesterday', 'week'] as const).map(r => (
+                            <button
+                                key={r}
+                                onClick={() => setQuickTimeRange(r)}
+                                className="px-2 py-1 hover:bg-white/5 rounded-md text-[9px] font-black uppercase text-on-surface-variant transition-all"
+                            >
+                                {r}
+                            </button>
+                        ))}
                     </div>
                 </div>
             </div>
 
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
-                {viewMode === 'SYSTEM' && (
+            <div className="flex-1 min-h-0 bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[24px] overflow-hidden flex flex-col">
+                {viewMode === 'SYSTEM' ? (
                     <>
-                        {/* Log List */}
-                        <div className="lg:col-span-1 flex flex-col gap-2 overflow-y-auto pb-4 custom-scrollbar">
-                            {filteredLogs.map(log => (
-                                <div
-                                    key={log.path}
-                                    onClick={() => fetchLogContent(log, awkFilter)}
-                                    className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${selectedLog?.path === log.path
-                                        ? 'bg-primary/20 border-primary/40 shadow-[0_0_20px_rgba(var(--md-sys-color-primary-rgb),0.1)]'
-                                        : log.isDirectory
-                                            ? 'bg-blue-500/5 border-blue-500/10 hover:bg-blue-500/10 hover:border-blue-500/20'
-                                            : 'bg-surface/50 border-outline/10 hover:bg-surface hover:border-outline/20'
-                                        }`}
-                                >
-                                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors ${selectedLog?.path === log.path
-                                        ? 'bg-primary text-on-primary'
-                                        : log.isDirectory
-                                            ? 'bg-blue-500/10 text-blue-500'
-                                            : 'bg-white/5 text-on-surface-variant'
-                                        }`}>
-                                        {log.isDirectory ? <Folder size={18} /> : <FileText size={18} />}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-bold truncate flex items-center gap-2">
-                                            {log.name}
-                                            {log.isDirectory && <span className="text-[8px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black">DIR</span>}
-                                        </div>
-                                        <div className="text-[10px] text-on-surface-variant/60 flex justify-between mt-1 font-medium">
-                                            <span className="flex items-center gap-1">
-                                                {!log.isDirectory && <><Database size={10} /> {formatSize(log.size)}</>}
-                                                {log.isDirectory && "Directory"}
-                                            </span>
-                                            <span>{new Date(log.lastModified).toLocaleDateString()}</span>
-                                        </div>
-                                    </div>
-                                    <ChevronRight size={14} className="text-on-surface-variant/20" />
-                                </div>
-                            ))}
-                            {filteredLogs.length === 0 && !isLoading && (
-                                <div className="flex flex-col items-center justify-center py-10 opacity-40 italic text-sm">
-                                    <Folder size={32} className="mb-2 opacity-20" />
-                                    No logs or folders found
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Log Content Viewer */}
-                        <div className="lg:col-span-2 bg-black/40 rounded-xl border border-outline/10 flex flex-col overflow-hidden">
-                            <div className="flex items-center gap-1 mb-2 bg-surface/50 p-1.5 rounded-xl border border-outline/5 overflow-x-auto no-scrollbar">
+                        <div className="bg-white/5 px-6 py-3 border-b border-outline/10 flex items-center justify-between">
+                            <div className="flex items-center gap-3 overflow-x-auto pb-1 no-scrollbar">
                                 <button
                                     onClick={() => handlePathChange('')}
-                                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-bold transition-all whitespace-nowrap ${!currentPath ? 'bg-primary/20 text-primary border border-primary/20' : 'text-on-surface-variant hover:bg-white/10'}`}
+                                    className="p-1.5 hover:bg-white/10 rounded-lg text-primary transition-colors flex-shrink-0"
                                 >
-                                    <Folder size={12} />
-                                    root
+                                    <Folder size={16} />
                                 </button>
-                                {breadcrumbs.map((bc, i) => (
-                                    <React.Fragment key={bc.path}>
-                                        <ChevronRight size={10} className="text-on-surface-variant/40 shrink-0" />
+                                <span className="text-on-surface-variant/20">/</span>
+                                {breadcrumbs.map((crumb, i) => (
+                                    <React.Fragment key={crumb.path}>
                                         <button
-                                            onClick={() => handlePathChange(bc.path)}
-                                            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-bold transition-all whitespace-nowrap ${i === breadcrumbs.length - 1 ? 'bg-primary/20 text-primary border border-primary/20' : 'text-on-surface-variant hover:bg-white/10'}`}
+                                            onClick={() => handlePathChange(crumb.path)}
+                                            className="text-xs font-bold hover:text-primary transition-colors whitespace-nowrap"
                                         >
-                                            {bc.name}
+                                            {crumb.name}
                                         </button>
+                                        {i < breadcrumbs.length - 1 && <span className="text-on-surface-variant/20">/</span>}
                                     </React.Fragment>
                                 ))}
                             </div>
+                            {selectedLog && (
+                                <button
+                                    onClick={() => setSelectedLog(null)}
+                                    className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant hover:text-primary transition-colors"
+                                >
+                                    <ArrowLeft size={14} /> Back to Files
+                                </button>
+                            )}
+                        </div>
 
+                        <div className="flex-1 overflow-y-auto custom-scrollbar">
                             {selectedLog ? (
-                                <>
-                                    <div className="p-3 border-b border-outline/10 flex items-center justify-between bg-white/5">
-                                        <div className="flex items-center gap-2 min-w-0">
-                                            <button
-                                                onClick={() => setSelectedLog(null)}
-                                                className="p-1.5 hover:bg-white/10 rounded-lg text-on-surface-variant hover:text-primary transition-colors mr-1"
-                                                title="Back to file list"
-                                            >
-                                                <ArrowLeft size={16} />
-                                            </button>
-                                            <Terminal size={16} className="text-primary" />
-                                            <span className="text-xs font-mono truncate text-on-surface-variant">{selectedLog.path}</span>
-                                        </div>
-                                        <div className="flex items-center gap-3 shrink-0">
-                                            <span className="text-[10px] text-on-surface-variant hidden md:block">
-                                                Last modified: {formatDate(selectedLog.lastModified)}
-                                            </span>
-                                            <button
-                                                onClick={() => fetchLogContent(selectedLog, awkFilter)}
-                                                disabled={isReadingLog}
-                                                className="p-1 hover:bg-white/10 rounded transition-colors disabled:opacity-50"
-                                                title="Reload content"
-                                            >
-                                                <RefreshCw size={14} className={isReadingLog ? 'animate-spin' : ''} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div className="flex-1 p-4 font-mono text-xs overflow-auto">
+                                <div className="p-0 h-full flex flex-col">
+                                    <div className="flex-1 bg-black/40 font-mono text-xs p-6 overflow-auto whitespace-pre selection:bg-primary/30 leading-relaxed">
                                         {isReadingLog ? (
-                                            <div className="flex items-center justify-center h-full text-on-surface-variant italic">
-                                                Reading log file...
+                                            <div className="flex items-center justify-center h-full gap-3 text-on-surface-variant/40">
+                                                <RefreshCw size={20} className="animate-spin text-primary" />
+                                                <span className="font-bold uppercase tracking-widest text-[10px]">Streaming Data...</span>
                                             </div>
                                         ) : (
-                                            <pre className="whitespace-pre-wrap text-green-400/90 leading-relaxed">
-                                                {logContent || 'File is empty'}
-                                            </pre>
+                                            logContent || 'Log file is empty'
                                         )}
                                     </div>
-                                </>
-                            ) : (
-                                <div className="flex-1 flex flex-col items-center justify-center text-on-surface-variant p-10 text-center">
-                                    <FileText size={48} className="mb-4 opacity-20" />
-                                    <p className="text-sm italic">Select a log file from the list to view its contents</p>
-                                    <p className="text-[10px] mt-2 opacity-50 max-w-xs">Viewing files from host machine's /var/log directory as mounted in /host/var/log</p>
                                 </div>
+                            ) : (
+                                <table className="w-full text-left border-collapse">
+                                    <thead className="sticky top-0 bg-surface/90 backdrop-blur-md border-b border-outline/10 z-10">
+                                        <tr>
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-on-surface-variant/50">Name</th>
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-on-surface-variant/50">Size</th>
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-on-surface-variant/50">Modified</th>
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-on-surface-variant/50 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5">
+                                        {filteredLogs.map(log => (
+                                            <tr
+                                                key={log.path}
+                                                className="group hover:bg-white/[0.02] cursor-pointer transition-colors"
+                                                onClick={() => fetchLogContent(log)}
+                                            >
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`p-2 rounded-xl bg-surface-variant/30 ${log.isDirectory ? 'text-primary' : 'text-on-surface-variant'} border border-outline/5`}>
+                                                            {log.isDirectory ? <Folder size={18} /> : <FileText size={18} />}
+                                                        </div>
+                                                        <div className="flex flex-col">
+                                                            <span className="text-sm font-bold group-hover:text-primary transition-colors">{log.name}</span>
+                                                            <span className="text-[10px] font-mono text-on-surface-variant/40">{log.path}</span>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="text-xs font-mono opacity-60 text-on-surface-variant uppercase font-bold">{log.isDirectory ? '--' : formatSize(log.size)}</span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="text-xs font-medium text-on-surface-variant/40">{formatDate(log.lastModified)}</span>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); fetchLogContent(log); }}
+                                                            className="p-2 hover:bg-primary/20 hover:text-primary rounded-lg transition-all"
+                                                            title="View Content"
+                                                        >
+                                                            <ArrowLeft className="rotate-180" size={16} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             )}
                         </div>
                     </>
-                )}
-
-                {(viewMode === 'SYSLOG' || viewMode === 'JOURNAL') && (
-                    <div className="lg:col-span-3 flex flex-col gap-4 overflow-hidden h-full">
-                        <div className="flex items-center justify-between px-2">
-                            <div className="flex items-center gap-4">
-                                <span className="text-[10px] font-bold text-on-surface-variant/60 uppercase">
-                                    {viewMode === 'JOURNAL' ? 'Journalctl Output' : 'Syslog Output'}
+                ) : (
+                    <div className="flex-1 flex flex-col h-full bg-black/40 p-4 font-mono text-xs overflow-hidden">
+                        <div className="flex items-center justify-between mb-3 px-2">
+                            <div className="flex items-center gap-3">
+                                <span className={`w-2 h-2 rounded-full ${viewMode === 'JOURNAL' ? 'bg-orange-500' : 'bg-green-500'} animate-pulse`} />
+                                <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">
+                                    Live Stream: {viewMode}
                                 </span>
-                                {viewMode === 'JOURNAL' && (
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            type="text"
-                                            placeholder="Unit (e.g. docker.service)"
-                                            className="bg-surface/50 border border-outline/10 rounded-lg px-3 py-1 text-[10px] font-bold focus:outline-none focus:border-primary/40 w-48"
-                                            value={selectedUnit}
-                                            onChange={(e) => setSelectedUnit(e.target.value)}
-                                        />
-                                    </div>
-                                )}
-                                <div className="flex bg-white/5 rounded-lg p-0.5 ml-2">
-                                    <button onClick={() => setQuickTimeRange('today')} className="px-2 py-0.5 text-[8px] font-black uppercase hover:bg-white/5 rounded transition-all">Today</button>
-                                    <button onClick={() => setQuickTimeRange('yesterday')} className="px-2 py-0.5 text-[8px] font-black uppercase hover:bg-white/5 rounded transition-all">Yesterday</button>
-                                </div>
                             </div>
-                            <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-bold text-on-surface-variant uppercase">Rows:</span>
-                                    <select
-                                        value={tailLines}
-                                        onChange={(e) => setTailLines(parseInt(e.target.value))}
-                                        className="bg-surface/50 border border-outline/10 rounded-lg px-2 py-1 text-[10px] font-bold focus:outline-none focus:border-primary/40"
-                                    >
-                                        {[100, 200, 500, 1000].map(v => <option key={v} value={v}>{v}</option>)}
-                                    </select>
+                            {viewMode === 'JOURNAL' && (
+                                <div className="flex items-center gap-3">
+                                    <span className="text-[10px] uppercase font-bold text-on-surface-variant/40">Unit:</span>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. docker.service"
+                                        value={selectedUnit}
+                                        onChange={(e) => setSelectedUnit(e.target.value)}
+                                        className="bg-surface/50 border border-outline/20 rounded-lg px-3 py-1 text-[10px] focus:outline-none focus:border-primary w-48"
+                                    />
                                 </div>
-                                <button
-                                    onClick={() => handleApplyFilter()}
-                                    className="p-2 bg-surface/50 border border-outline/10 rounded-xl hover:bg-white/5 text-on-surface-variant transition-all"
-                                >
-                                    <RefreshCw size={16} className={(viewMode === 'JOURNAL' ? isJournalLoading : isSyslogLoading) ? 'animate-spin' : ''} />
-                                </button>
-                            </div>
+                            )}
                         </div>
-
-                        <div className="flex-1 bg-black/40 rounded-2xl border border-outline/10 overflow-hidden flex flex-col p-4 font-mono text-xs">
-                            <div className="flex-1 overflow-auto custom-scrollbar">
-                                {(viewMode === 'JOURNAL' ? isJournalLoading : isSyslogLoading) ? (
-                                    <div className="flex items-center justify-center h-full text-on-surface-variant italic">
-                                        Querying {viewMode === 'JOURNAL' ? 'journalctl' : 'syslog'}...
+                        <div className="flex-1 overflow-auto custom-scrollbar p-4 selection:bg-primary/30 leading-relaxed text-on-surface/80">
+                            {viewMode === 'JOURNAL' ? (
+                                isJournalLoading ? (
+                                    <div className="flex items-center justify-center h-full gap-3 opacity-40">
+                                        <RefreshCw size={20} className="animate-spin text-primary" />
+                                        <span className="font-bold uppercase tracking-widest text-[10px]">Filtering Journal...</span>
                                     </div>
-                                ) : (
-                                    <pre className="whitespace-pre-wrap text-green-400/90 leading-relaxed text-[11px]">
-                                        {(viewMode === 'JOURNAL' ? journalContent : syslogContent) || 'No entries found matching criteria'}
-                                    </pre>
-                                )}
-                            </div>
+                                ) : journalContent || 'No journal entries found matching filters'
+                            ) : (
+                                isSyslogLoading ? (
+                                    <div className="flex items-center justify-center h-full gap-3 opacity-40">
+                                        <RefreshCw size={20} className="animate-spin text-primary" />
+                                        <span className="font-bold uppercase tracking-widest text-[10px]">Processing Syslog...</span>
+                                    </div>
+                                ) : syslogContent || 'Syslog is currently empty or unavailable'
+                            )}
                         </div>
                     </div>
                 )}
             </div>
+
             {isBlockModalOpen && (
                 <Modal
                     onClose={() => setIsBlockModalOpen(false)}
-                    title="Quick Block IP"
-                    icon={<Shield className="text-red-500" size={24} />}
-                    maxWidth="max-w-md"
+                    title="Instant Firewall Block"
                 >
-                    <div className="space-y-4 mt-4">
-                        <div>
-                            <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1.5 ml-1">IP Address</label>
-                            <input
-                                type="text"
-                                value={ipToBlock}
-                                onChange={(e) => setIpToBlock(e.target.value)}
-                                placeholder="e.g. 1.2.3.4"
-                                className="w-full bg-white/5 border border-outline/20 rounded-xl px-4 py-2.5 focus:outline-none focus:border-red-500 transition-all font-mono"
-                            />
-                        </div>
-                        <div className="flex gap-3 pt-2">
-                            <button
-                                onClick={() => setIsBlockModalOpen(false)}
-                                className="flex-1 px-4 py-2.5 rounded-xl border border-outline/20 hover:bg-white/5 transition-all font-bold text-sm"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    const success = await DockerClient.blockIP({
-                                        ip: ipToBlock,
-                                        comment: `Blocked from Logs: ${selectedLog?.name}`,
-                                        protocol: 'ALL'
-                                    });
-                                    if (success) {
-                                        toast.success(`IP ${ipToBlock} blocked`);
-                                        setIsBlockModalOpen(false);
-                                    } else {
-                                        toast.error('Failed to block IP');
-                                    }
-                                }}
-                                className="flex-1 bg-red-500 text-white px-4 py-2.5 rounded-xl font-bold hover:opacity-90 transition-all text-sm"
-                            >
-                                Confirm Block
-                            </button>
-                        </div>
-                    </div>
-                </Modal>
-            )}
-
-            {isStatsModalOpen && btmpStats && (
-                <Modal
-                    onClose={() => setIsStatsModalOpen(false)}
-                    title={
-                        statsModalType === 'IPS' ? 'Top Attacking IPs' :
-                            statsModalType === 'ATTEMPTS' ? 'Authentication Failures' :
-                                statsModalType === 'USERS' ? 'Top Targeted Users' :
-                                    statsModalType === 'JAILED' ? 'Active Jails' :
-                                        'System Security Config'
-                    }
-                    icon={
-                        statsModalType === 'IPS' ? <Shield size={24} /> :
-                            statsModalType === 'ATTEMPTS' ? <Terminal size={24} /> :
-                                statsModalType === 'USERS' ? <User size={24} /> :
-                                    statsModalType === 'JAILED' ? <Lock size={24} className="text-red-500" /> :
-                                        <Settings size={24} />
-                    }
-                    maxWidth="max-w-4xl"
-                    className="h-[80vh] flex flex-col"
-                    headerActions={
-                        <button
-                            onClick={manualRefreshBtmp}
-                            disabled={isRefreshingBtmp}
-                            className="p-2 hover:bg-white/10 rounded-xl transition-all"
-                            title="Refresh Stats"
-                        >
-                            <RefreshCw size={18} className={isRefreshingBtmp ? 'animate-spin' : ''} />
-                        </button>
-                    }
-                >
-                    <div className="flex-1 flex flex-col min-h-0 -mx-6 -mb-6 mt-4">
-                        <div className="p-4 border-b border-outline/10 bg-white/5 space-y-4">
-                            <div className="flex flex-wrap items-center gap-2">
-                                {(['IPS', 'USERS', 'ATTEMPTS', 'JAILED', 'CONFIG'] as const).map(tab => (
-                                    <button
-                                        key={tab}
-                                        onClick={() => setStatsModalType(tab)}
-                                        className={`px-3 py-1.5 text-[10px] rounded-lg border transition-all uppercase font-bold flex items-center gap-2 ${statsModalType === tab
-                                            ? 'bg-primary/20 border-primary/40 text-primary'
-                                            : 'bg-white/5 border-white/10 text-on-surface-variant hover:bg-white/10'}`}
-                                    >
-                                        {tab === 'IPS' && <Shield size={12} />}
-                                        {tab === 'USERS' && <User size={12} />}
-                                        {tab === 'ATTEMPTS' && <Terminal size={12} />}
-                                        {tab === 'JAILED' && <Lock size={12} />}
-                                        {tab === 'CONFIG' && <Settings size={12} />}
-                                        {tab}
-                                        {tab === 'JAILED' && btmpStats?.jailedIps && btmpStats.jailedIps.length > 0 && (
-                                            <span className="bg-red-500 text-white px-1.5 rounded-full text-[8px]">{btmpStats.jailedIps.length}</span>
-                                        )}
-                                    </button>
-                                ))}
+                    <div className="p-6">
+                        <div className="flex items-center gap-4 mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl">
+                            <div className="p-3 bg-red-500/20 rounded-xl text-red-500">
+                                <Ban size={24} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-lg text-red-500">Block IPv4 Address</h3>
+                                <p className="text-xs text-on-surface-variant font-medium">This will immediately drop all traffic from this IP.</p>
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-                            {statsModalType === 'IPS' && (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                    {(btmpStats?.topIps || []).map(({ ip, count, country }) => {
-                                        const isJailed = btmpStats?.jailedIps?.some(j => j.ip === ip);
-                                        return (
-                                            <div key={ip} className="flex justify-between items-center bg-white/5 border border-outline/5 rounded-xl p-4 hover:border-primary/20 transition-all group">
-                                                <div className="flex flex-col">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="font-mono text-sm text-primary font-bold">{ip}</span>
-                                                        {country && <span className="text-[9px] font-bold text-on-surface-variant/40 bg-white/5 px-1 rounded">{country}</span>}
-                                                        {isJailed && (
-                                                            <span className="flex items-center gap-0.5 text-[8px] uppercase font-black bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded">
-                                                                <Lock size={8} />
-                                                                Jailed
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <span className="text-[9px] text-on-surface-variant uppercase font-bold mt-1">Found in <span className="text-red-400">{count}</span> attempts</span>
-                                                </div>
-                                                <button
-                                                    onClick={() => { setIpToBlock(ip); setIsBlockModalOpen(true); }}
-                                                    disabled={isJailed}
-                                                    className={`p-2 rounded-lg transition-all shadow-lg ${isJailed ? 'bg-white/5 text-on-surface-variant/30 cursor-not-allowed' : 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white shadow-red-500/0 hover:shadow-red-500/20'}`}
-                                                    title={isJailed ? "IP is already jailed" : "Block IP Address"}
-                                                >
-                                                    <Ban size={16} />
-                                                </button>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
+                        <div className="space-y-4">
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant/50">Target IP Address</label>
+                                <input
+                                    type="text"
+                                    value={ipToBlock}
+                                    onChange={(e) => setIpToBlock(e.target.value)}
+                                    className="w-full bg-surface border border-outline/10 rounded-xl px-4 py-3 text-sm font-mono font-bold focus:outline-none focus:border-red-500/50 transition-all"
+                                />
+                            </div>
 
-                            {statsModalType === 'USERS' && (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                    {(btmpStats?.topUsers || []).map(({ user, count }) => (
-                                        <div key={user} className="bg-white/5 border border-outline/5 rounded-xl p-3 flex flex-col items-center text-center">
-                                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-2 text-primary">
-                                                <User size={20} />
-                                            </div>
-                                            <span className="font-bold text-sm truncate w-full">{user}</span>
-                                            <span className="text-[10px] text-on-surface-variant font-bold uppercase mt-1">{count} Hits</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            {statsModalType === 'ATTEMPTS' && (
-                                <div className="border border-outline/10 rounded-2xl overflow-hidden bg-black/20">
-                                    <table className="w-full text-left border-collapse font-mono text-[11px]">
-                                        <thead className="bg-white/5 text-[10px] uppercase font-bold text-on-surface-variant/70">
-                                            <tr>
-                                                <th className="px-4 py-3">User</th>
-                                                <th className="px-4 py-3">IP Address</th>
-                                                <th className="px-4 py-3">Time</th>
-                                                <th className="px-4 py-3 text-right">Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {(btmpStats?.recentFailures || []).map((entry, i) => (
-                                                <tr key={i} className="hover:bg-white/5 transition-colors border-b border-outline/5 last:border-0 group">
-                                                    <td className="px-4 py-3 text-red-400 font-bold uppercase">{entry.user}</td>
-                                                    <td className="px-4 py-3 text-primary font-bold">{entry.ip}</td>
-                                                    <td className="px-4 py-3 text-on-surface-variant">{entry.timestampString}</td>
-                                                    <td className="px-4 py-3 text-right">
-                                                        <button
-                                                            onClick={() => { setIpToBlock(entry.ip); setIsBlockModalOpen(true); }}
-                                                            className="p-1 text-red-500 border border-red-500/20 rounded-lg hover:bg-red-500 hover:text-white transition-all opacity-0 group-hover:opacity-100"
-                                                            title="Block IP"
-                                                        >
-                                                            <Ban size={14} />
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-
-                            {statsModalType === 'JAILED' && (
-                                <div className="space-y-3">
-                                    {(btmpStats?.jailedIps || []).length === 0 ? (
-                                        <div className="text-center py-20 opacity-30 italic text-sm">No IP addresses are currently jailed</div>
-                                    ) : (
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                            {btmpStats?.jailedIps?.map((jail, i) => (
-                                                <div key={i} className="bg-red-500/5 border border-red-500/10 rounded-xl p-4 flex flex-col">
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <span className="font-mono text-sm text-red-400 font-bold">{jail.ip}</span>
-                                                        <Lock size={14} className="text-red-500" />
-                                                    </div>
-                                                    <div className="flex flex-col gap-1">
-                                                        <div className="flex justify-between text-[8px] uppercase font-black text-on-surface-variant/40">
-                                                            <span>IP Address</span>
-                                                            <span className="text-on-surface-variant">{jail.ip}</span>
-                                                        </div>
-                                                        <div className="flex justify-between text-[8px] uppercase font-black text-on-surface-variant/40">
-                                                            <span>Expires At</span>
-                                                            <span className="text-red-400">{new Date(jail.expiresAt).toLocaleString()}</span>
-                                                        </div>
-                                                        <div className="text-[8px] text-on-surface-variant/40 italic mt-1 truncate">
-                                                            {jail.reason}
-                                                        </div>
-                                                    </div>
-                                                    <button
-                                                        onClick={async () => {
-                                                            const res = await DockerClient.unblockIP(jail.ip);
-                                                            if (res) { toast.success(`IP ${jail.ip} unjailed`); manualRefreshBtmp(); }
-                                                            else { toast.error('Failed to unjail IP'); }
-                                                        }}
-                                                        className="mt-3 w-full py-2 bg-on-surface/5 hover:bg-white/10 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all"
-                                                    >
-                                                        Unjail Manually
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {statsModalType === 'CONFIG' && (
-                                <div className="max-w-xl mx-auto space-y-6">
-                                    <div className="bg-white/5 border border-outline/10 rounded-2xl p-6">
-                                        <div className="flex items-center gap-3 mb-6">
-                                            <div className="p-3 bg-red-500/10 rounded-xl text-red-500">
-                                                <Shield size={24} />
-                                            </div>
-                                            <div>
-                                                <h3 className="font-bold text-sm">Auto-Jail Policy</h3>
-                                                <p className="text-[10px] text-on-surface-variant font-medium">Configure automatic brute-force protection</p>
-                                            </div>
-                                            <div className="ml-auto">
-                                                <button
-                                                    onClick={() => setIsAutoJailEnabled(!isAutoJailEnabled)}
-                                                    className={`w-10 h-5 rounded-full transition-all relative ${isAutoJailEnabled ? 'bg-red-500' : 'bg-white/10'}`}
-                                                >
-                                                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${isAutoJailEnabled ? 'left-5.5' : 'left-0.5'}`} />
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-6">
-                                            <div>
-                                                <div className="flex items-center gap-3">
-                                                    <input
-                                                        type="number"
-                                                        min="1"
-                                                        max="100"
-                                                        value={jailThreshold || ''}
-                                                        onChange={e => setJailThreshold(parseInt(e.target.value) || 0)}
-                                                        className="w-24 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:outline-none focus:border-red-500/50 transition-all text-red-400"
-                                                    />
-                                                    <span className="text-[10px] font-black text-red-400/50 uppercase">Failures</span>
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-3">
-                                                    <input
-                                                        type="number"
-                                                        min="1"
-                                                        max="10080"
-                                                        value={jailDuration || ''}
-                                                        onChange={e => setJailDuration(parseInt(e.target.value) || 0)}
-                                                        className="w-24 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:outline-none focus:border-red-500/50 transition-all text-red-400"
-                                                    />
-                                                    <span className="text-[10px] font-black text-red-400/50 uppercase">Minutes</span>
-                                                </div>
-                                            </div>
-
-                                            <div className="border-t border-outline/5 pt-6 space-y-4">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-sm font-bold">Active Monitoring</span>
-                                                        <span className="text-[10px] text-on-surface-variant uppercase font-bold">Background processing</span>
-                                                    </div>
-                                                    <button
-                                                        onClick={() => setIsMonitoringActive(!isMonitoringActive)}
-                                                        className={`w-10 h-5 rounded-full transition-all relative ${isMonitoringActive ? 'bg-green-500' : 'bg-white/10'}`}
-                                                    >
-                                                        <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${isMonitoringActive ? 'left-5.5' : 'left-0.5'}`} />
-                                                    </button>
-                                                </div>
-
-                                                <div>
-                                                    <div className="flex items-center gap-3">
-                                                        <input
-                                                            type="number"
-                                                            min="1"
-                                                            max="60"
-                                                            value={refreshInterval || ''}
-                                                            onChange={e => setRefreshInterval(parseInt(e.target.value) || 0)}
-                                                            className="w-24 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:outline-none focus:border-primary/50 transition-all text-primary"
-                                                        />
-                                                        <span className="text-[10px] font-black text-primary/50 uppercase">Minutes</span>
-                                                    </div>
-                                                </div>
-
-                                                <button
-                                                    onClick={handleUpdateSecurityConfig}
-                                                    className="w-full bg-primary text-white py-3 rounded-xl font-bold text-sm shadow-xl shadow-primary/20 hover:opacity-90 active:scale-95 transition-all mt-2"
-                                                >
-                                                    Apply System Policy
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                        <div className="p-4 border-t border-outline/10 bg-white/5 flex items-center justify-between">
-                            <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest opacity-50">
-                                {btmpStats.lastUpdated > 0 && `Updated: ${new Date(btmpStats.lastUpdated).toLocaleTimeString()}`}
-                            </span>
-                            <button
-                                onClick={() => setIsStatsModalOpen(false)}
-                                className="px-8 py-2.5 bg-on-surface text-surface rounded-xl font-bold hover:opacity-90 transition-all active:scale-95 text-xs"
-                            >
-                                Close
-                            </button>
+                            <div className="grid grid-cols-2 gap-3 mt-8">
+                                <button
+                                    onClick={() => setIsBlockModalOpen(false)}
+                                    className="px-4 py-3 bg-white/5 hover:bg-white/10 rounded-xl font-bold transition-all text-xs"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        const success = await DockerClient.blockIP({
+                                            ip: ipToBlock,
+                                            protocol: 'all',
+                                            comment: 'Manual block from security insights'
+                                        });
+                                        if (success) { toast.success(`Blocked ${ipToBlock}`); setIsBlockModalOpen(false); }
+                                        else { toast.error(`Failed to block ${ipToBlock}`); }
+                                    }}
+                                    className="px-4 py-3 bg-red-500 text-white rounded-xl font-bold shadow-xl shadow-red-500/20 hover:opacity-90 transition-all text-xs"
+                                >
+                                    Confirm Block
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </Modal>
             )}
-
         </div>
     );
 }
-
