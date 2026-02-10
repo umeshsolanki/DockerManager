@@ -1892,7 +1892,11 @@ class ProxyServiceImpl(
         for (rule in settings.proxyJailRules.filter { it.type == ProxyJailRuleType.PATH }) {
              val pattern = rule.pattern
                  .replace("\"", "\\\"")
-                 .let { if (it.startsWith("^") || it.contains("|") || it.contains("$") || it.contains("(")) "~*$it" else it }
+                 .let { 
+                     // Ensure it's treated as a regex
+                     if (it.startsWith("~")) it 
+                     else "~*$it" 
+                 }
              securityMaps.append("        \"$pattern\" \"${rule.description?.replace("\"", "\\\"") ?: "path_violation"}\";\n")
         }
         securityMaps.append("    }\n\n")

@@ -309,7 +309,6 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
             <div className="flex items-center gap-2 mb-4 border-b border-outline/10 pb-2 overflow-x-auto">
                 <TabButton id="terminal" label="Terminal" icon={Terminal} active={activeTab === 'terminal'} onClick={setActiveTab} />
                 <TabButton id="global" label="Global" icon={Globe} active={activeTab === 'global'} onClick={setActiveTab} />
-                <TabButton id="security" label="Security" icon={ShieldAlert} active={activeTab === 'security'} onClick={setActiveTab} />
                 <TabButton id="logs" label="Logs & Data" icon={Database} active={activeTab === 'logs'} onClick={setActiveTab} />
                 <TabButton id="system" label="System" icon={Settings2} active={activeTab === 'system'} onClick={setActiveTab} />
                 <TabButton id="account" label="Account" icon={Key} active={activeTab === 'account'} onClick={setActiveTab} />
@@ -357,44 +356,6 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                     </div>
                 )}
 
-                {activeTab === 'security' && form && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        {/* Security & Jailing */}
-                        <SettingsCard title="Security Rules" subtitle="Blocking & Thresholds" icon={ShieldAlert} iconColor="red-500">
-                            <SettingsToggle label="Auto-Jail Enabled" description="Block IPs after multiple violations" checked={form.jailEnabled} onChange={(v: boolean) => updateForm('jailEnabled', v)} color="bg-red-500" />
-                            {form.jailEnabled && (
-                                <div className="grid grid-cols-2 gap-4">
-                                    <SettingsInput label="Threshold" value={form.jailThreshold} onChange={(v: number) => updateForm('jailThreshold', v)} type="number" />
-                                    <SettingsInput label="Duration (min)" value={form.jailDurationMinutes} onChange={(v: number) => updateForm('jailDurationMinutes', v)} type="number" />
-                                </div>
-                            )}
-                            <SettingsToggle label="Exponential Backoff" description="Double jail time on repeats" checked={form.exponentialJailEnabled} onChange={(v: boolean) => updateForm('exponentialJailEnabled', v)} color="bg-red-500" />
-                            {form.exponentialJailEnabled && <SettingsInput label="Max Duration (min)" value={form.maxJailDurationMinutes} onChange={(v: number) => updateForm('maxJailDurationMinutes', v)} type="number" />}
-
-                            <button onClick={handleSaveSystem} className="w-full mt-2 bg-red-500 text-white py-2.5 rounded-xl font-semibold text-sm hover:bg-red-600 transition-colors">Save Security Settings</button>
-                        </SettingsCard>
-
-                        {/* Proxy Security */}
-                        <SettingsCard title="Proxy Security" subtitle="Traffic Analysis & Mirroring" icon={ShieldCheck} iconColor="purple-500">
-                            <SettingsToggle label="Proxy Auto-Jail" description="Block IPs based on traffic violations" checked={form.proxyJailEnabled} onChange={(v: boolean) => updateForm('proxyJailEnabled', v)} color="bg-purple-500" />
-                            {form.proxyJailEnabled && (
-                                <div className="grid grid-cols-2 gap-4">
-                                    <SettingsInput label="Error Threshold (Window)" value={form.proxyJailThresholdNon200} onChange={(v: number) => updateForm('proxyJailThresholdNon200', v)} type="number" note="Max 4xx errors allowed" />
-                                    <SettingsInput label="Analysis Window (min)" value={form.proxyJailWindowMinutes} onChange={(v: number) => updateForm('proxyJailWindowMinutes', v)} type="number" note="Time window for error counting" />
-                                </div>
-                            )}
-
-                            <div className="h-px bg-outline/10 my-4" />
-
-                            <SettingsToggle label="Security Mirroring (Danger Proxy)" description="Mirror blocked/suspicious traffic to backend" checked={form.dangerProxyEnabled} onChange={(v: boolean) => updateForm('dangerProxyEnabled', v)} color="bg-purple-500" />
-                            {form.dangerProxyEnabled && (
-                                <SettingsInput label="Mirror Host (Docker Manager Backend)" value={form.dangerProxyHost} onChange={(v: string) => updateForm('dangerProxyHost', v)} placeholder="host.docker.internal:9091" note="Host for security mirror endpoint" />
-                            )}
-
-                            <button onClick={handleSaveSystem} className="w-full mt-2 bg-purple-500 text-white py-2.5 rounded-xl font-semibold text-sm hover:bg-purple-600 transition-colors">Save Proxy Security</button>
-                        </SettingsCard>
-                    </div>
-                )}
 
                 {activeTab === 'logs' && form && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">

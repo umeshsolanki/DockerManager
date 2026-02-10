@@ -1,6 +1,6 @@
 {
   "name": "web-app",
-  "version": "4.0.3",
+  "version": "5.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",

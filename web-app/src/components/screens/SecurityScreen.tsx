@@ -642,6 +642,60 @@ export default function SecurityScreen() {
                                     </button>
                                 </form>
                             </div>
+
+                            {/* Advanced Proxy Settings */}
+                            <div className="bg-white/[0.03] border border-white/5 rounded-[24px] p-5 mt-4">
+                                <h4 className="text-[10px] font-black uppercase mb-6 flex items-center gap-2 tracking-widest text-primary">
+                                    <Activity size={14} />
+                                    Advanced Configuration
+                                </h4>
+                                <div className="space-y-6">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-black uppercase text-on-surface-variant px-1 tracking-widest">Analysis Window</label>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="number"
+                                                value={proxyConfig?.proxyJailWindowMinutes ?? 1}
+                                                onChange={(e) => setProxyConfig(prev => prev ? { ...prev, proxyJailWindowMinutes: parseInt(e.target.value) || 1 } : null)}
+                                                onBlur={(e) => updateProxySecurity({ proxyJailWindowMinutes: parseInt(e.target.value) || 1 })}
+                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:outline-none focus:border-primary/50 transition-all"
+                                            />
+                                            <span className="text-[10px] font-black text-on-surface-variant uppercase opacity-50">Min</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="h-px bg-white/5" />
+
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest block">Mirror Traffic</span>
+                                                <span className="text-[9px] text-on-surface-variant/40 font-bold block">Danger Proxy</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => updateProxySecurity({ dangerProxyEnabled: !proxyConfig?.dangerProxyEnabled })}
+                                                className={`w-12 h-6 rounded-full transition-all relative ${proxyConfig?.dangerProxyEnabled ? 'bg-primary shadow-[0_0_15px_rgba(var(--md-sys-color-primary-rgb),0.4)]' : 'bg-white/10'}`}
+                                            >
+                                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${proxyConfig?.dangerProxyEnabled ? 'right-1' : 'left-1'}`} />
+                                            </button>
+                                        </div>
+
+                                        {proxyConfig?.dangerProxyEnabled && (
+                                            <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-1.5">
+                                                <label className="text-[9px] font-black uppercase text-on-surface-variant px-1 tracking-widest block">Mirror Host</label>
+                                                <input
+                                                    value={proxyConfig?.dangerProxyHost ?? ''}
+                                                    onChange={(e) => setProxyConfig(prev => prev ? { ...prev, dangerProxyHost: e.target.value } : null)}
+                                                    onBlur={(e) => updateProxySecurity({ dangerProxyHost: e.target.value })}
+                                                    placeholder="host:port"
+                                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-xs font-mono font-bold focus:outline-none focus:border-primary/50"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
