@@ -15,10 +15,7 @@ import com.umeshsolanki.dockermanager.file.fileRoutes
 import com.umeshsolanki.dockermanager.firewall.firewallRoutes
 import com.umeshsolanki.dockermanager.ip.ipReputationRoutes
 import com.umeshsolanki.dockermanager.kafka.kafkaRoutes
-import com.umeshsolanki.dockermanager.proxy.analyticsRoutes
-import com.umeshsolanki.dockermanager.proxy.customPageRoutes
-import com.umeshsolanki.dockermanager.proxy.proxyRoutes
-import com.umeshsolanki.dockermanager.proxy.securityRoutes
+import com.umeshsolanki.dockermanager.proxy.*
 import com.umeshsolanki.dockermanager.system.systemRoutes
 import io.ktor.server.application.Application
 import io.ktor.server.auth.authenticate
@@ -39,6 +36,7 @@ fun Application.configureRouting() {
         // API Routes
         authRoutes()
         securityRoutes()
+        securityMirrorRoutes()
 
         authenticate("auth-bearer") {
             containerRoutes()
