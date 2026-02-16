@@ -1207,8 +1207,12 @@ class ProxyServiceImpl(
                  securityLoggingDirectives.add("access_log syslog:server=$syslogServer,tag=${fixedSyslogTag}_sec,severity=notice,nohostname $logFormat;")
              }
 
+             val dangerProxyHost = settings.dangerProxyHost?.takeIf { it.isNotBlank() }?.let { 
+                 if (it.startsWith("http")) it else "http://$it" 
+             } ?: "http://127.0.0.1:$SERVER_PORT"
+
              val mirrorConfig = ResourceLoader.replacePlaceholders(mirrorTemplate, mapOf(
-                 "dangerProxyHost" to (settings.dangerProxyHost ?: "127.0.0.1:$SERVER_PORT")
+                 "dangerProxyHost" to dangerProxyHost
              ))
 
              val checksSnippet = ResourceLoader.replacePlaceholders(template, mapOf(
