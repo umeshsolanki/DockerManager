@@ -2,11 +2,15 @@
 
 # Configuration
 NODE_VERSION="25"
-export DATA_DIR=".dockerm/data"
+export DATA_DIR="$HOME/dockerm/data"
 
 # Logging Configuration
 SERVER_LOG="server.log"
 UI_LOG="ui.log"
+
+# PID Files
+SERVER_PID=".server.pid"
+UI_PID=".ui.pid"
 
 # Function to build server
 build_server() {
@@ -36,7 +40,10 @@ run_server() {
     fi
     # Truncate and run
     : > "$SERVER_LOG"
-    java -jar server/build/libs/server-all.jar 2>&1 | tee "$SERVER_LOG"
+    java -jar server/build/libs/server-all.jar 2>&1 | tee "$SERVER_LOG" &
+    echo $! > "$SERVER_PID"
+    echo "Server started with PID $(cat $SERVER_PID)"
+    wait $(cat $SERVER_PID)
 }
 
 # Function to run UI
@@ -46,13 +53,51 @@ run_ui() {
     echo "----------------------------------------"
     # Truncate and run
     : > "$UI_LOG"
-    cd web-app && bash -c "source ~/.nvm/nvm.sh && nvm use $NODE_VERSION && npm run dev" 2>&1 | tee "../$UI_LOG"
+    cd web-app && bash -c "source ~/.nvm/nvm.sh && nvm use $NODE_VERSION && npm run dev" 2>&1 | tee "../$UI_LOG" &
+    echo $! > "../$UI_PID"
+    UI_PID_VAL=$(cat "../$UI_PID")
+    echo "UI started with PID $UI_PID_VAL"
+    cd ..
+    wait $UI_PID_VAL
 }
 
 # Cleanup on exit
 cleanup() {
     echo "Stopping background processes..."
-    kill $(jobs -p) 2>/dev/null
+    stop_all
+}
+
+# Function to stop all
+stop_all() {
+    echo "----------------------------------------"
+    echo "Stopping Server and UI..."
+    echo "----------------------------------------"
+    
+    if [ -f "$SERVER_PID" ]; then
+        PID=$(cat "$SERVER_PID")
+        if ps -p $PID > /dev/null; then
+            echo "Stopping Server (PID: $PID)..."
+            kill $PID 2>/dev/null
+            sleep 1
+            kill -9 $PID 2>/dev/null # Ensure it's gone
+        fi
+        rm "$SERVER_PID"
+    fi
+
+    if [ -f "$UI_PID" ]; then
+        PID=$(cat "$UI_PID")
+        if ps -p $PID > /dev/null; then
+            echo "Stopping UI (PID: $PID)..."
+            # Next.js often has child processes, pkill -P could be used too but we'll try standard kill first
+            kill $PID 2>/dev/null
+            sleep 1
+            kill -9 $PID 2>/dev/null
+        fi
+        rm "$UI_PID"
+    fi
+
+    # Fallback cleanup for remaining next processes
+    pkill -f "next dev" 2>/dev/null || true
 }
 
 COMMAND=$1
@@ -82,24 +127,42 @@ case "$COMMAND" in
                 : > "$UI_LOG"
                 
                 echo "Launching Server in background..."
-                # Run server in background, redirecting to log
                 java -jar server/build/libs/server-all.jar > "$SERVER_LOG" 2>&1 &
+                echo $! > "$SERVER_PID"
                 
                 sleep 5 # Give server some time to start
                 
                 echo "Launching UI..."
-                # Run UI in foreground (so it keeps terminal open), but also log it
-                cd web-app && bash -c "source ~/.nvm/nvm.sh && nvm use $NODE_VERSION && npm run dev" 2>&1 | tee "../$UI_LOG"
+                cd web-app && bash -c "source ~/.nvm/nvm.sh && nvm use $NODE_VERSION && npm run dev" 2>&1 | tee "../$UI_LOG" &
+                echo $! > "../$UI_PID"
+                cd ..
+
+                echo "Server (PID: $(cat $SERVER_PID)) and UI (PID: $(cat $UI_PID)) are running."
+                echo "Press Ctrl+C to stop both."
+                
+                # Wait for both background processes
+                wait $(cat $SERVER_PID) $(cat $UI_PID)
                 ;;
         esac
         ;;
+    stop)
+        stop_all
+        ;;
+    restart)
+        stop_all
+        sleep 2
+        # Call this script again to start
+        $0 run $TARGET
+        ;;
     *)
-        echo "Usage: $0 {build|run} [ui|server]"
+        echo "Usage: $0 {build|run|stop|restart} [ui|server]"
         echo "Examples:"
         echo "  $0 build         - Build both server and UI"
         echo "  $0 build server  - Build only server"
         echo "  $0 run           - Run both server and UI"
         echo "  $0 run ui        - Run only UI dev server"
+        echo "  $0 stop          - Stop all running components"
+        echo "  $0 restart       - Stop and then start everything"
         exit 1
         ;;
 esac
