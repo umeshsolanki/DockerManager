@@ -1951,19 +1951,25 @@ class ProxyServiceImpl(
         }
         securityMaps.append("    }\n\n")
     
-    // Map for Status-based logging categories
-    securityMaps.append("    map \$status \$log_access {\n")
-    securityMaps.append("        ~^[23]  1;\n")
-    securityMaps.append("        default 0;\n")
-    securityMaps.append("    }\n")
-    securityMaps.append("    map \$status \$log_warning {\n")
-    securityMaps.append("        ~^4     1;\n")
-    securityMaps.append("        default 0;\n")
-    securityMaps.append("    }\n")
-    securityMaps.append("    map \$status \$log_error {\n")
-    securityMaps.append("        ~^5     1;\n")
-    securityMaps.append("        default 0;\n")
-    securityMaps.append("    }\n")
+        // Map for Status-based logging categories
+        securityMaps.append("    map \$status \$log_access {\n")
+        securityMaps.append("        ~^[23]  1;\n")
+        securityMaps.append("        default 0;\n")
+        securityMaps.append("    }\n")
+        securityMaps.append("    map \$status \$log_warning {\n")
+        securityMaps.append("        ~^4     1;\n")
+        securityMaps.append("        default 0;\n")
+        securityMaps.append("    }\n")
+        securityMaps.append("    map \$status \$log_error {\n")
+        securityMaps.append("        ~^5     1;\n")
+        securityMaps.append("        default 0;\n")
+        securityMaps.append("    }\n")
+
+        // Redact sensitive query parameters (like tokens in WebSockets) from logs
+        securityMaps.append("    map \$args \$redacted_query {\n")
+        securityMaps.append("        default \$args;\n")
+        securityMaps.append("        ~^(.*)token=[^&]*(.*)$ \$1token=REDACTED\$2;\n")
+        securityMaps.append("    }\n\n")
 
         return ResourceLoader.replacePlaceholders(
             template, mapOf(
