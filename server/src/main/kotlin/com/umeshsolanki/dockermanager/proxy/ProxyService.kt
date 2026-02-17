@@ -1245,7 +1245,10 @@ class ProxyServiceImpl(
         // Generate IP restrictions
         val ipConfig = if (host.allowedIps.isNotEmpty()) {
             val template = getCachedTemplate("templates/proxy/ip-restrictions.conf")
-            val allowDirectives = host.allowedIps.joinToString("\n        ") { "allow $it;" }
+            val allAllowed = mutableListOf("127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+            allAllowed.addAll(host.allowedIps)
+            
+            val allowDirectives = allAllowed.distinct().joinToString("\n        ") { "allow $it;" }
             val content = ResourceLoader.replacePlaceholders(
                 template, mapOf(
                     "allowDirectives" to allowDirectives
@@ -1386,15 +1389,16 @@ class ProxyServiceImpl(
 
             val ipConfig = if (pathRoute.allowedIps.isNotEmpty()) {
                 val template = getCachedTemplate("templates/proxy/ip-restrictions.conf")
-                val allowDirectives =
-                    pathRoute.allowedIps.joinToString("\n        ") { "allow ${it.sanitizeNginx()};" }
+                val allAllowed = mutableListOf("127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+                allAllowed.addAll(pathRoute.allowedIps)
+                
+                val allowDirectives = allAllowed.distinct().joinToString("\n        ") { "allow ${it.sanitizeNginx()};" }
                 val content = ResourceLoader.replacePlaceholders(
                     template, mapOf(
                         "allowDirectives" to allowDirectives
                     )
                 )
-                content.lines().joinToString("\n") { if (it.isBlank()) it else "        $it" }
-                    .trim()
+                content.lines().joinToString("\n") { if (it.isBlank()) it else "        $it" }.trim()
             } else ""
 
             // Generate Rate Limiting config for this path (indented 8 spaces)
