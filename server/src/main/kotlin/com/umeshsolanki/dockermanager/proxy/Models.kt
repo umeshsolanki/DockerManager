@@ -88,6 +88,7 @@ data class ProxyHost(
 @Serializable
 data class ProxyStats(
     val totalHits: Long,
+    val securityHits: Long = 0,
     val hitsByStatus: Map<Int, Long> = emptyMap(),
     val hitsOverTime: Map<String, Long> = emptyMap(),
     val topPaths: List<PathHit> = emptyList(),

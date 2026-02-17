@@ -118,6 +118,7 @@ class AnalyticsServiceImpl(
     // Incremental state
     private val lastProcessedOffsets = ConcurrentHashMap<String, Long>()
     private val totalHitsCounter = java.util.concurrent.atomic.AtomicLong(0)
+    private val securityHitsCounter = java.util.concurrent.atomic.AtomicLong(0)
     private val hitsByStatusMap = ConcurrentHashMap<Int, Long>()
     private val hitsByDomainMap = ConcurrentHashMap<String, Long>()
     private val hitsByDomainErrorMap = ConcurrentHashMap<String, Long>()
@@ -224,7 +225,8 @@ class AnalyticsServiceImpl(
 
                 // Rotate logs
                 val logFiles = logDir.listFiles { _, name -> 
-                    name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || name == "nginx_main_access.log"
+                    name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || 
+                    name.endsWith("_warning.log") || name == "nginx_main_access.log"
                 } ?: emptyArray()
 
                 for (file in logFiles) {
@@ -338,7 +340,8 @@ class AnalyticsServiceImpl(
 
     private fun updateStatsNatively() {
         val logFiles = logDir.listFiles { _, name -> 
-            name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || name.endsWith("_cidr.log") || name == "nginx_main_access.log"
+            name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || 
+            name.endsWith("_warning.log") || name.endsWith("_cidr.log") || name == "nginx_main_access.log"
         } ?: return
 
         val hitsToInsert = mutableListOf<ProxyHit>()
@@ -409,6 +412,9 @@ class AnalyticsServiceImpl(
 
                                 // Update stats
                                 totalHitsCounter.incrementAndGet()
+                                if (logFile.name.endsWith("_danger.log") || logFile.name.endsWith("_security.log") || logFile.name.endsWith("_warning.log") && status >= 400) {
+                                    securityHitsCounter.incrementAndGet()
+                                }
                                 hitsByStatusMap.merge(status, 1L, Long::plus)
                                 hitsByIpMap.merge(ip, 1L, Long::plus)
                                 hitsByMethodMap.merge(method, 1L, Long::plus)
@@ -437,6 +443,18 @@ class AnalyticsServiceImpl(
 
                                 if (status >= 400 || status == 0) {
                                     hitsByIpErrorMap.merge(ip, 1L, Long::plus)
+                                    
+                                    // Trigger jail check for errors that might not have reached the mirror (like 400 Bad Request with empty URI)
+                                    if (status == 400) {
+                                        jailManagerService.checkProxySecurityViolation(
+                                            ip = ip,
+                                            userAgent = ua,
+                                            method = method,
+                                            path = path,
+                                            status = status,
+                                            errorCount = 1L
+                                        )
+                                    }
                                 }
                                 
                                 // Aggregate for reputation batch update
@@ -522,6 +540,7 @@ class AnalyticsServiceImpl(
     private fun updateCachedStats() {
         cachedStats = ProxyStats(
             totalHits = totalHitsCounter.get(),
+            securityHits = securityHitsCounter.get(),
             hitsByStatus = hitsByStatusMap.toMap(),
             hitsOverTime = hitsByTimeMap.toSortedMap(),
             topPaths = hitsByPathMap.entries.sortedByDescending { it.value }
@@ -706,8 +725,16 @@ class AnalyticsServiceImpl(
             else if (file.name.endsWith("_cidr_$targetDate.log")) {
                 matchingFiles.add(file)
             }
+            // Match domain-specific rotated security files: domain_security_YYYY-MM-DD.log
+            else if (file.name.endsWith("_security_$targetDate.log")) {
+                matchingFiles.add(file)
+            }
             // Match nginx_main rotated files: nginx_main_access_YYYY-MM-DD.log
             else if (file.name == "nginx_main_access_$targetDate.log") {
+                matchingFiles.add(file)
+            }
+            // Match warning rotated files
+            else if (file.name.contains("_warning_$targetDate.log")) {
                 matchingFiles.add(file)
             }
         }
@@ -721,7 +748,9 @@ class AnalyticsServiceImpl(
         if (targetDate == today) {
             return allFiles.filter { 
                 it.name == "access.log" || it.name.endsWith("_access.log") || 
-                it.name.endsWith("_danger.log") || it.name.endsWith("_cidr.log") || it.name == "nginx_main_access.log"
+                it.name.endsWith("_danger.log") || it.name.endsWith("_warning.log") ||
+                it.name.endsWith("_security.log") || it.name.endsWith("_cidr.log") || 
+                it.name == "nginx_main_access.log"
             }
         }
 
@@ -750,6 +779,7 @@ class AnalyticsServiceImpl(
 
         // Temporary structures for aggregation
         val tempTotalHits = java.util.concurrent.atomic.AtomicLong(0)
+        val tempSecurityHits = java.util.concurrent.atomic.AtomicLong(0)
         val tempHitsByStatusMap = ConcurrentHashMap<Int, Long>()
         val tempHitsByDomainMap = ConcurrentHashMap<String, Long>()
         val tempHitsByDomainErrorMap = ConcurrentHashMap<String, Long>()
@@ -810,6 +840,9 @@ class AnalyticsServiceImpl(
                                     }
 
                                     tempTotalHits.incrementAndGet()
+                                    if (file.name.endsWith("_security.log") || file.name.endsWith("_danger.log")) {
+                                        tempSecurityHits.incrementAndGet()
+                                    }
                                     tempHitsByStatusMap.merge(status, 1L, Long::plus)
                                     tempHitsByIpMap.merge(ip, 1L, Long::plus)
                                     tempHitsByMethodMap.merge(method, 1L, Long::plus)
@@ -854,6 +887,7 @@ class AnalyticsServiceImpl(
         return DailyProxyStats(
             date = targetDate,
             totalHits = tempTotalHits.get(),
+            securityHits = tempSecurityHits.get(),
             hitsByStatus = tempHitsByStatusMap.toMap(),
             hitsOverTime = tempHitsByTimeMap.toSortedMap(),
             topPaths = tempHitsByPathMap.entries.sortedByDescending { it.value }
@@ -950,7 +984,8 @@ class AnalyticsServiceImpl(
      */
     private fun extractAllDatesFromCurrentLog(): Set<String> {
         val logFiles = logDir.listFiles { _, name -> 
-            name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || name == "nginx_main_access.log"
+            name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || 
+            name.endsWith("_security.log") || name == "nginx_main_access.log"
         } ?: return emptySet()
 
         val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
@@ -1127,7 +1162,8 @@ class AnalyticsServiceImpl(
      */
     private fun extractDatesFromLogs(): Set<String> {
         val logFiles = logDir.listFiles { _, name -> 
-            name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || name == "nginx_main_access.log"
+            name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || 
+            name.endsWith("_warning.log") || name.endsWith("_security.log") || name == "nginx_main_access.log"
         } ?: return emptySet()
         
         val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
@@ -1247,14 +1283,21 @@ class AnalyticsServiceImpl(
         
         // Select files based on type and date
         val logFiles = when (type) {
-            "danger" -> {
+            "danger", "security", "cidr" -> {
                 logDir.listFiles { _, name -> 
-                    (name.endsWith("_danger.log") || name.endsWith("_danger_$targetDate.log"))
+                    (name.endsWith("_danger.log") || name.endsWith("_danger_$targetDate.log") ||
+                     name.endsWith("_security.log") || name.endsWith("_security_$targetDate.log") ||
+                     name.endsWith("_cidr.log") || name.endsWith("_cidr_$targetDate.log"))
                 }?.toList() ?: emptyList()
             }
-            "cidr" -> {
+            "warning" -> {
                 logDir.listFiles { _, name -> 
-                    (name.endsWith("_cidr.log") || name.endsWith("_cidr_$targetDate.log"))
+                    (name.endsWith("_warning.log") || name.endsWith("_warning_$targetDate.log"))
+                }?.toList() ?: emptyList()
+            }
+            "error" -> {
+                logDir.listFiles { _, name -> 
+                    (name.endsWith("_error.log") || name.endsWith("_error_$targetDate.log"))
                 }?.toList() ?: emptyList()
             }
             else -> {

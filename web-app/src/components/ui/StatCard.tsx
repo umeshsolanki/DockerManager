@@ -7,6 +7,7 @@ interface StatCardProps {
     color?: 'primary' | 'orange' | 'indigo' | 'red' | 'green' | 'pink' | 'teal';
     icon: React.ReactNode;
     className?: string;
+    onClick?: () => void;
 }
 
 const colorMap = {
@@ -19,9 +20,12 @@ const colorMap = {
     teal: 'bg-teal-500/10 text-teal-500 border-teal-500/10',
 };
 
-export function StatCard({ label, value, sub, color = 'primary', icon, className = '' }: StatCardProps) {
+export function StatCard({ label, value, sub, color = 'primary', icon, className = '', onClick }: StatCardProps) {
     return (
-        <div className={`bg-surface/30 border border-outline/10 p-5 rounded-[28px] flex flex-col gap-3 ${className}`}>
+        <div
+            onClick={onClick}
+            className={`bg-surface/30 border border-outline/10 p-5 rounded-[28px] flex flex-col gap-3 transition-all ${onClick ? 'cursor-pointer hover:bg-surface/50 active:scale-95' : ''} ${className}`}
+        >
             <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border shadow-inner ${colorMap[color]}`}>
                 {icon}
             </div>

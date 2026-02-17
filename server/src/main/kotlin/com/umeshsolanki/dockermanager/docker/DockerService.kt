@@ -37,6 +37,7 @@ object DockerService {
 
     fun listImages() = imageService.listImages()
     fun pullImage(name: String) = imageService.pullImage(name)
+    fun pullImageFlow(name: String) = imageService.pullImageFlow(name)
     fun removeImage(id: String, force: Boolean = false) = imageService.removeImage(id, force)
     fun removeImages(ids: List<String>, force: Boolean = false) = imageService.removeImages(ids, force)
     fun pruneImages() = imageService.pruneImages()

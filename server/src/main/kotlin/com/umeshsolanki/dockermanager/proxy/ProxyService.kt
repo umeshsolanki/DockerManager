@@ -1176,7 +1176,9 @@ class ProxyServiceImpl(
             val errorLogDirectives = mutableListOf<String>()
 
             if (dualLogging || !rsyslogEnabled) {
-                accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_access.log", logFormat))
+                accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_access.log", "$logFormat if=\$log_access"))
+                accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_warning.log", "$logFormat if=\$log_warning"))
+                accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_error.log", "$logFormat if=\$log_error"))
                 errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/${tag}_error.log warn;")
             }
 
@@ -1201,7 +1203,7 @@ class ProxyServiceImpl(
              
              val securityLoggingDirectives = mutableListOf<String>()
              if (dualLogging || !rsyslogEnabled) {
-                 securityLoggingDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_security.log", logFormat))
+                 securityLoggingDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_danger.log", logFormat))
              }
              if (rsyslogEnabled) {
                  securityLoggingDirectives.add("access_log syslog:server=$syslogServer,tag=${fixedSyslogTag}_sec,severity=notice,nohostname $logFormat;")
@@ -1225,12 +1227,7 @@ class ProxyServiceImpl(
 
         return mapOf(
             "standardLoggingConfig" to standardLoggingConfig,
-            "securityChecksConfig" to securityChecksConfig,
-            "rsyslogConfig" to "", // Clean up old placeholders
-            "dangerHitsConfig" to "",
-            "cidrHitsConfig" to "",
-            "burstLoggingConfig" to "",
-            "clientErrorHitsConfig" to ""
+            "securityChecksConfig" to securityChecksConfig
         )
     }
 
@@ -1340,11 +1337,6 @@ class ProxyServiceImpl(
                 put("rateLimitConfig", if (host.paths.isEmpty()) serverRateLimit else "")
                 put("mainLocationConfig", generateMainLocationConfig(true))
                 put("silentDropConfig", silentDropConfig)
-                // Append CIDR logger and Client Error logger to danger config placeholder to avoid modifying main templates
-                val dangerConfig = loggingReplacements["dangerHitsConfig"] ?: ""
-                val cidrConfig = loggingReplacements["cidrHitsConfig"] ?: ""
-                val clientErrorConfig = loggingReplacements["clientErrorHitsConfig"] ?: ""
-                put("dangerHitsConfig", "$dangerConfig\n    $cidrConfig\n    $clientErrorConfig")
             }
             ResourceLoader.replacePlaceholders(httpsTemplate, replacements)
         } else ""
@@ -1358,11 +1350,6 @@ class ProxyServiceImpl(
             put("rateLimitConfig", if (host.ssl || host.paths.isNotEmpty()) "" else serverRateLimit)
             put("mainLocationConfig", generateMainLocationConfig(false, httpRedirect))
             put("silentDropConfig", silentDropConfig)
-            // Append CIDR logger and Client Error logger to danger config placeholder
-            val dangerConfig = loggingReplacements["dangerHitsConfig"] ?: ""
-            val cidrConfig = loggingReplacements["cidrHitsConfig"] ?: ""
-            val clientErrorConfig = loggingReplacements["clientErrorHitsConfig"] ?: ""
-            put("dangerHitsConfig", "$dangerConfig\n    $cidrConfig\n    $clientErrorConfig")
         }
         val httpConfig = ResourceLoader.replacePlaceholders(httpTemplate, httpReplacements)
 
@@ -1899,14 +1886,26 @@ class ProxyServiceImpl(
         val errorLogDirectives = mutableListOf<String>()
 
         if (settings.proxyDualLoggingEnabled || !rsyslogEnabled) {
-            accessLogDirectives.add(
-                getAccessLogDirective(
-                    "/usr/local/openresty/nginx/logs/access.log",
-                    "main"
-                )
+        accessLogDirectives.add(
+            getAccessLogDirective(
+                "/usr/local/openresty/nginx/logs/access.log",
+                "main if=\$log_access"
             )
-            errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/error.log warn;")
-        }
+        )
+        accessLogDirectives.add(
+            getAccessLogDirective(
+                "/usr/local/openresty/nginx/logs/warning.log",
+                "main if=\$log_warning"
+            )
+        )
+        accessLogDirectives.add(
+            getAccessLogDirective(
+                "/usr/local/openresty/nginx/logs/error.log",
+                "main if=\$log_error"
+            )
+        )
+        errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/error.log warn;")
+    }
 
         if (rsyslogEnabled) {
             val syslogServer =
@@ -1950,7 +1949,21 @@ class ProxyServiceImpl(
                  .let { if (it.contains("|") || it.contains("[") || it.contains("(")) "~*$it" else it }
              securityMaps.append("        \"$pattern\" \"1\";\n")
         }
-        securityMaps.append("    }\n")
+        securityMaps.append("    }\n\n")
+    
+    // Map for Status-based logging categories
+    securityMaps.append("    map \$status \$log_access {\n")
+    securityMaps.append("        ~^[23]  1;\n")
+    securityMaps.append("        default 0;\n")
+    securityMaps.append("    }\n")
+    securityMaps.append("    map \$status \$log_warning {\n")
+    securityMaps.append("        ~^4     1;\n")
+    securityMaps.append("        default 0;\n")
+    securityMaps.append("    }\n")
+    securityMaps.append("    map \$status \$log_error {\n")
+    securityMaps.append("        ~^5     1;\n")
+    securityMaps.append("        default 0;\n")
+    securityMaps.append("    }\n")
 
         return ResourceLoader.replacePlaceholders(
             template, mapOf(

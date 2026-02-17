@@ -8,7 +8,7 @@ import {
     Download, Filter, ChevronDown, ChevronUp, Calendar, Trash2, ShieldAlert
 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { ProxyStats, GenericHitEntry, DailyProxyStats } from '@/lib/types';
+import { ProxyStats, GenericHitEntry, DailyProxyStats, ProxyHit, ProxyActionResult } from '@/lib/types';
 import {
     AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
     BarChart, Bar, Cell, PieChart, Pie
@@ -16,16 +16,18 @@ import {
 import { toast } from 'sonner';
 import { StatCard } from '../ui/StatCard';
 import { useTheme } from '@/contexts/ThemeContext';
+import { Modal } from '../ui/Modal';
 
 export default function AnalyticsScreen() {
     const { theme } = useTheme();
     const [stats, setStats] = useState<ProxyStats | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [refreshInterval, setRefreshInterval] = useState(30000);
-    const [viewMode, setViewMode] = useState<'today' | 'historical'>('today');
+    const [viewMode, setViewMode] = useState<'today' | 'history'>('today');
     const [availableDates, setAvailableDates] = useState<string[]>([]);
     const [selectedDate, setSelectedDate] = useState<string>('');
-    const [historicalStats, setHistoricalStats] = useState<DailyProxyStats | null>(null);
+    const [historyStats, setHistoryStats] = useState<DailyProxyStats | null>(null);
     const [selectedHost, setSelectedHost] = useState<string>('global');
     const [securityMode, setSecurityMode] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -49,6 +51,13 @@ export default function AnalyticsScreen() {
         countries: 10,
         providers: 10
     });
+
+    // Security Logs Modal State
+    const [isSecurityLogsModalOpen, setIsSecurityLogsModalOpen] = useState(false);
+    const [securityLogs, setSecurityLogs] = useState<ProxyHit[]>([]);
+    const [isSecurityLogsLoading, setIsSecurityLogsLoading] = useState(false);
+    const [securityLogsPage, setSecurityLogsPage] = useState(1);
+    const [securityLogsSearch, setSecurityLogsSearch] = useState('');
 
     // Theme-aware colors for charts
     const chartColors = useMemo(() => {
@@ -87,7 +96,7 @@ export default function AnalyticsScreen() {
     }, [refreshInterval, viewMode]);
 
     useEffect(() => {
-        if (viewMode === 'historical' && selectedDate) {
+        if (viewMode === 'history' && selectedDate) {
             fetchHistoricalStats(selectedDate);
         }
     }, [selectedDate, viewMode]);
@@ -123,7 +132,7 @@ export default function AnalyticsScreen() {
     const fetchHistoricalStats = async (date: string) => {
         setIsLoading(true);
         setStats(null); // Clear stats first to avoid showing stale data
-        setHistoricalStats(null);
+        setHistoryStats(null);
         try {
             const data = await DockerClient.getHistoricalStats(date);
             if (data) {
@@ -133,7 +142,7 @@ export default function AnalyticsScreen() {
                     recentHits: [], // Historical stats don't have recent hits
                     recentWebSocketConnections: [] // Historical stats don't have recent WebSocket connections
                 };
-                setHistoricalStats(data);
+                setHistoryStats(data);
                 setStats(convertedStats);
             } else {
                 setStats(null);
@@ -157,29 +166,50 @@ export default function AnalyticsScreen() {
     };
 
     const handleTruncateLogs = async () => {
-        if (!window.confirm('Are you sure you want to permanently delete all suspicious access logs from the database? This will NOT affect today\'s real-time analytics, but will clear historical records.')) {
-            return;
-        }
-
-        setIsLoading(true);
-        try {
-            const result = await DockerClient.truncateProxyLogs();
-            if (result.success) {
-                toast.success(result.message);
-                fetchData();
-                if (viewMode === 'historical') {
-                    fetchAvailableDates();
+        if (confirm('Are you sure you want to truncate the proxy logs table? This will clear all current statistics.')) {
+            setIsLoading(true);
+            try {
+                const result = await DockerClient.truncateProxyLogs();
+                if (result.success) {
+                    toast.success('Logs truncated');
+                    fetchData();
+                    if (viewMode === 'history') {
+                        fetchAvailableDates();
+                    }
+                } else {
+                    toast.error(result.message);
                 }
-            } else {
-                toast.error(result.message);
+            } catch (e) {
+                console.error('Failed to truncate logs', e);
+                toast.error('Failed to clear logs from database');
+            } finally {
+                setIsLoading(false);
             }
-        } catch (e) {
-            console.error('Failed to truncate logs', e);
-            toast.error('Failed to clear logs from database');
-        } finally {
-            setIsLoading(false);
         }
     };
+
+    const fetchSecurityLogs = async (page = 1, search = '') => {
+        setIsSecurityLogsLoading(true);
+        try {
+            const logs = await DockerClient.getAnalyticsLogs('security', page, 50, search, viewMode === 'history' ? selectedDate : undefined);
+            if (page === 1) {
+                setSecurityLogs(logs);
+            } else {
+                setSecurityLogs(prev => [...prev, ...logs]);
+            }
+            setSecurityLogsPage(page);
+        } catch (e) {
+            toast.error('Failed to fetch security logs');
+        } finally {
+            setIsSecurityLogsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (isSecurityLogsModalOpen) {
+            fetchSecurityLogs(1, securityLogsSearch);
+        }
+    }, [isSecurityLogsModalOpen, securityLogsSearch]);
 
     const filteredPaths = useMemo(() => {
         const source = (selectedHost !== 'global' && stats?.hostwiseStats?.[selectedHost])
@@ -330,7 +360,7 @@ export default function AnalyticsScreen() {
                     <p className="text-on-surface-variant/60 text-sm mt-1">
                         {viewMode === 'today'
                             ? 'Traffic patterns and infrastructure performance insights'
-                            : historicalStats
+                            : historyStats
                                 ? `Historical analytics for ${new Date(selectedDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`
                                 : 'Select a date to view historical analytics'}
                     </p>
@@ -342,7 +372,7 @@ export default function AnalyticsScreen() {
                             onClick={() => {
                                 setViewMode('today');
                                 setSelectedDate('');
-                                setHistoricalStats(null);
+                                setHistoryStats(null);
                                 setStats(null); // Clear stats to force refresh
                                 fetchData(true);
                             }}
@@ -355,10 +385,10 @@ export default function AnalyticsScreen() {
                         </button>
                         <button
                             onClick={() => {
-                                setViewMode('historical');
+                                setViewMode('history');
                                 fetchAvailableDates();
                             }}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'historical'
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'history'
                                 ? 'bg-primary text-on-primary'
                                 : 'text-on-surface-variant hover:bg-white/5'
                                 }`}
@@ -400,7 +430,7 @@ export default function AnalyticsScreen() {
                         </>
                     )}
 
-                    {viewMode === 'historical' && (
+                    {viewMode === 'history' && (
                         <select
                             value={selectedDate}
                             onChange={(e) => setSelectedDate(e.target.value)}
@@ -508,6 +538,14 @@ export default function AnalyticsScreen() {
                     icon={securityMode ? <ShieldAlert size={20} /> : <Network size={20} />}
                     sub={securityMode ? (selectedHost === 'global' ? "Unique Sources" : "Global Stats Only") : "Unique Source IPs"}
                     color="indigo"
+                />
+                <StatCard
+                    label="Security Mirrors"
+                    value={(stats?.securityHits || 0).toLocaleString()}
+                    icon={<ShieldAlert size={20} />}
+                    sub="Threats Mirrored (Click to view)"
+                    color="red"
+                    onClick={() => setIsSecurityLogsModalOpen(true)}
                 />
                 {!securityMode ? (
                     <StatCard
@@ -899,6 +937,106 @@ export default function AnalyticsScreen() {
                     </div>
                 </div>
             )}
+
+            {/* Security Logs Modal */}
+            <Modal
+                onClose={() => setIsSecurityLogsModalOpen(false)}
+                title="Security Mirror Logs"
+                icon={<ShieldAlert className="text-red-500" size={24} />}
+                maxWidth="max-w-6xl"
+                headerActions={
+                    <button
+                        onClick={() => fetchSecurityLogs(1, securityLogsSearch)}
+                        className="p-2 hover:bg-white/10 rounded-xl transition-all"
+                        title="Refresh Logs"
+                    >
+                        <RefreshCw size={18} className={isSecurityLogsLoading ? 'animate-spin' : ''} />
+                    </button>
+                }
+            >
+                <div className="flex flex-col gap-4 mt-4 h-[70vh]">
+                    <div className="flex items-center gap-3">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40" size={16} />
+                            <input
+                                type="text"
+                                placeholder="Search by IP, Path or Domain..."
+                                value={securityLogsSearch}
+                                onChange={(e) => setSecurityLogsSearch(e.target.value)}
+                                className="w-full bg-white/5 border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-red-500/50 transition-all font-medium"
+                            />
+                        </div>
+                        {viewMode === 'history' && selectedDate && (
+                            <div className="bg-red-500/10 text-red-500 px-4 py-2 rounded-xl text-xs font-bold border border-red-500/20">
+                                History: {selectedDate}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex-1 overflow-auto border border-outline/10 rounded-2xl bg-black/20 custom-scrollbar">
+                        <table className="w-full text-left border-collapse font-mono text-[11px]">
+                            <thead className="sticky top-0 bg-[#0f0f0f] z-10 border-b border-outline/10">
+                                <tr>
+                                    <th className="px-4 py-3 text-[10px] uppercase font-bold text-on-surface-variant/50">Time</th>
+                                    <th className="px-4 py-3 text-[10px] uppercase font-bold text-on-surface-variant/50">Source IP</th>
+                                    <th className="px-4 py-3 text-[10px] uppercase font-bold text-on-surface-variant/50">Domain</th>
+                                    <th className="px-4 py-3 text-[10px] uppercase font-bold text-on-surface-variant/50">Method</th>
+                                    <th className="px-4 py-3 text-[10px] uppercase font-bold text-on-surface-variant/50">Path</th>
+                                    <th className="px-4 py-3 text-[10px] uppercase font-bold text-on-surface-variant/50 text-right">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-outline/5">
+                                {securityLogs.map((log, i) => (
+                                    <tr key={i} className="hover:bg-white/5 transition-colors group">
+                                        <td className="px-4 py-3 text-on-surface-variant whitespace-nowrap">
+                                            {new Date(log.timestamp).toLocaleString()}
+                                        </td>
+                                        <td className="px-4 py-3 text-primary font-bold">{log.ip}</td>
+                                        <td className="px-4 py-3 text-on-surface truncate max-w-[150px]" title={log.domain}>{log.domain}</td>
+                                        <td className="px-4 py-3">
+                                            <span className={`px-2 py-0.5 rounded text-[9px] font-black ${log.method === 'GET' ? 'bg-green-500/10 text-green-500' :
+                                                    log.method === 'POST' ? 'bg-blue-500/10 text-blue-500' :
+                                                        'bg-purple-500/10 text-purple-500'
+                                                }`}>
+                                                {log.method}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-on-surface-variant truncate max-w-[200px]" title={log.path}>
+                                            {log.path}
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            <span className={`font-black ${log.status.toString().startsWith('2') ? 'text-green-500' :
+                                                    log.status.toString().startsWith('4') ? 'text-orange-500' :
+                                                        'text-red-500'
+                                                }`}>
+                                                {log.status}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {securityLogs.length === 0 && !isSecurityLogsLoading && (
+                                    <tr>
+                                        <td colSpan={6} className="px-4 py-20 text-center text-on-surface-variant/40 italic">
+                                            No security mirror hits found matching your criteria
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                        {securityLogs.length > 0 && securityLogs.length % 50 === 0 && (
+                            <div className="p-4 flex justify-center">
+                                <button
+                                    onClick={() => fetchSecurityLogs(securityLogsPage + 1, securityLogsSearch)}
+                                    disabled={isSecurityLogsLoading}
+                                    className="px-6 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+                                >
+                                    {isSecurityLogsLoading ? 'Loading...' : 'Load More'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 }

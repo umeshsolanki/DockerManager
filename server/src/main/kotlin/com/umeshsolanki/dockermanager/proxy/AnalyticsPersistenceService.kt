@@ -18,6 +18,7 @@ import java.time.format.DateTimeFormatter
 data class DailyProxyStats(
     val date: String, // YYYY-MM-DD format
     val totalHits: Long,
+    val securityHits: Long = 0,
     val hitsByStatus: Map<Int, Long> = emptyMap(),
     val hitsOverTime: Map<String, Long> = emptyMap(),
     val topPaths: List<PathHit> = emptyList(),
@@ -56,6 +57,7 @@ class AnalyticsPersistenceService {
             val dailyStats = DailyProxyStats(
                 date = targetDate,
                 totalHits = stats.totalHits,
+                securityHits = stats.securityHits,
                 hitsByStatus = stats.hitsByStatus,
                 hitsOverTime = stats.hitsOverTime,
                 topPaths = stats.topPaths,

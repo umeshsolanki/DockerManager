@@ -32,15 +32,19 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             if (response) {
                 if (response.requires2FA) {
                     setRequires2FA(true);
-                } else {
+                    setOtpCode(''); // Clear OTP field for new attempt
+                } else if (response.token) {
                     DockerClient.setAuthToken(response.token);
                     onLoginSuccess(response.token);
+                } else {
+                    setError('Invalid response from server');
                 }
             } else {
-                setError('Invalid credentials');
+                setError('Invalid credentials or 2FA code');
             }
-        } catch (err) {
-            setError('An error occurred during login');
+        } catch (err: any) {
+            console.error('Login error:', err);
+            setError(err?.message || 'An error occurred during login');
         } finally {
             setLoading(false);
         }

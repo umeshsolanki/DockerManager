@@ -279,6 +279,12 @@ object AuthService {
                     sb.append(ALPHABET[(buffer ushr (bitsLeft - 5)) and 0x1f])
                     bitsLeft -= 5
                 }
+                // Mask the buffer to keep only the remaining bits
+                if (bitsLeft > 0) {
+                    buffer = buffer and ((1 shl bitsLeft) - 1)
+                } else {
+                    buffer = 0
+                }
             }
             if (bitsLeft > 0) {
                 sb.append(ALPHABET[(buffer shl (5 - bitsLeft)) and 0x1f])
@@ -287,19 +293,27 @@ object AuthService {
         }
 
         fun decode(data: String): ByteArray? {
-            val clean = data.uppercase().trim().replace(" ", "").replace("-", "")
-            // simplified strict decoding
+            val clean = data.uppercase().trim().replace(" ", "").replace("-", "").replace("=", "")
+            if (clean.isEmpty()) return null
+            
             val result = java.io.ByteArrayOutputStream()
             var buffer = 0
             var bitsLeft = 0
             for (char in clean) {
                 val index = ALPHABET.indexOf(char)
                 if (index < 0) return null
+                
                 buffer = (buffer shl 5) or index
                 bitsLeft += 5
                 if (bitsLeft >= 8) {
                     result.write((buffer ushr (bitsLeft - 8)) and 0xff)
                     bitsLeft -= 8
+                    // Mask the buffer to keep only the remaining bits
+                    if (bitsLeft > 0) {
+                        buffer = buffer and ((1 shl bitsLeft) - 1)
+                    } else {
+                        buffer = 0
+                    }
                 }
             }
             return result.toByteArray()

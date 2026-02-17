@@ -3,15 +3,16 @@ package com.umeshsolanki.dockermanager
 import com.umeshsolanki.dockermanager.auth.AuthService
 import com.umeshsolanki.dockermanager.proxy.AnalyticsService
 import com.umeshsolanki.dockermanager.shell.ShellService
+import com.umeshsolanki.dockermanager.docker.DockerService
+import com.umeshsolanki.dockermanager.docker.PullProgress
 import io.ktor.server.application.ApplicationCall
+import kotlinx.serialization.encodeToString
+import io.ktor.websocket.*
+import io.ktor.server.websocket.*
 import io.ktor.server.plugins.origin
 import io.ktor.server.request.header
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.route
-import io.ktor.server.websocket.WebSocketServerSession
-import io.ktor.server.websocket.webSocket
-import io.ktor.websocket.CloseReason
-import io.ktor.websocket.close
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("WebSocketAccess")
@@ -136,6 +137,33 @@ fun Routing.webSocketRoutes() {
 
             handleAuthenticatedWebSocket(context) {
                 ShellService.handleContainerShell(this, containerId)
+            }
+        }
+    }
+
+    route("/images") {
+        webSocket("/pull/{name}") {
+            val imageName = call.parameters["name"]
+
+            if (imageName.isNullOrBlank()) {
+                close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "Image name required"))
+                return@webSocket
+            }
+
+            val context = WebSocketContext(
+                endpoint = "/images/pull/$imageName",
+                clientIp = call.request.origin.remoteHost,
+                userAgent = call.request.headers["User-Agent"] ?: "Unknown"
+            )
+
+            handleAuthenticatedWebSocket(context) {
+                try {
+                    DockerService.pullImageFlow(imageName).collect { progress ->
+                        send(AppConfig.json.encodeToString(progress))
+                    }
+                } catch (e: Exception) {
+                    logger.error("Error pulling image $imageName via WebSocket", e)
+                }
             }
         }
     }

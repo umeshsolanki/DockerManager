@@ -12,7 +12,8 @@ import {
     DockerStack, StackService, StackTask, DeployStackRequest, MigrateComposeToStackRequest, StopStackRequest,
     SaveProjectFileRequest, KafkaTopicInfo, KafkaMessage, CreateNetworkRequest, StorageInfo,
     ExternalDbConfig, SqlQueryRequest, KafkaRule, KafkaProcessedEvent, CustomPage,
-    IpReputation, SavedQuery, EmailFolder, EmailMessage, EmailClientConfig, ProxyJailRule
+    IpReputation, SavedQuery, EmailFolder, EmailMessage, EmailClientConfig, ProxyJailRule,
+    PullProgress
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -83,9 +84,14 @@ export const DockerClient = {
         const res = await apiFetch('/auth/login', { method: 'POST', body: JSON.stringify(request) });
         if (res.status === 401) {
             const data = await res.json();
-            return data.requires2FA ? { token: '', requires2FA: true } : null;
+            if (data.requires2FA) return { token: '', requires2FA: true };
+            throw new Error(data.message || 'Invalid credentials');
         }
-        return res.ok ? res.json() : null;
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.message || 'An error occurred during login');
+        }
+        return res.json();
     },
     checkAuth: () => apiFetch('/auth/check').then(r => r.ok).catch(() => false),
     updatePassword: (body: UpdatePasswordRequest) => safeReq('/auth/password', { method: 'POST', body: JSON.stringify(body) }),
@@ -117,6 +123,29 @@ export const DockerClient = {
     // --- Images ---
     listImages: () => req<DockerImage[]>('/images', {}, []),
     pullImage: (name: string) => apiFetch(`/images/pull?image=${encodeURIComponent(name)}`, { method: 'POST' }),
+    pullImageProgress(name: string, onProgress: (progress: PullProgress) => void, onComplete: () => void, onError: (err: any) => void) {
+        const baseUrl = this.getServerUrl().replace('http', 'ws');
+        const token = this.getAuthToken();
+        const ws = new WebSocket(`${baseUrl}/images/pull/${encodeURIComponent(name)}${token ? `?token=${token}` : ''}`);
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                onProgress(data);
+                if (data.status === 'Status: Downloaded newer image for ' + name || data.status?.includes('Downloaded newer image')) {
+                    // This is a bit brittle, but usually the last message. 
+                    // Better to rely on onclose or a specific completed status if added to backend.
+                }
+            } catch (e) {
+                console.error("Error parsing pull progress", e);
+            }
+        };
+
+        ws.onclose = () => onComplete();
+        ws.onerror = (err) => onError(err);
+
+        return () => ws.close(); // Return cleanup function
+    },
 
     async removeImage(id: string, force: boolean = false): Promise<boolean> {
         const response = await apiFetch(`/images/${id}?force=${force}`, { method: 'DELETE' });
@@ -276,6 +305,13 @@ export const DockerClient = {
     getStatsForDateRange: (startDate: string, endDate: string) => req<DailyProxyStats[]>(`/analytics/stats/history/range?start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`, {}, []),
     updateStatsForAllDaysInCurrentLog: () => safeReq('/analytics/stats/history/update-all-days', { method: 'POST' }),
     truncateProxyLogs: () => safeReq('/analytics/logs/truncate', { method: 'POST' }),
+
+    getAnalyticsLogs: (type: 'access' | 'error' | 'security' | 'cidr' = 'access', page = 1, limit = 50, search?: string, date?: string) => {
+        let url = `/analytics/logs?type=${type}&page=${page}&limit=${limit}`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+        if (date) url += `&date=${encodeURIComponent(date)}`;
+        return req<ProxyHit[]>(url, {}, []);
+    },
 
     // Redis Cache
     getRedisConfig: () => req<RedisConfig>('/cache/redis/config', {}, { enabled: false, host: 'localhost', port: 6379, database: 0, ssl: false, timeout: 5000 }),

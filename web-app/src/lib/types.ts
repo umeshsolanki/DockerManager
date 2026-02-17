@@ -36,6 +36,15 @@ export interface DockerImage {
   created: number;
 }
 
+export interface PullProgress {
+  status?: string;
+  progress?: string;
+  current?: number;
+  total?: number;
+  id?: string;
+  error?: string;
+}
+
 export interface ComposeFile {
   path: string;
   name: string;
@@ -406,6 +415,7 @@ export interface WebSocketConnection {
 
 export interface ProxyStats {
   totalHits: number;
+  securityHits?: number;
   hitsByStatus: Record<number, number>;
   hitsOverTime: Record<string, number>;
   topPaths: PathHit[];
@@ -437,6 +447,7 @@ export interface DetailedHostStats {
 export interface DailyProxyStats {
   date: string;
   totalHits: number;
+  securityHits?: number;
   hitsByStatus: Record<number, number>;
   hitsOverTime: Record<string, number>;
   topPaths: PathHit[];

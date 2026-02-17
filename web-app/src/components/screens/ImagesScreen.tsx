@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { RefreshCw, Download, Trash, Database } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { DockerImage } from '@/lib/types';
+import { DockerImage, PullProgress } from '@/lib/types';
 import { SearchInput } from '../ui/SearchInput';
 import { ActionIconButton, Button } from '../ui/Buttons';
 
@@ -15,6 +15,8 @@ export default function ImagesScreen() {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [isBatchDeleting, setIsBatchDeleting] = useState(false);
     const [forceDelete, setForceDelete] = useState(false);
+    const [pullProgress, setPullProgress] = useState<PullProgress | null>(null);
+    const [isPulling, setIsPulling] = useState(false);
 
     const fetchImages = async () => {
         setIsLoading(true);
@@ -30,11 +32,28 @@ export default function ImagesScreen() {
     const handlePull = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!pullingImage) return;
-        setIsLoading(true);
-        await DockerClient.pullImage(pullingImage);
-        setPullingImage('');
-        // Wait a bit before fetching to let the pull start
-        setTimeout(() => fetchImages(), 1000);
+
+        setIsPulling(true);
+        setPullProgress({ status: 'Starting pull...' });
+
+        DockerClient.pullImageProgress(
+            pullingImage,
+            (progress) => {
+                setPullProgress(progress);
+            },
+            () => {
+                setIsPulling(false);
+                setPullProgress(null);
+                setPullingImage('');
+                fetchImages();
+            },
+            (err) => {
+                console.error("Pull error", err);
+                setIsPulling(false);
+                setPullProgress({ status: 'Error', error: err.message || 'Unknown error' });
+                setTimeout(() => setPullProgress(null), 5000);
+            }
+        );
     };
 
     const handleRemove = async (id: string, force = forceDelete) => {
@@ -120,7 +139,7 @@ export default function ImagesScreen() {
 
                 {/* Actions */}
                 <div className="flex items-center gap-2">
-                    {isLoading && <RefreshCw className="animate-spin text-primary mr-2" size={20} />}
+                    {(isLoading || isPulling) && <RefreshCw className="animate-spin text-primary mr-2" size={20} />}
 
                     <div className="flex items-center gap-2 bg-surface/50 border border-outline/10 rounded-xl p-1 px-2">
                         <label className="flex items-center gap-2 cursor-pointer group">
@@ -159,6 +178,43 @@ export default function ImagesScreen() {
                     />
                 </div>
             </div>
+
+            {isPulling && pullProgress && (
+                <div className="mb-6 bg-surface/40 backdrop-blur-md border border-primary/20 rounded-2xl p-4 shadow-xl animate-in fade-in slide-in-from-top-2">
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex flex-col">
+                            <span className="text-sm font-bold text-on-surface flex items-center gap-2">
+                                <RefreshCw className="animate-spin text-primary" size={16} />
+                                {pullProgress.status}
+                            </span>
+                            {pullProgress.id && <span className="text-[10px] text-on-surface-variant font-mono">Layer: {pullProgress.id}</span>}
+                        </div>
+                        {pullProgress.current && pullProgress.total && (
+                            <span className="text-xs font-bold text-primary">
+                                {Math.round((pullProgress.current / pullProgress.total) * 100)}%
+                            </span>
+                        )}
+                    </div>
+                    {pullProgress.current && pullProgress.total && (
+                        <div className="w-full h-2 bg-primary/10 rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-primary transition-all duration-300 ease-out shadow-[0_0_8px_rgba(var(--primary-rgb),0.5)]"
+                                style={{ width: `${(pullProgress.current / pullProgress.total) * 100}%` }}
+                            />
+                        </div>
+                    )}
+                    {pullProgress.progress && (
+                        <div className="mt-1 text-[10px] text-on-surface-variant font-mono text-right">
+                            {pullProgress.progress}
+                        </div>
+                    )}
+                    {pullProgress.error && (
+                        <div className="mt-2 text-xs text-red-400 font-bold bg-red-400/10 p-2 rounded-lg border border-red-400/20">
+                            Error: {pullProgress.error}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {filteredImages.length === 0 ? (
                 <div className="flex-1 flex items-center justify-center text-on-surface-variant">
