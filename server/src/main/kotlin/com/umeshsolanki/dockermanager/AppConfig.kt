@@ -129,7 +129,7 @@ data class AppSettings(
     val syslogServerInternal: String? = null,
     val syslogPort: Int = 514,
     val proxyRsyslogEnabled: Boolean = false,
-    val proxyDualLoggingEnabled: Boolean = false,
+    val proxyDualLoggingEnabled: Boolean = true,
     val nginxLogDir: String? = null,
     val logBufferingEnabled: Boolean = false,
     val logBufferSizeKb: Int = 512, // Default 512kb

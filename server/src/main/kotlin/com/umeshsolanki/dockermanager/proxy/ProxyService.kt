@@ -1179,7 +1179,7 @@ class ProxyServiceImpl(
                 accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_access.log", "$logFormat if=\$log_access"))
                 accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_warning.log", "$logFormat if=\$log_warning"))
                 accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_error.log", "$logFormat if=\$log_error"))
-                errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/${tag}_error.log warn;")
+                errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/${tag}_system.log warn;")
             }
 
             if (rsyslogEnabled) {
@@ -1908,7 +1908,7 @@ class ProxyServiceImpl(
                 "main if=\$log_error"
             )
         )
-        errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/error.log warn;")
+        errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/system.log warn;")
     }
 
         if (rsyslogEnabled) {
@@ -1957,7 +1957,7 @@ class ProxyServiceImpl(
     
         // Map for Status-based logging categories
         securityMaps.append("    map \$status \$log_access {\n")
-        securityMaps.append("        ~^[23]  1;\n")
+        securityMaps.append("        ~^[123] 1;\n")
         securityMaps.append("        default 0;\n")
         securityMaps.append("    }\n")
         securityMaps.append("    map \$status \$log_warning {\n")
@@ -2000,12 +2000,7 @@ class ProxyServiceImpl(
             }
 
             val defaultServerTemplate = getCachedTemplate(templateName)
-            val loggingReplacements = getLoggingReplacements("default_server").toMutableMap().apply {
-                val dangerConfig = this["dangerHitsConfig"] ?: ""
-                val cidrConfig = this["cidrHitsConfig"] ?: ""
-                val clientErrorConfig = this["clientErrorHitsConfig"] ?: ""
-                put("dangerHitsConfig", "$dangerConfig\n    $cidrConfig\n    $clientErrorConfig")
-            }
+            val loggingReplacements = getLoggingReplacements("default_server")
 
             val finalContent = ResourceLoader.replacePlaceholders(
                 defaultServerTemplate, loggingReplacements
