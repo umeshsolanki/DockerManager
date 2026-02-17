@@ -60,7 +60,7 @@ class AnalyticsServiceImpl(
         val host: String?
     )
 
-    private val lineRegex = """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)" "([^"]*)".*$""".toRegex()
+    private val lineRegex = """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)" host="([^"]*)".*$""".toRegex()
 
     private fun parseLogLine(line: String): ParsedLogEntry? {
         val trimmed = line.trim()
@@ -1309,7 +1309,7 @@ class AnalyticsServiceImpl(
             }
         }
         
-        val lineRegex = """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)".*$""".toRegex()
+        val lineRegex = """^(\S+) \S+ \S+ \[([^\]]+)\] "([^"]*)" (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)" host="([^"]*)".*$""".toRegex()
         val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
         
         val logs = mutableListOf<ProxyHit>()
