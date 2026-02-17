@@ -1386,15 +1386,13 @@ class ProxyServiceImpl(
 
             val ipConfig = if (pathRoute.allowedIps.isNotEmpty()) {
                 val template = getCachedTemplate("templates/proxy/ip-restrictions.conf")
-                val allowDirectives =
-                    pathRoute.allowedIps.joinToString("\n        ") { "allow ${it.sanitizeNginx()};" }
+                val allowDirectives = pathRoute.allowedIps.joinToString("\n        ") { "allow ${it.sanitizeNginx()};" }
                 val content = ResourceLoader.replacePlaceholders(
                     template, mapOf(
                         "allowDirectives" to allowDirectives
                     )
                 )
-                content.lines().joinToString("\n") { if (it.isBlank()) it else "        $it" }
-                    .trim()
+                content.lines().joinToString("\n") { if (it.isBlank()) it else "        $it" }.trim()
             } else ""
 
             // Generate Rate Limiting config for this path (indented 8 spaces)
@@ -1996,12 +1994,7 @@ class ProxyServiceImpl(
             }
 
             val defaultServerTemplate = getCachedTemplate(templateName)
-            val loggingReplacements = getLoggingReplacements("default_server").toMutableMap().apply {
-                val dangerConfig = this["dangerHitsConfig"] ?: ""
-                val cidrConfig = this["cidrHitsConfig"] ?: ""
-                val clientErrorConfig = this["clientErrorHitsConfig"] ?: ""
-                put("dangerHitsConfig", "$dangerConfig\n    $cidrConfig\n    $clientErrorConfig")
-            }
+            val loggingReplacements = getLoggingReplacements("default_server")
 
             val finalContent = ResourceLoader.replacePlaceholders(
                 defaultServerTemplate, loggingReplacements
