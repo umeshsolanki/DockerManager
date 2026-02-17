@@ -25,9 +25,10 @@ fun Route.securityRoutes() {
                 val method = call.request.httpMethod.value
                 val status = call.request.header("X-Mirror-Status")?.toIntOrNull() ?: 403
                 
-                // Extract original path from the tail parameters
+                // Extract original path from headers (preferred) or tail parameters
+                val headerPath = call.request.header("X-Mirror-URI")
                 val pathParams = call.parameters.getAll("...") ?: emptyList()
-                val fullPath = if (pathParams.isEmpty()) "/" else "/" + pathParams.joinToString("/")
+                val fullPath = headerPath ?: (if (pathParams.isEmpty()) "/" else "/" + pathParams.joinToString("/"))
                 
                 // Extract all headers for analysis if needed
                 val headers = call.request.headers.entries().associate { it.key to it.value.joinToString(",") }
