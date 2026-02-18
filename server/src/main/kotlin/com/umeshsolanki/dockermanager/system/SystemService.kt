@@ -145,7 +145,7 @@ object SystemService {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineName("SystemService"))
 
     fun updateSystemConfig(request: UpdateSystemConfigRequest) {
-        // Fast updates: Save settings to disk/DB
+        // Persist all provided fields synchronously so they're saved immediately
         AppConfig.updateSettings(
             dockerSocket = request.dockerSocket,
             jamesWebAdminUrl = request.jamesWebAdminUrl,
@@ -153,7 +153,26 @@ object SystemService {
             dockerCliBuild = request.dockerCliBuild,
             autoStorageRefresh = request.autoStorageRefresh,
             autoStorageRefreshIntervalMinutes = request.autoStorageRefreshIntervalMinutes,
-            kafkaSettings = request.kafkaSettings
+            kafkaSettings = request.kafkaSettings,
+            dbPersistenceLogsEnabled = request.dbPersistenceLogsEnabled,
+            syslogEnabled = request.syslogEnabled,
+            syslogServer = request.syslogServer,
+            syslogServerInternal = request.syslogServerInternal,
+            syslogPort = request.syslogPort,
+            proxyRsyslogEnabled = request.proxyRsyslogEnabled,
+            proxyDualLoggingEnabled = request.proxyDualLoggingEnabled,
+            nginxLogDir = request.nginxLogDir,
+            logBufferingEnabled = request.logBufferingEnabled,
+            logBufferSizeKb = request.logBufferSizeKb,
+            logFlushIntervalSeconds = request.logFlushIntervalSeconds,
+            jailEnabled = request.jailEnabled,
+            jailThreshold = request.jailThreshold,
+            jailDurationMinutes = request.jailDurationMinutes,
+            exponentialJailEnabled = request.exponentialJailEnabled,
+            maxJailDurationMinutes = request.maxJailDurationMinutes,
+            proxyJailThresholdDanger = request.proxyJailThresholdDanger,
+            proxyJailThresholdBurst = request.proxyJailThresholdBurst,
+            proxyJailThresholdCidr = request.proxyJailThresholdCidr
         )
 
         if (request.jailEnabled != null || request.jailThreshold != null || request.jailDurationMinutes != null || 

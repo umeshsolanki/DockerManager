@@ -3,10 +3,12 @@ package com.umeshsolanki.dockermanager.database
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.postgresql.util.PSQLException
 import org.slf4j.LoggerFactory
 
 object DatabaseFactory {
@@ -37,7 +39,9 @@ object DatabaseFactory {
             driverClassName = "org.postgresql.Driver"
             maximumPoolSize = 10
             isAutoCommit = false
-            transactionIsolation = "TRANSACTION_REPEATABLE_READ"
+            // Use READ_COMMITTED to avoid "could not serialize access due to concurrent update"
+            // when multiple workers update the same ip_reputation row (analytics, mirror, etc.)
+            transactionIsolation = "TRANSACTION_READ_COMMITTED"
             validate()
         }
 
@@ -62,4 +66,32 @@ object DatabaseFactory {
 
     suspend fun <T> dbQuery(block: suspend () -> T): T =
         newSuspendedTransaction(Dispatchers.IO) { block() }
+
+    /**
+     * Runs a DB query with retry on serialization/deadlock failures.
+     * Use for high-concurrency ip_reputation updates (analytics, mirror, jail).
+     */
+    suspend fun <T> dbQueryWithRetry(
+        maxRetries: Int = 3,
+        baseDelayMs: Long = 50,
+        block: suspend () -> T
+    ): T {
+        var lastException: Exception? = null
+        for (attempt in 1..maxRetries) {
+            try {
+                return dbQuery(block)
+            } catch (e: Exception) {
+                lastException = e
+                val isRetryable = e is PSQLException && (
+                    e.message?.contains("could not serialize", ignoreCase = true) == true ||
+                    e.message?.contains("deadlock detected", ignoreCase = true) == true
+                )
+                if (!isRetryable || attempt == maxRetries) throw e
+                val delayMs = baseDelayMs * (1L shl (attempt - 1))
+                logger.warn("DB serialization/deadlock (attempt $attempt/$maxRetries), retrying in ${delayMs}ms: ${e.message}")
+                delay(delayMs)
+            }
+        }
+        throw lastException ?: RuntimeException("Unexpected retry exhaustion")
+    }
 }

@@ -130,6 +130,7 @@ object ServiceContainer {
         // This method can be used for any initialization logic if needed
         kafkaService.start(AppConfig.settings.kafkaSettings)
         ipEnrichmentWorker.start()
+        ipReputationService.start()
         ClickHouseService.start()
     }
 }

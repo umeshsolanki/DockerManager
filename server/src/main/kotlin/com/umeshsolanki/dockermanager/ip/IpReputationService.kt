@@ -1,13 +1,21 @@
 package com.umeshsolanki.dockermanager.ip
 
 import com.umeshsolanki.dockermanager.database.DatabaseFactory.dbQuery
+import com.umeshsolanki.dockermanager.database.DatabaseFactory.dbQueryWithRetry
 import com.umeshsolanki.dockermanager.database.IpReputationTable
 import com.umeshsolanki.dockermanager.database.IpReputation
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.slf4j.LoggerFactory
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import com.umeshsolanki.dockermanager.system.IpLookupService
@@ -17,6 +25,7 @@ import com.umeshsolanki.dockermanager.AppConfig
 import java.util.concurrent.ConcurrentHashMap
 
 interface IIpReputationService {
+    fun start()
     suspend fun getIpReputation(ip: String): IpReputation?
     suspend fun listIpReputations(limit: Int = 100, offset: Long = 0, search: String? = null): List<IpReputation>
     suspend fun recordActivity(ipAddress: String, countryCode: String? = null, isp: String? = null, tag: String? = null, range: String? = null, dangerTag: String? = null)
@@ -25,13 +34,30 @@ interface IIpReputationService {
     suspend fun deleteIpReputation(ipAddress: String): Boolean
 }
 
+private data class ActivityEntry(
+    val countryCode: String?,
+    val isp: String?,
+    val tag: String?,
+    val range: String?,
+    val dangerTag: String?
+)
+
 class IpReputationServiceImpl : IIpReputationService {
 
+    private val logger = LoggerFactory.getLogger(IpReputationServiceImpl::class.java)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val activityFlushLock = Any()
+    private var flushWorkerStarted = false
+
     companion object {
-        // Simple cache to debounce DB writes for activity updates (key: IP, value: last update timestamp)
+        // Cache to prevent re-processing same IP right after flush (key: IP, value: last flush timestamp)
         private val activityCache = ConcurrentHashMap<String, Long>()
         private const val ACTIVITY_CACHE_TTL_MS = 60_000L // 1 minute
         private const val MAX_CACHE_SIZE = 10_000
+        private const val FLUSH_INTERVAL_MS = 10_000L
+        private const val MAX_ACTIVITY_BUFFER_SIZE = 5_000
+
+        private val activityBuffer = ConcurrentHashMap<String, ActivityEntry>()
         
         private fun publishToKafka(event: IpReputationEvent) {
             try {
@@ -49,6 +75,24 @@ class IpReputationServiceImpl : IIpReputationService {
                 // Ignore kafka errors to not break core logic
             }
         }
+    }
+
+    override fun start() {
+        synchronized(activityFlushLock) {
+            if (flushWorkerStarted) return
+            flushWorkerStarted = true
+        }
+        scope.launch {
+            while (isActive) {
+                delay(FLUSH_INTERVAL_MS)
+                try {
+                    flushActivityBuffer()
+                } catch (e: Exception) {
+                    logger.error("Activity buffer flush failed", e)
+                }
+            }
+        }
+        logger.info("IpReputationService activity flush worker started")
     }
 
     override suspend fun getIpReputation(ip: String): IpReputation? = dbQuery {
@@ -85,100 +129,108 @@ class IpReputationServiceImpl : IIpReputationService {
     }
 
     override suspend fun recordActivity(ipAddress: String, countryCode: String?, isp: String?, tag: String?, range: String?, dangerTag: String?) {
-        val nowMs = System.currentTimeMillis()
-        
-        // Debounce: If updated recently, skip DB write
-        val lastUpdate = activityCache[ipAddress]
+        if (ipAddress.isBlank() || AppConfig.isLocalIP(ipAddress)) return
 
-        // Debounce: If updated recently, skip DB write
-        if (lastUpdate != null && (nowMs - lastUpdate) < ACTIVITY_CACHE_TTL_MS) {
-            return
-        }
+        val entry = ActivityEntry(countryCode, isp, tag, range, dangerTag)
+        activityBuffer[ipAddress] = entry
 
-        // Cleanup cache if too big
-        if (activityCache.size > MAX_CACHE_SIZE) {
-            activityCache.clear()
-        }
-        activityCache[ipAddress] = nowMs
-
-        dbQuery {
-            // Lookup IP info if missing
-            val lookupInfo = if (isp == null || tag == null || range == null) IpLookupService.lookup(ipAddress) else null
-            val resolvedIsp = isp ?: lookupInfo?.provider
-            val resolvedTag = tag ?: lookupInfo?.type
-            val resolvedRange = range ?: lookupInfo?.cidr
-            val resolvedCountry = countryCode ?: lookupInfo?.countryCode
-
-            val now = LocalDateTime.now()
-            
-            // Should read existing to merge tags
-            val existing = IpReputationTable.selectAll().where { IpReputationTable.ip eq ipAddress }.singleOrNull()
-
-            if (existing != null) {
-                val currentTags = existing[IpReputationTable.tag]
-                val newTags = mergeTags(currentTags, resolvedTag)
-
-                val currentDangerTags = existing[IpReputationTable.dangerTags]
-                val newDangerTags = if (dangerTag != null) mergeTags(currentDangerTags, dangerTag) else currentDangerTags
-
-                IpReputationTable.update({ IpReputationTable.ip eq ipAddress }) {
-                    it[lastActivity] = now
-                    it[flaggedTimes] = existing[IpReputationTable.flaggedTimes] + 1
-                    it[lastFlagged] = now
-                    if (existing[IpReputationTable.firstFlagged] == null) {
-                        it[firstFlagged] = now
-                    }
-                    resolvedCountry?.let { code -> it[country] = code }
-                    resolvedIsp?.let { v -> it[IpReputationTable.isp] = v }
-                    if (newTags != currentTags) {
-                         it[IpReputationTable.tag] = newTags
-                    }
-                    if (newDangerTags != currentDangerTags) {
-                        it[IpReputationTable.dangerTags] = newDangerTags ?: ""
-                    }
-                    resolvedRange?.let { v -> it[IpReputationTable.range] = v }
-                }
-            } else {
-                 try {
-                    IpReputationTable.insert {
-                        it[ip] = ipAddress
-                        it[firstObserved] = now
-                        it[lastActivity] = now
-                        it[flaggedTimes] = 1
-                        it[firstFlagged] = now
-                        it[lastFlagged] = now
-                        it[blockedTimes] = 0
-                        it[reasons] = ""
-                        it[country] = resolvedCountry
-                        it[IpReputationTable.isp] = resolvedIsp
-                        it[IpReputationTable.tag] = resolvedTag
-                        it[IpReputationTable.dangerTags] = dangerTag ?: ""
-                        it[IpReputationTable.range] = resolvedRange
-                    }
-                } catch (e: Exception) {
-                    // Handle race condition: inserted by another thread in the meantime
-                    // Just update activity in that case
-                    IpReputationTable.update({ IpReputationTable.ip eq ipAddress }) {
-                         it[lastActivity] = now
-                         resolvedCountry?.let { code -> it[country] = code }
-                    }
-                }
+        if (activityBuffer.size >= MAX_ACTIVITY_BUFFER_SIZE) {
+            scope.launch {
+                try { flushActivityBuffer() } catch (e: Exception) { logger.error("Emergency activity flush failed", e) }
             }
-            
-            // Publish to Kafka
-            publishToKafka(IpReputationEvent(
-                type = if (existing == null) "OBSERVED" else "ACTIVITY",
-                ip = ipAddress,
-                country = resolvedCountry,
-                isp = resolvedIsp,
-                flaggedTimes = if (existing == null) 1 else existing[IpReputationTable.flaggedTimes] + 1,
-                tags = (resolvedTag ?: "").split(",").filter { it.isNotBlank() },
-                dangerTags = (dangerTag ?: "").split(",").filter { it.isNotBlank() }
-            ))
         }
     }
 
-    override suspend fun recordBlock(ipAddress: String, reason: String, countryCode: String?, isp: String?, tag: String?, range: String?, dangerTag: String?, durationMinutes: Int) = dbQuery {
+    private suspend fun flushActivityBuffer() {
+        val snapshot = synchronized(activityFlushLock) {
+            if (activityBuffer.isEmpty()) return
+            val s = activityBuffer.toMap()
+            activityBuffer.clear()
+            s
+        }
+
+        if (snapshot.isEmpty()) return
+
+        dbQueryWithRetry {
+            val now = LocalDateTime.now()
+            for ((ipAddress, entry) in snapshot) {
+                try {
+                    processActivityForIp(ipAddress, entry, now)
+                } catch (e: Exception) {
+                    logger.warn("Failed to process activity for IP $ipAddress: ${e.message}")
+                }
+            }
+        }
+
+        val nowMs = System.currentTimeMillis()
+        snapshot.keys.forEach { activityCache[it] = nowMs }
+        if (activityCache.size > MAX_CACHE_SIZE) activityCache.clear()
+    }
+
+    private fun processActivityForIp(ipAddress: String, entry: ActivityEntry, now: LocalDateTime) {
+        val lookupInfo = if (entry.isp == null || entry.tag == null || entry.range == null) IpLookupService.lookup(ipAddress) else null
+        val resolvedIsp = entry.isp ?: lookupInfo?.provider
+        val resolvedTag = entry.tag ?: lookupInfo?.type
+        val resolvedRange = entry.range ?: lookupInfo?.cidr
+        val resolvedCountry = entry.countryCode ?: lookupInfo?.countryCode
+
+        val existing = IpReputationTable.selectAll().where { IpReputationTable.ip eq ipAddress }.singleOrNull()
+
+        if (existing != null) {
+            val currentTags = existing[IpReputationTable.tag]
+            val newTags = mergeTags(currentTags, resolvedTag)
+            val currentDangerTags = existing[IpReputationTable.dangerTags]
+            val newDangerTags = if (entry.dangerTag != null) mergeTags(currentDangerTags, entry.dangerTag) else currentDangerTags
+
+            IpReputationTable.update({ IpReputationTable.ip eq ipAddress }) {
+                it[lastActivity] = now
+                it[flaggedTimes] = existing[IpReputationTable.flaggedTimes] + 1
+                it[lastFlagged] = now
+                if (existing[IpReputationTable.firstFlagged] == null) it[firstFlagged] = now
+                resolvedCountry?.let { code -> it[country] = code }
+                resolvedIsp?.let { v -> it[IpReputationTable.isp] = v }
+                if (newTags != currentTags) it[IpReputationTable.tag] = newTags
+                if (newDangerTags != currentDangerTags) it[IpReputationTable.dangerTags] = newDangerTags ?: ""
+                resolvedRange?.let { v -> it[IpReputationTable.range] = v }
+            }
+            publishToKafka(IpReputationEvent(
+                type = "ACTIVITY", ip = ipAddress, country = resolvedCountry, isp = resolvedIsp,
+                flaggedTimes = existing[IpReputationTable.flaggedTimes] + 1,
+                tags = (resolvedTag ?: "").split(",").filter { it.isNotBlank() },
+                dangerTags = (entry.dangerTag ?: "").split(",").filter { it.isNotBlank() }
+            ))
+        } else {
+            try {
+                IpReputationTable.insert {
+                    it[ip] = ipAddress
+                    it[firstObserved] = now
+                    it[lastActivity] = now
+                    it[flaggedTimes] = 1
+                    it[firstFlagged] = now
+                    it[lastFlagged] = now
+                    it[blockedTimes] = 0
+                    it[reasons] = ""
+                    it[country] = resolvedCountry
+                    it[IpReputationTable.isp] = resolvedIsp
+                    it[IpReputationTable.tag] = resolvedTag
+                    it[IpReputationTable.dangerTags] = entry.dangerTag ?: ""
+                    it[IpReputationTable.range] = resolvedRange
+                }
+                publishToKafka(IpReputationEvent(
+                    type = "OBSERVED", ip = ipAddress, country = resolvedCountry, isp = resolvedIsp,
+                    flaggedTimes = 1, tags = (resolvedTag ?: "").split(",").filter { it.isNotBlank() },
+                    dangerTags = (entry.dangerTag ?: "").split(",").filter { it.isNotBlank() }
+                ))
+            } catch (e: Exception) {
+                IpReputationTable.update({ IpReputationTable.ip eq ipAddress }) {
+                    it[lastActivity] = now
+                    resolvedCountry?.let { code -> it[country] = code }
+                }
+            }
+        }
+    }
+
+    override suspend fun recordBlock(ipAddress: String, reason: String, countryCode: String?, isp: String?, tag: String?, range: String?, dangerTag: String?, durationMinutes: Int) = dbQueryWithRetry {
         val shortReason = reason.trim().take(64)
         val now = LocalDateTime.now()
         
@@ -288,7 +340,7 @@ class IpReputationServiceImpl : IIpReputationService {
     override suspend fun updateStats(stats: Map<String, Pair<Long, Long>>) {
         if (stats.isEmpty()) return
         
-        dbQuery {
+        dbQueryWithRetry {
             // Process each IP update
             val now = LocalDateTime.now()
             
