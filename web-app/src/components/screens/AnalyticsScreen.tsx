@@ -1,17 +1,16 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
     BarChart3, Activity, Globe, Server, User, Link2,
     RefreshCw, MousePointerClick, Zap, TrendingUp, Clock,
-    Network, Hash, ArrowUpRight, ArrowDownRight, Search,
-    Download, Filter, ChevronDown, ChevronUp, Calendar, Trash2, ShieldAlert
+    Network, Hash, Search, Download, ChevronDown, ChevronUp,
+    Trash2, ShieldAlert, X, ChevronRight
 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { ProxyStats, GenericHitEntry, DailyProxyStats, ProxyHit, ProxyActionResult } from '@/lib/types';
 import {
-    AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
-    BarChart, Bar, Cell, PieChart, Pie
+    AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { toast } from 'sonner';
 import { StatCard } from '../ui/StatCard';
@@ -58,6 +57,11 @@ export default function AnalyticsScreen() {
     const [isSecurityLogsLoading, setIsSecurityLogsLoading] = useState(false);
     const [securityLogsPage, setSecurityLogsPage] = useState(1);
     const [securityLogsSearch, setSecurityLogsSearch] = useState('');
+
+    // IP Drill-down State
+    const [selectedIp, setSelectedIp] = useState<string | null>(null);
+    const [ipDetailLogs, setIpDetailLogs] = useState<ProxyHit[]>([]);
+    const [isIpDetailLoading, setIsIpDetailLoading] = useState(false);
 
     // Theme-aware colors for charts
     const chartColors = useMemo(() => {
@@ -226,6 +230,30 @@ export default function AnalyticsScreen() {
             fetchSecurityLogs(1, securityLogsSearch);
         }
     }, [isSecurityLogsModalOpen, securityLogsSearch]);
+
+    const drillIntoIp = useCallback((ip: string) => {
+        setSelectedIp(ip);
+        setSearchQuery(ip);
+    }, []);
+
+    const clearIpDrill = useCallback(() => {
+        setSelectedIp(null);
+        setSearchQuery('');
+    }, []);
+
+    useEffect(() => {
+        if (!selectedIp) {
+            setIpDetailLogs([]);
+            return;
+        }
+        setIsIpDetailLoading(true);
+        DockerClient.getAnalyticsLogs('access', 1, 100, selectedIp, viewMode === 'history' ? selectedDate : undefined)
+            .then((logs) => {
+                setIpDetailLogs(logs.filter(h => h.ip === selectedIp));
+            })
+            .catch(() => setIpDetailLogs([]))
+            .finally(() => setIsIpDetailLoading(false));
+    }, [selectedIp, viewMode, selectedDate]);
 
     const filteredPaths = useMemo(() => {
         const source = (selectedHost !== 'global' && stats?.hostwiseStats?.[selectedHost])
@@ -724,7 +752,7 @@ export default function AnalyticsScreen() {
                                                 'bg-gray-500/20 text-gray-500 border-gray-500/30';
 
                                 return (
-                                    <div key={status} className={`p-4 rounded-xl border ${colorClass}`}>
+                                    <div key={status} className={`p-4 rounded-xl border ${colorClass} transition-transform hover:scale-[1.02]`}>
                                         <div className="text-2xl font-black">{status}</div>
                                         <div className="text-xs font-bold mt-1 opacity-80">{count.toLocaleString()}</div>
                                         <div className="text-[10px] font-medium mt-1 opacity-60">{percentage}%</div>
@@ -740,13 +768,137 @@ export default function AnalyticsScreen() {
                 </div>
             </div>
 
+            {/* IP Drill-down Banner */}
+            {selectedIp && (
+                <div className="flex items-center justify-between gap-4 p-4 bg-primary/10 border border-primary/20 rounded-2xl">
+                    <div className="flex items-center gap-3">
+                        <Network className="text-primary" size={22} />
+                        <div>
+                            <p className="text-xs font-bold text-on-surface-variant/70 uppercase tracking-wider">Drilling into</p>
+                            <p className="font-mono font-bold text-primary text-lg">{selectedIp}</p>
+                        </div>
+                        <button
+                            onClick={clearIpDrill}
+                            className="p-1.5 rounded-lg hover:bg-primary/20 text-primary transition-colors"
+                            title="Clear IP filter"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => { setSecurityLogsSearch(selectedIp); setIsSecurityLogsModalOpen(true); }}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 transition-all text-xs font-bold"
+                        >
+                            <ShieldAlert size={14} />
+                            View in Security Logs
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* IP Detail Panel - Activity & Logs */}
+            {selectedIp && (
+                <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[32px] overflow-hidden">
+                    <div className="px-6 py-4 border-b border-outline/5 flex items-center justify-between">
+                        <h3 className="text-lg font-bold flex items-center gap-2">
+                            <Network className="text-primary" size={20} />
+                            Activity for {selectedIp}
+                        </h3>
+                        {isIpDetailLoading && <RefreshCw className="animate-spin text-primary" size={18} />}
+                    </div>
+                    <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:col-span-2">
+                            <h4 className="text-xs font-bold uppercase text-on-surface-variant/60 mb-3">Recent requests</h4>
+                            <div className="max-h-[300px] overflow-y-auto border border-outline/10 rounded-xl custom-scrollbar">
+                                {ipDetailLogs.length > 0 ? (
+                                    <table className="w-full text-left text-xs">
+                                        <thead className="sticky top-0 bg-surface/90">
+                                            <tr>
+                                                <th className="px-3 py-2 font-bold text-on-surface-variant/60">Time</th>
+                                                <th className="px-3 py-2 font-bold text-on-surface-variant/60">Method</th>
+                                                <th className="px-3 py-2 font-bold text-on-surface-variant/60">Path</th>
+                                                <th className="px-3 py-2 font-bold text-on-surface-variant/60">Domain</th>
+                                                <th className="px-3 py-2 font-bold text-on-surface-variant/60 text-right">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-outline/5">
+                                            {ipDetailLogs.slice(0, 50).map((h, i) => (
+                                                <tr key={i} className="hover:bg-white/5">
+                                                    <td className="px-3 py-2 font-mono">{new Date(h.timestamp).toLocaleTimeString()}</td>
+                                                    <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${h.method === 'GET' ? 'bg-green-500/10 text-green-500' : h.method === 'POST' ? 'bg-blue-500/10 text-blue-500' : 'bg-purple-500/10 text-purple-500'}`}>{h.method}</span></td>
+                                                    <td className="px-3 py-2 truncate max-w-[200px]" title={h.path}>{h.path}</td>
+                                                    <td className="px-3 py-2 truncate max-w-[120px]">{h.domain ?? '-'}</td>
+                                                    <td className="px-3 py-2 text-right font-bold">{h.status}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                ) : isIpDetailLoading ? (
+                                    <div className="p-8 text-center text-on-surface-variant/60">Loading...</div>
+                                ) : (
+                                    <div className="p-8 text-center text-on-surface-variant/60">No access logs found for this IP in current view</div>
+                                )}
+                            </div>
+                        </div>
+                        <div>
+                            <h4 className="text-xs font-bold uppercase text-on-surface-variant/60 mb-3">Status distribution</h4>
+                            <div className="space-y-2">
+                                {Object.entries(
+                                    ipDetailLogs.reduce<Record<number, number>>((acc, h) => {
+                                        acc[h.status] = (acc[h.status] || 0) + 1;
+                                        return acc;
+                                    }, {})
+                                )
+                                    .sort(([a], [b]) => parseInt(String(a)) - parseInt(String(b)))
+                                    .map(([status, count]) => {
+                                        const s = parseInt(status);
+                                        const pct = ipDetailLogs.length > 0 ? ((count / ipDetailLogs.length) * 100).toFixed(0) : '0';
+                                        const color = s >= 500 ? 'bg-red-500/20 text-red-500' : s >= 400 ? 'bg-orange-500/20 text-orange-500' : s >= 300 ? 'bg-blue-500/20 text-blue-500' : 'bg-green-500/20 text-green-500';
+                                        return (
+                                            <div key={status} className={`flex justify-between items-center px-3 py-2 rounded-lg ${color}`}>
+                                                <span className="font-bold">{status}</span>
+                                                <span className="text-xs font-black">{count} ({pct}%)</span>
+                                            </div>
+                                        );
+                                    })}
+                                {ipDetailLogs.length === 0 && !isIpDetailLoading && (
+                                    <div className="text-center py-6 text-on-surface-variant/40 text-xs">No data</div>
+                                )}
+                            </div>
+                            <h4 className="text-xs font-bold uppercase text-on-surface-variant/60 mt-6 mb-3">Top paths</h4>
+                            <div className="space-y-2 max-h-[140px] overflow-y-auto">
+                                {Object.entries(
+                                    ipDetailLogs.reduce<Record<string, number>>((acc, h) => {
+                                        const path = h.path || '/';
+                                        acc[path] = (acc[path] || 0) + 1;
+                                        return acc;
+                                    }, {})
+                                )
+                                    .sort(([, a], [, b]) => b - a)
+                                    .slice(0, 8)
+                                    .map(([path, count]) => (
+                                        <div key={path} className="flex justify-between items-center text-xs py-1.5 px-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
+                                            <span className="truncate flex-1 pr-2" title={path}>{path}</span>
+                                            <span className="font-bold text-primary shrink-0">{count}</span>
+                                        </div>
+                                    ))}
+                                {ipDetailLogs.length === 0 && !isIpDetailLoading && (
+                                    <div className="text-center py-4 text-on-surface-variant/40 text-xs">No paths</div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Search and Filter Bar */}
             <div className="flex items-center gap-3">
                 <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={18} />
                     <input
                         type="text"
-                        placeholder="Search paths, IPs, domains..."
+                        placeholder={selectedIp ? `Filtering by ${selectedIp}` : "Search paths, IPs, domains..."}
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="w-full bg-surface border border-outline/10 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:border-primary transition-all"
@@ -791,7 +943,7 @@ export default function AnalyticsScreen() {
 
                 {/* Top Sources */}
                 <ExpandableStatsCard
-                    title={securityMode ? "Top Treat Actors" : "All Source IPs"}
+                    title={securityMode ? "Top Threat Actors" : "All Source IPs"}
                     icon={securityMode ? <ShieldAlert size={18} /> : <Network size={18} />}
                     items={filteredIps}
                     color="indigo"
@@ -801,6 +953,8 @@ export default function AnalyticsScreen() {
                     onToggle={() => setExpandedSections(prev => ({ ...prev, ips: !prev.ips }))}
                     itemsToShow={itemsToShow.ips}
                     onShowMore={() => setItemsToShow(prev => ({ ...prev, ips: prev.ips + 20 }))}
+                    onItemClick={drillIntoIp}
+                    clickableItemKeys={['ips']}
                 />
 
                 {/* Top Browsers/UAs */}
@@ -940,8 +1094,14 @@ export default function AnalyticsScreen() {
                                                     <span className="truncate">{hit.path}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-3 py-1.5 text-[9px] font-mono text-on-surface-variant">
-                                                {hit.ip}
+                                            <td className="px-3 py-1.5">
+                                                <button
+                                                    onClick={() => drillIntoIp(hit.ip)}
+                                                    className="text-[9px] font-mono text-on-surface-variant hover:text-primary transition-colors text-left"
+                                                    title="Drill into this IP"
+                                                >
+                                                    {hit.ip}
+                                                </button>
                                             </td>
                                             <td className="px-3 py-1.5 text-right font-mono text-[9px] text-on-surface-variant">
                                                 {hit.responseTime}ms
@@ -1009,7 +1169,15 @@ export default function AnalyticsScreen() {
                                             <td className="px-4 py-3 text-on-surface-variant whitespace-nowrap">
                                                 {new Date(log.timestamp).toLocaleString()}
                                             </td>
-                                            <td className="px-4 py-3 text-primary font-bold">{log.ip}</td>
+                                            <td className="px-4 py-3">
+                                                <button
+                                                    onClick={() => { drillIntoIp(log.ip); setIsSecurityLogsModalOpen(false); }}
+                                                    className="text-primary font-bold hover:underline text-left"
+                                                    title="Drill into this IP"
+                                                >
+                                                    {log.ip}
+                                                </button>
+                                            </td>
                                             <td className="px-4 py-3 text-on-surface truncate max-w-[120px]" title={log.domain}>{log.domain ?? '-'}</td>
                                             <td className="px-4 py-3">
                                                 <span className={`px-2 py-0.5 rounded text-[9px] font-black ${log.method === 'GET' ? 'bg-green-500/10 text-green-500' :
@@ -1095,6 +1263,8 @@ function ExpandableStatsCard({
     onToggle,
     itemsToShow,
     onShowMore,
+    onItemClick,
+    clickableItemKeys,
     className
 }: {
     title: string,
@@ -1107,6 +1277,8 @@ function ExpandableStatsCard({
     onToggle: () => void,
     itemsToShow: number,
     onShowMore: () => void,
+    onItemClick?: (label: string) => void,
+    clickableItemKeys?: string[],
     className?: string
 }) {
     const { theme } = useTheme();
@@ -1144,13 +1316,26 @@ function ExpandableStatsCard({
             </div>
             <div className={`space-y-4 flex-1 transition-all ${expanded ? 'max-h-[600px]' : 'max-h-[400px]'} overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-outline/20 scrollbar-track-transparent`}>
                 {displayedItems.length > 0 ? (
-                    displayedItems.map((item, i) => (
+                    displayedItems.map((item, i) => {
+                        const isClickable = onItemClick && clickableItemKeys?.includes(sectionKey);
+                        return (
                         <div key={i} className="group">
                             <div className="flex justify-between items-center mb-1.5 px-1 truncate">
                                 <div className="flex flex-col min-w-0 flex-1">
-                                    <span className="text-[11px] font-bold truncate pr-3 group-hover:text-on-surface transition-colors" title={item.label}>
-                                        {item.label}
-                                    </span>
+                                    {isClickable ? (
+                                        <button
+                                            onClick={() => onItemClick?.(item.label)}
+                                            className="text-[11px] font-bold truncate pr-3 text-left w-full hover:text-primary transition-colors flex items-center gap-1.5 group/btn"
+                                            title={`Click to drill into ${item.label}`}
+                                        >
+                                            <span className="truncate">{item.label}</span>
+                                            <ChevronRight size={10} className="opacity-0 group-hover/btn:opacity-100 shrink-0 text-primary" />
+                                        </button>
+                                    ) : (
+                                        <span className="text-[11px] font-bold truncate pr-3 group-hover:text-on-surface transition-colors" title={item.label}>
+                                            {item.label}
+                                        </span>
+                                    )}
                                     <span className="text-[8px] font-black uppercase text-on-surface-variant/40 tracking-wider font-mono">{item.sub}</span>
                                 </div>
                                 <span className="text-[10px] font-black text-on-surface-variant ml-2 shrink-0">{item.value?.toLocaleString()}</span>
@@ -1169,7 +1354,8 @@ function ExpandableStatsCard({
                                 />
                             </div>
                         </div>
-                    ))
+                        );
+                    })
                 ) : (
                     <div className="text-center py-8 text-on-surface-variant/60 text-sm">
                         No items found

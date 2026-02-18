@@ -12,7 +12,9 @@
 - **Normal traffic** (status 100–399, no violation): `access.log` (main format, JSON or standard).
 - **Suspicious traffic** (status ≥ 400 or path/UA violation): `security.log` (security_json format).
 
-rsyslog can read `security.log` and forward to `/security/mirror` (requires omhttp or similar).
+rsyslog can forward to `/security/mirror`:
+- **Nginx→syslog**: Nginx sends directly to rsyslog; rsyslog forwards via omhttp to `/security/mirror`.
+- **File-only**: Use `rsyslog-mirror.conf` (imfile reads `security.log` and POSTs each JSON line to `/security/mirror`).
 
 ## Nginx config (built by ProxyService)
 

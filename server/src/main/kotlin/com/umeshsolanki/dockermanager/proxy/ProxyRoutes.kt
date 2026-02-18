@@ -413,9 +413,10 @@ fun Route.securityMirrorRoutes() {
                         }
                     }
                 } else {
-                    // Single object
+                    // Single object (strip rsyslog prefix if present, e.g. "mmk: line 1: {...}")
+                    val jsonStr = trimmedBody.substring(trimmedBody.indexOf('{').takeIf { it >= 0 } ?: 0)
                     try {
-                        listOf(AppConfig.json.decodeFromString<NginxSecurityLog>(trimmedBody))
+                        listOf(AppConfig.json.decodeFromString<NginxSecurityLog>(jsonStr))
                     } catch (e: Exception) {
                         emptyList<NginxSecurityLog>()
                     }
@@ -424,14 +425,16 @@ fun Route.securityMirrorRoutes() {
                 if (lines.isNotEmpty()) {
                     lines.forEach { jsonLog ->
                         val ip = jsonLog.ip 
-                            ?: call.request.headers["X-Real-IP"] 
+                            ?: call.request.headers["X-Real-IP"]
+                            ?: call.request.headers["X-Forwarded-For"]?.split(",")?.firstOrNull()?.trim()
                             ?: call.request.local.remoteHost
                         
                         val reason = jsonLog.reason 
                             ?: call.request.headers["X-Mirror-Reason"] 
                             ?: "unknown"
                         
-                        val status = jsonLog.expected_st?.toIntOrNull() 
+                        val status = jsonLog.st?.toIntOrNull() 
+                            ?: jsonLog.expected_st?.toIntOrNull() 
                             ?: (call.request.headers["X-Mirror-Status"] ?: "0").toIntOrNull() 
                             ?: 0
                         
@@ -465,7 +468,9 @@ fun Route.securityMirrorRoutes() {
             }
 
             // Fallback for empty body or parsing failure (use headers)
-            val ip = call.request.headers["X-Real-IP"] ?: call.request.local.remoteHost
+            val ip = call.request.headers["X-Real-IP"]
+                ?: call.request.headers["X-Forwarded-For"]?.split(",")?.firstOrNull()?.trim()
+                ?: call.request.local.remoteHost
             val reason = call.request.headers["X-Mirror-Reason"] ?: "unknown"
             val status = (call.request.headers["X-Mirror-Status"] ?: "0").toIntOrNull() ?: 0
             val userAgent = call.request.headers["User-Agent"] ?: ""

@@ -35,7 +35,6 @@ fun Application.configureRouting() {
     routing {
         // API Routes
         authRoutes()
-        securityRoutes()
         securityMirrorRoutes()
 
         authenticate("auth-bearer") {

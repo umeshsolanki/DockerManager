@@ -512,8 +512,10 @@ class AnalyticsServiceImpl(
                                 if (status >= 400 || status == 0) {
                                     hitsByIpErrorMap.merge(ip, 1L, Long::plus)
                                     
-                                    // Trigger jail check for errors that might not have reached the mirror (like 400 Bad Request with empty URI)
-                                    if (status == 400) {
+                                    // When rsyslog is disabled, mirror never receives data - process all suspicious entries from logs.
+                                    // When rsyslog is enabled, mirror handles most; only 400 may miss mirror in edge cases.
+                                    val shouldJailFromLogs = !settings.proxyRsyslogEnabled || status == 400
+                                    if (shouldJailFromLogs) {
                                         jailManagerService.checkProxySecurityViolation(
                                             ip = ip,
                                             userAgent = ua,
