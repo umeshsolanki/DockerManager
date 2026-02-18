@@ -42,7 +42,7 @@ object ServiceContainer {
 
     val customPageService: ICustomPageService = CustomPageServiceImpl()
 
-    val proxyService: IProxyService = ProxyServiceImpl(jailManagerService, sslService)
+    val proxyService: IProxyService = ProxyServiceImpl(jailManagerService, sslService, kafkaService)
     
     init {
         kafkaService.registerHandler(object : KafkaMessageHandler {

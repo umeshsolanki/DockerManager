@@ -23,6 +23,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import com.umeshsolanki.dockermanager.kafka.IKafkaService
 
 // Service object for easy access
 object ProxyService {
@@ -209,6 +210,7 @@ interface IProxyService {
 class ProxyServiceImpl(
     private val jailManagerService: IJailManagerService,
     private val sslService: ISSLService,
+    private val kafkaService: IKafkaService,
 ) : IProxyService {
     private val logger = org.slf4j.LoggerFactory.getLogger(ProxyServiceImpl::class.java)
     private val configDir = AppConfig.nginxConfigDir
@@ -498,6 +500,33 @@ class ProxyServiceImpl(
                     status = status,
                     errorCount = 1L
                 )
+                
+                // Publish to Kafka if enabled
+                val settings = AppConfig.settings
+                if (settings.kafkaSettings.enabled) {
+                    try {
+                        val payload = buildJsonObject {
+                            put("ip", ip)
+                            put("userAgent", userAgent)
+                            put("method", method)
+                            put("path", path)
+                            put("status", status)
+                            put("headers", JsonObject(headers.mapValues { JsonPrimitive(it.value) }))
+                            body?.let { put("body", it) }
+                            put("timestamp", System.currentTimeMillis())
+                            put("type", "MIRROR_REQUEST")
+                        }.toString()
+                        
+                        kafkaService.publishMessage(
+                            settings.kafkaSettings,
+                            "proxy-mirrored-requests",
+                            ip, 
+                            payload
+                        )
+                    } catch (e: Exception) {
+                        logger.error("Failed to publish mirror request to Kafka", e)
+                    }
+                }
                 
                 logger.debug("Asynchronously processed security mirror ($status) for IP: $ip, Path: $path")
             } catch (e: Exception) {

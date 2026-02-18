@@ -51,10 +51,12 @@ export default function KafkaScreen() {
         }
     };
 
-    const fetchMessages = async (topic: string) => {
+    const [messageLimit, setMessageLimit] = useState(50);
+
+    const fetchMessages = async (topic: string, limit = messageLimit) => {
         setLoadingMessages(true);
         try {
-            const data = await DockerClient.getKafkaMessages(topic);
+            const data = await DockerClient.getKafkaMessages(topic, limit);
             setMessages(data);
         } catch (e) {
             console.error(e);
@@ -272,7 +274,8 @@ export default function KafkaScreen() {
                                         key={topic.name}
                                         onClick={() => {
                                             setSelectedTopic(topic.name);
-                                            fetchMessages(topic.name);
+                                            setMessageLimit(50);
+                                            fetchMessages(topic.name, 50);
                                         }}
                                         className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${selectedTopic === topic.name
                                             ? 'bg-primary text-primary-foreground shadow-md'
@@ -436,6 +439,22 @@ export default function KafkaScreen() {
                                                     </div>
                                                 </div>
                                             ))}
+
+                                            {!loadingMessages && messages.length >= messageLimit && (
+                                                <div className="pt-2 flex justify-center">
+                                                    <button
+                                                        onClick={() => {
+                                                            const newLimit = messageLimit + 50;
+                                                            setMessageLimit(newLimit);
+                                                            if (selectedTopic) fetchMessages(selectedTopic, newLimit);
+                                                        }}
+                                                        className="px-4 py-2 bg-surface hover:bg-surface-variant border border-outline/10 rounded-xl text-xs font-semibold text-on-surface-variant hover:text-primary transition-all flex items-center gap-2"
+                                                    >
+                                                        <RefreshCw size={14} />
+                                                        <span>Load More (Current: {messageLimit})</span>
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
