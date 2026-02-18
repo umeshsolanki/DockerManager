@@ -1,27 +1,25 @@
-# Security channel (suspicious traffic → rsyslog → /mirror/security)
+# Security channel (suspicious traffic → rsyslog → /security/mirror)
 
 ## Performance
 
-- **Conditional logging**: Normal and security logs use `if=$log_access` / `if=$log_security`; only one log line is written per request. `$redacted_query` is evaluated only when writing the security log line, not on every request.
-- **Buffering**: Both access and security logs use `buffer=` and `flush=` from configurable settings (`logBufferSizeKb`, `logFlushIntervalSeconds`) to batch writes and reduce I/O.
+- **Conditional logging**: Normal and security logs use `if=$log_access` / `if=$log_security`; only one log line is written per request. `$redacted_query` is evaluated only when writing the security log line.
+- **Buffering**: Both access and security logs use `buffer=` and `flush=` from settings (`logBufferSizeKb`, `logFlushIntervalSeconds`) when `logBufferingEnabled` is true.
 - **Single if in security-checks**: One combined `if` for path/UA violations to avoid extra nested location cost.
 - **Many map rules**: If `pathViolations`/`uaViolations` inject many entries, add `map_hash_bucket_size 128;` in `http {}` in nginx.conf.
 
 ## Overview
 
-- **Normal traffic** (status 100–399, no violation): `access.log` (main format).
-- **Suspicious traffic** (status ≥ 400 or path/UA violation): `security.log` (security_analysis format).
+- **Normal traffic** (status 100–399, no violation): `access.log` (main format, JSON or standard).
+- **Suspicious traffic** (status ≥ 400 or path/UA violation): `security.log` (security_json format).
 
-rsyslog should read `security.log` and forward to `/mirror/security`.
+rsyslog can read `security.log` and forward to `/security/mirror` (requires omhttp or similar).
 
-## Nginx main config placeholders
+## Nginx config (built by ProxyService)
 
-When building `nginx.conf`, set:
-
-| Placeholder | Source template | Notes |
-|-------------|------------------|--------|
-| `logFormatDefinition` | `log-format-definition.conf` | Defines `main` and `security_analysis` formats |
-| `loggingConfig` | `logging-config.conf` | access_log for access.log and security.log (conditional on `$log_access` / `$log_security`) |
+| Placeholder | Source | Notes |
+|-------------|--------|--------|
+| `logFormatDefinition` | `log-format-json.conf` or `log-format-standard.conf` + `log-format-security-json.conf` | Kotlin selects based on `jsonLoggingEnabled` |
+| `loggingConfig` | `standard-logging.conf` + Kotlin-built directives | `getAccessLogDirective()` injects buffer/flush from settings |
 | `securityMaps` | `security-maps.conf` | Requires `pathViolations`, `uaViolations`, `globalBurstZone` |
 
 ## Log paths (container)
@@ -29,15 +27,3 @@ When building `nginx.conf`, set:
 - Access: `/usr/local/openresty/nginx/logs/access.log`
 - Security: `/usr/local/openresty/nginx/logs/security.log`
 - Host mount: `$(nginxPath)/logs/` → container logs dir (see docker-compose).
-
-## rsyslog
-
-Configure rsyslog to read the security log and send to `/mirror/security` (file or remote). Example (host path):
-
-```
-# Input file (host path to proxy logs)
-input(type="imfile" File="<nginxPath>/logs/security.log" Tag="proxy-security")
-
-# Forward to /mirror/security
-if $programname == 'proxy-security' then /mirror/security/proxy-security.log
-```
