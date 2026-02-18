@@ -16,7 +16,7 @@ import {
     Server
 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { BtmpStats, ProxyStats, DockerContainer } from '@/lib/types';
+import { ProxyStats, DockerContainer } from '@/lib/types';
 import {
     AreaChart,
     Area,
@@ -29,7 +29,6 @@ import { RefreshCw } from 'lucide-react';
 
 export default function DashboardScreen() {
     const router = useRouter();
-    const [btmpStats, setBtmpStats] = useState<BtmpStats | null>(null);
     const [proxyStats, setProxyStats] = useState<ProxyStats | null>(null);
     const [containers, setContainers] = useState<DockerContainer[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -37,12 +36,11 @@ export default function DashboardScreen() {
     const fetchData = async () => {
         setIsLoading(true);
         try {
-            const [btmp, proxy, conts] = await Promise.all([
-                DockerClient.getBtmpStats(),
+            const [proxy, conts] = await Promise.all([
                 DockerClient.getProxyStats(),
                 DockerClient.listContainers()
             ]);
-            setBtmpStats(btmp);
+            setProxyStats(proxy);
             setProxyStats(proxy);
             setContainers(conts);
         } catch (e) {
@@ -91,12 +89,6 @@ export default function DashboardScreen() {
                     >
                         <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
                     </button>
-                    {btmpStats?.lastUpdated && (
-                        <div className="flex flex-col items-end">
-                            <span className="text-[8px] font-bold text-on-surface-variant/40 uppercase">Last Sync</span>
-                            <span className="text-[10px] font-mono text-on-surface-variant/60">{new Date(btmpStats.lastUpdated).toLocaleTimeString()}</span>
-                        </div>
-                    )}
                 </div>
             </header>
 
@@ -111,28 +103,19 @@ export default function DashboardScreen() {
                     onClick={() => navigateTo('Containers')}
                 />
                 <StatCard
-                    icon={<Shield size={20} />}
-                    label="Security"
-                    value={btmpStats?.totalFailedAttempts?.toString() || '0'}
-                    subValue={`${btmpStats?.jailedIps?.length || 0} Blocked`}
-                    color="red"
-                    onClick={() => navigateTo('Security')}
-                />
-                <StatCard
-                    icon={<MousePointerClick size={20} />}
-                    label="Hits"
+                    icon={<Globe size={20} />}
+                    label="Proxy"
                     value={proxyStats?.totalHits.toLocaleString() || '0'}
                     subValue="Total Traffic"
                     color="blue"
                     onClick={() => navigateTo('Analytics')}
                 />
                 <StatCard
-                    icon={<Zap size={20} />}
-                    label="Threats"
-                    value={btmpStats?.topIps?.length?.toString() || '0'}
-                    subValue="Unique Sources"
-                    color="orange"
-                    onClick={() => navigateTo('IP')}
+                    icon={<Server size={20} />}
+                    label="Status"
+                    value="Active"
+                    subValue="System Online"
+                    color="primary"
                 />
             </div>
 
@@ -196,85 +179,9 @@ export default function DashboardScreen() {
                     </div>
                 </div>
 
-                {/* Top Attackers List */}
-                <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[24px] p-5 flex flex-col gap-4">
-                    <div className="flex items-center justify-between">
-                        <div className="flex flex-col">
-                            <h3 className="text-sm font-bold flex items-center gap-2">
-                                <ShieldAlert size={16} className="text-red-400" />
-                                Threat Sources
-                            </h3>
-                            <span className="text-[9px] uppercase font-bold text-on-surface-variant/30 tracking-wider">Top attacking IPs</span>
-                        </div>
-                        <button
-                            onClick={() => navigateTo('IP')}
-                            className="p-1.5 hover:bg-white/5 rounded-lg text-on-surface-variant hover:text-primary transition-colors"
-                            title="View all IPs"
-                        >
-                            <ArrowRight size={16} />
-                        </button>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                        {btmpStats?.topIps?.slice(0, 4).map(({ ip, count, country }, i) => (
-                            <div
-                                key={ip}
-                                onClick={() => navigateTo('IP')}
-                                className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 group hover:border-red-500/20 hover:bg-red-500/5 transition-all cursor-pointer"
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-red-500/10 text-red-500 text-[10px] font-bold">
-                                        #{i + 1}
-                                    </div>
-                                    <div className="flex flex-col">
-                                        <span className="font-mono text-xs font-bold group-hover:text-red-400 transition-colors">{ip}</span>
-                                        {country && <span className="text-[8px] font-bold text-on-surface-variant/40">{country}</span>}
-                                    </div>
-                                </div>
-                                <div className="flex flex-col items-end">
-                                    <span className="text-xs font-black">{count}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* Recent Security Events */}
-                <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[24px] p-5 flex flex-col gap-4">
-                    <div className="flex items-center justify-between">
-                        <div className="flex flex-col">
-                            <h3 className="text-sm font-bold flex items-center gap-2">
-                                <Lock size={16} className="text-orange-400" />
-                                Security Feed
-                            </h3>
-                            <span className="text-[9px] uppercase font-bold text-on-surface-variant/30 tracking-wider">Latest auth failures</span>
-                        </div>
-                        <button
-                            onClick={() => navigateTo('Security')}
-                            className="p-1.5 hover:bg-white/5 rounded-lg text-on-surface-variant hover:text-primary transition-colors"
-                            title="View security logs"
-                        >
-                            <ArrowRight size={16} />
-                        </button>
-                    </div>
-                    <div className="space-y-2">
-                        {btmpStats?.recentFailures?.slice(0, 4).map((failure, i) => (
-                            <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
-                                <div className="p-1.5 rounded-lg bg-orange-500/10 text-orange-500">
-                                    <ShieldAlert size={14} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs font-bold truncate"><span className="text-primary">{failure.user}</span> Login Failed</span>
-                                        <span className="text-[9px] opacity-40 font-bold">{new Date(failure.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                    </div>
-                                    <p className="text-[9px] text-on-surface-variant/50 font-mono mt-0.5 truncate">{failure.ip}</p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
 
                 {/* Popular Proxy Paths */}
                 <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[24px] p-5 flex flex-col gap-4">

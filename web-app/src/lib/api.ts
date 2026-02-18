@@ -2,8 +2,8 @@ import {
     DockerContainer, DockerImage, ComposeFile, BatteryStatus, DockerSecret,
     DockerNetwork, DockerVolume, ContainerDetails, VolumeDetails, BackupResult,
     CreateContainerRequest, SaveComposeRequest, ComposeResult, SystemLog,
-    FirewallRule, BlockIPRequest, ProxyHost, PathRoute, ProxyHit, ProxyStats, DailyProxyStats, BtmpStats,
-    BtmpEntry, IptablesRule, SSLCertificate, DnsConfig, EmailDomain, EmailUser,
+    FirewallRule, BlockIPRequest, ProxyHost, PathRoute, ProxyHit, ProxyStats, DailyProxyStats,
+    IptablesRule, SSLCertificate, DnsConfig, EmailDomain, EmailUser,
     CreateEmailUserRequest, UpdateEmailUserPasswordRequest, SystemConfig,
     UpdateSystemConfigRequest, EmailMailbox, NetworkDetails, EmailTestRequest,
     EmailTestResult, AuthRequest, AuthResponse, UpdatePasswordRequest,
@@ -272,10 +272,6 @@ export const DockerClient = {
         return textReq(url);
     },
 
-    getBtmpStats: () => req<BtmpStats | null>('/logs/system/btmp-stats', {}, null),
-    refreshBtmpStats: () => req<BtmpStats | null>('/logs/system/btmp-stats/refresh', { method: 'POST' }, null),
-    updateAutoJailSettings: (e: boolean, t: number, d: number) => apiFetch(`/logs/system/btmp-stats/auto-jail?enabled=${e}&threshold=${t}&duration=${d}`, { method: 'POST' }).then(r => r.ok),
-    updateBtmpMonitoring: (a: boolean, i: number) => apiFetch(`/logs/system/btmp-stats/monitoring?active=${a}&interval=${i}`, { method: 'POST' }).then(r => r.ok),
 
 
     listFirewallRules: () => req<FirewallRule[]>('/firewall/rules', {}, []),
