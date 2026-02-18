@@ -1238,8 +1238,9 @@ class ProxyServiceImpl(
         val settings = AppConfig.settings
         val rsyslogEnabled = settings.proxyRsyslogEnabled
         val dualLogging = settings.proxyDualLoggingEnabled
-        val logFormat = "main" 
-        val syslogServer = "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
+        val logFormat = "main"
+        val syslogHost = (settings.syslogServerInternal ?: settings.syslogServer).takeIf { !it.isNullOrBlank() } ?: "127.0.0.1"
+        val syslogServer = "$syslogHost:${settings.syslogPort}"
         
         // Use a FIXED tag for syslog to avoid length issues, the domain is already in the log payload ($host)
         val fixedSyslogTag = "DockerManagerProxy"
@@ -1950,7 +1951,8 @@ class ProxyServiceImpl(
         }
 
         if (rsyslogEnabled) {
-            val syslogServer = "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
+            val syslogHost = (settings.syslogServerInternal ?: settings.syslogServer).takeIf { !it.isNullOrBlank() } ?: "127.0.0.1"
+            val syslogServer = "$syslogHost:${settings.syslogPort}"
             accessLogDirectives.add("access_log syslog:server=$syslogServer,tag=nginx_main_access,severity=info,nohostname main if=\$log_access;")
             accessLogDirectives.add("access_log syslog:server=$syslogServer,tag=nginx_main_sec,severity=notice,nohostname security_json if=\$log_security;")
             errorLogDirectives.add("error_log syslog:server=$syslogServer,tag=nginx_main_error,nohostname warn;")

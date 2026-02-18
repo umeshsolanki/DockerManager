@@ -219,12 +219,10 @@ object SystemService {
                 val syslogServerInternal = request.syslogServerInternal ?: AppConfig.settings.syslogServerInternal
                 val syslogEnabled = request.syslogEnabled ?: AppConfig.settings.syslogEnabled
                 
-                val syslogChanged = syslogPort != AppConfig.settings.syslogPort || 
-                                   syslogServer != AppConfig.settings.syslogServer || 
-                                   syslogServerInternal != AppConfig.settings.syslogServerInternal ||
-                                   syslogEnabled != AppConfig.settings.syslogEnabled
+                val syslogExplicitlyProvided = request.syslogPort != null || request.syslogServer != null ||
+                    request.syslogServerInternal != null || request.syslogEnabled != null
                 
-                if (syslogChanged) {
+                if (syslogExplicitlyProvided) {
                     AppConfig.updateSyslogSettings(syslogEnabled, syslogServer, syslogPort, syslogServerInternal)
                     ServiceContainer.proxyService.updateRsyslogSettings(
                         AppConfig.settings.proxyRsyslogEnabled,
