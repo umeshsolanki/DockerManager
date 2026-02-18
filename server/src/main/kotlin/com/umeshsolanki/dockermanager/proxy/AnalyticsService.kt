@@ -1333,9 +1333,12 @@ class AnalyticsServiceImpl(
             val timestamp = try {
                 logLineDateFormat.parse(ts).time
             } catch (_: Exception) {
-                try { java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(ts)?.time }
-                    ?: System.currentTimeMillis()
-                catch (_: Exception) { System.currentTimeMillis() }
+                try {
+                    java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(ts)?.time
+                        ?: System.currentTimeMillis()
+                } catch (_: Exception) {
+                    System.currentTimeMillis()
+                }
             }
             ProxyHit(
                 timestamp = timestamp,
