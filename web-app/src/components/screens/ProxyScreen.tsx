@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Globe, Plus, Search, RefreshCw, Trash2, Power, Server, ExternalLink, FileKey, Pencil, Layers, Database, Lock, Network, Activity, ShieldCheck, Copy, CheckCircle2, Calendar, Building2, AlertTriangle, FolderCode, Construction } from 'lucide-react';
+import { Globe, Plus, Search, RefreshCw, Trash2, Power, Server, ExternalLink, FileKey, Pencil, Layers, Database, Lock, Network, Activity, ShieldCheck, Copy, CheckCircle2, Calendar, Building2, AlertTriangle, FolderCode, Construction, Zap } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { ProxyHost, PathRoute, SSLCertificate, DnsConfig, CustomPage } from '@/lib/types';
 import { toast } from 'sonner';
@@ -506,6 +506,21 @@ export default function ProxyScreen() {
                                     </div>
                                 </div>
                             </div>
+
+                            <div className="bg-surface/30 backdrop-blur-md border border-white/5 rounded-2xl p-5 flex flex-col justify-center hover:border-primary/20 transition-all">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="p-2 rounded-lg bg-red-500/10 text-red-500">
+                                        <Zap size={20} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-bold text-on-surface">Global Burst Protection</h3>
+                                        <p className="text-xs text-on-surface-variant">Prevent DDoS attacks across all hosts</p>
+                                    </div>
+                                </div>
+                                <div className="scale-100 origin-top-left w-full">
+                                    <ProxyBurstProtectionToggle />
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -855,6 +870,141 @@ function RsyslogToggle() {
                     <div>
                         <p className="font-semibold text-sm text-on-surface">Local Standard Logging Only</p>
                         <p className="text-xs text-on-surface-variant">Store logs only in local /var/log/nginx files</p>
+                    </div>
+                </div>
+            </div>
+
+            {loading && <div className="text-xs text-center text-primary animate-pulse">Updating Nginx configuration...</div>}
+        </div>
+    );
+}
+
+function ProxyBurstProtectionToggle() {
+    const [config, setConfig] = useState<any>(null);
+    const [loading, setLoading] = useState(false);
+    const [editMode, setEditMode] = useState(false);
+    const [settings, setSettings] = useState({ rate: 10, burst: 10 });
+
+    useEffect(() => {
+        DockerClient.getProxySecuritySettings().then(c => {
+            setConfig(c);
+            if (c) {
+                setSettings({
+                    rate: c.proxyBurstProtectionRate || 10,
+                    burst: c.proxyBurstProtectionBurst || 10
+                });
+            }
+        });
+    }, []);
+
+    const handleUpdate = async (enabled: boolean, newSettings?: { rate: number, burst: number }) => {
+        setLoading(true);
+        try {
+            const currentSettings = newSettings || settings;
+            const result = await DockerClient.updateProxyBurstProtection(enabled, currentSettings.rate, currentSettings.burst);
+            if (result.success) {
+                toast.success('Burst protection settings updated');
+                const newConfig = await DockerClient.getProxySecuritySettings();
+                setConfig(newConfig);
+                setEditMode(false);
+            } else {
+                toast.error(result.message || 'Failed to update settings');
+            }
+        } catch (e) {
+            toast.error('Failed to update settings');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!config) return <div className="animate-pulse h-10 bg-surface/50 rounded-xl" />;
+
+    return (
+        <div className="flex flex-col gap-3">
+            <div
+                className={`p-4 rounded-xl border border-outline/10 transition-all ${config.proxyBurstProtectionEnabled ? 'bg-primary/10 border-primary/30 ring-1 ring-primary/30' : 'bg-surface/50 hover:bg-surface/80'}`}
+            >
+                <div className="flex items-center justify-between mb-2">
+                    <div
+                        className="flex items-center gap-3 cursor-pointer"
+                        onClick={() => !loading && handleUpdate(true)}
+                    >
+                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${config.proxyBurstProtectionEnabled ? 'border-primary bg-primary text-white' : 'border-outline/30'}`}>
+                            {config.proxyBurstProtectionEnabled && <div className="w-2 h-2 rounded-full bg-white" />}
+                        </div>
+                        <div>
+                            <p className="font-semibold text-sm text-on-surface">Enable Global Burst Protection</p>
+                            <p className="text-xs text-on-surface-variant">Limit requests across all hosts</p>
+                        </div>
+                    </div>
+                    {config.proxyBurstProtectionEnabled && (
+                        <button
+                            onClick={() => setEditMode(!editMode)}
+                            className="p-1 hover:bg-white/10 rounded-lg text-xs font-bold text-primary flex items-center gap-1"
+                        >
+                            <Pencil size={12} />
+                            {editMode ? 'Close' : 'Configure'}
+                        </button>
+                    )}
+                </div>
+
+                {config.proxyBurstProtectionEnabled && (
+                    <div className={`overflow-hidden transition-all ${editMode ? 'max-h-40 opacity-100 mt-3 pt-3 border-t border-white/5' : 'max-h-0 opacity-0'}`}>
+                        <div className="grid grid-cols-2 gap-3 mb-3">
+                            <div>
+                                <label className="text-[10px] uppercase font-bold text-on-surface-variant mb-1 block">Rate (req/s)</label>
+                                <input
+                                    type="number"
+                                    value={settings.rate}
+                                    onChange={(e) => setSettings({ ...settings, rate: parseInt(e.target.value) || 10 })}
+                                    className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-on-surface focus:outline-none focus:border-primary/50"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] uppercase font-bold text-on-surface-variant mb-1 block">Burst (queue)</label>
+                                <input
+                                    type="number"
+                                    value={settings.burst}
+                                    onChange={(e) => setSettings({ ...settings, burst: parseInt(e.target.value) || 10 })}
+                                    className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-on-surface focus:outline-none focus:border-primary/50"
+                                />
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => handleUpdate(true)}
+                            disabled={loading}
+                            className="w-full bg-primary/20 hover:bg-primary/30 text-primary text-xs font-bold py-1.5 rounded-lg transition-colors"
+                        >
+                            Apply Settings
+                        </button>
+                    </div>
+                )}
+
+                {config.proxyBurstProtectionEnabled && !editMode && (
+                    <div className="flex gap-4 mt-1 ml-8">
+                        <div className="text-xs text-on-surface-variant flex items-center gap-1">
+                            <Activity size={12} />
+                            <span>Limit: <b>{config.proxyBurstProtectionRate || 10}r/s</b></span>
+                        </div>
+                        <div className="text-xs text-on-surface-variant flex items-center gap-1">
+                            <Layers size={12} />
+                            <span>Burst: <b>{config.proxyBurstProtectionBurst || 10}</b></span>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <div
+                className={`p-4 rounded-xl border border-outline/10 transition-all cursor-pointer ${!config.proxyBurstProtectionEnabled ? 'bg-primary/10 border-primary/30 ring-1 ring-primary/30' : 'bg-surface/50 hover:bg-surface/80'}`}
+                onClick={() => !loading && handleUpdate(false)}
+            >
+                <div className="flex items-center gap-3">
+                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${!config.proxyBurstProtectionEnabled ? 'border-primary bg-primary text-white' : 'border-outline/30'}`}>
+                        {!config.proxyBurstProtectionEnabled && <div className="w-2 h-2 rounded-full bg-white" />}
+                    </div>
+                    <div>
+                        <p className="font-semibold text-sm text-on-surface">Disable Global Limits</p>
+                        <p className="text-xs text-on-surface-variant">No global rate limiting (per-host rules still apply)</p>
                     </div>
                 </div>
             </div>

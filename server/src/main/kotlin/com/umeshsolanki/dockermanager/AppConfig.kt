@@ -95,6 +95,9 @@ data class AppSettings(
     val proxyJailWindowMinutes: Int = 5,
     val proxyJailRules: List<ProxyJailRule> = emptyList(), // Default to empty, let admin configure
     val proxyDefaultReturn404: Boolean = false,
+    val proxyBurstProtectionEnabled: Boolean = false, // Default disabled to avoid breaking existing setups
+    val proxyBurstProtectionRate: Int = 10,  // Requests per second (global)
+    val proxyBurstProtectionBurst: Int = 10, // Burst allowed (global)
     
     // Redis Cache Configuration
     val redisConfig: RedisConfig = RedisConfig(),
@@ -448,6 +451,15 @@ object AppConfig {
     fun updateProxyDefaultBehavior(return404: Boolean) = synchronized(lock) {
         _settings = _settings.copy(
             proxyDefaultReturn404 = return404
+        )
+        saveSettings()
+    }
+
+    fun updateBurstProtectionSettings(enabled: Boolean, rate: Int? = null, burst: Int? = null) = synchronized(lock) {
+        _settings = _settings.copy(
+            proxyBurstProtectionEnabled = enabled,
+            proxyBurstProtectionRate = rate ?: _settings.proxyBurstProtectionRate,
+            proxyBurstProtectionBurst = burst ?: _settings.proxyBurstProtectionBurst
         )
         saveSettings()
     }

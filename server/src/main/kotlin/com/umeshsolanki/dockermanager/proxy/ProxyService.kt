@@ -111,6 +111,9 @@ object ProxyService {
     fun updateDangerProxySettings(enabled: Boolean, host: String?) =
         service.updateDangerProxySettings(enabled, host)
 
+    fun updateBurstProtectionSettings(enabled: Boolean, rate: Int? = null, burst: Int? = null) =
+        service.updateBurstProtectionSettings(enabled, rate, burst)
+
     fun getProxyLogs(hostId: String, type: String, lines: Int) =
         service.getProxyLogs(hostId, type, lines)
 
@@ -186,6 +189,7 @@ interface IProxyService {
     ): Pair<Boolean, String>
 
     fun updateDangerProxySettings(enabled: Boolean, host: String?): Pair<Boolean, String>
+    fun updateBurstProtectionSettings(enabled: Boolean, rate: Int? = null, burst: Int? = null): Pair<Boolean, String>
     fun regenerateAllHostConfigs(): Pair<Boolean, String>
     fun getProxyLogs(hostId: String, type: String, lines: Int): String
     fun processMirrorRequest(
@@ -412,6 +416,27 @@ class ProxyServiceImpl(
         } catch (e: Exception) {
             logger.error("Failed to update danger proxy settings", e)
             false to "Internal error updating danger settings: ${e.message}"
+        }
+    }
+
+    override fun updateBurstProtectionSettings(enabled: Boolean, rate: Int?, burst: Int?): Pair<Boolean, String> {
+        return try {
+            AppConfig.updateBurstProtectionSettings(enabled, rate, burst)
+            ensureNginxMainConfig(forceOverwrite = true)
+            ensureDefaultServer()
+            regenerateAllHostConfigs()
+
+            val reloadResult = reloadNginx()
+            if (!reloadResult.first) {
+                if (reloadResult.second.contains("Proxy container is not running", ignoreCase = true)) {
+                    return true to "Burst protection settings saved (Proxy not running)"
+                }
+                return false to "Settings saved but failed to reload Nginx: ${reloadResult.second}"
+            }
+            true to "Burst protection settings updated successfully"
+        } catch (e: Exception) {
+            logger.error("Failed to update burst protection settings", e)
+            false to "Internal error: ${e.message}"
         }
     }
 
@@ -1247,7 +1272,8 @@ class ProxyServiceImpl(
              ))
 
              val checksSnippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                 "securityLoggingDirectives" to securityLoggingDirectives.joinToString("\n    ")
+                 "securityLoggingDirectives" to securityLoggingDirectives.joinToString("\n    "),
+                 "globalBurstLimit" to if (settings.proxyBurstProtectionEnabled) "limit_req zone=global_burst burst=${settings.proxyBurstProtectionBurst} nodelay;" else ""
              ))
              
              // Combine checks and mirror
@@ -2003,6 +2029,12 @@ class ProxyServiceImpl(
         securityMaps.append("        default \$args;\n")
         securityMaps.append("        ~^(.*)token=[^&]*(.*)$ \$1token=REDACTED\$2;\n")
         securityMaps.append("    }\n\n")
+
+        // Global Burst Protection Zone
+        if (settings.proxyBurstProtectionEnabled) {
+            val rate = settings.proxyBurstProtectionRate
+            securityMaps.append("    limit_req_zone \$binary_remote_addr zone=global_burst:10m rate=${rate}r/s;\n")
+        }
 
         return ResourceLoader.replacePlaceholders(
             template, mapOf(

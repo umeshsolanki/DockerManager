@@ -8,6 +8,7 @@ interface IComposeService {
     fun listComposeFiles(): List<ComposeFile>
     fun composeUp(filePath: String): ComposeResult
     fun composeDown(filePath: String, removeVolumes: Boolean = false): ComposeResult
+    fun composeRestart(filePath: String): ComposeResult
     fun composeBuild(filePath: String): ComposeResult
     fun saveComposeFile(name: String, content: String): Boolean
     fun saveProjectFile(projectName: String, fileName: String, content: String): Boolean
@@ -248,6 +249,17 @@ class ComposeServiceImpl : IComposeService {
         } catch (e: Exception) {
             logger.error("Error in compose down for $filePath", e)
             ComposeResult(false, e.message ?: "Unknown error")
+        }
+    }
+
+    override fun composeRestart(filePath: String): ComposeResult {
+        return try {
+            val file = File(filePath)
+            if (!file.exists()) return ComposeResult(false, "File not found: $filePath")
+            runComposeCommand(listOf("-f", filePath, "restart"), file.parentFile)
+        } catch (e: Exception) {
+            logger.error("Error in compose restart for $filePath", e)
+            ComposeResult(false, "Error: ${e.message}")
         }
     }
 

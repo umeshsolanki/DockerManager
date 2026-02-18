@@ -46,6 +46,7 @@ object DockerService {
     fun composeUp(filePath: String) = composeService.composeUp(filePath)
     fun composeDown(filePath: String, removeVolumes: Boolean = false) = composeService.composeDown(filePath, removeVolumes)
     fun composeBuild(filePath: String) = composeService.composeBuild(filePath)
+    fun composeRestart(filePath: String) = composeService.composeRestart(filePath)
     fun saveComposeFile(name: String, content: String) = composeService.saveComposeFile(name, content)
     fun saveProjectFile(projectName: String, fileName: String, content: String) = composeService.saveProjectFile(projectName, fileName, content)
     fun getComposeFileContent(filePath: String) = composeService.getComposeFileContent(filePath)

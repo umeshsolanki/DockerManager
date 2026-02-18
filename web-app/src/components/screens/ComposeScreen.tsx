@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Search, RefreshCw, Folder, Play, Square, Plus, Edit2, X, Save, FileCode, Wand2, Archive, Upload, Layers, Trash2, Server, Activity, CheckCircle, XCircle, AlertCircle, RotateCw, Power, Hammer } from 'lucide-react';
+import { Search, RefreshCw, Folder, Play, Square, Plus, Edit2, X, Save, FileCode, Wand2, Archive, Upload, Layers, Trash2, Server, Activity, CheckCircle, XCircle, AlertCircle, RotateCw, Power, Hammer, MoreVertical } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { SearchInput } from '../ui/SearchInput';
 import { ComposeFile, SaveComposeRequest, DockerStack, StackService, StackTask, DeployStackRequest } from '@/lib/types';
@@ -29,6 +29,14 @@ export default function ComposeScreen() {
     const [isDeployModalOpen, setIsDeployModalOpen] = useState(false);
     const [deployStackName, setDeployStackName] = useState('');
     const [deployComposeFile, setDeployComposeFile] = useState('');
+    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+    // Close menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = () => setOpenMenuId(null);
+        window.addEventListener('click', handleClickOutside);
+        return () => window.removeEventListener('click', handleClickOutside);
+    }, []);
 
     const fetchComposeFiles = async () => {
         setIsLoading(true);
@@ -454,7 +462,7 @@ export default function ComposeScreen() {
                         No compose files found
                     </div>
                 ) : (
-                    <div className="bg-surface/30 border border-outline/10 rounded-xl overflow-hidden divide-y divide-outline/5">
+                    <div className="bg-surface/30 border border-outline/10 rounded-xl overflow-visible divide-y divide-outline/5">
                         {filteredFiles.map(file => (
                             <div key={file.path} className="p-3 flex flex-col md:flex-row md:items-center justify-between hover:bg-white/[0.02] transition-colors group gap-4">
                                 <div className="flex items-center gap-3 min-w-0">
@@ -566,56 +574,86 @@ export default function ComposeScreen() {
                                         >
                                             <Hammer size={16} />
                                         </button>
-                                        <button
-                                            onClick={() => {
-                                                const stackName = prompt('Enter stack name:', file.name);
-                                                if (stackName) {
-                                                    handleAction(() => DockerClient.deployStack({
-                                                        stackName: stackName.trim(),
-                                                        composeFile: file.path
-                                                    }));
-                                                }
-                                            }}
-                                            className="p-1.5 hover:bg-indigo-500/10 text-indigo-500 rounded-lg transition-colors"
-                                            title="Deploy as Stack"
-                                        >
-                                            <Layers size={14} />
-                                        </button>
-                                        <button
-                                            onClick={async () => {
-                                                const stackName = prompt('Enter stack name for migration:', file.name);
-                                                if (!stackName) return;
 
-                                                if (!confirm(`Migrate "${file.name}" from Compose to Stack "${stackName}"?\n\nThis will:\n1. Stop the current compose project\n2. Deploy it as a Docker stack`)) {
-                                                    return;
-                                                }
+                                        <div className="relative">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setOpenMenuId(openMenuId === file.path ? null : file.path);
+                                                }}
+                                                className={`p-1.5 rounded-lg transition-colors ${openMenuId === file.path ? 'bg-primary/20 text-primary' : 'hover:bg-white/10 text-on-surface-variant'}`}
+                                                title="More Actions"
+                                            >
+                                                <MoreVertical size={16} />
+                                            </button>
 
-                                                setIsLoading(true);
-                                                try {
-                                                    const result = await DockerClient.migrateComposeToStack({
-                                                        composeFile: file.path,
-                                                        stackName: stackName.trim()
-                                                    });
-                                                    if (result.success) {
-                                                        toast.success(result.message || 'Successfully migrated to stack');
-                                                        await fetchComposeFiles();
-                                                        await fetchStacks();
-                                                    } else {
-                                                        toast.error(result.message || 'Failed to migrate');
-                                                    }
-                                                } catch (e) {
-                                                    toast.error('Failed to migrate compose to stack');
-                                                } finally {
-                                                    setIsLoading(false);
-                                                }
-                                            }}
-                                            className="p-1.5 hover:bg-purple-500/10 text-purple-500 rounded-lg transition-colors"
-                                            title="Migrate to Stack"
-                                        >
-                                            <Activity size={14} />
-                                        </button>
+                                            {openMenuId === file.path && (
+                                                <div
+                                                    className="absolute right-0 top-full mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-xl shadow-xl z-50 overflow-hidden py-1 animate-in fade-in zoom-in-95 duration-200"
+                                                    onClick={e => e.stopPropagation()}
+                                                >
+                                                    <button
+                                                        onClick={() => {
+                                                            setOpenMenuId(null);
+                                                            const stackName = prompt('Enter stack name:', file.name);
+                                                            if (stackName) {
+                                                                handleAction(() => DockerClient.deployStack({
+                                                                    stackName: stackName.trim(),
+                                                                    composeFile: file.path
+                                                                }));
+                                                            }
+                                                        }}
+                                                        className="w-full text-left px-3 py-2 hover:bg-white/5 text-xs font-bold text-indigo-400 flex items-center gap-2"
+                                                    >
+                                                        <Layers size={14} />
+                                                        Deploy as Stack
+                                                    </button>
+                                                    <button
+                                                        onClick={async () => {
+                                                            setOpenMenuId(null);
+                                                            const stackName = prompt('Enter stack name for migration:', file.name);
+                                                            if (!stackName) return;
+
+                                                            if (!confirm(`Migrate "${file.name}" from Compose to Stack "${stackName}"?\n\nThis will:\n1. Stop the current compose project\n2. Deploy it as a Docker stack`)) {
+                                                                return;
+                                                            }
+
+                                                            setIsLoading(true);
+                                                            try {
+                                                                const result = await DockerClient.migrateComposeToStack({
+                                                                    composeFile: file.path,
+                                                                    stackName: stackName.trim()
+                                                                });
+                                                                if (result.success) {
+                                                                    toast.success(result.message || 'Successfully migrated to stack');
+                                                                    await fetchComposeFiles();
+                                                                    await fetchStacks();
+                                                                } else {
+                                                                    toast.error(result.message || 'Failed to migrate');
+                                                                }
+                                                            } catch (e) {
+                                                                toast.error('Failed to migrate compose to stack');
+                                                            } finally {
+                                                                setIsLoading(false);
+                                                            }
+                                                        }}
+                                                        className="w-full text-left px-3 py-2 hover:bg-white/5 text-xs font-bold text-purple-400 flex items-center gap-2"
+                                                    >
+                                                        <Activity size={14} />
+                                                        Migrate to Stack
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                     <div className="w-px h-6 bg-outline/10 mx-1" />
+                                    <button
+                                        onClick={() => handleAction(() => DockerClient.composeRestart(file.path))}
+                                        className="p-1.5 hover:bg-blue-500/10 text-blue-500 rounded-lg transition-colors"
+                                        title="Restart"
+                                    >
+                                        <RotateCw size={14} />
+                                    </button>
                                     <button
                                         onClick={() => handleAction(() => DockerClient.composeDown(file.path))}
                                         className="p-1.5 hover:bg-red-500/10 text-red-500 rounded-lg transition-colors"

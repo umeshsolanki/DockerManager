@@ -267,6 +267,15 @@ fun Route.proxyRoutes() {
             call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.InternalServerError)
         }
 
+        post("/settings/burst-protection") {
+            val request = call.receive<Map<String, String>>()
+            val enabled = request["enabled"]?.toBoolean() ?: false
+            val rate = request["rate"]?.toIntOrNull()
+            val burst = request["burst"]?.toIntOrNull()
+            val result = ProxyService.updateBurstProtectionSettings(enabled, rate, burst)
+            call.respondPairResult(result, HttpStatusCode.OK, HttpStatusCode.InternalServerError)
+        }
+
         post("/settings/logging") {
             val request = call.receive<Map<String, String>>()
             val dbPersistence = request["dbPersistenceLogsEnabled"]?.toBoolean()

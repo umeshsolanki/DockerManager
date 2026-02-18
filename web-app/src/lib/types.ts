@@ -601,6 +601,9 @@ export interface SystemConfig {
   proxyJailWindowMinutes: number;
   proxyJailRules: ProxyJailRule[];
   proxyDefaultReturn404: boolean;
+  proxyBurstProtectionEnabled?: boolean;
+  proxyBurstProtectionRate?: number;
+  proxyBurstProtectionBurst?: number;
   storageBackend: string;
   dockerBuildKit: boolean;
   dockerCliBuild: boolean;

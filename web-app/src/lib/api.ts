@@ -165,6 +165,7 @@ export const DockerClient = {
     composeUp: (path: string) => req<ComposeResult | null>(`/compose/up?file=${encodeURIComponent(path)}`, { method: 'POST' }, null),
     composeBuild: (path: string) => req<ComposeResult | null>(`/compose/build?file=${encodeURIComponent(path)}`, { method: 'POST' }, null),
     composeDown: (path: string) => req<ComposeResult | null>(`/compose/down?file=${encodeURIComponent(path)}`, { method: 'POST' }, null),
+    composeRestart: (path: string) => req<ComposeResult | null>(`/compose/restart?file=${encodeURIComponent(path)}`, { method: 'POST' }, null),
     saveComposeFile: (body: SaveComposeRequest) => apiFetch('/compose/save', { method: 'POST', body: JSON.stringify(body) }).then(r => r.ok),
     saveProjectFile: (body: SaveProjectFileRequest) => apiFetch('/compose/save-file', { method: 'POST', body: JSON.stringify(body) }).then(r => r.ok),
     getComposeFileContent: (path: string) => textReq(`/compose/content?file=${encodeURIComponent(path)}`),
@@ -362,6 +363,13 @@ export const DockerClient = {
     updateProxySecuritySettings: (body: Partial<SystemConfig>) => safeReq('/proxy/security/settings', { method: 'POST', body: JSON.stringify(body) }),
     updateProxyDefaultBehavior: (return404: boolean) => safeReq('/proxy/settings/default-behavior', { method: 'POST', body: JSON.stringify({ return404 }) }),
     updateProxyRsyslogSettings: (enabled: boolean) => safeReq('/proxy/settings/rsyslog', { method: 'POST', body: JSON.stringify({ enabled }) }),
+    updateProxyBurstProtection: (enabled: boolean, rate?: number, burst?: number) => safeReq('/proxy/settings/burst-protection', {
+        method: 'POST', body: JSON.stringify({
+            enabled: String(enabled),
+            rate: rate ? String(rate) : undefined,
+            burst: burst ? String(burst) : undefined
+        })
+    }),
     listProxyCertificates: () => req<SSLCertificate[]>('/proxy/certificates', {}, []),
 
     // DNS Config Management

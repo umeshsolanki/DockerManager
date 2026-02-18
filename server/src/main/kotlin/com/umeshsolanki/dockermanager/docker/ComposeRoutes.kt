@@ -25,6 +25,12 @@ fun Route.composeRoutes() {
             call.respond(result)
         }
 
+        post("/restart") {
+            val file = call.request.queryParameters["file"] ?: return@post call.respondText("Missing File Path", status = HttpStatusCode.BadRequest)
+            val result = DockerService.composeRestart(file)
+            call.respond(result)
+        }
+
         post("/build") {
             val file = call.request.queryParameters["file"] ?: return@post call.respondText("Missing File Path", status = HttpStatusCode.BadRequest)
             val result = DockerService.composeBuild(file)
