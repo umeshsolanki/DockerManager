@@ -191,11 +191,27 @@ export default function AnalyticsScreen() {
     const fetchSecurityLogs = async (page = 1, search = '') => {
         setIsSecurityLogsLoading(true);
         try {
-            const logs = await DockerClient.getAnalyticsLogs('security', page, 50, search, viewMode === 'history' ? selectedDate : undefined);
+            const [logFileEntries, mirrorEntries] = await Promise.all([
+                DockerClient.getAnalyticsLogs('security', page, 50, search, viewMode === 'history' ? selectedDate : undefined),
+                page === 1 && viewMode === 'today' ? DockerClient.getSecurityMirrors(100) : Promise.resolve([] as ProxyHit[])
+            ]);
+            let merged: ProxyHit[] = logFileEntries;
+            if (page === 1 && mirrorEntries.length > 0) {
+                const filteredMirror = search
+                    ? mirrorEntries.filter(
+                        (m) =>
+                            m.ip?.toLowerCase().includes(search.toLowerCase()) ||
+                            m.path?.toLowerCase().includes(search.toLowerCase()) ||
+                            m.domain?.toLowerCase().includes(search.toLowerCase()) ||
+                            m.violationReason?.toLowerCase().includes(search.toLowerCase())
+                    )
+                    : mirrorEntries;
+                merged = [...filteredMirror, ...logFileEntries].sort((a, b) => b.timestamp - a.timestamp);
+            }
             if (page === 1) {
-                setSecurityLogs(logs);
+                setSecurityLogs(merged);
             } else {
-                setSecurityLogs(prev => [...prev, ...logs]);
+                setSecurityLogs(prev => [...prev, ...logFileEntries]);
             }
             setSecurityLogsPage(page);
         } catch (e) {
@@ -942,7 +958,7 @@ export default function AnalyticsScreen() {
             {isSecurityLogsModalOpen && (
                 <Modal
                     onClose={() => setIsSecurityLogsModalOpen(false)}
-                    title="Security Mirror Logs"
+                    title="Security Logs"
                     icon={<ShieldAlert className="text-red-500" size={24} />}
                     maxWidth="max-w-6xl"
                     headerActions={
@@ -961,7 +977,7 @@ export default function AnalyticsScreen() {
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40" size={16} />
                                 <input
                                     type="text"
-                                    placeholder="Search by IP, Path or Domain..."
+                                    placeholder="Search by IP, path, domain or violation reason..."
                                     value={securityLogsSearch}
                                     onChange={(e) => setSecurityLogsSearch(e.target.value)}
                                     className="w-full bg-white/5 border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-red-500/50 transition-all font-medium"
@@ -983,6 +999,7 @@ export default function AnalyticsScreen() {
                                         <th className="px-4 py-3 text-[10px] uppercase font-bold text-on-surface-variant/50">Domain</th>
                                         <th className="px-4 py-3 text-[10px] uppercase font-bold text-on-surface-variant/50">Method</th>
                                         <th className="px-4 py-3 text-[10px] uppercase font-bold text-on-surface-variant/50">Path</th>
+                                        <th className="px-4 py-3 text-[10px] uppercase font-bold text-on-surface-variant/50">Reason</th>
                                         <th className="px-4 py-3 text-[10px] uppercase font-bold text-on-surface-variant/50 text-right">Status</th>
                                     </tr>
                                 </thead>
@@ -993,23 +1010,39 @@ export default function AnalyticsScreen() {
                                                 {new Date(log.timestamp).toLocaleString()}
                                             </td>
                                             <td className="px-4 py-3 text-primary font-bold">{log.ip}</td>
-                                            <td className="px-4 py-3 text-on-surface truncate max-w-[150px]" title={log.domain}>{log.domain}</td>
+                                            <td className="px-4 py-3 text-on-surface truncate max-w-[120px]" title={log.domain}>{log.domain ?? '-'}</td>
                                             <td className="px-4 py-3">
                                                 <span className={`px-2 py-0.5 rounded text-[9px] font-black ${log.method === 'GET' ? 'bg-green-500/10 text-green-500' :
                                                     log.method === 'POST' ? 'bg-blue-500/10 text-blue-500' :
                                                         'bg-purple-500/10 text-purple-500'
-                                                    }`}>
+                                                }`}>
                                                     {log.method}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-3 text-on-surface-variant truncate max-w-[200px]" title={log.path}>
+                                            <td className="px-4 py-3 text-on-surface-variant truncate max-w-[180px]" title={log.path}>
                                                 {log.path}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    {log.source === 'mirror' && (
+                                                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-amber-500/20 text-amber-500 shrink-0">
+                                                            Live
+                                                        </span>
+                                                    )}
+                                                    {log.violationReason ? (
+                                                        <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-red-500/10 text-red-500" title={log.violationReason}>
+                                                            {log.violationReason.length > 16 ? log.violationReason.slice(0, 16) + '…' : log.violationReason}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-on-surface-variant/40">—</span>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="px-4 py-3 text-right">
                                                 <span className={`font-black ${log.status.toString().startsWith('2') ? 'text-green-500' :
                                                     log.status.toString().startsWith('4') ? 'text-orange-500' :
                                                         'text-red-500'
-                                                    }`}>
+                                                }`}>
                                                     {log.status}
                                                 </span>
                                             </td>
@@ -1017,7 +1050,7 @@ export default function AnalyticsScreen() {
                                     ))}
                                     {securityLogs.length === 0 && !isSecurityLogsLoading && (
                                         <tr>
-                                            <td colSpan={6} className="px-4 py-20 text-center text-on-surface-variant/40 italic">
+                                            <td colSpan={7} className="px-4 py-20 text-center text-on-surface-variant/40 italic">
                                                 No security mirror hits found matching your criteria
                                             </td>
                                         </tr>

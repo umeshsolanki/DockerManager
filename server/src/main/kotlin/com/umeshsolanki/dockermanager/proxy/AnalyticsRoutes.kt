@@ -86,6 +86,12 @@ fun Route.analyticsRoutes() {
             }
         }
         
+        // Security mirror stream (real-time from /security/mirror route)
+        get("/security/mirrors") {
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 100
+            call.respond(AnalyticsService.getRecentMirrorRequests(limit))
+        }
+
         // Log Browsing
         get("/logs") {
             val type = call.request.queryParameters["type"] ?: "access"

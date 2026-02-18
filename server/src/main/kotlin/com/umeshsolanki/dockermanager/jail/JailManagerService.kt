@@ -326,6 +326,27 @@ class JailManagerServiceImpl(
         val secSettings = AppConfig.settings
         if (!secSettings.proxyJailEnabled) return
         
+        // Ignore common assets for 404 jailing noise reduction
+        if (status == 404) {
+            val ignorePatterns = secSettings.proxyJailIgnore404Patterns
+            val lowerPath = path.lowercase()
+            
+            val isIgnorable = ignorePatterns.any { pattern ->
+                val lowerPattern = pattern.lowercase()
+                when {
+                    lowerPattern.startsWith("/") -> lowerPath.startsWith(lowerPattern)
+                    lowerPattern.endsWith("/") -> lowerPath.contains(lowerPattern)
+                    lowerPattern.startsWith(".") -> lowerPath.endsWith(lowerPattern)
+                    else -> lowerPath.endsWith("/$lowerPattern") || lowerPath == lowerPattern
+                }
+            }
+                             
+            if (isIgnorable) {
+                logger.debug("Ignoring 404 for configured ignorable asset: $path")
+                return
+            }
+        }
+
         // Check if already jailed
         if (isIPJailed(ip)) return
         

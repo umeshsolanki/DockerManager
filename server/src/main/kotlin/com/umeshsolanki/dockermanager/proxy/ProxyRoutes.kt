@@ -4,6 +4,7 @@ import com.umeshsolanki.dockermanager.*
 import com.umeshsolanki.dockermanager.proxy.*
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
+import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.delete
@@ -234,7 +235,8 @@ fun Route.proxyRoutes() {
                 thresholdCidr = request.proxyJailThresholdCidr ?: AppConfig.settings.proxyJailThresholdCidr,
                 dangerProxyEnabled = request.dangerProxyEnabled ?: AppConfig.settings.dangerProxyEnabled,
                 dangerProxyHost = request.dangerProxyHost ?: AppConfig.settings.dangerProxyHost,
-                recommendedRules = request.recommendedProxyJailRules ?: AppConfig.settings.recommendedProxyJailRules
+                recommendedRules = request.recommendedProxyJailRules ?: AppConfig.settings.recommendedProxyJailRules,
+                proxyJailIgnore404Patterns = request.proxyJailIgnore404Patterns ?: AppConfig.settings.proxyJailIgnore404Patterns
             )
             
             if (result.first) {
@@ -377,68 +379,109 @@ fun Route.proxyRoutes() {
     }
 }
 
-// Public Security Mirror Collector (Terminates mirrored requests from Nginx)
+// Public Security Mirror Collector (Terminates mirrored requests from Nginx or Rsyslog)
 // Reachable via /security/mirror/...
 fun Route.securityMirrorRoutes() {
     route("/security/mirror") {
         val logger = LoggerFactory.getLogger("SecurityMirror")
         
-        get("{...}") {
+        suspend fun processRequest(call: io.ktor.server.application.ApplicationCall, method: String) {
             val uri = call.request.uri
+            
+            // Try to parse body as it might be a JSON log or a BATCH of JSON logs from rsyslog
+            val body = try { call.receiveText() } catch (e: Exception) { null }
+            
+            if (body != null && body.trim().isNotEmpty()) {
+                val trimmedBody = body.trim()
+                
+                // Detection for Batching (Multiple JSON objects, possibly newline separated)
+                val lines = if (trimmedBody.startsWith("[") && trimmedBody.endsWith("]")) {
+                    // It's a proper JSON array
+                    try {
+                        AppConfig.json.decodeFromString<List<NginxSecurityLog>>(trimmedBody)
+                    } catch (e: Exception) {
+                        emptyList<NginxSecurityLog>()
+                    }
+                } else if (trimmedBody.contains("\n") || trimmedBody.contains("}{")) {
+                    // It might be NDJSON or multiple objects joined
+                    val parts = trimmedBody.split(Regex("\\n|(?<=\\})(?=\\{)"))
+                    parts.mapNotNull { part ->
+                         try {
+                            AppConfig.json.decodeFromString<NginxSecurityLog>(part.trim())
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                } else {
+                    // Single object
+                    try {
+                        listOf(AppConfig.json.decodeFromString<NginxSecurityLog>(trimmedBody))
+                    } catch (e: Exception) {
+                        emptyList<NginxSecurityLog>()
+                    }
+                }
+
+                if (lines.isNotEmpty()) {
+                    lines.forEach { jsonLog ->
+                        val ip = jsonLog.ip 
+                            ?: call.request.headers["X-Real-IP"] 
+                            ?: call.request.local.remoteHost
+                        
+                        val reason = jsonLog.reason 
+                            ?: call.request.headers["X-Mirror-Reason"] 
+                            ?: "unknown"
+                        
+                        val status = jsonLog.expected_st?.toIntOrNull() 
+                            ?: (call.request.headers["X-Mirror-Status"] ?: "0").toIntOrNull() 
+                            ?: 0
+                        
+                        val userAgent = jsonLog.ua 
+                            ?: call.request.headers["User-Agent"] 
+                            ?: ""
+                        
+                        val path = jsonLog.req?.split(" ")?.getOrNull(1)
+                            ?: call.request.headers["X-Mirror-URI"] 
+                            ?: uri.removePrefix("/security/mirror")
+
+                        val headersMap = buildMap {
+                            putAll(call.request.headers.entries().associate { it.key to it.value.first() })
+                            put("X-Mirror-Reason", reason)
+                            jsonLog.hst?.let { put("X-Mirror-Host", it) }
+                        }
+
+                        ProxyService.processMirrorRequest(
+                            ip = ip,
+                            userAgent = userAgent,
+                            method = method,
+                            path = path,
+                            status = status,
+                            headers = headersMap,
+                            body = if (lines.size == 1) body else AppConfig.json.encodeToString(NginxSecurityLog.serializer(), jsonLog)
+                        )
+                    }
+                    call.respondText("ok")
+                    return
+                }
+            }
+
+            // Fallback for empty body or parsing failure (use headers)
             val ip = call.request.headers["X-Real-IP"] ?: call.request.local.remoteHost
             val reason = call.request.headers["X-Mirror-Reason"] ?: "unknown"
             val status = (call.request.headers["X-Mirror-Status"] ?: "0").toIntOrNull() ?: 0
             val userAgent = call.request.headers["User-Agent"] ?: ""
-            val method = "GET"
-            
-            // Priority: X-Mirror-URI (robust), then current path
             val path = call.request.headers["X-Mirror-URI"] ?: uri.removePrefix("/security/mirror")
-            
-            logger.debug("Security Mirror Hit: IP=$ip, Reason=$reason, Status=$status, Path=$path")
-            
-            // Extract headers as a flat map
-            val headersMap = call.request.headers.entries().associate { it.key to it.value.first() }
-            
-            // Asynchronously process security violation
-            ProxyService.processMirrorRequest(
-                ip = ip,
-                userAgent = userAgent,
-                method = method,
-                path = path,
-                status = status,
-                headers = headersMap,
-                body = null
-            )
-            
+            val headers = mapOf("X-Mirror-Reason" to reason)
+
+            ProxyService.processMirrorRequest(ip, userAgent, method, path, status, headers, body)
             call.respondText("ok")
+        }
+
+        get("{...}") {
+            processRequest(call, "GET")
         }
         
         post("{...}") {
-            val uri = call.request.uri
-            val ip = call.request.headers["X-Real-IP"] ?: call.request.local.remoteHost
-            val reason = call.request.headers["X-Mirror-Reason"] ?: "unknown"
-            val status = (call.request.headers["X-Mirror-Status"] ?: "0").toIntOrNull() ?: 0
-            val userAgent = call.request.headers["User-Agent"] ?: ""
-            val method = "POST"
-
-            // Priority: X-Mirror-URI (robust), then current path
-            val path = call.request.headers["X-Mirror-URI"] ?: uri.removePrefix("/security/mirror")
-
-            // Extract headers as a flat map
-            val headersMap = call.request.headers.entries().associate { it.key to it.value.first() }
-
-            // Asynchronously process security violation
-            ProxyService.processMirrorRequest(
-                ip = ip,
-                userAgent = userAgent,
-                method = method,
-                path = path,
-                status = status,
-                headers = headersMap,
-                body = null
-            )
-            
-            call.respondText("ok")
+            processRequest(call, "POST")
         }
     }
 }

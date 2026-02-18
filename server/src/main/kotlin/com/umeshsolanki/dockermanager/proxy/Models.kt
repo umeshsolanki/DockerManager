@@ -130,7 +130,9 @@ data class ProxyHit(
     val referer: String? = null,
     val domain: String? = null,
     val countryCode: String? = null,
-    val provider: String? = null
+    val provider: String? = null,
+    val violationReason: String? = null,
+    val source: String? = null  // "mirror" when from /security/mirror route
 )
 
 @Serializable
@@ -226,5 +228,23 @@ data class UpdateProxySecurityRequest(
     val proxyJailThresholdCidr: Int? = null,
     val dangerProxyEnabled: Boolean? = null,
     val dangerProxyHost: String? = null,
-    val recommendedProxyJailRules: List<ProxyJailRule>? = null
+    val recommendedProxyJailRules: List<ProxyJailRule>? = null,
+    val proxyJailIgnore404Patterns: List<String>? = null
+)
+
+@Serializable
+data class NginxSecurityLog(
+    val ts: String? = null,
+    val ip: String? = null,
+    val u: String? = null,
+    val req: String? = null,
+    val st: String? = null,
+    val bytes: String? = null,
+    val ref: String? = null,
+    val ua: String? = null,
+    val xff: String? = null,
+    val hst: String? = null,
+    val rt: String? = null,
+    val expected_st: String? = null,
+    val reason: String? = null
 )

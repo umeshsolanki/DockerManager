@@ -313,6 +313,8 @@ export const DockerClient = {
         if (date) url += `&date=${encodeURIComponent(date)}`;
         return req<ProxyHit[]>(url, {}, []);
     },
+    getSecurityMirrors: (limit = 100) =>
+        req<ProxyHit[]>(`/analytics/security/mirrors?limit=${limit}`, {}, []),
 
     // Redis Cache
     getRedisConfig: () => req<RedisConfig>('/cache/redis/config', {}, { enabled: false, host: 'localhost', port: 6379, database: 0, ssl: false, timeout: 5000 }),

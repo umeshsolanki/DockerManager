@@ -87,7 +87,6 @@ class KafkaServiceImpl : IKafkaService {
         job = scope.launch {
             while (isActive) {
                 try {
-                    logger.info("Initializing Kafka consumer for topic: ${settings.topic}")
                     val props = Properties()
                     props[ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG] = settings.bootstrapServers
                     props[ConsumerConfig.GROUP_ID_CONFIG] = settings.groupId
@@ -96,33 +95,48 @@ class KafkaServiceImpl : IKafkaService {
                     props[ConsumerConfig.AUTO_OFFSET_RESET_CONFIG] = "latest"
                     props[ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG] = "true"
 
+                    logger.info("Initializing Kafka consumer for topic: ${settings.topic}")
                     consumer = KafkaConsumer<String, String>(props).apply {
                         subscribe(listOf(settings.topic))
                     }
 
                     while (isActive) {
-                        val records = consumer?.poll(Duration.ofMillis(1000)) ?: break
-                        for (record in records) {
-                            val topic = record.topic()
-                            val key = record.key()
-                            val value = record.value()
-                            
-                            handlers.filter { it.canHandle(topic) }.forEach { 
-                                try {
-                                    it.handle(topic, key, value)
-                                } catch (e: Exception) {
-                                    logger.error("Error in Kafka handler for topic $topic", e)
+                        try {
+                            val records = consumer?.poll(Duration.ofMillis(1000))
+                            if (records == null || records.isEmpty) continue
+
+                            for (record in records) {
+                                val topic = record.topic()
+                                val key = record.key()
+                                val value = record.value()
+                                
+                                handlers.filter { it.canHandle(topic) }.forEach { 
+                                    try {
+                                        it.handle(topic, key, value)
+                                    } catch (e: Exception) {
+                                        logger.error("Error in Kafka handler for topic $topic", e)
+                                    }
                                 }
                             }
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
+                            // If consumer is closed (e.g. during stop), break inner loop
+                            if (e is IllegalStateException && e.message?.contains("closed", ignoreCase = true) == true) {
+                                break
+                            }
+                            logger.warn("Error polling Kafka: ${e.message}")
+                            delay(1000)
                         }
                     }
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                     logger.error("Error in Kafka consumer loop, restarting in 30 seconds", e)
-                    consumer?.close()
+                    try { consumer?.close() } catch (ex: Exception) { /* ignore */ }
+                    consumer = null
                     delay(30000)
                 } finally {
-                    consumer?.close()
+                    try { consumer?.close() } catch (ex: Exception) { /* ignore */ }
+                    consumer = null
                 }
             }
         }
@@ -130,8 +144,12 @@ class KafkaServiceImpl : IKafkaService {
 
     override fun stop() {
         job?.cancel()
-        consumer?.close()
-        producer?.close()
+        try { consumer?.close() } catch (e: Exception) { logger.warn("Error closing consumer: ${e.message}") }
+        consumer = null
+        
+        try { producer?.close() } catch (e: Exception) { logger.warn("Error closing producer: ${e.message}") }
+        producer = null
+        
         logger.info("Kafka services stopped")
     }
 
@@ -236,10 +254,15 @@ class KafkaServiceImpl : IKafkaService {
     }
 
     override fun publishMessage(settings: KafkaSettings, topic: String, key: String?, value: String) {
+        // use local reference to avoid race conditions with stop() nullling the field
         val prod = getProducer(settings) ?: return
+        
         scope.launch {
             try {
                 prod.send(ProducerRecord(topic, key, value)).get()
+            } catch (e: IllegalStateException) {
+                // If producer is closed, just log warning
+                logger.warn("Failed to publish message to topic $topic: Producer is closed")
             } catch (e: Exception) {
                 logger.error("Failed to publish message to topic $topic", e)
             }

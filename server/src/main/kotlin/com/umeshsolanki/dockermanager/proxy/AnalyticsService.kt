@@ -42,6 +42,10 @@ interface IAnalyticsService {
     // Log Browsing
     fun getAccessLogs(type: String, page: Int, limit: Int, search: String? = null, date: String? = null): List<ProxyHit>
     fun getErrorLogs(page: Int, limit: Int, search: String? = null, date: String? = null): List<ErrorLogEntry>
+
+    // Security mirror stream (real-time from /security/mirror route)
+    fun addMirrorRequest(hit: ProxyHit)
+    fun getRecentMirrorRequests(limit: Int = 100): List<ProxyHit>
 }
 
 class AnalyticsServiceImpl(
@@ -133,6 +137,9 @@ class AnalyticsServiceImpl(
     private val hitsByTimeMap = ConcurrentHashMap<String, Long>()
     private val recentHitsList = ConcurrentLinkedDeque<ProxyHit>()
     private val MAX_RECENT_HITS = 100
+
+    private val mirrorRequestsList = ConcurrentLinkedDeque<ProxyHit>()
+    private val MAX_MIRROR_REQUESTS = 200
     
     private val websocketConnectionsCounter = java.util.concurrent.atomic.AtomicLong(0)
     private val websocketConnectionsByEndpointMap = ConcurrentHashMap<String, Long>()
@@ -1277,15 +1284,58 @@ class AnalyticsServiceImpl(
 
 
     // ========== Log Browsing Implementation ==========
-    
+
+    private fun parseSecurityJsonLine(line: String): ProxyHit? {
+        return try {
+            val json = AppConfig.json.parseToJsonElement(line).jsonObject
+            val ip = json["ip"]?.jsonPrimitive?.content ?: return null
+            val ts = json["ts"]?.jsonPrimitive?.content ?: return null
+            val req = json["req"]?.jsonPrimitive?.content ?: ""
+            val stStr = json["st"]?.jsonPrimitive?.content ?: "0"
+            val status = stStr.toIntOrNull() ?: 0
+            val ref = json["ref"]?.jsonPrimitive?.content
+            val ua = json["ua"]?.jsonPrimitive?.content
+            val hst = json["hst"]?.jsonPrimitive?.content
+            val rtStr = json["rt"]?.jsonPrimitive?.content ?: "0"
+            val rt = (rtStr.toDoubleOrNull() ?: 0.0).toLong()
+            val reason = json["reason"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
+            val reqParts = req.split(" ")
+            val method = reqParts.getOrNull(0) ?: "-"
+            val path = reqParts.getOrNull(1) ?: req
+            val timestamp = try {
+                logLineDateFormat.parse(ts).time
+            } catch (_: Exception) {
+                try {
+                    java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(ts)?.time
+                    ?: System.currentTimeMillis()
+                }catch (_: Exception) { System.currentTimeMillis() }
+            }
+            ProxyHit(
+                timestamp = timestamp,
+                ip = ip,
+                method = method,
+                path = path,
+                status = status,
+                responseTime = rt,
+                userAgent = ua,
+                referer = if (ref == "-" || ref.isNullOrBlank()) null else ref,
+                domain = if (hst.isNullOrBlank() || hst == "-") null else hst,
+                violationReason = reason
+            )
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     override fun getAccessLogs(type: String, page: Int, limit: Int, search: String?, date: String?): List<ProxyHit> {
         val targetDate = date ?: java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
         
         // Select files based on type and date
         val logFiles = when (type) {
             "danger", "security", "cidr" -> {
-                logDir.listFiles { _, name -> 
-                    (name.endsWith("_danger.log") || name.endsWith("_danger_$targetDate.log") ||
+                logDir.listFiles { _, name ->
+                    (name == "security.log" || name == "security_$targetDate.log" ||
+                     name.endsWith("_danger.log") || name.endsWith("_danger_$targetDate.log") ||
                      name.endsWith("_security.log") || name.endsWith("_security_$targetDate.log") ||
                      name.endsWith("_cidr.log") || name.endsWith("_cidr_$targetDate.log"))
                 }?.toList() ?: emptyList()
@@ -1334,40 +1384,37 @@ class AnalyticsServiceImpl(
                 for (line in linesToProcess.asReversed()) {
                     val trimmedLine = line.trim()
                     if (trimmedLine.isBlank()) continue
-                    
-                    // Basic search filter before regex (faster)
+
                     if (search != null && !trimmedLine.contains(search, ignoreCase = true)) continue
-                    
-                    lineRegex.find(trimmedLine)?.let { match ->
-                        val (ip, dateStr, fullRequest, statusStr, _, referer, ua, _, host) = match.destructured
-                        
-                        try {
-                            val timestamp = dateFormat.parse(dateStr).time
-                            // Check date match if file is not rotated (active log)
-                            // Or trust the file selection
-                            
-                            val status = statusStr.toIntOrNull() ?: 0
-                            val reqParts = fullRequest.split(" ")
-                            val method = reqParts.getOrNull(0) ?: "-"
-                            val path = reqParts.getOrNull(1) ?: fullRequest
-                            
-                            val domain = if (host != "-") host else if (referer != "-") try {
-                                java.net.URI(referer).host
-                            } catch (e: Exception) { null } else null
-                            
-                            logs.add(ProxyHit(
-                                timestamp = timestamp,
-                                ip = ip,
-                                method = method,
-                                path = path,
-                                status = status,
-                                responseTime = 0,
-                                userAgent = ua,
-                                referer = if (referer == "-") null else referer,
-                                domain = domain
-                            ))
-                        } catch (e: Exception) { }
+
+                    val hit = when {
+                        trimmedLine.startsWith("{") -> parseSecurityJsonLine(trimmedLine)
+                        else -> lineRegex.find(trimmedLine)?.let { match ->
+                            val (ip, dateStr, fullRequest, statusStr, _, referer, ua, _, host) = match.destructured
+                            try {
+                                val timestamp = dateFormat.parse(dateStr).time
+                                val status = statusStr.toIntOrNull() ?: 0
+                                val reqParts = fullRequest.split(" ")
+                                val method = reqParts.getOrNull(0) ?: "-"
+                                val path = reqParts.getOrNull(1) ?: fullRequest
+                                val domain = if (host != "-") host else if (referer != "-") try {
+                                    java.net.URI(referer).host
+                                } catch (e: Exception) { null } else null
+                                ProxyHit(
+                                    timestamp = timestamp,
+                                    ip = ip,
+                                    method = method,
+                                    path = path,
+                                    status = status,
+                                    responseTime = 0,
+                                    userAgent = ua,
+                                    referer = if (referer == "-") null else referer,
+                                    domain = domain
+                                )
+                            } catch (e: Exception) { null }
+                        }
                     }
+                    hit?.let { logs.add(it) }
                 }
             } catch (e: Exception) {
                 logger.error("Error reading log file ${file.name}", e)
@@ -1383,6 +1430,17 @@ class AnalyticsServiceImpl(
         
         if (startIndex >= logs.size) return emptyList()
         return logs.subList(startIndex, endIndex)
+    }
+
+    override fun addMirrorRequest(hit: ProxyHit) {
+        mirrorRequestsList.addFirst(hit)
+        while (mirrorRequestsList.size > MAX_MIRROR_REQUESTS) {
+            mirrorRequestsList.removeLast()
+        }
+    }
+
+    override fun getRecentMirrorRequests(limit: Int): List<ProxyHit> {
+        return mirrorRequestsList.take(limit)
     }
 
     override fun getErrorLogs(page: Int, limit: Int, search: String?, date: String?): List<ErrorLogEntry> {
@@ -1485,6 +1543,8 @@ object AnalyticsService {
     // Log Browsing
     fun getAccessLogs(type: String, page: Int, limit: Int, search: String? = null, date: String? = null) = service.getAccessLogs(type, page, limit, search, date)
     fun getErrorLogs(page: Int, limit: Int, search: String? = null, date: String? = null) = service.getErrorLogs(page, limit, search, date)
+    fun addMirrorRequest(hit: ProxyHit) = service.addMirrorRequest(hit)
+    fun getRecentMirrorRequests(limit: Int = 100) = service.getRecentMirrorRequests(limit)
     
     // WebSocket tracking
     fun trackWebSocketConnection(endpoint: String, ip: String, userAgent: String? = null, containerId: String? = null, authenticated: Boolean = true) {

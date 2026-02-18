@@ -70,7 +70,8 @@ object ProxyService {
         thresholdCidr: Int? = null,
         dangerProxyEnabled: Boolean? = null,
         dangerProxyHost: String? = null,
-        recommendedRules: List<ProxyJailRule>? = null
+        recommendedRules: List<ProxyJailRule>? = null,
+        proxyJailIgnore404Patterns: List<String>? = null
     ) = service.updateSecuritySettings(
         enabled,
         thresholdNon200,
@@ -81,7 +82,8 @@ object ProxyService {
         thresholdCidr,
         dangerProxyEnabled,
         dangerProxyHost,
-        recommendedRules
+        recommendedRules,
+        proxyJailIgnore404Patterns
     )
 
     fun updateDefaultBehavior(return404: Boolean) = service.updateDefaultBehavior(return404)
@@ -175,7 +177,8 @@ interface IProxyService {
         thresholdCidr: Int? = null,
         dangerProxyEnabled: Boolean? = null,
         dangerProxyHost: String? = null,
-        recommendedRules: List<ProxyJailRule>? = null
+        recommendedRules: List<ProxyJailRule>? = null,
+        proxyJailIgnore404Patterns: List<String>? = null
     ): Pair<Boolean, String>
     fun updateDefaultBehavior(return404: Boolean): Pair<Boolean, String>
     fun updateRsyslogSettings(enabled: Boolean, dualLogging: Boolean): Pair<Boolean, String>
@@ -267,7 +270,8 @@ class ProxyServiceImpl(
         thresholdCidr: Int?,
         dangerProxyEnabled: Boolean?,
         dangerProxyHost: String?,
-        recommendedRules: List<ProxyJailRule>?
+        recommendedRules: List<ProxyJailRule>?,
+        proxyJailIgnore404Patterns: List<String>?
     ): Pair<Boolean, String> {
         // Validate Regexes
         val allRulesToCheck = (rules + (recommendedRules ?: emptyList()))
@@ -291,7 +295,8 @@ class ProxyServiceImpl(
             thresholdCidr = thresholdCidr,
             dangerProxyEnabled = dangerProxyEnabled,
             dangerProxyHost = dangerProxyHost,
-            recommendedRules = recommendedRules
+            recommendedRules = recommendedRules,
+            proxyJailIgnore404Patterns = proxyJailIgnore404Patterns
         )
         return true to "Security settings updated"
     }
@@ -513,10 +518,25 @@ class ProxyServiceImpl(
         headers: Map<String, String>,
         body: String?,
     ) {
+        val violationReason = headers["X-Mirror-Reason"]?.takeIf { it.isNotBlank() }
+        val domain = headers["X-Mirror-Host"]?.takeIf { it.isNotBlank() }
+        val hit = ProxyHit(
+            timestamp = System.currentTimeMillis(),
+            ip = ip,
+            method = method,
+            path = path,
+            status = status,
+            responseTime = 0,
+            userAgent = userAgent,
+            referer = headers["Referer"]?.takeIf { it != "-" },
+            domain = domain,
+            violationReason = violationReason,
+            source = "mirror"
+        )
+        AnalyticsService.addMirrorRequest(hit)
+
         scope.launch {
             try {
-                // Instantly record activity and check for violation
-                // Status is passed from Nginx (e.g. 403 for danger, 429 for burst)
                 jailManagerService.checkProxySecurityViolation(
                     ip = ip,
                     userAgent = userAgent,
@@ -1231,13 +1251,13 @@ class ProxyServiceImpl(
 
             if (dualLogging || !rsyslogEnabled) {
                 accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_access.log", "$logFormat if=\$log_access"))
-                accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_warning.log", "$logFormat if=\$log_warning"))
-                accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_error.log", "$logFormat if=\$log_error"))
+                accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_security.log", "security_json if=\$log_security"))
                 errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/${tag}_system.log warn;")
             }
 
             if (rsyslogEnabled) {
-                accessLogDirectives.add("access_log syslog:server=$syslogServer,tag=${fixedSyslogTag},severity=info,nohostname $logFormat;")
+                accessLogDirectives.add("access_log syslog:server=$syslogServer,tag=${fixedSyslogTag},severity=info,nohostname $logFormat if=\$log_access;")
+                accessLogDirectives.add("access_log syslog:server=$syslogServer,tag=${fixedSyslogTag}_sec,severity=notice,nohostname security_json if=\$log_security;")
                 errorLogDirectives.add("error_log syslog:server=$syslogServer,tag=${fixedSyslogTag}_err,nohostname warn;")
             }
 
@@ -1253,31 +1273,12 @@ class ProxyServiceImpl(
         // Generate unified security configuration
         val securityChecksConfig = run {
              val template = getCachedTemplate("templates/proxy/security-checks.conf")
-             val mirrorTemplate = getCachedTemplate("templates/proxy/security-mirror.conf")
              
-             val securityLoggingDirectives = mutableListOf<String>()
-             if (dualLogging || !rsyslogEnabled) {
-                 securityLoggingDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/${tag}_danger.log", logFormat))
-             }
-             if (rsyslogEnabled) {
-                 securityLoggingDirectives.add("access_log syslog:server=$syslogServer,tag=${fixedSyslogTag}_sec,severity=notice,nohostname $logFormat;")
-             }
-
-             val dangerProxyHost = settings.dangerProxyHost?.takeIf { it.isNotBlank() }?.let { 
-                 if (it.startsWith("http")) it else "http://$it" 
-             } ?: "http://127.0.0.1:$SERVER_PORT"
-
-             val mirrorConfig = ResourceLoader.replacePlaceholders(mirrorTemplate, mapOf(
-                 "dangerProxyHost" to dangerProxyHost
-             ))
-
              val checksSnippet = ResourceLoader.replacePlaceholders(template, mapOf(
-                 "securityLoggingDirectives" to securityLoggingDirectives.joinToString("\n    "),
                  "globalBurstLimit" to if (settings.proxyBurstProtectionEnabled) "limit_req zone=global_burst burst=${settings.proxyBurstProtectionBurst} nodelay;" else ""
              ))
              
-             // Combine checks and mirror
-             "$checksSnippet\n\n    $mirrorConfig"
+             checksSnippet
         }
 
         return mapOf(
@@ -1701,6 +1702,7 @@ class ProxyServiceImpl(
 
         ensureLogFile(File(logsDir, "access.log"))
         ensureLogFile(File(logsDir, "error.log"))
+        ensureLogFile(File(logsDir, "security.log"))
 
         certbotDir.mkdirs()
         File(certbotDir, "conf").mkdirs()
@@ -1924,52 +1926,33 @@ class ProxyServiceImpl(
         val jsonLogging = settings.jsonLoggingEnabled
 
         // Define the 'main' log format based on settings
-        val logFormatDefinition = if (jsonLogging) {
-            getCachedTemplate("templates/proxy/log-format-json.conf")
+        val logFormatDefinition = StringBuilder()
+        if (jsonLogging) {
+            logFormatDefinition.append(getCachedTemplate("templates/proxy/log-format-json.conf")).append("\n")
         } else {
-            getCachedTemplate("templates/proxy/log-format-standard.conf")
+            logFormatDefinition.append(getCachedTemplate("templates/proxy/log-format-standard.conf")).append("\n")
         }
+        
+        // Add dedicated security log format
+        logFormatDefinition.append("    ").append(getCachedTemplate("templates/proxy/log-format-security-json.conf"))
 
         val loggingConfig = StringBuilder()
 
         val standardLoggingTemplate = getCachedTemplate("templates/proxy/standard-logging.conf")
-        ResourceLoader.replacePlaceholders(
-            standardLoggingTemplate, mapOf(
-                "tag" to "nginx_main",
-                "accessLogDirective" to "access_log /usr/local/openresty/nginx/logs/access.log main;",
-                "errorLogDirective" to "error_log /usr/local/openresty/nginx/logs/error.log warn;"
-            )
-        )
         loggingConfig.append("    ")
         val accessLogDirectives = mutableListOf<String>()
         val errorLogDirectives = mutableListOf<String>()
 
         if (settings.proxyDualLoggingEnabled || !rsyslogEnabled) {
-        accessLogDirectives.add(
-            getAccessLogDirective(
-                "/usr/local/openresty/nginx/logs/access.log",
-                "main if=\$log_access"
-            )
-        )
-        accessLogDirectives.add(
-            getAccessLogDirective(
-                "/usr/local/openresty/nginx/logs/warning.log",
-                "main if=\$log_warning"
-            )
-        )
-        accessLogDirectives.add(
-            getAccessLogDirective(
-                "/usr/local/openresty/nginx/logs/error.log",
-                "main if=\$log_error"
-            )
-        )
-        errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/system.log warn;")
-    }
+            accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/access.log", "main if=\$log_access"))
+            accessLogDirectives.add(getAccessLogDirective("/usr/local/openresty/nginx/logs/security.log", "security_json if=\$log_security"))
+            errorLogDirectives.add("error_log  /usr/local/openresty/nginx/logs/system.log warn;")
+        }
 
         if (rsyslogEnabled) {
-            val syslogServer =
-                "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
-            accessLogDirectives.add("access_log syslog:server=$syslogServer,tag=nginx_main_access,severity=info,nohostname main;")
+            val syslogServer = "${settings.syslogServerInternal ?: settings.syslogServer}:${settings.syslogPort}"
+            accessLogDirectives.add("access_log syslog:server=$syslogServer,tag=nginx_main_access,severity=info,nohostname main if=\$log_access;")
+            accessLogDirectives.add("access_log syslog:server=$syslogServer,tag=nginx_main_sec,severity=notice,nohostname security_json if=\$log_security;")
             errorLogDirectives.add("error_log syslog:server=$syslogServer,tag=nginx_main_error,nohostname warn;")
         }
 
@@ -1982,65 +1965,42 @@ class ProxyServiceImpl(
 
         loggingConfig.append(standardLoggingContent.lines().joinToString("\n    ") { it })
 
-        // Generate Security Maps
-        val securityMaps = StringBuilder()
-        
-        // Map for Path-based violations
-        securityMaps.append("    map \$request_uri \$security_violation_reason {\n")
-        securityMaps.append("        default \"\";\n")
-        for (rule in settings.proxyJailRules.filter { it.type == ProxyJailRuleType.PATH }) {
-             val pattern = rule.pattern
-                 .replace("\"", "\\\"")
-                 .let { 
-                     // Ensure it's treated as a regex
-                     if (it.startsWith("~")) it 
-                     else "~*$it" 
-                 }
-             securityMaps.append("        \"$pattern\" \"${rule.description?.replace("\"", "\\\"") ?: "path_violation"}\";\n")
-        }
-        securityMaps.append("    }\n\n")
+        // Generate Security Maps from Template
+        val securityMapsContent = run {
+            val template = getCachedTemplate("templates/proxy/security-maps.conf")
+            
+            val pathViolations = settings.proxyJailRules
+                .filter { it.type == ProxyJailRuleType.PATH }
+                .joinToString("\n    ") { rule ->
+                    val pattern = rule.pattern.replace("\"", "\\\"")
+                        .let { if (it.startsWith("~")) it else "~*$it" }
+                    "\"$pattern\" \"${rule.description?.replace("\"", "\\\"") ?: "path_violation"}\";"
+                }
 
-        // Map for User-Agent violations
-        securityMaps.append("    map \$http_user_agent \$ua_violation {\n")
-        securityMaps.append("        default \"\";\n")
-        for (rule in settings.proxyJailRules.filter { it.type == ProxyJailRuleType.USER_AGENT }) {
-             val pattern = rule.pattern.replace("\"", "\\\"")
-                 .let { if (it.contains("|") || it.contains("[") || it.contains("(")) "~*$it" else it }
-             securityMaps.append("        \"$pattern\" \"1\";\n")
-        }
-        securityMaps.append("    }\n\n")
-    
-        // Map for Status-based logging categories
-        securityMaps.append("    map \$status \$log_access {\n")
-        securityMaps.append("        ~^[123] 1;\n")
-        securityMaps.append("        default 0;\n")
-        securityMaps.append("    }\n")
-        securityMaps.append("    map \$status \$log_warning {\n")
-        securityMaps.append("        ~^4     1;\n")
-        securityMaps.append("        default 0;\n")
-        securityMaps.append("    }\n")
-        securityMaps.append("    map \$status \$log_error {\n")
-        securityMaps.append("        ~^5     1;\n")
-        securityMaps.append("        default 0;\n")
-        securityMaps.append("    }\n")
+            val uaViolations = settings.proxyJailRules
+                .filter { it.type == ProxyJailRuleType.USER_AGENT }
+                .joinToString("\n    ") { rule ->
+                    val pattern = rule.pattern.replace("\"", "\\\"")
+                        .let { if (it.contains("|") || it.contains("[") || it.contains("(")) "~*$it" else it }
+                    "\"$pattern\" \"${rule.description?.replace("\"", "\\\"") ?: "ua_violation"}\";"
+                }
 
-        // Redact sensitive query parameters (like tokens in WebSockets) from logs
-        securityMaps.append("    map \$args \$redacted_query {\n")
-        securityMaps.append("        default \$args;\n")
-        securityMaps.append("        ~^(.*)token=[^&]*(.*)$ \$1token=REDACTED\$2;\n")
-        securityMaps.append("    }\n\n")
+            val globalBurstZone = if (settings.proxyBurstProtectionEnabled) {
+                "limit_req_zone \$binary_remote_addr zone=global_burst:10m rate=${settings.proxyBurstProtectionRate}r/s;"
+            } else ""
 
-        // Global Burst Protection Zone
-        if (settings.proxyBurstProtectionEnabled) {
-            val rate = settings.proxyBurstProtectionRate
-            securityMaps.append("    limit_req_zone \$binary_remote_addr zone=global_burst:10m rate=${rate}r/s;\n")
+            ResourceLoader.replacePlaceholders(template, mapOf(
+                "pathViolations" to pathViolations,
+                "uaViolations" to uaViolations,
+                "globalBurstZone" to globalBurstZone
+            ))
         }
 
         return ResourceLoader.replacePlaceholders(
             template, mapOf(
                 "loggingConfig" to loggingConfig.toString(),
-                "logFormatDefinition" to logFormatDefinition,
-                "securityMaps" to securityMaps.toString()
+                "logFormatDefinition" to logFormatDefinition.toString(),
+                "securityMaps" to securityMapsContent
             )
         )
     }

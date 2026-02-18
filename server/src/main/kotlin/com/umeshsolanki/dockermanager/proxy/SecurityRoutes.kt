@@ -32,16 +32,15 @@ fun Route.securityRoutes() {
                 
                 // Extract all headers for analysis if needed
                 val headers = call.request.headers.entries().associate { it.key to it.value.joinToString(",") }
-                
+                val reason = call.request.header("X-Mirror-Reason") ?: "mirror"
 
-                // Delegate to ProxyService for asynchronous processing
                 ProxyService.processMirrorRequest(
                     ip = ip,
                     userAgent = userAgent,
                     method = method,
                     path = fullPath,
                     status = status,
-                    headers = headers,
+                    headers = headers + ("X-Mirror-Reason" to reason),
                     body = null
                 )
 

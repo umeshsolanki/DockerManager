@@ -377,6 +377,8 @@ export interface ProxyHit {
   userAgent: string;
   domain?: string;
   referer?: string;
+  violationReason?: string;
+  source?: string;  // "mirror" when from /security/mirror route
 }
 
 export interface PathHit {
