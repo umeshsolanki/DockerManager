@@ -376,33 +376,6 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
 
                 {activeTab === 'logs' && form && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        {/* Remote Syslog */}
-                        <SettingsCard title="Logging Configuration" subtitle="Syslog & JSON Logging" icon={Terminal}>
-                            <SettingsToggle label="Enable Proxy Syslog" description="Stream Nginx logs to remote server" checked={form.proxyRsyslogEnabled} onChange={(v: boolean) => updateForm('proxyRsyslogEnabled', v)} />
-                            <SettingsToggle label="Dual Logging" description="Keep local logs + Syslog" checked={form.proxyDualLoggingEnabled} onChange={(v: boolean) => updateForm('proxyDualLoggingEnabled', v)} />
-                            <SettingsToggle label="JSON Logging" description="Structured log format" checked={form.jsonLoggingEnabled} onChange={(v: boolean) => updateForm('jsonLoggingEnabled', v)} />
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <SettingsInput label="Syslog Host (External)" value={form.syslogServer} onChange={(v: string) => updateForm('syslogServer', v)} />
-                                <SettingsInput label="Syslog Host (Internal)" value={form.syslogServerInternal} onChange={(v: string) => updateForm('syslogServerInternal', v)} note="host.docker.internal" />
-                            </div>
-                            <SettingsInput label="Syslog Port" value={form.syslogPort} onChange={(v: number) => updateForm('syslogPort', v)} type="number" />
-
-                            <div className="h-px bg-outline/10 my-2" />
-
-                            <SettingsToggle label="Log Buffering" description="Buffer Nginx logs for performance" checked={form.logBufferingEnabled} onChange={(v: boolean) => updateForm('logBufferingEnabled', v)} />
-                            {form.logBufferingEnabled && (
-                                <div className="grid grid-cols-2 gap-4">
-                                    <SettingsInput label="Buffer Size (KB)" value={form.logBufferSizeKb} onChange={(v: number) => updateForm('logBufferSizeKb', v)} type="number" />
-                                    <SettingsInput label="Flush Interval (s)" value={form.logFlushIntervalSeconds} onChange={(v: number) => updateForm('logFlushIntervalSeconds', v)} type="number" />
-                                </div>
-                            )}
-
-                            <SettingsToggle label="Database Log Persistence" description="Store logs in DB" checked={form.dbPersistenceLogsEnabled} onChange={(v: boolean) => updateForm('dbPersistenceLogsEnabled', v)} />
-
-                            <button onClick={handleSaveSystem} className="w-full mt-2 bg-primary text-primary-foreground py-2.5 rounded-xl font-semibold text-sm">Update Logging</button>
-                        </SettingsCard>
-
-                        {/* ClickHouse */}
                         <SettingsCard title="ClickHouse Analytics" subtitle="High-performance warehousing" icon={Database} iconColor="blue-500">
                             <SettingsToggle label="Enable ClickHouse" description="Offload logs to ClickHouse" checked={form.clickhouseSettings.enabled} onChange={(v: boolean) => updateNestedForm('clickhouseSettings', 'enabled', v)} />
                             {form.clickhouseSettings.enabled && (

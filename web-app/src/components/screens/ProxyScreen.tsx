@@ -819,10 +819,14 @@ function LoggingConfigCard() {
     const [loading, setLoading] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [localBuffering, setLocalBuffering] = useState({ size: 32, flush: 5 });
+    const [localSyslog, setLocalSyslog] = useState({ host: '', internal: '', port: 514 });
 
     const refresh = () => DockerClient.getProxySecuritySettings().then(c => {
         setConfig(c);
-        if (c) setLocalBuffering({ size: c.logBufferSizeKb ?? 32, flush: c.logFlushIntervalSeconds ?? 5 });
+        if (c) {
+            setLocalBuffering({ size: c.logBufferSizeKb ?? 32, flush: c.logFlushIntervalSeconds ?? 5 });
+            setLocalSyslog({ host: c.syslogServer || '', internal: c.syslogServerInternal || '', port: c.syslogPort ?? 514 });
+        }
     });
 
     useEffect(() => { refresh(); }, []);
@@ -885,6 +889,40 @@ function LoggingConfigCard() {
         }
     };
 
+    const setSyslog = async (syslogServer: string, syslogServerInternal: string, syslogPort: number) => {
+        setLoading(true);
+        try {
+            const res = await DockerClient.updateSystemConfig({ syslogServer, syslogServerInternal, syslogPort });
+            if (res?.success) {
+                toast.success('Syslog server updated');
+                await refresh();
+            } else {
+                toast.error('Failed to update syslog');
+            }
+        } catch (e) {
+            toast.error('Failed to update');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const setDbPersistence = async (enabled: boolean) => {
+        setLoading(true);
+        try {
+            const res = await DockerClient.updateSystemConfig({ dbPersistenceLogsEnabled: enabled });
+            if (res?.success) {
+                toast.success('Database persistence updated');
+                await refresh();
+            } else {
+                toast.error('Failed to update');
+            }
+        } catch (e) {
+            toast.error('Failed to update');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     if (!config) return <div className="animate-pulse h-10 bg-surface/50 rounded-xl" />;
 
     return (
@@ -914,6 +952,34 @@ function LoggingConfigCard() {
                 ))}
             </div>
 
+            {(destination === 'syslog' || destination === 'both') && (
+                <div className="mt-2 pt-2 border-t border-white/5 space-y-2">
+                    <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider">Syslog server</p>
+                    <input
+                        placeholder="Host (external)"
+                        value={localSyslog.host}
+                        onChange={(e) => setLocalSyslog(p => ({ ...p, host: e.target.value }))}
+                        onBlur={() => setSyslog(localSyslog.host, localSyslog.internal, localSyslog.port)}
+                        className="w-full bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs"
+                    />
+                    <input
+                        placeholder="Host (internal, e.g. host.docker.internal)"
+                        value={localSyslog.internal}
+                        onChange={(e) => setLocalSyslog(p => ({ ...p, internal: e.target.value }))}
+                        onBlur={() => setSyslog(localSyslog.host, localSyslog.internal, localSyslog.port)}
+                        className="w-full bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs"
+                    />
+                    <input
+                        type="number"
+                        placeholder="Port"
+                        value={localSyslog.port}
+                        onChange={(e) => setLocalSyslog(p => ({ ...p, port: parseInt(e.target.value) || 514 }))}
+                        onBlur={() => setSyslog(localSyslog.host, localSyslog.internal, localSyslog.port)}
+                        className="w-full bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs"
+                    />
+                </div>
+            )}
+
             <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider mt-2 mb-1">Format</p>
             <div className="flex gap-2">
                 <button
@@ -927,6 +993,17 @@ function LoggingConfigCard() {
                     className={`flex-1 py-2 rounded-xl border text-xs font-bold transition-all ${config?.jsonLoggingEnabled ? 'bg-primary/10 border-primary/30 ring-1 ring-primary/30' : 'bg-surface/50 hover:bg-surface/80 border-outline/10'}`}
                 >
                     JSON
+                </button>
+            </div>
+
+            <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between">
+                <span className="text-xs font-bold">Database log persistence</span>
+                <button
+                    type="button"
+                    onClick={() => !loading && setDbPersistence(!config?.dbPersistenceLogsEnabled)}
+                    className={`w-12 h-6 rounded-full transition-all relative ${config?.dbPersistenceLogsEnabled ? 'bg-primary' : 'bg-white/10'}`}
+                >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${config?.dbPersistenceLogsEnabled ? 'right-1' : 'left-1'}`} />
                 </button>
             </div>
 

@@ -343,13 +343,69 @@ class AnalyticsServiceImpl(
     }
 
     private val logLineDateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
+    private val errorLogDateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.US)
     private val hourKeyFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:00:00XXX", Locale.US)
+
+    /** Nginx error log: "YYYY/MM/DD HH:MM:SS [error] ... limiting requests, excess: X by zone "...", client: IP, server: HOST, request: "METHOD PATH PROTOCOL" */
+    private val rateLimitErrorRegex = """(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[error\].*? limiting (?:requests|connections)(?:, excess: [\d.]+)? by zone "[^"]+", client: ([^,]+), server: ([^,]*), request: "([^"]*)"""".toRegex()
+
+    private fun parseRateLimitErrorLine(line: String): ParsedLogEntry? {
+        val match = rateLimitErrorRegex.find(line.trim()) ?: return null
+        val (dateStr, clientIp, server, request) = match.destructured
+        val reqParts = request.trim().split(" ")
+        val method = reqParts.getOrNull(0) ?: "-"
+        val path = reqParts.getOrNull(1) ?: request
+        val host = server.trim().takeIf { it.isNotEmpty() }
+        return ParsedLogEntry(clientIp.trim(), dateStr, method, path, 429, "-", "-", host)
+    }
+
+    /**
+     * Extract yyyy-MM-dd from a log line. Supports standard [date], JSON "ts":"date", and error log "yyyy/MM/dd HH:mm:ss" format.
+     */
+    private fun extractDateFromLogLine(line: String): String? {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty()) return null
+        val dateStr = when {
+            """^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})""".toRegex().find(trimmed) != null -> trimmed.take(19)
+            trimmed.startsWith("{") -> try {
+                val json = AppConfig.json.parseToJsonElement(trimmed).jsonObject
+                json["ts"]?.jsonPrimitive?.content
+            } catch (e: Exception) { null }
+            else -> """\[([^\]]+)\]""".toRegex().find(trimmed)?.groupValues?.get(1)
+        } ?: return null
+        return try {
+            val timestamp = logLineDateFormat.parse(dateStr)
+            java.time.LocalDate.ofInstant(timestamp.toInstant(), java.time.ZoneId.systemDefault())
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        } catch (e: Exception) {
+            try {
+                val altTimestamp = errorLogDateFormat.parse(dateStr)
+                java.time.LocalDate.ofInstant(altTimestamp!!.toInstant(), java.time.ZoneId.systemDefault())
+                    .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+            } catch (e2: Exception) {
+                try {
+                    val altDateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss", Locale.US)
+                    val altTimestamp = altDateFormat.parse(dateStr)
+                    java.time.LocalDate.ofInstant(altTimestamp!!.toInstant(), java.time.ZoneId.systemDefault())
+                        .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                } catch (e3: Exception) {
+                    try {
+                        val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
+                        val isoTimestamp = isoFormat.parse(dateStr)
+                        java.time.LocalDate.ofInstant(isoTimestamp!!.toInstant(), java.time.ZoneId.systemDefault())
+                            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                    } catch (e4: Exception) { null }
+                }
+            }
+        }
+    }
 
     private fun updateStatsNatively() {
         val logFiles = logDir.listFiles { _, name -> 
             name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || 
             name.endsWith("_warning.log") || name.endsWith("_cidr.log") || name.endsWith("_security.log") ||
-            name == "security.log" || name == "nginx_main_access.log"
+            name == "security.log" || name == "nginx_main_access.log" ||
+            name == "system.log" || name.endsWith("_system.log")
         } ?: return
 
         val hitsToInsert = mutableListOf<ProxyHit>()
@@ -373,11 +429,13 @@ class AnalyticsServiceImpl(
                 
                 if (currentLength == lastProcessedOffset) continue
 
+                val isSystemLog = logFile.name == "system.log" || logFile.name.endsWith("_system.log")
                 java.io.RandomAccessFile(logFile, "r").use { raf ->
                     raf.seek(lastProcessedOffset)
                     var line: String? = raf.readLine()
                     while (line != null) {
-                        parseLogLine(line)?.let { logEntry ->
+                        val logEntry = if (isSystemLog) parseRateLimitErrorLine(line) else parseLogLine(line)
+                        logEntry?.let { logEntry ->
                                 val ip = logEntry.ip
                                 val dateStr = logEntry.dateStr
                                 val method = logEntry.method
@@ -420,7 +478,9 @@ class AnalyticsServiceImpl(
 
                                 // Update stats
                                 totalHitsCounter.incrementAndGet()
-                                if (logFile.name.endsWith("_danger.log") || logFile.name.endsWith("_security.log") || logFile.name.endsWith("_warning.log") && status >= 400) {
+                                if (logFile.name.endsWith("_danger.log") || logFile.name.endsWith("_security.log") || 
+                                    (logFile.name.endsWith("_warning.log") && status >= 400) ||
+                                    (logFile.name == "system.log" || logFile.name.endsWith("_system.log"))) {
                                     securityHitsCounter.incrementAndGet()
                                 }
                                 hitsByStatusMap.merge(status, 1L, Long::plus)
@@ -471,7 +531,11 @@ class AnalyticsServiceImpl(
                                 ipBatchStats[ip] = (currentStats.first + 1) to (currentStats.second + (if (isError) 1L else 0L))
 
                                 try {
-                                    val timestamp = logLineDateFormat.parse(dateStr)
+                                    val timestamp = try {
+                                        logLineDateFormat.parse(dateStr)
+                                    } catch (_: Exception) {
+                                        errorLogDateFormat.parse(dateStr)
+                                    }
                                     val hourKey = hourKeyFormat.format(timestamp)
                                     hitsByTimeMap.merge(hourKey, 1L, Long::plus)
 
@@ -486,7 +550,8 @@ class AnalyticsServiceImpl(
                                         referer = if (referer == "-") null else referer,
                                         domain = domain,
                                         countryCode = ipInfo?.countryCode,
-                                        provider = ipInfo?.provider
+                                        provider = ipInfo?.provider,
+                                        violationReason = if (isSystemLog) "rate_limit_exceeded" else null
                                     )
                                     recentHitsList.addFirst(hit)
                                     ClickHouseService.log(hit)
@@ -758,7 +823,8 @@ class AnalyticsServiceImpl(
                 it.name == "access.log" || it.name.endsWith("_access.log") || 
                 it.name.endsWith("_danger.log") || it.name.endsWith("_warning.log") ||
                 it.name.endsWith("_security.log") || it.name.endsWith("_cidr.log") || 
-                it.name == "nginx_main_access.log"
+                it.name == "nginx_main_access.log" ||
+                it.name == "system.log" || it.name.endsWith("_system.log")
             }
         }
 
@@ -806,10 +872,12 @@ class AnalyticsServiceImpl(
 
         for (file in filesToProcess) {
             try {
+                val isSystemLog = file.name == "system.log" || file.name.endsWith("_system.log")
                 file.bufferedReader(Charsets.UTF_8).use { reader ->
                     var line: String? = reader.readLine()
                     while (line != null) {
-                        parseLogLine(line)?.let { logEntry ->
+                        val logEntry = if (isSystemLog) parseRateLimitErrorLine(line) else parseLogLine(line)
+                        logEntry?.let { logEntry ->
                                 val ip = logEntry.ip
                                 val dateStr = logEntry.dateStr
                                 val status = logEntry.status
@@ -817,9 +885,13 @@ class AnalyticsServiceImpl(
 
                                 // Parse date and check match
                                 try {
-                                    val timestamp = logLineDateFormat.parse(dateStr)
+                                    val timestamp = try {
+                                        logLineDateFormat.parse(dateStr)
+                                    } catch (_: Exception) {
+                                        errorLogDateFormat.parse(dateStr)
+                                    }
                                     val logDate = java.time.LocalDate.ofInstant(
-                                        timestamp.toInstant(), java.time.ZoneId.systemDefault()
+                                        timestamp!!.toInstant(), java.time.ZoneId.systemDefault()
                                     )
                                     if (!logDate.isEqual(targetLocalDate)) {
                                         return@let
@@ -848,7 +920,8 @@ class AnalyticsServiceImpl(
                                     }
 
                                     tempTotalHits.incrementAndGet()
-                                    if (file.name.endsWith("_security.log") || file.name.endsWith("_danger.log")) {
+                                    if (file.name.endsWith("_security.log") || file.name.endsWith("_danger.log") ||
+                                        file.name == "system.log" || file.name.endsWith("_system.log")) {
                                         tempSecurityHits.incrementAndGet()
                                     }
                                     tempHitsByStatusMap.merge(status, 1L, Long::plus)
@@ -993,11 +1066,10 @@ class AnalyticsServiceImpl(
     private fun extractAllDatesFromCurrentLog(): Set<String> {
         val logFiles = logDir.listFiles { _, name -> 
             name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || 
-            name.endsWith("_security.log") || name == "nginx_main_access.log"
+            name.endsWith("_security.log") || name == "nginx_main_access.log" ||
+            name == "system.log" || name.endsWith("_system.log")
         } ?: return emptySet()
 
-        val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
-        val dateFormatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
         val dates = mutableSetOf<String>()
 
         for (logFile in logFiles) {
@@ -1009,23 +1081,7 @@ class AnalyticsServiceImpl(
                     var line: String? = raf.readLine()
     
                     while (line != null) {
-                        val trimmedLine = line.trim()
-                        if (trimmedLine.isNotEmpty()) {
-                            // Try to extract date from log line
-                            val dateMatch = """\[([^\]]+)\]""".toRegex().find(trimmedLine)
-                            dateMatch?.let { match ->
-                                val dateStr = match.groupValues[1]
-                                try {
-                                    val timestamp = dateFormat.parse(dateStr)
-                                    val logDate = java.time.LocalDate.ofInstant(
-                                        timestamp.toInstant(), java.time.ZoneId.systemDefault()
-                                    )
-                                    dates.add(logDate.format(dateFormatter))
-                                } catch (e: Exception) {
-                                    // Ignore parse errors
-                                }
-                            }
-                        }
+                        extractDateFromLogLine(line)?.let { dates.add(it) }
                         line = raf.readLine()
                     }
                 }
@@ -1171,11 +1227,10 @@ class AnalyticsServiceImpl(
     private fun extractDatesFromLogs(): Set<String> {
         val logFiles = logDir.listFiles { _, name -> 
             name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || 
-            name.endsWith("_warning.log") || name.endsWith("_security.log") || name == "nginx_main_access.log"
+            name.endsWith("_warning.log") || name.endsWith("_security.log") || name == "nginx_main_access.log" ||
+            name == "system.log" || name.endsWith("_system.log")
         } ?: return emptySet()
         
-        val dateFormat = SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", Locale.US)
-        val dateFormatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
         val dates = mutableSetOf<String>()
 
         for (logFile in logFiles) {
@@ -1188,35 +1243,7 @@ class AnalyticsServiceImpl(
     
                     while (line != null && lineCount < maxLinesToScan) {
                         try {
-                            val trimmedLine = line.trim()
-                            if (trimmedLine.isNotEmpty()) {
-                                // Try to extract date from log line - support multiple formats
-                                val dateMatch = """\[([^\]]+)\]""".toRegex().find(trimmedLine)
-                                dateMatch?.let { match ->
-                                    val dateStr = match.groupValues[1]
-                                    try {
-                                        val timestamp = dateFormat.parse(dateStr)
-                                        val logDate = java.time.LocalDate.ofInstant(
-                                            timestamp.toInstant(), java.time.ZoneId.systemDefault()
-                                        )
-                                        dates.add(logDate.format(dateFormatter))
-                                    } catch (e: Exception) {
-                                        // Try alternative date format (dd/MMM/yyyy:HH:mm:ss)
-                                        try {
-                                            val altDateFormat =
-                                                SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss", Locale.US)
-                                            val altTimestamp = altDateFormat.parse(dateStr)
-                                            val logDate = java.time.LocalDate.ofInstant(
-                                                altTimestamp.toInstant(),
-                                                java.time.ZoneId.systemDefault()
-                                            )
-                                            dates.add(logDate.format(dateFormatter))
-                                        } catch (e2: Exception) {
-                                            // Ignore parse errors
-                                        }
-                                    }
-                                }
-                            }
+                            extractDateFromLogLine(line)?.let { dates.add(it) }
                         } catch (e: Exception) {
                             // Ignore line errors
                         }
@@ -1306,10 +1333,9 @@ class AnalyticsServiceImpl(
             val timestamp = try {
                 logLineDateFormat.parse(ts).time
             } catch (_: Exception) {
-                try {
-                    java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(ts)?.time
-                        ?: System.currentTimeMillis()
-                }catch (_: Exception) { System.currentTimeMillis() }
+                try { java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(ts)?.time }
+                    ?: System.currentTimeMillis()
+                catch (_: Exception) { System.currentTimeMillis() }
             }
             ProxyHit(
                 timestamp = timestamp,
@@ -1338,7 +1364,8 @@ class AnalyticsServiceImpl(
                     (name == "security.log" || name == "security_$targetDate.log" ||
                      name.endsWith("_danger.log") || name.endsWith("_danger_$targetDate.log") ||
                      name.endsWith("_security.log") || name.endsWith("_security_$targetDate.log") ||
-                     name.endsWith("_cidr.log") || name.endsWith("_cidr_$targetDate.log"))
+                     name.endsWith("_cidr.log") || name.endsWith("_cidr_$targetDate.log") ||
+                     name == "system.log" || name.endsWith("_system.log"))
                 }?.toList() ?: emptyList()
             }
             "warning" -> {
@@ -1388,7 +1415,25 @@ class AnalyticsServiceImpl(
 
                     if (search != null && !trimmedLine.contains(search, ignoreCase = true)) continue
 
+                    val isSystemLog = file.name == "system.log" || file.name.endsWith("_system.log")
                     val hit = when {
+                        isSystemLog -> parseRateLimitErrorLine(trimmedLine)?.let { e ->
+                            try {
+                                val ts = try { dateFormat.parse(e.dateStr) } catch (_: Exception) { errorLogDateFormat.parse(e.dateStr) }
+                                ProxyHit(
+                                    timestamp = ts!!.time,
+                                    ip = e.ip,
+                                    method = e.method,
+                                    path = e.path,
+                                    status = 429,
+                                    responseTime = 0,
+                                    userAgent = e.userAgent,
+                                    referer = if (e.referer == "-") null else e.referer,
+                                    domain = e.host?.takeIf { it != "-" },
+                                    violationReason = "rate_limit_exceeded"
+                                )
+                            } catch (_: Exception) { null }
+                        }
                         trimmedLine.startsWith("{") -> parseSecurityJsonLine(trimmedLine)
                         else -> lineRegex.find(trimmedLine)?.let { match ->
                             val (ip, dateStr, fullRequest, statusStr, _, referer, ua, _, host) = match.destructured

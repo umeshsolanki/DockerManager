@@ -597,7 +597,7 @@ export interface SystemConfig {
 }
 
 export interface UpdateSystemConfigRequest {
-  dockerSocket: string;
+  dockerSocket?: string;
   jamesWebAdminUrl?: string;
   dockerBuildKit?: boolean;
   dockerCliBuild?: boolean;
