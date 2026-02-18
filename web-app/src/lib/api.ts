@@ -364,7 +364,24 @@ export const DockerClient = {
     getProxySecuritySettings: () => req<SystemConfig | null>('/proxy/security/settings', {}, null),
     updateProxySecuritySettings: (body: Partial<SystemConfig>) => safeReq('/proxy/security/settings', { method: 'POST', body: JSON.stringify(body) }),
     updateProxyDefaultBehavior: (return404: boolean) => safeReq('/proxy/settings/default-behavior', { method: 'POST', body: JSON.stringify({ return404 }) }),
-    updateProxyRsyslogSettings: (enabled: boolean) => safeReq('/proxy/settings/rsyslog', { method: 'POST', body: JSON.stringify({ enabled }) }),
+    updateProxyRsyslogSettings: (enabled: boolean, dualLogging?: boolean) => safeReq('/proxy/settings/rsyslog', {
+        method: 'POST',
+        body: JSON.stringify({ enabled, ...(dualLogging !== undefined && { dualLogging }) })
+    }),
+    updateProxyLoggingSettings: (params: {
+        jsonLoggingEnabled?: boolean;
+        logBufferingEnabled?: boolean;
+        logBufferSizeKb?: number;
+        logFlushIntervalSeconds?: number;
+    }) => safeReq('/proxy/settings/logging', {
+        method: 'POST',
+        body: JSON.stringify({
+            ...(params.jsonLoggingEnabled !== undefined && { jsonLoggingEnabled: String(params.jsonLoggingEnabled) }),
+            ...(params.logBufferingEnabled !== undefined && { logBufferingEnabled: String(params.logBufferingEnabled) }),
+            ...(params.logBufferSizeKb !== undefined && { logBufferSizeKb: String(params.logBufferSizeKb) }),
+            ...(params.logFlushIntervalSeconds !== undefined && { logFlushIntervalSeconds: String(params.logFlushIntervalSeconds) })
+        })
+    }),
     updateProxyBurstProtection: (enabled: boolean, rate?: number, burst?: number) => safeReq('/proxy/settings/burst-protection', {
         method: 'POST', body: JSON.stringify({
             enabled: String(enabled),

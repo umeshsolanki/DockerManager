@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Globe, Plus, Search, RefreshCw, Trash2, Power, Server, ExternalLink, FileKey, Pencil, Layers, Database, Lock, Network, Activity, ShieldCheck, Copy, CheckCircle2, Calendar, Building2, AlertTriangle, FolderCode, Construction, Zap } from 'lucide-react';
+import { Globe, Plus, Search, RefreshCw, Trash2, Power, Server, ExternalLink, FileKey, Pencil, Layers, Database, Lock, Network, Activity, ShieldCheck, Copy, CheckCircle2, Calendar, Building2, AlertTriangle, FolderCode, Construction, Zap, FileText } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { ProxyHost, PathRoute, SSLCertificate, DnsConfig, CustomPage } from '@/lib/types';
 import { toast } from 'sonner';
@@ -470,15 +470,15 @@ export default function ProxyScreen() {
                             <div className="bg-surface/30 backdrop-blur-md border border-white/5 rounded-2xl p-5 flex flex-col justify-center hover:border-primary/20 transition-all">
                                 <div className="flex items-center gap-3 mb-4">
                                     <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
-                                        <Layers size={20} />
+                                        <FileText size={20} />
                                     </div>
                                     <div>
-                                        <h3 className="text-sm font-bold text-on-surface">Remote Logging (Rsyslog)</h3>
-                                        <p className="text-xs text-on-surface-variant">Send proxy logs to internal syslog server</p>
+                                        <h3 className="text-sm font-bold text-on-surface">Proxy Logging</h3>
+                                        <p className="text-xs text-on-surface-variant">Destination, format, and buffering</p>
                                     </div>
                                 </div>
                                 <div className="scale-100 origin-top-left w-full">
-                                    <RsyslogToggle />
+                                    <LoggingConfigCard />
                                 </div>
                             </div>
 
@@ -814,27 +814,72 @@ function DefaultBehaviorToggle() {
     );
 }
 
-function RsyslogToggle() {
+function LoggingConfigCard() {
     const [config, setConfig] = useState<any>(null);
     const [loading, setLoading] = useState(false);
+    const [showAdvanced, setShowAdvanced] = useState(false);
+    const [localBuffering, setLocalBuffering] = useState({ size: 32, flush: 5 });
 
-    useEffect(() => {
-        DockerClient.getProxySecuritySettings().then(setConfig);
-    }, []);
+    const refresh = () => DockerClient.getProxySecuritySettings().then(c => {
+        setConfig(c);
+        if (c) setLocalBuffering({ size: c.logBufferSizeKb ?? 32, flush: c.logFlushIntervalSeconds ?? 5 });
+    });
 
-    const handleToggle = async (enabled: boolean) => {
+    useEffect(() => { refresh(); }, []);
+
+    const destination = !config?.proxyRsyslogEnabled ? 'file' : config?.proxyDualLoggingEnabled ? 'both' : 'syslog';
+    const setDestination = async (mode: 'file' | 'syslog' | 'both') => {
+        const enabled = mode !== 'file';
+        const dualLogging = mode === 'both';
         setLoading(true);
         try {
-            const result = await DockerClient.updateProxyRsyslogSettings(enabled);
+            const result = await DockerClient.updateProxyRsyslogSettings(enabled, dualLogging);
             if (result.success) {
-                toast.success('Rsyslog settings updated');
-                const newConfig = await DockerClient.getProxySecuritySettings();
-                setConfig(newConfig);
+                toast.success('Logging destination updated');
+                await refresh();
             } else {
-                toast.error(result.message || 'Failed to update rsyslog settings');
+                toast.error(result.message || 'Failed');
             }
         } catch (e) {
-            toast.error('Failed to update rsyslog settings');
+            toast.error('Failed to update');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const setFormat = async (json: boolean) => {
+        setLoading(true);
+        try {
+            const result = await DockerClient.updateProxyLoggingSettings({ jsonLoggingEnabled: json });
+            if (result.success) {
+                toast.success('Log format updated');
+                await refresh();
+            } else {
+                toast.error(result.message || 'Failed');
+            }
+        } catch (e) {
+            toast.error('Failed to update');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const setBuffering = async (enabled: boolean, size?: number, flush?: number) => {
+        setLoading(true);
+        try {
+            const result = await DockerClient.updateProxyLoggingSettings({
+                logBufferingEnabled: enabled,
+                ...(size !== undefined && { logBufferSizeKb: size }),
+                ...(flush !== undefined && { logFlushIntervalSeconds: flush })
+            });
+            if (result.success) {
+                toast.success('Buffering settings updated');
+                await refresh();
+            } else {
+                toast.error(result.message || 'Failed');
+            }
+        } catch (e) {
+            toast.error('Failed to update');
         } finally {
             setLoading(false);
         }
@@ -844,37 +889,95 @@ function RsyslogToggle() {
 
     return (
         <div className="flex flex-col gap-3">
-            <div
-                className={`p-4 rounded-xl border border-outline/10 transition-all cursor-pointer ${config.proxyRsyslogEnabled ? 'bg-primary/10 border-primary/30 ring-1 ring-primary/30' : 'bg-surface/50 hover:bg-surface/80'}`}
-                onClick={() => !loading && handleToggle(true)}
-            >
-                <div className="flex items-center gap-3">
-                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${config.proxyRsyslogEnabled ? 'border-primary bg-primary text-white' : 'border-outline/30'}`}>
-                        {config.proxyRsyslogEnabled && <div className="w-2 h-2 rounded-full bg-white" />}
+            <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider mb-1">Destination</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {[
+                    { id: 'file' as const, label: 'File only', desc: 'Local nginx logs' },
+                    { id: 'syslog' as const, label: 'Rsyslog only', desc: 'Stream to syslog' },
+                    { id: 'both' as const, label: 'Both (dual)', desc: 'File + Rsyslog' }
+                ].map(({ id, label, desc }) => (
+                    <div
+                        key={id}
+                        onClick={() => !loading && setDestination(id)}
+                        className={`p-3 rounded-xl border transition-all cursor-pointer ${destination === id ? 'bg-primary/10 border-primary/30 ring-1 ring-primary/30' : 'bg-surface/50 hover:bg-surface/80 border-outline/10'}`}
+                    >
+                        <div className="flex items-center gap-2">
+                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${destination === id ? 'border-primary bg-primary' : 'border-outline/30'}`}>
+                                {destination === id && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </div>
+                            <div>
+                                <p className="font-semibold text-xs text-on-surface">{label}</p>
+                                <p className="text-[10px] text-on-surface-variant">{desc}</p>
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <p className="font-semibold text-sm text-on-surface">Stream to Internal Syslog</p>
-                        <p className="text-xs text-on-surface-variant">Real-time log transmission to local UDP ingestion server</p>
-                    </div>
-                </div>
+                ))}
             </div>
 
-            <div
-                className={`p-4 rounded-xl border border-outline/10 transition-all cursor-pointer ${!config.proxyRsyslogEnabled ? 'bg-primary/10 border-primary/30 ring-1 ring-primary/30' : 'bg-surface/50 hover:bg-surface/80'}`}
-                onClick={() => !loading && handleToggle(false)}
-            >
-                <div className="flex items-center gap-3">
-                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${!config.proxyRsyslogEnabled ? 'border-primary bg-primary text-white' : 'border-outline/30'}`}>
-                        {!config.proxyRsyslogEnabled && <div className="w-2 h-2 rounded-full bg-white" />}
-                    </div>
-                    <div>
-                        <p className="font-semibold text-sm text-on-surface">Local Standard Logging Only</p>
-                        <p className="text-xs text-on-surface-variant">Store logs only in local /var/log/nginx files</p>
-                    </div>
-                </div>
+            <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-wider mt-2 mb-1">Format</p>
+            <div className="flex gap-2">
+                <button
+                    onClick={() => !loading && setFormat(false)}
+                    className={`flex-1 py-2 rounded-xl border text-xs font-bold transition-all ${!config?.jsonLoggingEnabled ? 'bg-primary/10 border-primary/30 ring-1 ring-primary/30' : 'bg-surface/50 hover:bg-surface/80 border-outline/10'}`}
+                >
+                    Standard
+                </button>
+                <button
+                    onClick={() => !loading && setFormat(true)}
+                    className={`flex-1 py-2 rounded-xl border text-xs font-bold transition-all ${config?.jsonLoggingEnabled ? 'bg-primary/10 border-primary/30 ring-1 ring-primary/30' : 'bg-surface/50 hover:bg-surface/80 border-outline/10'}`}
+                >
+                    JSON
+                </button>
             </div>
 
-            {loading && <div className="text-xs text-center text-primary animate-pulse">Updating Nginx configuration...</div>}
+            <div className="mt-2 pt-2 border-t border-white/5">
+                <button
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                    className="text-[10px] font-black text-primary uppercase tracking-wider hover:underline"
+                >
+                    {showAdvanced ? '−' : '+'} Advanced buffering
+                </button>
+                {showAdvanced && (
+                    <div className="mt-3 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold">Enable buffering</span>
+                            <button
+                                type="button"
+                                onClick={() => !loading && setBuffering(!config?.logBufferingEnabled)}
+                                className={`w-12 h-6 rounded-full transition-all relative ${config?.logBufferingEnabled ? 'bg-primary' : 'bg-white/10'}`}
+                            >
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${config?.logBufferingEnabled ? 'right-1' : 'left-1'}`} />
+                            </button>
+                        </div>
+                        {config?.logBufferingEnabled && (
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label className="text-[10px] uppercase font-bold text-on-surface-variant mb-1 block">Buffer (KB)</label>
+                                    <input
+                                        type="number"
+                                        value={localBuffering.size}
+                                        onChange={e => setLocalBuffering(p => ({ ...p, size: parseInt(e.target.value) || 32 }))}
+                                        onBlur={e => setBuffering(true, parseInt(e.target.value) || 32, localBuffering.flush)}
+                                        className="w-full bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] uppercase font-bold text-on-surface-variant mb-1 block">Flush (s)</label>
+                                    <input
+                                        type="number"
+                                        value={localBuffering.flush}
+                                        onChange={e => setLocalBuffering(p => ({ ...p, flush: parseInt(e.target.value) || 5 }))}
+                                        onBlur={e => setBuffering(true, localBuffering.size, parseInt(e.target.value) || 5)}
+                                        className="w-full bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs"
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {loading && <div className="text-xs text-center text-primary animate-pulse">Updating...</div>}
         </div>
     );
 }

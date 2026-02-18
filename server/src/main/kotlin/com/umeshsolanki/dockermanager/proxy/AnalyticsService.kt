@@ -348,7 +348,8 @@ class AnalyticsServiceImpl(
     private fun updateStatsNatively() {
         val logFiles = logDir.listFiles { _, name -> 
             name.endsWith("_access.log") || name == "access.log" || name.endsWith("_danger.log") || 
-            name.endsWith("_warning.log") || name.endsWith("_cidr.log") || name == "nginx_main_access.log"
+            name.endsWith("_warning.log") || name.endsWith("_cidr.log") || name.endsWith("_security.log") ||
+            name == "security.log" || name == "nginx_main_access.log"
         } ?: return
 
         val hitsToInsert = mutableListOf<ProxyHit>()
@@ -1305,10 +1306,9 @@ class AnalyticsServiceImpl(
             val timestamp = try {
                 logLineDateFormat.parse(ts).time
             } catch (_: Exception) {
-                try {
-                    java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(ts)?.time
+                try { java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(ts)?.time }
                     ?: System.currentTimeMillis()
-                }catch (_: Exception) { System.currentTimeMillis() }
+                catch (_: Exception) { System.currentTimeMillis() }
             }
             ProxyHit(
                 timestamp = timestamp,
@@ -1437,6 +1437,49 @@ class AnalyticsServiceImpl(
         while (mirrorRequestsList.size > MAX_MIRROR_REQUESTS) {
             mirrorRequestsList.removeLast()
         }
+        // Mirror traffic (from rsyslog or nginx mirror) must contribute to main analytics
+        applyMirrorHitToStats(hit)
+    }
+
+    /** Apply mirror hit to main stats so rsyslog/HTTP-forwarded traffic shows in analytics */
+    private fun applyMirrorHitToStats(hit: ProxyHit) {
+        val settings = AppConfig.settings
+        if (settings.filterLocalIps && IpFilterUtils.isLocalIp(hit.ip)) return
+
+        totalHitsCounter.incrementAndGet()
+        securityHitsCounter.incrementAndGet() // Mirror = security channel
+        hitsByStatusMap.merge(hit.status, 1L, Long::plus)
+        hitsByIpMap.merge(hit.ip, 1L, Long::plus)
+        hitsByMethodMap.merge(hit.method, 1L, Long::plus)
+        hitsByPathMap.merge(hit.path, 1L, Long::plus)
+        hit.userAgent?.takeIf { it != "-" }?.let { hitsByUserAgentMap.merge(it, 1L, Long::plus) }
+        hit.referer?.takeIf { it != "-" }?.let { hitsByRefererMap.merge(it, 1L, Long::plus) }
+        hit.domain?.let { domain ->
+            hitsByDomainMap.merge(domain, 1L, Long::plus)
+            if (hit.status >= 400) hitsByDomainErrorMap.merge(domain, 1L, Long::plus)
+            val hStats = hostStatsData.getOrPut(domain) { DomainStats() }
+            hStats.totalHits.incrementAndGet()
+            hStats.hitsByStatus.merge(hit.status, 1L, Long::plus)
+            hStats.hitsByIp.merge(hit.ip, 1L, Long::plus)
+            hStats.hitsByPath.merge(hit.path, 1L, Long::plus)
+            hStats.hitsByMethod.merge(hit.method, 1L, Long::plus)
+        }
+        if (hit.status >= 400 || hit.status == 0) hitsByIpErrorMap.merge(hit.ip, 1L, Long::plus)
+        val hourKey = java.time.Instant.ofEpochMilli(hit.timestamp)
+            .atZone(java.time.ZoneId.systemDefault())
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:00:00XXX"))
+        hitsByTimeMap.merge(hourKey, 1L, Long::plus)
+        scope.launch {
+            try {
+                val ipInfo = IpLookupService.lookup(hit.ip)
+                ipInfo?.countryCode?.let { hitsByCountryMap.merge(it, 1L, Long::plus) }
+                ipInfo?.provider?.let { hitsByProviderMap.merge(it, 1L, Long::plus) }
+            } catch (_: Exception) {}
+        }
+        recentHitsList.addFirst(hit)
+        while (recentHitsList.size > MAX_RECENT_HITS) recentHitsList.removeLast()
+        try { ClickHouseService.log(hit) } catch (_: Exception) {}
+        updateCachedStats()
     }
 
     override fun getRecentMirrorRequests(limit: Int): List<ProxyHit> {

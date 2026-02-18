@@ -3,7 +3,7 @@
 ## Performance
 
 - **Conditional logging**: Normal and security logs use `if=$log_access` / `if=$log_security`; only one log line is written per request. `$redacted_query` is evaluated only when writing the security log line, not on every request.
-- **Buffering**: Both access and security logs use `buffer=` and `flush=5s` to batch writes and reduce I/O.
+- **Buffering**: Both access and security logs use `buffer=` and `flush=` from configurable settings (`logBufferSizeKb`, `logFlushIntervalSeconds`) to batch writes and reduce I/O.
 - **Single if in security-checks**: One combined `if` for path/UA violations to avoid extra nested location cost.
 - **Many map rules**: If `pathViolations`/`uaViolations` inject many entries, add `map_hash_bucket_size 128;` in `http {}` in nginx.conf.
 
