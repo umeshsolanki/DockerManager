@@ -518,6 +518,7 @@ class ProxyServiceImpl(
         headers: Map<String, String>,
         body: String?,
     ) {
+        if (IpFilterUtils.isLocalIp(ip)) return  // Skip local/internal IPs
         val violationReason = headers["X-Mirror-Reason"]?.takeIf { it.isNotBlank() }
         val domain = headers["X-Mirror-Host"]?.takeIf { it.isNotBlank() }
         val hit = ProxyHit(

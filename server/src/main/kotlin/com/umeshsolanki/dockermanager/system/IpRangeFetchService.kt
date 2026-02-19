@@ -39,17 +39,15 @@ object IpRangeFetchService {
         return importCidrs(cidrs, "AWS", "hosting")
     }
 
+    /** AWS format: prefixes[].ip_prefix (IPv4) + ipv6_prefixes[].ipv6_prefix (IPv6) - separate arrays */
     suspend fun parseAwsJson(jsonString: String): List<String> = withContext(Dispatchers.Default) {
         val json = AppConfig.json.parseToJsonElement(jsonString).jsonObject
-        val prefixes = json["prefixes"]?.jsonArray ?: JsonArray(emptyList())
-        val ipv6Prefixes = json["ipv6_prefixes"]?.jsonArray ?: JsonArray(emptyArray<JsonElement>().toList())
-        
         val cidrs = mutableListOf<String>()
-        prefixes.forEach { 
-            it.jsonObject["ip_prefix"]?.jsonPrimitive?.content?.let { cidr -> cidrs.add(cidr) }
+        json["prefixes"]?.jsonArray?.forEach { el ->
+            (el as? JsonObject)?.get("ip_prefix")?.jsonPrimitive?.contentOrNull?.let { cidrs.add(it) }
         }
-        ipv6Prefixes.forEach { 
-            it.jsonObject["ipv6_prefix"]?.jsonPrimitive?.content?.let { cidr -> cidrs.add(cidr) }
+        json["ipv6_prefixes"]?.jsonArray?.forEach { el ->
+            (el as? JsonObject)?.get("ipv6_prefix")?.jsonPrimitive?.contentOrNull?.let { cidrs.add(it) }
         }
         cidrs
     }
@@ -61,14 +59,14 @@ object IpRangeFetchService {
         return importCidrs(cidrs, "Google", "hosting")
     }
 
+    /** Google format: prefixes[] with ipv4Prefix OR ipv6Prefix per object (single array, different field names) */
     suspend fun parseGoogleJson(jsonString: String): List<String> = withContext(Dispatchers.Default) {
         val json = AppConfig.json.parseToJsonElement(jsonString).jsonObject
-        val prefixes = json["prefixes"]?.jsonArray ?: JsonArray(emptyList())
-        
         val cidrs = mutableListOf<String>()
-        prefixes.forEach { prefix ->
-            prefix.jsonObject["ipv4Prefix"]?.jsonPrimitive?.content?.let { cidrs.add(it) }
-            prefix.jsonObject["ipv6Prefix"]?.jsonPrimitive?.content?.let { cidrs.add(it) }
+        json["prefixes"]?.jsonArray?.forEach { el ->
+            val obj = el as? JsonObject ?: return@forEach
+            obj["ipv4Prefix"]?.jsonPrimitive?.contentOrNull?.let { cidrs.add(it) }
+            obj["ipv6Prefix"]?.jsonPrimitive?.contentOrNull?.let { cidrs.add(it) }
         }
         cidrs
     }
@@ -238,7 +236,7 @@ object IpRangeFetchService {
             IpRangesTable.batchInsert(batch) { item ->
                 this[IpRangesTable.startIp] = BigDecimal(item.start)
                 this[IpRangesTable.endIp] = BigDecimal(item.end)
-                this[IpRangesTable.countryCode] = "GLOBAL"
+                this[IpRangesTable.countryCode] = ""  // varchar(2) - Global/Multiple
                 this[IpRangesTable.countryName] = "Global / Multiple"
                 this[IpRangesTable.provider] = item.p
                 this[IpRangesTable.type] = item.t

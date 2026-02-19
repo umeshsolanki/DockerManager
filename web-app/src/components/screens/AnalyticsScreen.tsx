@@ -215,7 +215,7 @@ export default function AnalyticsScreen() {
             if (page === 1) {
                 setSecurityLogs(merged);
             } else {
-                setSecurityLogs(prev => [...prev, ...logFileEntries]);
+                setSecurityLogs(prev => [...prev, ...logFileEntries].sort((a, b) => b.timestamp - a.timestamp));
             }
             setSecurityLogsPage(page);
         } catch (e) {

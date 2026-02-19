@@ -19,17 +19,16 @@ object IpFilterUtils {
         
         return try {
             // IPv6 localhost
-            if (ip == "::1" || ip.startsWith("::ffff:")) {
-                return true
-            }
+            if (ip == "::1") return true
+            
+            // IPv4-mapped IPv6 (::ffff:x.x.x.x) - check the embedded IPv4
+            val ipToCheck = if (ip.startsWith("::ffff:")) ip.removePrefix("::ffff:") else ip
             
             // IPv6 link-local
-            if (ip.startsWith("fe80:")) {
-                return true
-            }
+            if (ipToCheck.startsWith("fe80:")) return true
             
             // Parse IPv4 address
-            val address = InetAddress.getByName(ip)
+            val address = InetAddress.getByName(ipToCheck)
             
             when {
                 address.isLoopbackAddress -> true
@@ -37,7 +36,7 @@ object IpFilterUtils {
                 address.isSiteLocalAddress -> true
                 else -> {
                     // Check specific private ranges
-                    val parts = ip.split(".").mapNotNull { it.toIntOrNull() }
+                    val parts = ipToCheck.split(".").mapNotNull { it.toIntOrNull() }
                     if (parts.size == 4) {
                         when {
                             // 127.0.0.0/8
