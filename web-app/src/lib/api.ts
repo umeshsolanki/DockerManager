@@ -454,4 +454,19 @@ export const DockerClient = {
     // --- IP Reputation ---
     listIpReputations: (limit = 100, offset = 0, search = "") => req<IpReputation[]>(`/ip-reputation?limit=${limit}&offset=${offset}&search=${encodeURIComponent(search)}`, {}, []),
     deleteIpReputation: (ip: string) => apiFetch(`/ip-reputation/${encodeURIComponent(ip)}`, { method: 'DELETE' }).then(r => r.ok),
+
+    // --- IP Ranges (Geolocation) ---
+    getIpRangeStats: () => req<{ totalRanges: number }>('/system/ip-ranges/stats', {}, { totalRanges: 0 }),
+    fetchIpRanges: (provider: string, url?: string) => safeReq<{ status: string; imported?: number; error?: string }>('/system/ip-ranges/fetch', {
+        method: 'POST',
+        body: JSON.stringify({ provider, url })
+    }),
+    importIpRanges: async (csv: string) => {
+        const r = await apiFetch('/system/ip-ranges/import', {
+            method: 'POST',
+            body: csv,
+            headers: { 'Content-Type': 'text/plain' }
+        });
+        return r.ok ? r.json() : { status: 'error', error: await r.text() };
+    },
 };

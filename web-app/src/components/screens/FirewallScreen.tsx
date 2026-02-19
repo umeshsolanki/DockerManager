@@ -1,18 +1,32 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Shield, ShieldAlert, ShieldCheck, Trash2, Plus, Search, RefreshCw, Globe, Lock, Activity, Terminal, ChevronRight, ChevronDown, ListFilter, Cpu, Database, ArrowRight } from 'lucide-react';
+import { Shield, ShieldAlert, ShieldCheck, Trash2, Plus, Search, RefreshCw, Globe, Lock, Activity, Terminal, ChevronRight, ListFilter, Database, MapPin, Save, Info } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { FirewallRule, BlockIPRequest, IptablesRule } from '@/lib/types';
+import { FirewallRule, IptablesRule, IpReputation } from '@/lib/types';
 import { toast } from 'sonner';
+import { Modal } from '../ui/Modal';
 
-export default function FirewallScreen() {
+type FirewallTab = 'rules' | 'reputation' | 'geolocation' | 'iptables' | 'nftables';
+
+export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTab }) {
     const [rules, setRules] = useState<FirewallRule[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-    const [activeTab, setActiveTab] = useState<'rules' | 'iptables' | 'nftables'>('rules');
+    const [activeTab, setActiveTab] = useState<FirewallTab>(initialTab && ['rules', 'reputation', 'geolocation', 'iptables', 'nftables'].includes(initialTab) ? initialTab : 'rules');
+
+    // IP Reputation state
+    const [reputations, setReputations] = useState<IpReputation[]>([]);
+    const [isRepLoading, setIsRepLoading] = useState(false);
+    const [repSearch, setRepSearch] = useState('');
+    const [repLimit, setRepLimit] = useState(50);
+    const [repOffset, setRepOffset] = useState(0);
+    const [ipRangesCount, setIpRangesCount] = useState(0);
+    const [showIpImportModal, setShowIpImportModal] = useState(false);
+    const [ipCsv, setIpCsv] = useState('');
+    const [importingIpRanges, setImportingIpRanges] = useState(false);
     const [iptables, setIptables] = useState<Record<string, IptablesRule[]>>({});
     const [iptablesRaw, setIptablesRaw] = useState<string>('');
     const [isIptablesRaw, setIsIptablesRaw] = useState(false);
@@ -38,9 +52,51 @@ export default function FirewallScreen() {
         setIsLoading(false);
     };
 
+    const fetchReputations = async () => {
+        setIsRepLoading(true);
+        try {
+            const data = await DockerClient.listIpReputations(repLimit, repOffset, repSearch);
+            data.sort((a, b) => b.blockedTimes - a.blockedTimes);
+            setReputations(data);
+        } catch (e) {
+            console.error('Failed to fetch IP reputations', e);
+            setReputations([]);
+        } finally {
+            setIsRepLoading(false);
+        }
+    };
+
+    const fetchIpRangeStats = async () => {
+        try {
+            const ipStats = await DockerClient.getIpRangeStats();
+            setIpRangesCount(ipStats.totalRanges);
+        } catch (e) {
+            console.error('Failed to fetch stats', e);
+        }
+    };
+
     useEffect(() => {
         fetchRules();
     }, []);
+
+    useEffect(() => {
+        if (activeTab === 'reputation' || activeTab === 'geolocation') {
+            fetchIpRangeStats();
+        }
+    }, [activeTab]);
+
+    useEffect(() => {
+        if (activeTab === 'reputation') {
+            setRepOffset(0);
+        }
+    }, [activeTab, repSearch, repLimit]);
+
+    useEffect(() => {
+        if (activeTab === 'reputation') {
+            const timer = setTimeout(fetchReputations, 300);
+            return () => clearTimeout(timer);
+        }
+    }, [activeTab, repSearch, repLimit, repOffset]);
 
     const handleDelete = async (id: string) => {
         if (confirm('Are you sure you want to unblock this IP?')) {
@@ -56,24 +112,55 @@ export default function FirewallScreen() {
 
     const filteredRules = rules.filter(r =>
         r.ip.includes(searchQuery) ||
-        (r.comment?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
+        (r.comment?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
+        (r.country?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
     );
+
+    const handleDeleteReputation = async (ip: string) => {
+        if (!confirm(`Are you sure you want to delete reputation for ${ip}?`)) return;
+        try {
+            const success = await DockerClient.deleteIpReputation(ip);
+            if (success) {
+                toast.success('Reputation record removed');
+                fetchReputations();
+            } else {
+                toast.error('Failed to delete IP reputation');
+            }
+        } catch (e) {
+            console.error('Failed to delete IP reputation', e);
+            toast.error('Failed to delete IP reputation');
+        }
+    };
 
     return (
         <div className="flex flex-col relative">
             <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-4">
-                    <h1 className="text-3xl font-bold">Firewall</h1>
-                    {isLoading && <RefreshCw className="animate-spin text-primary" size={24} />}
+                    <h1 className="text-3xl font-bold">Firewall & IP</h1>
+                    {(isLoading || (activeTab === 'reputation' && isRepLoading)) && <RefreshCw className="animate-spin text-primary" size={24} />}
                 </div>
                 <div className="flex items-center gap-3">
-                    <div className="flex bg-surface border border-outline/10 p-1 rounded-xl">
+                    <div className="flex bg-surface border border-outline/10 p-1 rounded-xl flex-wrap gap-1">
                         <button
                             onClick={() => setActiveTab('rules')}
                             className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'rules' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-on-surface-variant hover:bg-white/5'}`}
                         >
                             <ListFilter size={16} />
-                            Rule Manager
+                            Rules
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('reputation')}
+                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'reputation' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-on-surface-variant hover:bg-white/5'}`}
+                        >
+                            <ShieldAlert size={16} />
+                            Reputation
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('geolocation')}
+                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'geolocation' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-on-surface-variant hover:bg-white/5'}`}
+                        >
+                            <Globe size={16} />
+                            Geolocation
                         </button>
                         <button
                             onClick={() => setActiveTab('iptables')}
@@ -90,45 +177,49 @@ export default function FirewallScreen() {
                             nftables
                         </button>
                     </div>
-                    <button
-                        onClick={() => setIsAddModalOpen(true)}
-                        className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl hover:opacity-90 transition-opacity"
-                    >
-                        <Plus size={20} />
-                        <span className="text-sm font-bold">Block IP</span>
-                    </button>
+                    {activeTab === 'rules' && (
+                        <button
+                            onClick={() => setIsAddModalOpen(true)}
+                            className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-xl hover:opacity-90 transition-opacity"
+                        >
+                            <Plus size={20} />
+                            <span className="text-sm font-bold">Block IP</span>
+                        </button>
+                    )}
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="bg-surface border border-outline/10 rounded-2xl p-4 flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                        <Shield size={24} />
+            {(activeTab === 'rules' || activeTab === 'reputation' || activeTab === 'geolocation') && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div className="bg-surface border border-outline/10 rounded-2xl p-4 flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                            <Shield size={24} />
+                        </div>
+                        <div>
+                            <div className="text-2xl font-bold">{rules.length}</div>
+                            <div className="text-xs text-on-surface-variant uppercase font-bold tracking-wider">Active Blocks</div>
+                        </div>
                     </div>
-                    <div>
-                        <div className="text-2xl font-bold">{rules.length}</div>
-                        <div className="text-xs text-on-surface-variant uppercase font-bold tracking-wider">Active Blocks</div>
+                    <div className="bg-surface border border-outline/10 rounded-2xl p-4 flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-500">
+                            <ShieldAlert size={24} />
+                        </div>
+                        <div>
+                            <div className="text-2xl font-bold">{activeTab === 'geolocation' ? ipRangesCount.toLocaleString() : rules.filter(r => String(r.port) === '22').length}</div>
+                            <div className="text-xs text-on-surface-variant uppercase font-bold tracking-wider">{activeTab === 'geolocation' ? 'IP Ranges' : 'SSH Specific'}</div>
+                        </div>
+                    </div>
+                    <div className="bg-surface border border-outline/10 rounded-2xl p-4 flex items-center gap-4 relative overflow-hidden group">
+                        <div className="w-12 h-12 rounded-xl bg-green-500/10 flex items-center justify-center text-green-500">
+                            <ShieldCheck size={24} />
+                        </div>
+                        <div>
+                            <div className="text-2xl font-bold">{activeTab === 'reputation' ? reputations.length : 'Active'}</div>
+                            <div className="text-xs text-on-surface-variant uppercase font-bold tracking-wider">{activeTab === 'reputation' ? 'Tracked IPs' : 'Status'}</div>
+                        </div>
                     </div>
                 </div>
-                <div className="bg-surface border border-outline/10 rounded-2xl p-4 flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-500">
-                        <ShieldAlert size={24} />
-                    </div>
-                    <div>
-                        <div className="text-2xl font-bold">{rules.filter(r => r.port === '22').length}</div>
-                        <div className="text-xs text-on-surface-variant uppercase font-bold tracking-wider">SSH Specific</div>
-                    </div>
-                </div>
-                <div className="bg-surface border border-outline/10 rounded-2xl p-4 flex items-center gap-4 relative overflow-hidden group">
-                    <div className="w-12 h-12 rounded-xl bg-green-500/10 flex items-center justify-center text-green-500">
-                        <ShieldCheck size={24} />
-                    </div>
-                    <div>
-                        <div className="text-2xl font-bold">Active</div>
-                        <div className="text-xs text-on-surface-variant uppercase font-bold tracking-wider">Status</div>
-                    </div>
-                </div>
-            </div>
+            )}
 
             {activeTab === 'rules' ? (
                 <>
@@ -137,7 +228,7 @@ export default function FirewallScreen() {
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={20} />
                             <input
                                 type="text"
-                                placeholder="Search IP or comment..."
+                                placeholder="Search IP, country or comment..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="w-full bg-surface border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors"
@@ -156,6 +247,7 @@ export default function FirewallScreen() {
                             <thead>
                                 <tr className="border-b border-outline/10 bg-white/5">
                                     <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider">IP Address</th>
+                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider">Country</th>
                                     <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider">Port</th>
                                     <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider">Created</th>
                                     <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider">Comment</th>
@@ -172,8 +264,18 @@ export default function FirewallScreen() {
                                             </div>
                                         </td>
                                         <td className="px-4 py-3">
+                                            {rule.country ? (
+                                                <div className="flex items-center gap-2 text-sm font-medium text-on-surface-variant">
+                                                    <MapPin size={14} className="text-on-surface-variant/50" />
+                                                    {rule.country}
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-on-surface-variant/30 italic">—</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3">
                                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold uppercase tracking-wider">
-                                                {rule.port ? rule.port : 'All'}
+                                                {rule.port != null ? String(rule.port) : 'All'}
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 text-xs font-mono text-on-surface-variant">
@@ -204,6 +306,190 @@ export default function FirewallScreen() {
                         </div>
                     )}
                 </>
+            ) : activeTab === 'reputation' ? (
+                <>
+                    <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-6">
+                        <div className="relative flex-1 w-full md:w-96">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/50" size={20} />
+                            <input
+                                type="text"
+                                placeholder="Search IP, country or reason..."
+                                value={repSearch}
+                                onChange={(e) => setRepSearch(e.target.value)}
+                                className="w-full bg-surface border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors"
+                            />
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <span className="text-xs font-bold text-on-surface-variant uppercase">Show:</span>
+                            <select value={repLimit} onChange={(e) => setRepLimit(Number(e.target.value))} className="bg-surface border border-outline/20 rounded-xl px-4 py-2 text-sm font-bold">
+                                <option value={20}>20</option>
+                                <option value={50}>50</option>
+                                <option value={100}>100</option>
+                                <option value={500}>500</option>
+                            </select>
+                        </div>
+                        <button onClick={fetchReputations} disabled={isRepLoading} className="p-2 bg-surface border border-outline/20 rounded-xl hover:bg-white/5 transition-colors disabled:opacity-50">
+                            <RefreshCw size={20} className={isRepLoading ? 'animate-spin' : ''} />
+                        </button>
+                    </div>
+                    <div className="bg-black/40 border border-outline/10 rounded-2xl overflow-y-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="border-b border-outline/10 bg-white/5">
+                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider">IP Address</th>
+                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider">Country</th>
+                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider text-center">Blocked</th>
+                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider">Last Activity</th>
+                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-outline/5">
+                                {reputations.map((rep) => (
+                                    <tr key={rep.ip} className="hover:bg-white/5 transition-colors group">
+                                        <td className="px-4 py-3">
+                                            <div className="flex items-center gap-2">
+                                                <div className={`p-1.5 rounded-lg ${rep.blockedTimes > 0 ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
+                                                    {rep.blockedTimes > 0 ? <Shield size={14} /> : <Activity size={14} />}
+                                                </div>
+                                                <span className="font-mono font-bold text-sm text-primary">{rep.ip}</span>
+                                            </div>
+                                            {rep.reasons && rep.reasons.length > 0 && (
+                                                <span className="text-[10px] text-on-surface-variant/70 truncate max-w-[180px] block mt-0.5" title={rep.reasons.join(', ')}>
+                                                    {rep.reasons[0]}{rep.reasons.length > 1 && ` +${rep.reasons.length - 1}`}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            {rep.country ? (
+                                                <div className="flex items-center gap-2 text-sm font-medium text-on-surface-variant">
+                                                    <MapPin size={14} className="opacity-70" />
+                                                    {rep.country}
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-on-surface-variant/30 italic">—</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 text-center">
+                                            <span className={`font-bold ${rep.blockedTimes > 0 ? 'text-red-500' : 'text-on-surface-variant/40'}`}>{rep.blockedTimes}</span>
+                                        </td>
+                                        <td className="px-4 py-3 text-xs text-on-surface-variant">
+                                            {new Date(rep.lastActivity).toLocaleString()}
+                                            {rep.lastBlocked && (
+                                                <div className="text-red-400/80 mt-0.5">Blocked: {new Date(rep.lastBlocked).toLocaleString()}</div>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            <button onClick={() => handleDeleteReputation(rep.ip)} className="p-1.5 text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100" title="Delete record">
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    {reputations.length === 0 && !isRepLoading && (
+                        <div className="flex flex-col items-center justify-center py-24 text-on-surface-variant/40 border-2 border-dashed border-outline/10 rounded-2xl bg-surface/30">
+                            <Globe size={64} className="mb-4 opacity-30" />
+                            <span className="text-lg font-bold">No reputation records found</span>
+                            <span className="text-sm mt-1">IPs will appear when activity or blocks are recorded.</span>
+                        </div>
+                    )}
+                    <div className="flex justify-center gap-3 py-4">
+                        <button disabled={repOffset === 0} onClick={() => setRepOffset(Math.max(0, repOffset - repLimit))} className="px-6 py-3 rounded-2xl bg-surface border border-outline/10 text-sm font-bold disabled:opacity-40 hover:bg-white/5 disabled:cursor-not-allowed">
+                            Previous
+                        </button>
+                        <div className="px-6 py-3 bg-primary/10 border border-primary/20 rounded-2xl text-sm font-black text-primary">
+                            {repOffset} - {repOffset + repLimit}
+                        </div>
+                        <button disabled={reputations.length < repLimit} onClick={() => setRepOffset(repOffset + repLimit)} className="px-6 py-3 rounded-2xl bg-surface border border-outline/10 text-sm font-bold disabled:opacity-40 hover:bg-white/5 disabled:cursor-not-allowed">
+                            Next
+                        </button>
+                    </div>
+                </>
+            ) : activeTab === 'geolocation' ? (
+                <div className="bg-surface/30 border border-outline/10 rounded-2xl overflow-hidden">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between p-6 gap-4">
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-secondary/10 rounded-2xl border border-secondary/20">
+                                <Globe size={24} className="text-secondary" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-bold flex items-center gap-3">
+                                    IP Geolocation Data
+                                    <span className="px-3 py-1 rounded-xl bg-secondary/10 border border-secondary/20 text-xs text-secondary font-bold">
+                                        {ipRangesCount.toLocaleString()} Ranges
+                                    </span>
+                                </h2>
+                                <p className="text-xs text-on-surface-variant/60 mt-1">Manage IP range databases for country/ISP identification</p>
+                            </div>
+                        </div>
+                        <button onClick={() => setShowIpImportModal(true)} className="flex items-center gap-2 px-4 py-2.5 bg-secondary/10 hover:bg-secondary/20 border border-secondary/20 rounded-2xl text-sm font-bold text-secondary">
+                            <Plus size={16} />
+                            Import CSV
+                        </button>
+                    </div>
+                    <div className="bg-black/20 px-6 py-4 border-t border-outline/5 flex flex-col md:flex-row items-center gap-4 flex-wrap">
+                        <span className="text-xs font-bold text-on-surface-variant/70 uppercase">Auto-Fetch:</span>
+                        {[
+                            { id: 'cloudflare', name: 'CF', full: 'Cloudflare', color: 'text-[#F38020] border-[#F38020]/30 hover:bg-[#F38020]/20' },
+                            { id: 'aws', name: 'AWS', full: 'AWS', color: 'text-[#FF9900] border-[#FF9900]/30 hover:bg-[#FF9900]/20' },
+                            { id: 'google', name: 'GCP', full: 'Google', color: 'text-[#4285F4] border-[#4285F4]/30 hover:bg-[#4285F4]/20' },
+                            { id: 'digitalocean', name: 'DO', full: 'DigitalOcean', color: 'text-[#0080FF] border-[#0080FF]/30 hover:bg-[#0080FF]/20' }
+                        ].map((p) => (
+                            <button
+                                key={p.id}
+                                disabled={importingIpRanges}
+                                onClick={async () => {
+                                    setImportingIpRanges(true);
+                                    try {
+                                        const res = await DockerClient.fetchIpRanges(p.id as any) as any;
+                                        if (res?.status === 'success') {
+                                            toast.success(`Fetched ${res.imported} ranges from ${p.full}`);
+                                            fetchIpRangeStats();
+                                        } else {
+                                            toast.error(res?.error || res?.message || `Failed to fetch ${p.full}`);
+                                        }
+                                    } catch (e: any) {
+                                        toast.error(e?.message || 'Fetch failed');
+                                    } finally {
+                                        setImportingIpRanges(false);
+                                    }
+                                }}
+                                className={`px-4 py-2 rounded-xl border text-xs font-bold disabled:opacity-50 ${p.color}`}
+                            >
+                                {p.name}
+                            </button>
+                        ))}
+                        <div className="flex gap-2 flex-1 min-w-0">
+                            <input type="text" placeholder="https://example.com/ips.csv" id="custom-ip-url" className="flex-1 min-w-0 bg-black/20 border border-outline/10 rounded-xl px-4 py-2 text-sm" />
+                            <button
+                                disabled={importingIpRanges}
+                                onClick={async () => {
+                                    const url = (document.getElementById('custom-ip-url') as HTMLInputElement)?.value;
+                                    if (!url) return toast.error('Enter a URL');
+                                    setImportingIpRanges(true);
+                                    try {
+                                        const res = await DockerClient.fetchIpRanges('custom', url) as any;
+                                        if (res?.status === 'success') {
+                                            toast.success(`Fetched ${res.imported} ranges`);
+                                            fetchIpRangeStats();
+                                        } else {
+                                            toast.error(res?.error || res?.message || 'Fetch failed');
+                                        }
+                                    } catch (e: any) {
+                                        toast.error('Fetch failed');
+                                    } finally {
+                                        setImportingIpRanges(false);
+                                    }
+                                }}
+                                className="px-5 py-2 bg-secondary text-on-secondary rounded-xl text-sm font-bold disabled:opacity-50"
+                            >
+                                Fetch
+                            </button>
+                        </div>
+                    </div>
+                </div>
             ) : activeTab === 'iptables' ? (
                 <div className="flex flex-col flex-1 h-[600px] bg-black/40 rounded-3xl border border-outline/10 overflow-hidden mb-8">
                     {!isIptablesRaw ? (
@@ -507,14 +793,69 @@ export default function FirewallScreen() {
             )
             }
 
-            {
-                isAddModalOpen && (
-                    <AddBlockModal
-                        onClose={() => setIsAddModalOpen(false)}
-                        onAdded={() => { setIsAddModalOpen(false); fetchRules(); }}
-                    />
-                )
-            }
+            {isAddModalOpen && (
+                <AddBlockModal
+                    onClose={() => setIsAddModalOpen(false)}
+                    onAdded={() => { setIsAddModalOpen(false); fetchRules(); }}
+                />
+            )}
+
+            {showIpImportModal && (
+                <Modal
+                    onClose={() => setShowIpImportModal(false)}
+                    title="Import IP Range Data"
+                    description="CSV: cidr, country_code, country_name, provider, type"
+                    icon={<Globe size={24} />}
+                    maxWidth="max-w-2xl"
+                    className="flex flex-col"
+                >
+                    <div className="flex-1 overflow-y-auto mt-4 pr-2 custom-scrollbar">
+                        <div className="mb-4">
+                            <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">CSV Content (One range per line)</label>
+                            <textarea
+                                className="w-full h-80 bg-on-surface/5 border border-outline/10 rounded-2xl p-4 text-sm font-mono focus:outline-none focus:border-secondary/50 resize-none"
+                                placeholder="8.8.8.0/24, US, United States, Google, hosting&#10;1.1.1.0/24, AU, Australia, Cloudflare, hosting"
+                                value={ipCsv}
+                                onChange={(e) => setIpCsv(e.target.value)}
+                            />
+                        </div>
+                        <div className="flex items-center gap-3 bg-secondary/5 p-4 rounded-2xl border border-secondary/10 mb-6 text-on-surface-variant">
+                            <Info size={20} className="text-secondary shrink-0" />
+                            <p className="text-xs leading-relaxed">IPv4 and IPv6 CIDR notations are supported. Empty or invalid lines are skipped.</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                disabled={importingIpRanges || !ipCsv.trim()}
+                                onClick={async () => {
+                                    setImportingIpRanges(true);
+                                    try {
+                                        const res = await DockerClient.importIpRanges(ipCsv) as any;
+                                        if (res?.status === 'success') {
+                                            toast.success(`Imported ${res.imported} ranges`);
+                                            setShowIpImportModal(false);
+                                            setIpCsv('');
+                                            fetchIpRangeStats();
+                                        } else {
+                                            toast.error(res?.error || 'Import failed');
+                                        }
+                                    } catch (e) {
+                                        toast.error('Import failed');
+                                    } finally {
+                                        setImportingIpRanges(false);
+                                    }
+                                }}
+                                className="flex-1 flex items-center justify-center gap-2 bg-primary text-on-primary py-3.5 rounded-2xl font-bold text-sm hover:opacity-90 disabled:opacity-50"
+                            >
+                                {importingIpRanges ? <RefreshCw size={18} className="animate-spin" /> : <Save size={18} />}
+                                {importingIpRanges ? 'Importing...' : 'Confirm Import'}
+                            </button>
+                            <button onClick={() => setShowIpImportModal(false)} className="px-6 py-3.5 bg-on-surface/5 rounded-2xl font-bold text-sm hover:bg-on-surface/10">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </div >
     );
 }

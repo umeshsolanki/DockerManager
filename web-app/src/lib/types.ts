@@ -261,6 +261,9 @@ export interface FirewallRule {
   comment?: string;
   createdAt: number;
   expiresAt?: number;
+  country?: string;
+  city?: string;
+  isp?: string;
 }
 
 export interface BlockIPRequest {
