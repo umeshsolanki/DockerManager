@@ -1465,7 +1465,11 @@ class AnalyticsServiceImpl(
                             } catch (e: Exception) { null }
                         }
                     }
-                    hit?.let { logs.add(it) }
+                    hit?.let { h ->
+                        if (type !in listOf("security", "danger", "cidr") || !IpFilterUtils.isLocalIp(h.ip)) {
+                            logs.add(h)
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 logger.error("Error reading log file ${file.name}", e)
@@ -1534,7 +1538,7 @@ class AnalyticsServiceImpl(
     }
 
     override fun getRecentMirrorRequests(limit: Int): List<ProxyHit> {
-        return mirrorRequestsList.take(limit)
+        return mirrorRequestsList.filter { !IpFilterUtils.isLocalIp(it.ip) }.take(limit)
     }
 
     override fun getErrorLogs(page: Int, limit: Int, search: String?, date: String?): List<ErrorLogEntry> {

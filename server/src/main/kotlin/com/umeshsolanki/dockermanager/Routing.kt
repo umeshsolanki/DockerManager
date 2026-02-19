@@ -33,6 +33,11 @@ fun Application.configureRouting() {
     val indexHtml = Application::class.java.classLoader.getResource("ui/index.html")?.readText()
 
     routing {
+        // Health check (no auth, for load balancers / Docker / k8s)
+        get("/health") {
+            call.respondText("""{"status":"ok"}""", ContentType.Application.Json)
+        }
+
         // API Routes
         authRoutes()
         securityMirrorRoutes()

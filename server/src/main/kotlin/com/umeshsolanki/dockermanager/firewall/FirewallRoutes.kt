@@ -22,12 +22,22 @@ fun Route.firewallRoutes() {
         }
 
         get("/nftables") {
-            call.respond(FirewallService.getNftablesVisualisation())
+            try {
+                val result = FirewallService.getNftablesVisualisation()
+                call.respondText(result, io.ktor.http.ContentType.Text.Plain)
+            } catch (e: Exception) {
+                call.respondText("Error: nftables unavailable - ${e.message ?: "nft command not found or failed"}", io.ktor.http.ContentType.Text.Plain)
+            }
         }
 
         get("/nftables/json") {
-            val json = FirewallService.getNftablesJson()
-            call.respondText(json, io.ktor.http.ContentType.Application.Json)
+            try {
+                val json = FirewallService.getNftablesJson()
+                call.respondText(json, io.ktor.http.ContentType.Application.Json)
+            } catch (e: Exception) {
+                val msg = (e.message ?: "nft command not found or failed").replace("\\", "\\\\").replace("\"", "\\\"")
+                call.respondText("""{"error":"nftables unavailable - $msg"}""", io.ktor.http.ContentType.Application.Json)
+            }
         }
 
         post("/block") {

@@ -3,6 +3,7 @@ package com.umeshsolanki.dockermanager.firewall
 import com.umeshsolanki.dockermanager.AppConfig
 import com.umeshsolanki.dockermanager.ServiceContainer
 import com.umeshsolanki.dockermanager.constants.FileConstants
+import com.umeshsolanki.dockermanager.system.IpLookupService
 import com.umeshsolanki.dockermanager.constants.FirewallConstants
 import com.umeshsolanki.dockermanager.utils.CommandExecutor
 import com.umeshsolanki.dockermanager.utils.JsonPersistence
@@ -84,6 +85,11 @@ class FirewallServiceImpl(
                 return@withLock true
             }
 
+            // Enrich from ip_ranges when country/isp not provided (e.g. manual block from frontend)
+            val lookupInfo = if (request.country == null || request.isp == null) IpLookupService.lookup(request.ip) else null
+            val resolvedCountry = request.country ?: lookupInfo?.countryCode
+            val resolvedIsp = request.isp ?: lookupInfo?.provider // provider = range provider (aws, cloudflare) from ip_ranges
+
             val id = UUID.randomUUID().toString()
             val newRule = FirewallRule(
                 id = id,
@@ -92,9 +98,9 @@ class FirewallServiceImpl(
                 protocol = request.protocol,
                 comment = request.comment,
                 expiresAt = request.expiresAt,
-                country = request.country,
+                country = resolvedCountry,
                 city = request.city,
-                isp = request.isp,
+                isp = resolvedIsp,
                 lat = request.lat,
                 lon = request.lon,
                 timezone = request.timezone,
@@ -119,7 +125,8 @@ class FirewallServiceImpl(
                         ipReputationService.recordBlock(
                             ipAddress = request.ip,
                             reason = request.comment ?: "Manual Block",
-                            countryCode = request.country,
+                            countryCode = resolvedCountry,
+                            isp = resolvedIsp,
                             durationMinutes = durationMinutes
                         )
                     } catch (e: Exception) {

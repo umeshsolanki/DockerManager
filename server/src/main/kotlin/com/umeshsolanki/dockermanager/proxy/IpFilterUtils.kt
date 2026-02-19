@@ -15,21 +15,22 @@ object IpFilterUtils {
      * - IPv6 link-local (fe80::/10)
      */
     fun isLocalIp(ip: String): Boolean {
-        if (ip.isEmpty()) return false
-        
+        val trimmed = ip.trim()
+        if (trimmed.isEmpty()) return false
+
         return try {
-            // IPv6 localhost
-            if (ip == "::1") return true
+            // IPv6 localhost (::1 or 0:0:0:0:0:0:0:1)
+            if (trimmed == "::1" || trimmed.equals("0:0:0:0:0:0:0:1", ignoreCase = true)) return true
             
             // IPv4-mapped IPv6 (::ffff:x.x.x.x) - check the embedded IPv4
-            val ipToCheck = if (ip.startsWith("::ffff:")) ip.removePrefix("::ffff:") else ip
-            
+            val ipToCheck = if (trimmed.startsWith("::ffff:")) trimmed.removePrefix("::ffff:").trim() else trimmed
+
             // IPv6 link-local
             if (ipToCheck.startsWith("fe80:")) return true
-            
+
             // Parse IPv4 address
             val address = InetAddress.getByName(ipToCheck)
-            
+
             when {
                 address.isLoopbackAddress -> true
                 address.isLinkLocalAddress -> true

@@ -432,12 +432,10 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
                                         </td>
                                         <td className="px-4 py-3">
                                             {(rep.range || rep.isp) ? (
-                                                <span className="text-xs font-medium text-on-surface-variant truncate max-w-[120px] block" title={rep.range || rep.isp}>
-                                                    {rep.range ? (
-                                                        <span className="uppercase font-bold text-primary/90">{rep.range}</span>
-                                                    ) : (
-                                                        rep.isp
-                                                    )}
+                                                <span className="text-xs font-medium text-on-surface-variant truncate max-w-[180px] block" title={[rep.range, rep.isp].filter(Boolean).join(' · ')}>
+                                                    {rep.range && <span className="uppercase font-bold text-primary/90">{rep.range}</span>}
+                                                    {rep.range && rep.isp && <span className="text-on-surface-variant/60 mx-1">·</span>}
+                                                    {rep.isp && <span>{rep.isp}</span>}
                                                 </span>
                                             ) : (
                                                 <span className="text-xs text-on-surface-variant/30 italic">—</span>
@@ -588,6 +586,7 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
                                     <div>
                                         <div className="font-mono font-bold text-sm text-on-surface">{jail.ip}</div>
                                         <div className="text-[10px] text-on-surface-variant/40 mt-0.5 uppercase font-bold tracking-tight">Reason: {jail.comment || '—'}</div>
+                                        {jail.isp && <div className="text-[10px] text-on-surface-variant/50 mt-0.5">ISP: {jail.isp}</div>}
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-4">
