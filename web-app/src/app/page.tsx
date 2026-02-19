@@ -18,7 +18,6 @@ import DashboardScreen from '@/components/screens/DashboardScreen';
 import DockerScreen from '@/components/screens/DockerScreen';
 import EmailsScreen from '@/components/screens/EmailsScreen';
 import AnalyticsScreen from '@/components/screens/AnalyticsScreen';
-import SecurityScreen from '@/components/screens/SecurityScreen';
 import LoginScreen from '@/components/screens/LoginScreen';
 import FileManagerScreen from '@/components/screens/FileManagerScreen';
 import DatabaseScreen from '@/components/screens/DatabaseScreen';
@@ -139,11 +138,11 @@ function HomeContent() {
         return <DockerScreen initialTab={initialTab} />;
       }
       case 'Logs': return <LogsScreen />;
-      case 'Firewall': return <FirewallScreen />;
+      case 'Firewall': return <FirewallScreen initialTab="rules" />;
       case 'Proxy': return <ProxyScreen />;
       case 'Emails': return <EmailsScreen />;
       case 'Settings': return <SettingsScreen onLogout={handleLogout} />;
-      case 'Security': return <SecurityScreen />;
+      case 'Security': return <FirewallScreen initialTab="overview" />;
       case 'Analytics': return <AnalyticsScreen />;
       case 'Files': return <FileManagerScreen />;
       case 'DB': return <DatabaseScreen />;

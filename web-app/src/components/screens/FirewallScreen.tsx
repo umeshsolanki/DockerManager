@@ -1,13 +1,15 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Shield, ShieldAlert, ShieldCheck, Trash2, Plus, Search, RefreshCw, Globe, Lock, Activity, Terminal, ChevronRight, ListFilter, Database, MapPin, Save, Info } from 'lucide-react';
+import { Shield, ShieldAlert, ShieldCheck, Trash2, Plus, Search, RefreshCw, Globe, Lock, Activity, Terminal, ChevronRight, ListFilter, Database, MapPin, Save, Info, History, Settings, Zap } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { FirewallRule, IptablesRule, IpReputation } from '@/lib/types';
+import { FirewallRule, IptablesRule, IpReputation, SystemConfig, ProxyJailRule, ProxyJailRuleType } from '@/lib/types';
 import { toast } from 'sonner';
 import { Modal } from '../ui/Modal';
+import { StatCard } from '../ui/StatCard';
+import { useActionTrigger } from '@/hooks/useActionTrigger';
 
-type FirewallTab = 'rules' | 'reputation' | 'geolocation' | 'iptables' | 'nftables';
+type FirewallTab = 'overview' | 'rules' | 'reputation' | 'geolocation' | 'jails' | 'proxy-rules' | 'iptables' | 'nftables';
 
 export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTab }) {
     const [rules, setRules] = useState<FirewallRule[]>([]);
@@ -15,7 +17,13 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
     const [searchQuery, setSearchQuery] = useState('');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-    const [activeTab, setActiveTab] = useState<FirewallTab>(initialTab && ['rules', 'reputation', 'geolocation', 'iptables', 'nftables'].includes(initialTab) ? initialTab : 'rules');
+    const validTabs: FirewallTab[] = ['overview', 'rules', 'reputation', 'geolocation', 'jails', 'proxy-rules', 'iptables', 'nftables'];
+    const [activeTab, setActiveTab] = useState<FirewallTab>(initialTab && validTabs.includes(initialTab) ? initialTab : 'rules');
+
+    // Proxy / Security state (from SecurityScreen)
+    const [proxyConfig, setProxyConfig] = useState<SystemConfig | null>(null);
+    const [rulesSubTab, setRulesSubTab] = useState<'active' | 'defaults'>('active');
+    const { trigger } = useActionTrigger();
 
     // IP Reputation state
     const [reputations, setReputations] = useState<IpReputation[]>([]);
@@ -37,19 +45,44 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
 
     const fetchRules = async () => {
         setIsLoading(true);
-        const [rulesData, iptablesData, iptablesRawData, nftablesData, nftablesJsonData] = await Promise.all([
-            DockerClient.listFirewallRules(),
-            DockerClient.getIptablesVisualisation(),
-            DockerClient.getIptablesRaw(),
-            DockerClient.getNftablesVisualisation(),
-            DockerClient.getNftablesJson()
-        ]);
-        setRules(rulesData || []);
-        setIptables(iptablesData || {});
-        setIptablesRaw(iptablesRawData || '');
-        setNftables(nftablesData || '');
-        setNftablesJson(nftablesJsonData);
-        setIsLoading(false);
+        try {
+            const [rulesData, proxyData, iptablesData, iptablesRawData, nftablesData, nftablesJsonData] = await Promise.all([
+                DockerClient.listFirewallRules(),
+                DockerClient.getProxySecuritySettings(),
+                DockerClient.getIptablesVisualisation(),
+                DockerClient.getIptablesRaw(),
+                DockerClient.getNftablesVisualisation(),
+                DockerClient.getNftablesJson()
+            ]);
+            setRules(rulesData || []);
+            setProxyConfig(proxyData);
+            setIptables(iptablesData || {});
+            setIptablesRaw(iptablesRawData || '');
+            setNftables(nftablesData || '');
+            setNftablesJson(nftablesJsonData);
+        } catch (e) {
+            console.error('Failed to fetch security data', e);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const updateProxySecurity = async (updated: Partial<SystemConfig>) => {
+        if (!proxyConfig) return;
+        const newSettings = { ...proxyConfig, ...updated };
+        setProxyConfig(newSettings);
+        try {
+            const result = await DockerClient.updateProxySecuritySettings(newSettings) as { success?: boolean; message?: string };
+            if (result && result.success === false) {
+                toast.error(result.message || 'Update failed');
+                fetchRules();
+            } else {
+                toast.success(result?.message || 'Settings updated');
+            }
+        } catch (e) {
+            toast.error('Failed to update settings');
+            fetchRules();
+        }
     };
 
     const fetchReputations = async () => {
@@ -99,15 +132,12 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
     }, [activeTab, repSearch, repLimit, repOffset]);
 
     const handleDelete = async (id: string) => {
-        if (confirm('Are you sure you want to unblock this IP?')) {
-            const success = await DockerClient.unblockIP(id);
-            if (success) {
-                toast.success('IP Unblocked successfully');
-                fetchRules();
-            } else {
-                toast.error('Failed to unblock IP');
-            }
-        }
+        if (!confirm('Are you sure you want to unblock this IP?')) return;
+        await trigger(() => DockerClient.unblockIP(id), {
+            onSuccess: () => fetchRules(),
+            successMessage: 'IP Unblocked successfully',
+            errorMessage: 'Failed to unblock IP'
+        });
     };
 
     const filteredRules = rules.filter(r =>
@@ -136,11 +166,18 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
         <div className="flex flex-col relative">
             <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-4">
-                    <h1 className="text-3xl font-bold">Firewall & IP</h1>
+                    <h1 className="text-3xl font-bold">Security & Firewall</h1>
                     {(isLoading || (activeTab === 'reputation' && isRepLoading)) && <RefreshCw className="animate-spin text-primary" size={24} />}
                 </div>
                 <div className="flex items-center gap-3">
                     <div className="flex bg-surface border border-outline/10 p-1 rounded-xl flex-wrap gap-1">
+                        <button
+                            onClick={() => setActiveTab('overview')}
+                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'overview' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-on-surface-variant hover:bg-white/5'}`}
+                        >
+                            <Shield size={16} />
+                            Overview
+                        </button>
                         <button
                             onClick={() => setActiveTab('rules')}
                             className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'rules' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-on-surface-variant hover:bg-white/5'}`}
@@ -161,6 +198,20 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
                         >
                             <Globe size={16} />
                             Geolocation
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('jails')}
+                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'jails' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-on-surface-variant hover:bg-white/5'}`}
+                        >
+                            <Lock size={16} />
+                            Jails
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('proxy-rules')}
+                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'proxy-rules' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-on-surface-variant hover:bg-white/5'}`}
+                        >
+                            <Settings size={16} />
+                            Proxy Rules
                         </button>
                         <button
                             onClick={() => setActiveTab('iptables')}
@@ -188,6 +239,14 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
                     )}
                 </div>
             </div>
+
+            {activeTab === 'overview' && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <StatCard label="Active Blocks" value={rules.length.toString()} icon={<Shield size={24} />} sub="Firewall level restrictions" color="primary" />
+                    <StatCard label="Jailed IPs" value={rules.filter(r => r.expiresAt != null).length.toString()} icon={<Lock size={24} />} sub="Timed security jails" color="indigo" />
+                    <StatCard label="Proxy Rules" value={(proxyConfig?.proxyJailRules?.length || 0).toString()} icon={<Terminal size={24} />} sub="Active armor patterns" color="orange" />
+                </div>
+            )}
 
             {(activeTab === 'rules' || activeTab === 'reputation' || activeTab === 'geolocation') && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -313,7 +372,7 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/50" size={20} />
                             <input
                                 type="text"
-                                placeholder="Search IP, country or reason..."
+                                placeholder="Search IP, country, ISP, range or reason..."
                                 value={repSearch}
                                 onChange={(e) => setRepSearch(e.target.value)}
                                 className="w-full bg-surface border border-outline/20 rounded-xl py-2 pl-10 pr-4 text-on-surface focus:outline-none focus:border-primary transition-colors"
@@ -338,6 +397,8 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
                                 <tr className="border-b border-outline/10 bg-white/5">
                                     <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider">IP Address</th>
                                     <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider">Country</th>
+                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider">ISP / Range Provider</th>
+                                    <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider">First Appeared</th>
                                     <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider text-center">Blocked</th>
                                     <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider">Last Activity</th>
                                     <th className="px-4 py-3 text-[10px] uppercase font-black text-on-surface-variant/50 tracking-wider text-right">Action</th>
@@ -368,6 +429,22 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
                                             ) : (
                                                 <span className="text-xs text-on-surface-variant/30 italic">—</span>
                                             )}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            {(rep.range || rep.isp) ? (
+                                                <span className="text-xs font-medium text-on-surface-variant truncate max-w-[120px] block" title={rep.range || rep.isp}>
+                                                    {rep.range ? (
+                                                        <span className="uppercase font-bold text-primary/90">{rep.range}</span>
+                                                    ) : (
+                                                        rep.isp
+                                                    )}
+                                                </span>
+                                            ) : (
+                                                <span className="text-xs text-on-surface-variant/30 italic">—</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 text-xs text-on-surface-variant">
+                                            {new Date(rep.firstObserved).toLocaleString()}
                                         </td>
                                         <td className="px-4 py-3 text-center">
                                             <span className={`font-bold ${rep.blockedTimes > 0 ? 'text-red-500' : 'text-on-surface-variant/40'}`}>{rep.blockedTimes}</span>
@@ -487,6 +564,159 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
                             >
                                 Fetch
                             </button>
+                        </div>
+                    </div>
+                </div>
+            ) : activeTab === 'jails' ? (
+                <div className="bg-surface/30 border border-outline/10 rounded-2xl p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex items-center justify-between mb-8">
+                        <div>
+                            <h3 className="text-xl font-bold">Active Shield Jails</h3>
+                            <p className="text-[10px] text-on-surface-variant uppercase font-black tracking-widest mt-1 opacity-50">Temporary Incarcerations</p>
+                        </div>
+                        <div className="p-3 bg-red-500/10 text-red-500 rounded-2xl">
+                            <Lock size={24} />
+                        </div>
+                    </div>
+                    <div className="space-y-4">
+                        {rules.filter(r => r.expiresAt != null).map((jail) => (
+                            <div key={jail.id} className="p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-red-500/10 transition-all flex items-center justify-between group">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500 group-hover:scale-110 transition-transform">
+                                        <Lock size={18} />
+                                    </div>
+                                    <div>
+                                        <div className="font-mono font-bold text-sm text-on-surface">{jail.ip}</div>
+                                        <div className="text-[10px] text-on-surface-variant/40 mt-0.5 uppercase font-bold tracking-tight">Reason: {jail.comment || '—'}</div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <div className="text-right">
+                                        <div className="text-[11px] font-black text-red-400 uppercase tracking-widest">Expires In</div>
+                                        <div className="text-[10px] font-mono text-on-surface-variant/60">
+                                            {Math.round((jail.expiresAt! - Date.now()) / 60000)}m remaining
+                                        </div>
+                                    </div>
+                                    <button onClick={() => handleDelete(jail.id)} className="p-2 hover:bg-red-500/10 text-red-400 rounded-xl transition-all opacity-0 group-hover:opacity-100">
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                        {rules.filter(r => r.expiresAt != null).length === 0 && (
+                            <div className="py-20 text-center text-on-surface-variant/20 italic">Prison is currently empty</div>
+                        )}
+                    </div>
+                </div>
+            ) : activeTab === 'proxy-rules' ? (
+                <div className="space-y-6 animate-in fade-in duration-500">
+                    <div className="bg-surface/30 border border-outline/10 rounded-2xl p-8">
+                        <div className="flex items-center justify-between mb-8">
+                            <div>
+                                <h3 className="text-xl font-bold truncate">Security Policy Control</h3>
+                                <p className="text-[10px] text-on-surface-variant uppercase font-black tracking-widest mt-1 opacity-50">Infrastructure Hardening</p>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <div className="flex bg-white/5 p-1 rounded-2xl border border-white/5">
+                                    <button onClick={() => setRulesSubTab('active')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${rulesSubTab === 'active' ? 'bg-primary text-on-primary shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}>Active</button>
+                                    <button onClick={() => setRulesSubTab('defaults')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${rulesSubTab === 'defaults' ? 'bg-secondary text-on-secondary shadow-lg' : 'text-on-surface-variant hover:text-on-surface'}`}>Defaults</button>
+                                </div>
+                                <div className="p-3 bg-primary/10 text-primary rounded-2xl"><ShieldCheck size={24} /></div>
+                            </div>
+                        </div>
+                        <div className="space-y-8">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-primary/5 flex items-center justify-center text-primary border border-primary/10"><Zap size={18} /></div>
+                                    <div>
+                                        <span className="text-sm font-bold block leading-none">Proxy Armor Status</span>
+                                        <span className="text-[10px] text-on-surface-variant/40 font-bold uppercase tracking-tighter">Real-time edge protection</span>
+                                    </div>
+                                </div>
+                                <button onClick={() => updateProxySecurity({ proxyJailEnabled: !proxyConfig?.proxyJailEnabled })} className={`w-12 h-6 rounded-full transition-all relative ${proxyConfig?.proxyJailEnabled ? 'bg-primary shadow-[0_0_15px_rgba(var(--md-sys-color-primary-rgb),0.4)]' : 'bg-white/10'}`}>
+                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${proxyConfig?.proxyJailEnabled ? 'right-1' : 'left-1'}`} />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 pt-4">
+                        <div className="lg:col-span-1 space-y-6">
+                            <div className="bg-white/[0.03] border border-white/5 rounded-[24px] p-5">
+                                <h4 className="text-[10px] font-black uppercase mb-6 flex items-center gap-2 tracking-widest text-primary"><ShieldCheck size={14} />Proxy Thresholds</h4>
+                                <div className="space-y-6">
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-tighter">Proxy Sensitivity</label>
+                                        <input type="number" value={proxyConfig?.proxyJailThresholdNon200 ?? 20} onChange={(e) => setProxyConfig(prev => prev ? { ...prev, proxyJailThresholdNon200: parseInt(e.target.value) || 0 } : null)} onBlur={(e) => updateProxySecurity({ proxyJailThresholdNon200: parseInt(e.target.value) || 20 })} className="w-24 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:outline-none focus:border-primary/50" />
+                                    </div>
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-[10px] font-black text-red-500 uppercase tracking-tighter">Danger Threshold</label>
+                                        <input type="number" value={proxyConfig?.proxyJailThresholdDanger ?? 1} onChange={(e) => setProxyConfig(prev => prev ? { ...prev, proxyJailThresholdDanger: parseInt(e.target.value) || 0 } : null)} onBlur={(e) => updateProxySecurity({ proxyJailThresholdDanger: parseInt(e.target.value) || 1 })} className="w-20 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:outline-none focus:border-red-500/50" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="lg:col-span-3">
+                            <div className="bg-white/[0.03] border border-white/5 rounded-[32px] p-8">
+                                <div className="flex items-center justify-between mb-8">
+                                    <h4 className="text-[10px] font-black uppercase text-on-surface-variant tracking-widest flex items-center gap-2"><Globe size={14} className={rulesSubTab === 'active' ? 'text-primary' : 'text-secondary'} />{rulesSubTab === 'active' ? 'Active Guard Rails' : 'Default Guard Rails'}</h4>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`text-[10px] font-bold ${rulesSubTab === 'active' ? 'text-primary bg-primary/10' : 'text-secondary bg-secondary/10'} px-3 py-1 rounded-full`}>
+                                            {rulesSubTab === 'active' ? (proxyConfig?.proxyJailRules?.length || 0) + ' Rules Active' : (proxyConfig?.recommendedProxyJailRules?.length || 0) + ' Rules in Defaults'}
+                                        </span>
+                                        {rulesSubTab === 'active' && (!proxyConfig?.proxyJailRules || proxyConfig.proxyJailRules.length === 0) && (
+                                            <button onClick={async () => { const recommended = await DockerClient.getRecommendedProxyRules(); setProxyConfig(prev => prev ? { ...prev, proxyJailRules: recommended } : null); toast.info(`Loaded ${recommended.length} recommended rules - Click Apply to save`); }} className="flex items-center gap-1.5 px-3 py-1 bg-secondary/10 text-secondary hover:bg-secondary/20 rounded-full text-[10px] font-bold uppercase tracking-wider border border-secondary/20">
+                                                <Plus size={12} /> Load Recommended
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
+                                    {(rulesSubTab === 'active' ? proxyConfig?.proxyJailRules : proxyConfig?.recommendedProxyJailRules)?.map((rule) => (
+                                        <div key={rule.id} className={`group bg-white/5 border border-white/5 p-4 rounded-2xl ${rulesSubTab === 'active' ? 'hover:border-primary/30' : 'hover:border-secondary/30'} transition-all flex items-center justify-between`}>
+                                            <div className="flex items-center gap-4 min-w-0">
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${rule.type === 'USER_AGENT' ? 'bg-pink-500/10 text-pink-500' : rule.type === 'METHOD' ? 'bg-orange-500/10 text-orange-500' : rule.type === 'PATH' ? 'bg-indigo-500/10 text-indigo-500' : 'bg-teal-500/10 text-teal-500'}`}>
+                                                    {rule.type === 'USER_AGENT' ? <History size={18} /> : rule.type === 'METHOD' ? <Terminal size={18} /> : rule.type === 'PATH' ? <Globe size={18} /> : <Shield size={18} />}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant/70 font-mono">{rule.type}</span>
+                                                        {rule.description && <span className={`text-[10px] font-bold ${rulesSubTab === 'active' ? 'text-primary' : 'text-secondary'} truncate max-w-[200px]`}>{rule.description}</span>}
+                                                    </div>
+                                                    <div className="text-sm font-mono font-bold truncate text-on-surface break-all">{rule.pattern}</div>
+                                                </div>
+                                            </div>
+                                            <button onClick={() => { const field = rulesSubTab === 'active' ? 'proxyJailRules' : 'recommendedProxyJailRules'; const r = (proxyConfig as any)?.[field] || []; setProxyConfig(prev => prev ? { ...prev, [field]: r.filter((x: any) => x.id !== rule.id) } : null); }} className="p-2 text-on-surface-variant hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
+                                        </div>
+                                    ))}
+                                    {(!(rulesSubTab === 'active' ? proxyConfig?.proxyJailRules : proxyConfig?.recommendedProxyJailRules) || (rulesSubTab === 'active' ? proxyConfig?.proxyJailRules : proxyConfig?.recommendedProxyJailRules)?.length === 0) && (
+                                        <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-white/5 rounded-3xl bg-white/[0.02]"><Shield size={48} className="text-on-surface-variant/10 mb-4" /><p className="text-sm font-bold text-on-surface-variant">No rules defined in this set.</p></div>
+                                    )}
+                                </div>
+                                {((rulesSubTab === 'active' ? proxyConfig?.proxyJailRules : proxyConfig?.recommendedProxyJailRules)?.length || 0) > 0 && (
+                                    <button onClick={() => { const payload = rulesSubTab === 'active' ? { proxyJailRules: proxyConfig?.proxyJailRules } : { recommendedProxyJailRules: proxyConfig?.recommendedProxyJailRules }; updateProxySecurity(payload as any); toast.success(`${rulesSubTab === 'active' ? 'Active' : 'Default'} rules applied`); }} className={`w-full mt-4 ${rulesSubTab === 'active' ? 'bg-primary text-on-primary shadow-primary/20' : 'bg-secondary text-on-secondary shadow-secondary/20'} py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all`}>
+                                        Apply {rulesSubTab === 'active' ? 'Active' : 'Default'} Changes
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                        <div className="lg:col-span-1">
+                            <div className="bg-white/[0.03] border border-white/5 rounded-[24px] p-5 h-fit sticky top-6">
+                                <h4 className="text-[10px] font-black uppercase mb-6 flex items-center gap-2 tracking-widest text-primary"><Plus size={16} />Add Armor Rule</h4>
+                                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); const form = e.target as HTMLFormElement; const type = (form.elements.namedItem('rule-type') as HTMLSelectElement).value; const pattern = (form.elements.namedItem('rule-pattern') as HTMLInputElement).value; const description = (form.elements.namedItem('rule-description') as HTMLInputElement).value; if (!pattern) return toast.error('Pattern is required'); if (type === 'USER_AGENT' || type === 'PATH') { try { new RegExp(pattern); } catch (err) { return toast.error('Invalid regex: ' + (err as Error).message); } } const newRule: ProxyJailRule = { id: Math.random().toString(36).substr(2, 9), type: type as ProxyJailRuleType, pattern, description }; const field = rulesSubTab === 'active' ? 'proxyJailRules' : 'recommendedProxyJailRules'; const current = (proxyConfig as any)?.[field] || []; updateProxySecurity({ [field]: [...current, newRule] } as any); form.reset(); }}>
+                                    <div className="space-y-1.5"><label className="text-[10px] font-black uppercase text-on-surface-variant px-1 tracking-widest">Target</label><select name="rule-type" className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs font-bold focus:outline-none focus:border-primary/50"><option value="USER_AGENT">User Agent (Regex)</option><option value="PATH">Path / URL (Regex)</option><option value="METHOD">HTTP Method</option><option value="STATUS_CODE">Status Code</option></select></div>
+                                    <div className="space-y-1.5"><label className="text-[10px] font-black uppercase text-on-surface-variant px-1 tracking-widest">Pattern</label><input name="rule-pattern" placeholder="e.g. ^sqlmap/.*" className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs font-mono font-bold focus:outline-none focus:border-primary/50" /></div>
+                                    <div className="space-y-1.5"><label className="text-[10px] font-black uppercase text-on-surface-variant px-1 tracking-widest">Description</label><input name="rule-description" placeholder="e.g. Block SQL injection" className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs font-bold focus:outline-none focus:border-primary/50" /></div>
+                                    <button type="submit" className="w-full bg-primary text-on-primary py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all">Shield Up</button>
+                                </form>
+                            </div>
+                            <div className="bg-white/[0.03] border border-white/5 rounded-[24px] p-5 mt-4">
+                                <h4 className="text-[10px] font-black uppercase mb-6 flex items-center gap-2 tracking-widest text-primary"><Activity size={14} />Advanced</h4>
+                                <div className="space-y-6">
+                                    <div className="flex flex-col gap-1.5"><label className="text-[10px] font-black text-on-surface-variant uppercase">Analysis Window</label><input type="number" value={proxyConfig?.proxyJailWindowMinutes ?? 1} onChange={(e) => setProxyConfig(prev => prev ? { ...prev, proxyJailWindowMinutes: parseInt(e.target.value) || 1 } : null)} onBlur={(e) => updateProxySecurity({ proxyJailWindowMinutes: parseInt(e.target.value) || 1 })} className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:outline-none focus:border-primary/50" /></div>
+                                    <div className="flex items-center justify-between"><div><span className="text-[10px] font-black text-on-surface-variant uppercase block">Mirror Traffic (Danger Proxy)</span></div><button type="button" onClick={() => updateProxySecurity({ dangerProxyEnabled: !proxyConfig?.dangerProxyEnabled })} className={`w-12 h-6 rounded-full transition-all relative ${proxyConfig?.dangerProxyEnabled ? 'bg-primary' : 'bg-white/10'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${proxyConfig?.dangerProxyEnabled ? 'right-1' : 'left-1'}`} /></button></div>
+                                    {proxyConfig?.dangerProxyEnabled && <div className="space-y-1.5"><label className="text-[9px] font-black uppercase text-on-surface-variant px-1 block">Mirror Host</label><input value={proxyConfig?.dangerProxyHost ?? ''} onChange={(e) => setProxyConfig(prev => prev ? { ...prev, dangerProxyHost: e.target.value } : null)} onBlur={(e) => updateProxySecurity({ dangerProxyHost: e.target.value })} placeholder="host:port" className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-xs font-mono font-bold focus:outline-none focus:border-primary/50" /></div>}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -871,9 +1101,10 @@ function AddBlockModal({ onClose, onAdded }: { onClose: () => void, onAdded: () 
         if (!ip) return;
 
         setIsSubmitting(true);
+        const portNum = port.trim() ? parseInt(port, 10) : undefined;
         const success = await DockerClient.blockIP({
             ip,
-            port: port || undefined,
+            port: (portNum !== undefined && !isNaN(portNum)) ? portNum : undefined,
             comment: comment || undefined,
             protocol: 'TCP'
         });

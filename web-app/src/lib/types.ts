@@ -268,7 +268,7 @@ export interface FirewallRule {
 
 export interface BlockIPRequest {
   ip: string;
-  port?: string;
+  port?: string | number;
   protocol: string;
   comment?: string;
   expiresAt?: number;
@@ -828,6 +828,8 @@ export interface IpReputation {
   lastBlocked?: string;
   reasons: string[];
   country?: string;
+  isp?: string;
+  range?: string;  // range provider (e.g. cloudflare, aws) when IP is in ip_ranges
 }
 
 export interface SavedQuery {

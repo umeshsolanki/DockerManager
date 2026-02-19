@@ -18,7 +18,6 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
         { label: 'Docker', Icon: Box },
         { label: 'Analytics', Icon: Activity },
         { label: 'Security', Icon: Lock },
-        { label: 'Firewall', Icon: Shield },
         { label: 'Logs', Icon: FileSearch },
         { label: 'Proxy', Icon: Globe },
         { label: 'Emails', Icon: Mail },
@@ -41,7 +40,8 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
             <div className="flex flex-col gap-2 flex-1 overflow-y-auto w-full no-scrollbar">
                 {items.map((item) => {
                     const isActive = selectedScreen === item.label ||
-                        (item.label === 'Docker' && ['Containers', 'Compose', 'Images', 'Networks', 'Volumes', 'Secrets', 'Resources'].includes(selectedScreen));
+                        (item.label === 'Docker' && ['Containers', 'Compose', 'Images', 'Networks', 'Volumes', 'Secrets', 'Resources'].includes(selectedScreen)) ||
+                        (item.label === 'Security' && selectedScreen === 'Firewall');
 
                     return (
                         <button
