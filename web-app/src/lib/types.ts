@@ -691,7 +691,164 @@ export interface EmailUserDetail {
   quotaCount?: EmailQuota;
 }
 
-export type Screen = 'Dashboard' | 'Docker' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Files' | 'Settings' | 'Security' | 'Analytics' | 'DB' | 'Kafka' | 'IP';
+// -- DNS / BIND9 Management --
+
+export type DnsRecordType = 'A' | 'AAAA' | 'CNAME' | 'MX' | 'TXT' | 'NS' | 'SRV' | 'PTR' | 'CAA' | 'SOA';
+export type DnsZoneType = 'FORWARD' | 'REVERSE';
+export type DnsZoneRole = 'MASTER' | 'SLAVE' | 'STUB' | 'FORWARD_ONLY';
+export type TsigAlgorithm = 'HMAC_SHA256' | 'HMAC_SHA512' | 'HMAC_SHA1' | 'HMAC_MD5';
+
+export interface DnsRecord {
+    id: string;
+    name: string;
+    type: DnsRecordType;
+    value: string;
+    ttl: number;
+    priority?: number;
+    weight?: number;
+    port?: number;
+}
+
+export interface SoaRecord {
+    primaryNs: string;
+    adminEmail: string;
+    serial: number;
+    refresh: number;
+    retry: number;
+    expire: number;
+    minimumTtl: number;
+}
+
+export interface DnsZone {
+    id: string;
+    name: string;
+    type: DnsZoneType;
+    role: DnsZoneRole;
+    filePath: string;
+    enabled: boolean;
+    soa: SoaRecord;
+    records: DnsRecord[];
+    createdAt: number;
+    masterAddresses: string[];
+    allowTransfer: string[];
+    alsoNotify: string[];
+    forwarders: string[];
+    dnssecEnabled: boolean;
+}
+
+export interface DnsServiceStatus {
+    running: boolean;
+    version: string;
+    configValid: boolean;
+    configOutput: string;
+    uptime: string;
+    zoneCount: number;
+}
+
+export interface ZoneValidationResult {
+    valid: boolean;
+    output: string;
+}
+
+export interface CreateZoneRequest {
+    name: string;
+    type: DnsZoneType;
+    role?: DnsZoneRole;
+    soa?: Partial<SoaRecord>;
+    masterAddresses?: string[];
+    allowTransfer?: string[];
+    forwarders?: string[];
+}
+
+export interface DnsActionResult {
+    success: boolean;
+    message: string;
+}
+
+export interface DnsAcl {
+    id: string;
+    name: string;
+    entries: string[];
+    comment: string;
+}
+
+export interface TsigKey {
+    id: string;
+    name: string;
+    algorithm: TsigAlgorithm;
+    secret: string;
+    createdAt: number;
+}
+
+export interface DnsForwarderConfig {
+    forwarders: string[];
+    forwardOnly: boolean;
+}
+
+export interface DnssecStatus {
+    enabled: boolean;
+    signed: boolean;
+    kskKeyTag: string;
+    zskKeyTag: string;
+    dsRecords: string[];
+    signedAt?: number;
+}
+
+export interface DnsLookupRequest {
+    query: string;
+    type: string;
+    server?: string;
+}
+
+export interface DnsLookupAnswer {
+    name: string;
+    ttl: number;
+    type: string;
+    value: string;
+}
+
+export interface DnsLookupResult {
+    success: boolean;
+    query: string;
+    type: string;
+    answers: DnsLookupAnswer[];
+    rawOutput: string;
+    queryTime: string;
+    server: string;
+    status: string;
+}
+
+export interface DnsQueryStats {
+    totalQueries: number;
+    successQueries: number;
+    failedQueries: number;
+    recursiveQueries: number;
+    queryTypes: Record<string, number>;
+    topDomains: Record<string, number>;
+    rawStats: string;
+}
+
+export interface ZoneTemplate {
+    id: string;
+    name: string;
+    description: string;
+    records: DnsRecord[];
+}
+
+export interface BulkImportRequest {
+    zoneId: string;
+    content: string;
+    format: string;
+}
+
+export interface BulkImportResult {
+    success: boolean;
+    imported: number;
+    skipped: number;
+    errors: string[];
+}
+
+export type Screen = 'Dashboard' | 'Docker' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Files' | 'Settings' | 'Security' | 'Analytics' | 'DB' | 'Kafka' | 'IP' | 'DNS';
 
 
 export interface AuthRequest {

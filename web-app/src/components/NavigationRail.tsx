@@ -1,6 +1,6 @@
 'use client';
 
-import { LayoutDashboard, Database, Layers, Settings, Lock, Network, HardDrive, FileText, Shield, Globe, Box, Mail, LogOut, Activity, Zap, FileSearch, FolderInput, ShieldAlert, Cpu } from 'lucide-react';
+import { LayoutDashboard, Database, Layers, Settings, Lock, Network, HardDrive, FileText, Shield, Globe, Box, Mail, LogOut, Activity, Zap, FileSearch, FolderInput, ShieldAlert, Cpu, Waypoints } from 'lucide-react';
 
 import { Screen } from '@/lib/types';
 import BatteryIndicator from './BatteryIndicator';
@@ -25,6 +25,7 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
         { label: 'DB', Icon: Database },
         { label: 'Kafka', Icon: Zap },
         { label: 'IP', Icon: ShieldAlert },
+        { label: 'DNS', Icon: Waypoints },
     ] as const;
 
 

@@ -13,7 +13,10 @@ import {
     SaveProjectFileRequest, KafkaTopicInfo, KafkaMessage, CreateNetworkRequest, StorageInfo,
     ExternalDbConfig, SqlQueryRequest, KafkaRule, KafkaProcessedEvent, CustomPage,
     IpReputation, SavedQuery, EmailFolder, EmailMessage, EmailClientConfig, ProxyJailRule,
-    PullProgress
+    PullProgress,
+    DnsZone, DnsRecord, DnsServiceStatus, ZoneValidationResult, CreateZoneRequest, DnsActionResult,
+    DnsAcl, TsigKey, DnsForwarderConfig, DnssecStatus, DnsLookupRequest, DnsLookupResult,
+    DnsQueryStats, ZoneTemplate, BulkImportRequest, BulkImportResult
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -454,4 +457,65 @@ export const DockerClient = {
     // --- IP Reputation ---
     listIpReputations: (limit = 100, offset = 0, search = "") => req<IpReputation[]>(`/ip-reputation?limit=${limit}&offset=${offset}&search=${encodeURIComponent(search)}`, {}, []),
     deleteIpReputation: (ip: string) => apiFetch(`/ip-reputation/${encodeURIComponent(ip)}`, { method: 'DELETE' }).then(r => r.ok),
+
+    // --- DNS / BIND9 Management ---
+
+    // Service control
+    getDnsStatus: () => req<DnsServiceStatus>('/dns/status', {}, { running: false, version: '', configValid: false, configOutput: '', uptime: '', zoneCount: 0 }),
+    dnsReload: () => req<DnsActionResult>('/dns/reload', { method: 'POST' }, { success: false, message: 'Network error' }),
+    dnsRestart: () => req<DnsActionResult>('/dns/restart', { method: 'POST' }, { success: false, message: 'Network error' }),
+    dnsFlushCache: () => req<DnsActionResult>('/dns/flush-cache', { method: 'POST' }, { success: false, message: 'Network error' }),
+    dnsValidateConfig: () => req<ZoneValidationResult>('/dns/validate', {}, { valid: false, output: '' }),
+    getDnsQueryStats: () => req<DnsQueryStats>('/dns/stats', {}, { totalQueries: 0, successQueries: 0, failedQueries: 0, recursiveQueries: 0, queryTypes: {}, topDomains: {}, rawStats: '' }),
+
+    // Zones
+    listDnsZones: () => req<DnsZone[]>('/dns/zones', {}, []),
+    getDnsZone: (id: string) => req<DnsZone | null>(`/dns/zones/${id}`, {}, null),
+    createDnsZone: (body: CreateZoneRequest) => safeReq<DnsZone>('/dns/zones', { method: 'POST', body: JSON.stringify(body) }),
+    deleteDnsZone: (id: string) => apiFetch(`/dns/zones/${id}`, { method: 'DELETE' }).then(r => r.ok),
+    toggleDnsZone: (id: string) => apiFetch(`/dns/zones/${id}/toggle`, { method: 'POST' }).then(r => r.ok),
+    updateDnsZoneOptions: (id: string, opts: { allowTransfer?: string[]; alsoNotify?: string[]; forwarders?: string[] }) =>
+        safeReq(`/dns/zones/${id}/options`, { method: 'PUT', body: JSON.stringify(opts) }),
+    validateDnsZone: (id: string) => req<ZoneValidationResult>(`/dns/zones/${id}/validate`, {}, { valid: false, output: '' }),
+    getDnsZoneFile: (id: string) => textReq(`/dns/zones/${id}/file`),
+    exportDnsZone: (id: string) => textReq(`/dns/zones/${id}/export`),
+
+    // Records
+    getDnsRecords: (zoneId: string) => req<DnsRecord[]>(`/dns/zones/${zoneId}/records`, {}, []),
+    updateDnsRecords: (zoneId: string, records: DnsRecord[]) => safeReq(`/dns/zones/${zoneId}/records`, { method: 'PUT', body: JSON.stringify({ records }) }),
+    addDnsRecord: (zoneId: string, record: Partial<DnsRecord>) => safeReq(`/dns/zones/${zoneId}/records`, { method: 'POST', body: JSON.stringify(record) }),
+    deleteDnsRecord: (zoneId: string, recordId: string) => apiFetch(`/dns/zones/${zoneId}/records/${recordId}`, { method: 'DELETE' }).then(r => r.ok),
+
+    // DNSSEC
+    getDnssecStatus: (zoneId: string) => req<DnssecStatus>(`/dns/zones/${zoneId}/dnssec`, {}, { enabled: false, signed: false, kskKeyTag: '', zskKeyTag: '', dsRecords: [] }),
+    enableDnssec: (zoneId: string) => req<DnsActionResult>(`/dns/zones/${zoneId}/dnssec/enable`, { method: 'POST' }, { success: false, message: 'Error' }),
+    disableDnssec: (zoneId: string) => req<DnsActionResult>(`/dns/zones/${zoneId}/dnssec/disable`, { method: 'POST' }, { success: false, message: 'Error' }),
+    getDsRecords: (zoneId: string) => req<string[]>(`/dns/zones/${zoneId}/dnssec/ds`, {}, []),
+
+    // Templates
+    listDnsTemplates: () => req<ZoneTemplate[]>('/dns/templates', {}, []),
+    createDnsTemplate: (t: Partial<ZoneTemplate>) => safeReq<ZoneTemplate>('/dns/templates', { method: 'POST', body: JSON.stringify(t) }),
+    deleteDnsTemplate: (id: string) => apiFetch(`/dns/templates/${id}`, { method: 'DELETE' }).then(r => r.ok),
+    applyDnsTemplate: (zoneId: string, templateId: string) => safeReq(`/dns/zones/${zoneId}/apply-template/${templateId}`, { method: 'POST' }),
+
+    // Import
+    importDnsZoneFile: (body: BulkImportRequest) => req<BulkImportResult>('/dns/import', { method: 'POST', body: JSON.stringify(body) }, { success: false, imported: 0, skipped: 0, errors: ['Network error'] }),
+
+    // Lookup
+    dnsLookup: (body: DnsLookupRequest) => req<DnsLookupResult>('/dns/lookup', { method: 'POST', body: JSON.stringify(body) }, { success: false, query: body.query, type: body.type, answers: [], rawOutput: '', queryTime: '', server: '', status: '' }),
+
+    // ACLs
+    listDnsAcls: () => req<DnsAcl[]>('/dns/acls', {}, []),
+    createDnsAcl: (acl: Partial<DnsAcl>) => safeReq<DnsAcl>('/dns/acls', { method: 'POST', body: JSON.stringify(acl) }),
+    updateDnsAcl: (acl: DnsAcl) => safeReq('/dns/acls', { method: 'PUT', body: JSON.stringify(acl) }),
+    deleteDnsAcl: (id: string) => apiFetch(`/dns/acls/${id}`, { method: 'DELETE' }).then(r => r.ok),
+
+    // TSIG Keys
+    listTsigKeys: () => req<TsigKey[]>('/dns/tsig', {}, []),
+    createTsigKey: (key: Partial<TsigKey>) => safeReq<TsigKey>('/dns/tsig', { method: 'POST', body: JSON.stringify(key) }),
+    deleteTsigKey: (id: string) => apiFetch(`/dns/tsig/${id}`, { method: 'DELETE' }).then(r => r.ok),
+
+    // Global Forwarders
+    getDnsForwarders: () => req<DnsForwarderConfig>('/dns/forwarders', {}, { forwarders: [], forwardOnly: false }),
+    updateDnsForwarders: (config: DnsForwarderConfig) => safeReq('/dns/forwarders', { method: 'POST', body: JSON.stringify(config) }),
 };

@@ -11,7 +11,10 @@
   --color-on-surface: #E6E1E5;
   --color-on-surface-variant: #CAC4D0;
   --color-outline: #938F99;
+  --color-on-primary: #381E72;
   --color-error: #F2B8B5;
+  --color-surface-container: #211F26;
+  --color-surface-container-high: #2B2930;
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -28,7 +31,10 @@
   --color-on-surface: #1C1B1F;
   --color-on-surface-variant: #49454F;
   --color-outline: #79747E;
+  --color-on-primary: #FFFFFF;
   --color-error: #BA1A1A;
+  --color-surface-container: #F3EDF7;
+  --color-surface-container-high: #ECE6F0;
 }
 
 body {
@@ -72,6 +78,22 @@ body {
 
   [data-theme="light"] .nav-rail-item {
     @apply text-on-surface-variant;
+  }
+
+  .btn-primary {
+    @apply px-4 py-2 text-sm rounded-lg bg-primary text-on-primary hover:bg-primary/90 transition-colors;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 text-sm rounded-lg bg-surface-container hover:bg-surface-container-high transition-colors;
+  }
+
+  .btn-sm {
+    @apply flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium hover:brightness-110 transition-all;
+  }
+
+  .input-field {
+    @apply w-full bg-surface-container rounded-lg px-3 py-2 text-sm border border-outline/10 focus:border-primary focus:outline-none;
   }
 }
 

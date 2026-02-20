@@ -22,9 +22,10 @@ import LoginScreen from '@/components/screens/LoginScreen';
 import FileManagerScreen from '@/components/screens/FileManagerScreen';
 import DatabaseScreen from '@/components/screens/DatabaseScreen';
 import KafkaScreen from '@/components/screens/KafkaScreen';
+import DnsScreen from '@/components/screens/DnsScreen';
 import { DockerClient } from '@/lib/api';
 
-const VALID_SCREENS: Screen[] = ['Dashboard', 'Docker', 'Containers', 'Images', 'Compose', 'Networks', 'Resources', 'Volumes', 'Secrets', 'Logs', 'Firewall', 'Proxy', 'Emails', 'Files', 'Settings', 'Security', 'Analytics', 'DB', 'Kafka', 'IP'];
+const VALID_SCREENS: Screen[] = ['Dashboard', 'Docker', 'Containers', 'Images', 'Compose', 'Networks', 'Resources', 'Volumes', 'Secrets', 'Logs', 'Firewall', 'Proxy', 'Emails', 'Files', 'Settings', 'Security', 'Analytics', 'DB', 'Kafka', 'IP', 'DNS'];
 
 function HomeContent() {
   const router = useRouter();
@@ -148,6 +149,7 @@ function HomeContent() {
       case 'DB': return <DatabaseScreen />;
       case 'Kafka': return <KafkaScreen />;
       case 'IP': return <FirewallScreen initialTab="reputation" />;
+      case 'DNS': return <DnsScreen />;
       default: return <DashboardScreen />;
     }
   };

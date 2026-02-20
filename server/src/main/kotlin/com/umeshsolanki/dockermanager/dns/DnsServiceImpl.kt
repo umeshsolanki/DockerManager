@@ -1,0 +1,976 @@
+package com.umeshsolanki.dockermanager.dns
+
+import com.umeshsolanki.dockermanager.AppConfig
+import com.umeshsolanki.dockermanager.utils.CommandExecutor
+import com.umeshsolanki.dockermanager.utils.JsonPersistence
+import org.slf4j.LoggerFactory
+import java.io.File
+import java.util.UUID
+import kotlin.concurrent.withLock
+
+class DnsServiceImpl : IDnsService {
+
+    private val logger = LoggerFactory.getLogger(DnsServiceImpl::class.java)
+    private val lock = java.util.concurrent.locks.ReentrantLock()
+    private val commandExecutor = CommandExecutor(loggerName = DnsServiceImpl::class.java.name)
+
+    private val dataDir = File(AppConfig.dataRoot, "dns")
+    private val zonesDir = File(dataDir, "zones")
+    private val keysDir = File(dataDir, "keys")
+
+    private val zonesPersistence = JsonPersistence.create<List<DnsZone>>(
+        file = File(dataDir, "zones-metadata.json"),
+        defaultContent = emptyList(),
+        loggerName = DnsServiceImpl::class.java.name
+    )
+    private val aclsPersistence = JsonPersistence.create<List<DnsAcl>>(
+        file = File(dataDir, "acls.json"),
+        defaultContent = emptyList(),
+        loggerName = DnsServiceImpl::class.java.name
+    )
+    private val tsigPersistence = JsonPersistence.create<List<TsigKey>>(
+        file = File(dataDir, "tsig-keys.json"),
+        defaultContent = emptyList(),
+        loggerName = DnsServiceImpl::class.java.name
+    )
+    private val forwarderPersistence = JsonPersistence.create<DnsForwarderConfig>(
+        file = File(dataDir, "forwarders.json"),
+        defaultContent = DnsForwarderConfig(),
+        loggerName = DnsServiceImpl::class.java.name
+    )
+    private val templatesPersistence = JsonPersistence.create<List<ZoneTemplate>>(
+        file = File(dataDir, "templates.json"),
+        defaultContent = defaultTemplates(),
+        loggerName = DnsServiceImpl::class.java.name
+    )
+
+    @Volatile private var cachedZones: MutableList<DnsZone>? = null
+
+    init {
+        zonesDir.mkdirs()
+        keysDir.mkdirs()
+    }
+
+    // ===================================================================
+    //  Zone Persistence
+    // ===================================================================
+
+    private fun loadZones(): MutableList<DnsZone> {
+        cachedZones?.let { return it.toMutableList() }
+        return lock.withLock {
+            cachedZones?.let { return@withLock it.toMutableList() }
+            val loaded = zonesPersistence.load().toMutableList()
+            cachedZones = loaded
+            loaded.toMutableList()
+        }
+    }
+
+    private fun saveZones(zones: List<DnsZone>) {
+        lock.withLock {
+            cachedZones = zones.toMutableList()
+            zonesPersistence.save(zones)
+        }
+    }
+
+    private fun mutateZone(zoneId: String, mutator: (DnsZone) -> DnsZone): Boolean = lock.withLock {
+        val zones = loadZones()
+        val index = zones.indexOfFirst { it.id == zoneId }
+        if (index == -1) return false
+        zones[index] = mutator(zones[index])
+        saveZones(zones)
+        true
+    }
+
+    // ===================================================================
+    //  Zone Management
+    // ===================================================================
+
+    override fun listZones(): List<DnsZone> = loadZones()
+
+    override fun getZone(zoneId: String): DnsZone? = loadZones().find { it.id == zoneId }
+
+    override fun createZone(request: CreateZoneRequest): DnsZone? = lock.withLock {
+        val zones = loadZones()
+        if (zones.any { it.name == request.name }) {
+            logger.warn("Zone already exists: ${request.name}")
+            return null
+        }
+
+        val id = UUID.randomUUID().toString()
+        val zoneFile = File(zonesDir, "db.${request.name}")
+
+        val zone = DnsZone(
+            id = id,
+            name = request.name,
+            type = request.type,
+            role = request.role,
+            filePath = zoneFile.absolutePath,
+            soa = request.soa,
+            masterAddresses = request.masterAddresses,
+            allowTransfer = request.allowTransfer,
+            forwarders = request.forwarders
+        )
+
+        if (zone.role == ZoneRole.MASTER) {
+            writeZoneFile(zone)
+        }
+        writeNamedConfEntry(zone)
+        zones.add(zone)
+        saveZones(zones)
+        reloadBind()
+        zone
+    }
+
+    override fun deleteZone(zoneId: String): Boolean = lock.withLock {
+        val zones = loadZones()
+        val zone = zones.find { it.id == zoneId } ?: return false
+
+        File(zone.filePath).delete()
+        removeNamedConfEntry(zone)
+        zones.removeIf { it.id == zoneId }
+        saveZones(zones)
+        reloadBind()
+        true
+    }
+
+    override fun toggleZone(zoneId: String): Boolean = lock.withLock {
+        val zones = loadZones()
+        val index = zones.indexOfFirst { it.id == zoneId }
+        if (index == -1) return false
+
+        val zone = zones[index]
+        val toggled = zone.copy(enabled = !zone.enabled)
+        zones[index] = toggled
+
+        if (toggled.enabled) writeNamedConfEntry(toggled) else removeNamedConfEntry(toggled)
+        saveZones(zones)
+        reloadBind()
+        true
+    }
+
+    override fun updateZoneOptions(zoneId: String, request: UpdateZoneOptionsRequest): Boolean = lock.withLock {
+        val zones = loadZones()
+        val index = zones.indexOfFirst { it.id == zoneId }
+        if (index == -1) return false
+
+        val zone = zones[index]
+        val updated = zone.copy(
+            allowTransfer = request.allowTransfer ?: zone.allowTransfer,
+            alsoNotify = request.alsoNotify ?: zone.alsoNotify,
+            forwarders = request.forwarders ?: zone.forwarders
+        )
+        zones[index] = updated
+        writeNamedConfEntry(updated)
+        saveZones(zones)
+        reloadBind()
+        true
+    }
+
+    // ===================================================================
+    //  Record Management
+    // ===================================================================
+
+    override fun getRecords(zoneId: String): List<DnsRecord> =
+        getZone(zoneId)?.records ?: emptyList()
+
+    override fun updateRecords(zoneId: String, records: List<DnsRecord>): Boolean = lock.withLock {
+        val zones = loadZones()
+        val index = zones.indexOfFirst { it.id == zoneId }
+        if (index == -1) return false
+
+        val assigned = records.map { if (it.id.isBlank()) it.copy(id = UUID.randomUUID().toString()) else it }
+        val zone = zones[index]
+        val updated = zone.copy(records = assigned, soa = zone.soa.copy(serial = zone.soa.serial + 1))
+        zones[index] = updated
+        writeZoneFile(updated)
+        saveZones(zones)
+        reloadBind()
+        true
+    }
+
+    override fun addRecord(zoneId: String, record: DnsRecord): Boolean = lock.withLock {
+        val zones = loadZones()
+        val index = zones.indexOfFirst { it.id == zoneId }
+        if (index == -1) return false
+
+        val zone = zones[index]
+        val newRec = if (record.id.isBlank()) record.copy(id = UUID.randomUUID().toString()) else record
+        val updated = zone.copy(records = zone.records + newRec, soa = zone.soa.copy(serial = zone.soa.serial + 1))
+        zones[index] = updated
+        writeZoneFile(updated)
+        saveZones(zones)
+        reloadBind()
+        true
+    }
+
+    override fun deleteRecord(zoneId: String, recordId: String): Boolean = lock.withLock {
+        val zones = loadZones()
+        val index = zones.indexOfFirst { it.id == zoneId }
+        if (index == -1) return false
+
+        val zone = zones[index]
+        val filtered = zone.records.filter { it.id != recordId }
+        if (filtered.size == zone.records.size) return false
+
+        val updated = zone.copy(records = filtered, soa = zone.soa.copy(serial = zone.soa.serial + 1))
+        zones[index] = updated
+        writeZoneFile(updated)
+        saveZones(zones)
+        reloadBind()
+        true
+    }
+
+    // ===================================================================
+    //  Service Control
+    // ===================================================================
+
+    override fun getStatus(): DnsServiceStatus {
+        val rndcStatus = commandExecutor.execute("rndc status")
+        val running = rndcStatus.exitCode == 0
+
+        val version = if (running) extractLine(rndcStatus.output, "version:") else ""
+        val uptime = if (running) rndcStatus.output.lines().firstOrNull { it.contains("server is up and running") }?.trim() ?: "" else ""
+        val configCheck = commandExecutor.execute("named-checkconf")
+
+        return DnsServiceStatus(
+            running = running,
+            version = version,
+            configValid = configCheck.exitCode == 0,
+            configOutput = if (configCheck.exitCode == 0) "Configuration OK" else configCheck.error.trim(),
+            uptime = uptime,
+            zoneCount = loadZones().size
+        )
+    }
+
+    override fun reload(): DnsActionResult = executeAction("rndc reload", "BIND9 reloaded")
+
+    override fun restart(): DnsActionResult =
+        executeAction("systemctl restart named || systemctl restart bind9", "BIND9 restarted")
+
+    override fun flushCache(): DnsActionResult = executeAction("rndc flush", "DNS cache flushed")
+
+    // ===================================================================
+    //  Validation
+    // ===================================================================
+
+    override fun validateConfig(): ZoneValidationResult {
+        val result = commandExecutor.execute("named-checkconf")
+        return ZoneValidationResult(result.exitCode == 0, if (result.exitCode == 0) "Configuration OK" else result.error.trim())
+    }
+
+    override fun validateZone(zoneId: String): ZoneValidationResult {
+        val zone = getZone(zoneId) ?: return ZoneValidationResult(false, "Zone not found")
+        val result = commandExecutor.execute("named-checkzone ${zone.name} ${zone.filePath}")
+        return ZoneValidationResult(result.exitCode == 0, result.output.trim().ifBlank { result.error.trim() })
+    }
+
+    // ===================================================================
+    //  Zone File Content & Import
+    // ===================================================================
+
+    override fun getZoneFileContent(zoneId: String): String? {
+        val zone = getZone(zoneId) ?: return null
+        val file = File(zone.filePath)
+        return if (file.exists()) file.readText() else null
+    }
+
+    override fun exportZoneFile(zoneId: String): String? = getZoneFileContent(zoneId)
+
+    override fun importZoneFile(request: BulkImportRequest): BulkImportResult {
+        val zone = getZone(request.zoneId) ?: return BulkImportResult(false, errors = listOf("Zone not found"))
+
+        val parsed = mutableListOf<DnsRecord>()
+        val errors = mutableListOf<String>()
+        var skipped = 0
+
+        for ((lineNo, line) in request.content.lines().withIndex()) {
+            val trimmed = line.trim()
+            if (trimmed.isBlank() || trimmed.startsWith(";") || trimmed.startsWith("\$")) {
+                skipped++
+                continue
+            }
+
+            try {
+                val record = parseBindRecord(trimmed, lineNo + 1)
+                if (record != null) parsed.add(record) else skipped++
+            } catch (e: Exception) {
+                errors.add("Line ${lineNo + 1}: ${e.message}")
+            }
+        }
+
+        if (parsed.isEmpty() && errors.isNotEmpty()) {
+            return BulkImportResult(false, 0, skipped, errors)
+        }
+
+        lock.withLock {
+            val zones = loadZones()
+            val index = zones.indexOfFirst { it.id == request.zoneId }
+            if (index == -1) return BulkImportResult(false, errors = listOf("Zone not found"))
+
+            val z = zones[index]
+            val updated = z.copy(
+                records = z.records + parsed,
+                soa = z.soa.copy(serial = z.soa.serial + 1)
+            )
+            zones[index] = updated
+            writeZoneFile(updated)
+            saveZones(zones)
+        }
+        reloadBind()
+
+        return BulkImportResult(true, parsed.size, skipped, errors)
+    }
+
+    private fun parseBindRecord(line: String, lineNo: Int): DnsRecord? {
+        val parts = line.split(Regex("\\s+"))
+        if (parts.size < 4) return null
+
+        // Handle: name [ttl] [IN] type value
+        var idx = 0
+        val name = parts[idx++]
+        val ttl = parts[idx].toIntOrNull()
+        if (ttl != null) idx++
+        if (idx < parts.size && parts[idx].equals("IN", ignoreCase = true)) idx++
+        if (idx + 1 >= parts.size) return null
+
+        val typeStr = parts[idx++].uppercase()
+        val recordType = try { DnsRecordType.valueOf(typeStr) } catch (_: Exception) { return null }
+        if (recordType == DnsRecordType.SOA) return null
+
+        val value = parts.drop(idx).joinToString(" ").trim().removeSurrounding("\"")
+        val priority = if (recordType == DnsRecordType.MX && parts.size > idx) parts[idx].toIntOrNull() else null
+
+        return DnsRecord(
+            id = UUID.randomUUID().toString(),
+            name = name,
+            type = recordType,
+            value = if (priority != null && parts.size > idx + 1) parts.drop(idx + 1).joinToString(" ") else value,
+            ttl = ttl ?: 3600,
+            priority = priority
+        )
+    }
+
+    // ===================================================================
+    //  ACLs
+    // ===================================================================
+
+    override fun listAcls(): List<DnsAcl> = aclsPersistence.load()
+
+    override fun createAcl(acl: DnsAcl): DnsAcl {
+        val newAcl = if (acl.id.isBlank()) acl.copy(id = UUID.randomUUID().toString()) else acl
+        aclsPersistence.update { it + newAcl }
+        writeAclsToConfig()
+        reloadBind()
+        return newAcl
+    }
+
+    override fun updateAcl(acl: DnsAcl): Boolean {
+        val updated = aclsPersistence.update { list ->
+            list.map { if (it.id == acl.id) acl else it }
+        }
+        if (updated) { writeAclsToConfig(); reloadBind() }
+        return updated
+    }
+
+    override fun deleteAcl(aclId: String): Boolean {
+        val updated = aclsPersistence.update { it.filter { a -> a.id != aclId } }
+        if (updated) { writeAclsToConfig(); reloadBind() }
+        return updated
+    }
+
+    private fun writeAclsToConfig() {
+        val acls = aclsPersistence.load()
+        val confFile = File(getNamedConfDir(), "named.conf.acl")
+
+        val content = buildString {
+            appendLine("// Generated by DockerManager - DO NOT EDIT MANUALLY")
+            for (acl in acls) {
+                if (acl.comment.isNotBlank()) appendLine("// ${acl.comment}")
+                appendLine("acl \"${acl.name}\" {")
+                for (entry in acl.entries) {
+                    appendLine("    $entry;")
+                }
+                appendLine("};")
+                appendLine()
+            }
+        }
+        confFile.writeText(content)
+        ensureInclude(confFile.absolutePath)
+    }
+
+    // ===================================================================
+    //  TSIG Keys
+    // ===================================================================
+
+    override fun listTsigKeys(): List<TsigKey> =
+        tsigPersistence.load().map { it.copy(secret = maskSecret(it.secret)) }
+
+    override fun createTsigKey(key: TsigKey): TsigKey? {
+        val secret = if (key.secret.isBlank()) generateTsigSecret(key.algorithm) else key.secret
+        if (secret.isBlank()) return null
+
+        val newKey = key.copy(
+            id = if (key.id.isBlank()) UUID.randomUUID().toString() else key.id,
+            secret = secret
+        )
+        tsigPersistence.update { it + newKey }
+        writeTsigKeysToConfig()
+        reloadBind()
+        return newKey.copy(secret = maskSecret(secret))
+    }
+
+    override fun deleteTsigKey(keyId: String): Boolean {
+        val updated = tsigPersistence.update { it.filter { k -> k.id != keyId } }
+        if (updated) { writeTsigKeysToConfig(); reloadBind() }
+        return updated
+    }
+
+    private fun generateTsigSecret(algorithm: TsigAlgorithm): String {
+        val result = commandExecutor.execute("tsig-keygen -a ${algorithm.toBindName()} temp-key")
+        if (result.exitCode != 0) {
+            val fallback = commandExecutor.execute("openssl rand -base64 32")
+            return if (fallback.exitCode == 0) fallback.output.trim() else ""
+        }
+        return result.output.lines()
+            .firstOrNull { it.trim().startsWith("secret") }
+            ?.substringAfter("\"")?.substringBefore("\"") ?: ""
+    }
+
+    private fun writeTsigKeysToConfig() {
+        val keys = tsigPersistence.load()
+        val confFile = File(getNamedConfDir(), "named.conf.tsig")
+
+        val content = buildString {
+            appendLine("// Generated by DockerManager - DO NOT EDIT MANUALLY")
+            for (k in keys) {
+                appendLine("key \"${k.name}\" {")
+                appendLine("    algorithm ${k.algorithm.toBindName()};")
+                appendLine("    secret \"${k.secret}\";")
+                appendLine("};")
+                appendLine()
+            }
+        }
+        confFile.writeText(content)
+        ensureInclude(confFile.absolutePath)
+    }
+
+    private fun maskSecret(secret: String): String =
+        if (secret.length > 8) "${secret.take(4)}****${secret.takeLast(4)}" else "****"
+
+    // ===================================================================
+    //  Global Forwarders
+    // ===================================================================
+
+    override fun getForwarderConfig(): DnsForwarderConfig = forwarderPersistence.load()
+
+    override fun updateForwarderConfig(config: DnsForwarderConfig): Boolean {
+        forwarderPersistence.save(config)
+        writeForwardersToConfig(config)
+        reloadBind()
+        return true
+    }
+
+    private fun writeForwardersToConfig(config: DnsForwarderConfig) {
+        val confFile = File(getNamedConfDir(), "named.conf.forwarders")
+        if (config.forwarders.isEmpty()) {
+            confFile.delete()
+            return
+        }
+        val content = buildString {
+            appendLine("// Generated by DockerManager - DO NOT EDIT MANUALLY")
+            appendLine("options {")
+            appendLine("    forwarders {")
+            for (f in config.forwarders) appendLine("        $f;")
+            appendLine("    };")
+            if (config.forwardOnly) appendLine("    forward only;")
+            appendLine("};")
+        }
+        confFile.writeText(content)
+        ensureInclude(confFile.absolutePath)
+    }
+
+    // ===================================================================
+    //  DNSSEC
+    // ===================================================================
+
+    override fun getDnssecStatus(zoneId: String): DnssecStatus {
+        val zone = getZone(zoneId) ?: return DnssecStatus()
+        if (!zone.dnssecEnabled) return DnssecStatus()
+
+        val kskFiles = keysDir.listFiles()?.filter { it.name.startsWith("K${zone.name}") && it.name.contains("ksk") } ?: emptyList()
+        val zskFiles = keysDir.listFiles()?.filter { it.name.startsWith("K${zone.name}") && it.name.contains("zsk") } ?: emptyList()
+
+        val dsResult = commandExecutor.execute("dnssec-dsfromkey ${keysDir.absolutePath}/K${zone.name}.*.key 2>/dev/null")
+        val dsRecords = if (dsResult.exitCode == 0) dsResult.output.lines().filter { it.isNotBlank() } else emptyList()
+
+        return DnssecStatus(
+            enabled = true,
+            signed = File(zone.filePath + ".signed").exists(),
+            kskKeyTag = kskFiles.firstOrNull()?.name ?: "",
+            zskKeyTag = zskFiles.firstOrNull()?.name ?: "",
+            dsRecords = dsRecords
+        )
+    }
+
+    override fun enableDnssec(zoneId: String): DnsActionResult = lock.withLock {
+        val zone = getZone(zoneId) ?: return DnsActionResult(false, "Zone not found")
+
+        val kskResult = commandExecutor.execute(
+            "dnssec-keygen -K ${keysDir.absolutePath} -a ECDSAP256SHA256 -fKSK ${zone.name}"
+        )
+        if (kskResult.exitCode != 0) return DnsActionResult(false, "KSK generation failed: ${kskResult.error}")
+
+        val zskResult = commandExecutor.execute(
+            "dnssec-keygen -K ${keysDir.absolutePath} -a ECDSAP256SHA256 ${zone.name}"
+        )
+        if (zskResult.exitCode != 0) return DnsActionResult(false, "ZSK generation failed: ${zskResult.error}")
+
+        val signResult = commandExecutor.execute(
+            "dnssec-signzone -K ${keysDir.absolutePath} -o ${zone.name} -S ${zone.filePath}"
+        )
+        if (signResult.exitCode != 0) return DnsActionResult(false, "Zone signing failed: ${signResult.error}")
+
+        mutateZone(zoneId) { it.copy(dnssecEnabled = true) }
+        writeNamedConfEntry(getZone(zoneId)!!)
+        reloadBind()
+        DnsActionResult(true, "DNSSEC enabled for ${zone.name}")
+    }
+
+    override fun disableDnssec(zoneId: String): DnsActionResult = lock.withLock {
+        val zone = getZone(zoneId) ?: return DnsActionResult(false, "Zone not found")
+
+        File(zone.filePath + ".signed").delete()
+        keysDir.listFiles()?.filter { it.name.startsWith("K${zone.name}") }?.forEach { it.delete() }
+
+        mutateZone(zoneId) { it.copy(dnssecEnabled = false) }
+        writeNamedConfEntry(getZone(zoneId)!!)
+        reloadBind()
+        DnsActionResult(true, "DNSSEC disabled for ${zone.name}")
+    }
+
+    override fun getDsRecords(zoneId: String): List<String> = getDnssecStatus(zoneId).dsRecords
+
+    // ===================================================================
+    //  DNS Lookup (dig)
+    // ===================================================================
+
+    override fun lookup(request: DnsLookupRequest): DnsLookupResult {
+        val serverArg = if (!request.server.isNullOrBlank()) "@${request.server}" else ""
+        val cmd = "dig $serverArg ${request.query} ${request.type} +noall +answer +stats +comments"
+        val result = commandExecutor.execute(cmd)
+
+        if (result.exitCode != 0) {
+            return DnsLookupResult(false, request.query, request.type, rawOutput = result.error.ifBlank { result.output })
+        }
+
+        val answers = mutableListOf<DnsLookupAnswer>()
+        var queryTime = ""
+        var server = ""
+        var status = ""
+
+        for (line in result.output.lines()) {
+            val trimmed = line.trim()
+            when {
+                trimmed.startsWith(";; ->>HEADER<<-") -> {
+                    val statusMatch = Regex("status: (\\w+)").find(trimmed)
+                    status = statusMatch?.groupValues?.getOrNull(1) ?: ""
+                }
+                trimmed.startsWith(";;") -> {
+                    if (trimmed.contains("Query time:")) queryTime = trimmed.substringAfter("Query time:").trim()
+                    if (trimmed.contains("SERVER:")) server = trimmed.substringAfter("SERVER:").trim()
+                }
+                trimmed.isNotBlank() && !trimmed.startsWith(";") -> {
+                    val parts = trimmed.split(Regex("\\s+"), limit = 5)
+                    if (parts.size >= 5) {
+                        answers.add(DnsLookupAnswer(
+                            name = parts[0],
+                            ttl = parts[1].toIntOrNull() ?: 0,
+                            type = parts[3],
+                            value = parts[4]
+                        ))
+                    }
+                }
+            }
+        }
+
+        return DnsLookupResult(
+            success = true,
+            query = request.query,
+            type = request.type,
+            answers = answers,
+            rawOutput = result.output,
+            queryTime = queryTime,
+            server = server,
+            status = status
+        )
+    }
+
+    // ===================================================================
+    //  Statistics
+    // ===================================================================
+
+    override fun getQueryStats(): DnsQueryStats {
+        commandExecutor.execute("rndc stats")
+        val statsFile = File("/var/named/data/named_stats.txt").takeIf { it.exists() }
+            ?: File("/var/cache/bind/named.stats").takeIf { it.exists() }
+            ?: File("/var/log/named/named.stats").takeIf { it.exists() }
+
+        val raw = statsFile?.readText() ?: run {
+            val rndcStatus = commandExecutor.execute("rndc status")
+            return DnsQueryStats(rawStats = rndcStatus.output)
+        }
+
+        var total = 0L; var success = 0L; var failed = 0L; var recursive = 0L
+        val queryTypes = mutableMapOf<String, Long>()
+
+        var inIncoming = false
+        for (line in raw.lines()) {
+            val trimmed = line.trim()
+            when {
+                trimmed.contains("++ Incoming Requests ++") -> inIncoming = true
+                trimmed.contains("++") && inIncoming -> inIncoming = false
+                inIncoming -> {
+                    val match = Regex("^(\\d+)\\s+(.+)$").find(trimmed)
+                    if (match != null) {
+                        val count = match.groupValues[1].toLongOrNull() ?: 0
+                        val type = match.groupValues[2].trim()
+                        queryTypes[type] = count
+                        total += count
+                    }
+                }
+                trimmed.contains("QUERY") && trimmed.first().isDigit() -> {
+                    success = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                }
+                trimmed.contains("SERVFAIL") && trimmed.first().isDigit() -> {
+                    failed = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                }
+                trimmed.contains("Recursion") && trimmed.first().isDigit() -> {
+                    recursive = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                }
+            }
+        }
+
+        return DnsQueryStats(total, success, failed, recursive, queryTypes, rawStats = raw.takeLast(4000))
+    }
+
+    // ===================================================================
+    //  Zone Templates
+    // ===================================================================
+
+    override fun listTemplates(): List<ZoneTemplate> = templatesPersistence.load()
+
+    override fun createTemplate(template: ZoneTemplate): ZoneTemplate {
+        val newTmpl = template.copy(id = if (template.id.isBlank()) UUID.randomUUID().toString() else template.id)
+        templatesPersistence.update { it + newTmpl }
+        return newTmpl
+    }
+
+    override fun deleteTemplate(templateId: String): Boolean =
+        templatesPersistence.update { it.filter { t -> t.id != templateId } }
+
+    override fun applyTemplate(zoneId: String, templateId: String): Boolean {
+        val template = templatesPersistence.load().find { it.id == templateId } ?: return false
+        val newRecords = template.records.map { it.copy(id = UUID.randomUUID().toString()) }
+        return lock.withLock {
+            val zones = loadZones()
+            val index = zones.indexOfFirst { it.id == zoneId }
+            if (index == -1) return false
+            val zone = zones[index]
+            val updated = zone.copy(
+                records = zone.records + newRecords,
+                soa = zone.soa.copy(serial = zone.soa.serial + 1)
+            )
+            zones[index] = updated
+            writeZoneFile(updated)
+            saveZones(zones)
+            reloadBind()
+            true
+        }
+    }
+
+    // ===================================================================
+    //  Zone File Generation
+    // ===================================================================
+
+    private fun writeZoneFile(zone: DnsZone) {
+        val soa = zone.soa
+        val content = buildString {
+            appendLine("; Zone file for ${zone.name}")
+            appendLine("; Generated by DockerManager DNS Service")
+            appendLine("; Serial: ${soa.serial}")
+            appendLine()
+            appendLine("\$TTL ${soa.minimumTtl}")
+            appendLine("@  IN  SOA  ${soa.primaryNs} ${soa.adminEmail} (")
+            appendLine("             ${soa.serial}     ; Serial")
+            appendLine("             ${soa.refresh}        ; Refresh")
+            appendLine("             ${soa.retry}         ; Retry")
+            appendLine("             ${soa.expire}     ; Expire")
+            appendLine("             ${soa.minimumTtl}      ; Minimum TTL")
+            appendLine(")")
+            appendLine()
+            for (record in zone.records) {
+                val line = formatRecord(record)
+                if (line.isNotBlank()) appendLine(line)
+            }
+        }
+
+        File(zone.filePath).apply {
+            parentFile.mkdirs()
+            writeText(content)
+        }
+        logger.info("Wrote zone file: ${zone.filePath}")
+    }
+
+    private fun formatRecord(record: DnsRecord): String {
+        val name = record.name.padEnd(24)
+        val ttl = record.ttl.toString()
+        return when (record.type) {
+            DnsRecordType.MX -> "$name $ttl  IN  MX  ${record.priority ?: 10} ${record.value}"
+            DnsRecordType.SRV -> "$name $ttl  IN  SRV ${record.priority ?: 0} ${record.weight ?: 0} ${record.port ?: 0} ${record.value}"
+            DnsRecordType.TXT -> "$name $ttl  IN  TXT \"${record.value}\""
+            DnsRecordType.CAA -> "$name $ttl  IN  CAA ${record.value}"
+            DnsRecordType.SOA -> ""
+            else -> "$name $ttl  IN  ${record.type.name}  ${record.value}"
+        }
+    }
+
+    // ===================================================================
+    //  named.conf Management
+    // ===================================================================
+
+    private fun getNamedConfDir(): String {
+        val candidates = listOf("/etc/bind", "/etc/named", "/etc/named")
+        return candidates.firstOrNull { File(it).isDirectory } ?: "/etc/bind"
+    }
+
+    private fun getNamedConfLocalPath(): String {
+        val candidates = listOf(
+            "/etc/bind/named.conf.local",
+            "/etc/named.conf.local",
+            "/etc/named/named.conf.local"
+        )
+        return candidates.firstOrNull { File(it).exists() } ?: "/etc/bind/named.conf.local"
+    }
+
+    private val managedBlockStart = "# --- DockerManager DNS Start: %s ---"
+    private val managedBlockEnd = "# --- DockerManager DNS End: %s ---"
+
+    private fun writeNamedConfEntry(zone: DnsZone) {
+        val confFile = File(getNamedConfLocalPath())
+        if (!confFile.exists()) { confFile.parentFile?.mkdirs(); confFile.createNewFile() }
+        removeNamedConfEntry(zone)
+
+        val zoneFilePath = if (zone.dnssecEnabled && File(zone.filePath + ".signed").exists())
+            zone.filePath + ".signed" else zone.filePath
+
+        val entry = buildString {
+            appendLine(managedBlockStart.format(zone.name))
+            appendLine("zone \"${zone.name}\" {")
+
+            when (zone.role) {
+                ZoneRole.MASTER -> {
+                    appendLine("    type master;")
+                    appendLine("    file \"$zoneFilePath\";")
+                }
+                ZoneRole.SLAVE -> {
+                    appendLine("    type slave;")
+                    appendLine("    file \"${zone.filePath}\";")
+                    if (zone.masterAddresses.isNotEmpty()) {
+                        appendLine("    masters { ${zone.masterAddresses.joinToString("; ")}; };")
+                    }
+                }
+                ZoneRole.STUB -> {
+                    appendLine("    type stub;")
+                    appendLine("    file \"${zone.filePath}\";")
+                    if (zone.masterAddresses.isNotEmpty()) {
+                        appendLine("    masters { ${zone.masterAddresses.joinToString("; ")}; };")
+                    }
+                }
+                ZoneRole.FORWARD_ONLY -> {
+                    appendLine("    type forward;")
+                    appendLine("    forward only;")
+                    if (zone.forwarders.isNotEmpty()) {
+                        appendLine("    forwarders { ${zone.forwarders.joinToString("; ")}; };")
+                    }
+                }
+            }
+
+            if (zone.allowTransfer.isNotEmpty()) {
+                appendLine("    allow-transfer { ${zone.allowTransfer.joinToString("; ")}; };")
+            } else if (zone.role == ZoneRole.MASTER) {
+                appendLine("    allow-transfer { none; };")
+            }
+
+            if (zone.alsoNotify.isNotEmpty()) {
+                appendLine("    also-notify { ${zone.alsoNotify.joinToString("; ")}; };")
+            }
+
+            if (zone.dnssecEnabled && zone.role == ZoneRole.MASTER) {
+                appendLine("    auto-dnssec maintain;")
+                appendLine("    inline-signing yes;")
+                appendLine("    key-directory \"${keysDir.absolutePath}\";")
+            }
+
+            appendLine("};")
+            appendLine(managedBlockEnd.format(zone.name))
+        }
+
+        confFile.appendText("\n$entry")
+        logger.info("Added zone entry to named.conf.local: ${zone.name}")
+    }
+
+    private fun removeNamedConfEntry(zone: DnsZone) {
+        val confFile = File(getNamedConfLocalPath())
+        if (!confFile.exists()) return
+
+        val startMarker = managedBlockStart.format(zone.name)
+        val endMarker = managedBlockEnd.format(zone.name)
+        val lines = confFile.readLines()
+        val filtered = mutableListOf<String>()
+        var skipping = false
+
+        for (line in lines) {
+            when {
+                line.trim() == startMarker -> skipping = true
+                line.trim() == endMarker -> { skipping = false; continue }
+                !skipping -> filtered.add(line)
+            }
+        }
+        confFile.writeText(filtered.joinToString("\n").trimEnd() + "\n")
+    }
+
+    private fun ensureInclude(filePath: String) {
+        val mainConf = File(getNamedConfLocalPath())
+        if (!mainConf.exists()) return
+        val includeDirective = "include \"$filePath\";"
+        val content = mainConf.readText()
+        if (!content.contains(includeDirective)) {
+            mainConf.appendText("\n$includeDirective\n")
+        }
+    }
+
+    // ===================================================================
+    //  Helpers
+    // ===================================================================
+
+    private fun reloadBind() {
+        val result = commandExecutor.execute("rndc reload")
+        if (result.exitCode != 0) logger.warn("rndc reload failed: ${result.error}")
+    }
+
+    private fun executeAction(command: String, successMsg: String): DnsActionResult {
+        val result = commandExecutor.execute(command)
+        return DnsActionResult(result.exitCode == 0, if (result.exitCode == 0) successMsg else result.error.ifBlank { result.output })
+    }
+
+    private fun extractLine(output: String, prefix: String): String =
+        output.lines().firstOrNull { it.startsWith(prefix) }?.substringAfter(prefix)?.trim() ?: ""
+
+    companion object {
+        fun defaultTemplates(): List<ZoneTemplate> = listOf(
+            ZoneTemplate(
+                id = "tpl-web-basic",
+                name = "Basic Website",
+                description = "NS, A, www CNAME, and mail records for a typical website",
+                records = listOf(
+                    DnsRecord(id = "t1", name = "@", type = DnsRecordType.NS, value = "ns1.example.com.", ttl = 86400),
+                    DnsRecord(id = "t2", name = "@", type = DnsRecordType.NS, value = "ns2.example.com.", ttl = 86400),
+                    DnsRecord(id = "t3", name = "@", type = DnsRecordType.A, value = "1.2.3.4", ttl = 3600),
+                    DnsRecord(id = "t4", name = "www", type = DnsRecordType.CNAME, value = "@", ttl = 3600),
+                    DnsRecord(id = "t5", name = "@", type = DnsRecordType.MX, value = "mail.example.com.", ttl = 3600, priority = 10),
+                )
+            ),
+            ZoneTemplate(
+                id = "tpl-email",
+                name = "Email Setup",
+                description = "MX, SPF, DKIM placeholder, and DMARC records",
+                records = listOf(
+                    DnsRecord(id = "t6", name = "@", type = DnsRecordType.MX, value = "mail.example.com.", ttl = 3600, priority = 10),
+                    DnsRecord(id = "t7", name = "@", type = DnsRecordType.TXT, value = "v=spf1 mx a ~all", ttl = 3600),
+                    DnsRecord(id = "t8", name = "_dmarc", type = DnsRecordType.TXT, value = "v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com", ttl = 3600),
+                )
+            ),
+            ZoneTemplate(
+                id = "tpl-google-workspace",
+                name = "Google Workspace",
+                description = "MX records and verification TXT for Google Workspace",
+                records = listOf(
+                    DnsRecord(id = "t9", name = "@", type = DnsRecordType.MX, value = "aspmx.l.google.com.", ttl = 3600, priority = 1),
+                    DnsRecord(id = "t10", name = "@", type = DnsRecordType.MX, value = "alt1.aspmx.l.google.com.", ttl = 3600, priority = 5),
+                    DnsRecord(id = "t11", name = "@", type = DnsRecordType.MX, value = "alt2.aspmx.l.google.com.", ttl = 3600, priority = 5),
+                    DnsRecord(id = "t12", name = "@", type = DnsRecordType.TXT, value = "v=spf1 include:_spf.google.com ~all", ttl = 3600),
+                )
+            )
+        )
+    }
+}
+
+// ===================================================================
+//  Facade object
+// ===================================================================
+
+object DnsService {
+    private val service: IDnsService by lazy { DnsServiceImpl() }
+
+    // Zone management
+    fun listZones() = service.listZones()
+    fun getZone(id: String) = service.getZone(id)
+    fun createZone(req: CreateZoneRequest) = service.createZone(req)
+    fun deleteZone(id: String) = service.deleteZone(id)
+    fun toggleZone(id: String) = service.toggleZone(id)
+    fun updateZoneOptions(id: String, req: UpdateZoneOptionsRequest) = service.updateZoneOptions(id, req)
+
+    // Records
+    fun getRecords(zoneId: String) = service.getRecords(zoneId)
+    fun updateRecords(zoneId: String, records: List<DnsRecord>) = service.updateRecords(zoneId, records)
+    fun addRecord(zoneId: String, record: DnsRecord) = service.addRecord(zoneId, record)
+    fun deleteRecord(zoneId: String, recordId: String) = service.deleteRecord(zoneId, recordId)
+
+    // Service control
+    fun getStatus() = service.getStatus()
+    fun reload() = service.reload()
+    fun restart() = service.restart()
+    fun flushCache() = service.flushCache()
+
+    // Validation
+    fun validateConfig() = service.validateConfig()
+    fun validateZone(id: String) = service.validateZone(id)
+
+    // Zone file
+    fun getZoneFileContent(id: String) = service.getZoneFileContent(id)
+    fun exportZoneFile(id: String) = service.exportZoneFile(id)
+    fun importZoneFile(req: BulkImportRequest) = service.importZoneFile(req)
+
+    // ACLs
+    fun listAcls() = service.listAcls()
+    fun createAcl(acl: DnsAcl) = service.createAcl(acl)
+    fun updateAcl(acl: DnsAcl) = service.updateAcl(acl)
+    fun deleteAcl(id: String) = service.deleteAcl(id)
+
+    // TSIG
+    fun listTsigKeys() = service.listTsigKeys()
+    fun createTsigKey(key: TsigKey) = service.createTsigKey(key)
+    fun deleteTsigKey(id: String) = service.deleteTsigKey(id)
+
+    // Forwarders
+    fun getForwarderConfig() = service.getForwarderConfig()
+    fun updateForwarderConfig(config: DnsForwarderConfig) = service.updateForwarderConfig(config)
+
+    // DNSSEC
+    fun getDnssecStatus(zoneId: String) = service.getDnssecStatus(zoneId)
+    fun enableDnssec(zoneId: String) = service.enableDnssec(zoneId)
+    fun disableDnssec(zoneId: String) = service.disableDnssec(zoneId)
+    fun getDsRecords(zoneId: String) = service.getDsRecords(zoneId)
+
+    // Lookup
+    fun lookup(req: DnsLookupRequest) = service.lookup(req)
+
+    // Stats
+    fun getQueryStats() = service.getQueryStats()
+
+    // Templates
+    fun listTemplates() = service.listTemplates()
+    fun createTemplate(t: ZoneTemplate) = service.createTemplate(t)
+    fun deleteTemplate(id: String) = service.deleteTemplate(id)
+    fun applyTemplate(zoneId: String, templateId: String) = service.applyTemplate(zoneId, templateId)
+}
