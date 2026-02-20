@@ -1,0 +1,30 @@
+services:
+  bind9:
+    image: ${BIND9_IMAGE}
+    container_name: ${BIND9_CONTAINER_NAME}
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - NET_BIND_SERVICE
+    ports:
+      - "${BIND9_HOST_PORT}:53/tcp"
+      - "${BIND9_HOST_PORT}:53/udp"
+      - "953:953/tcp"
+    volumes:
+      - ${BIND9_CONFIG_PATH}:/etc/bind
+      - ${BIND9_DATA_PATH}:/var/lib/bind
+    environment:
+      - TZ=UTC
+      - BIND9_USER=root
+    healthcheck:
+      test: ["CMD-SHELL", "rndc status || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - dns-net
+
+networks:
+  dns-net:
+    driver: bridge

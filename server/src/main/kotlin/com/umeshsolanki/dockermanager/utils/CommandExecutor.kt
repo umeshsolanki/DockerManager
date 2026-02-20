@@ -30,6 +30,12 @@ class CommandExecutor(
         return try {
             val processBuilder = ProcessBuilder("sh", "-c", command)
             processBuilder.environment()[SystemConstants.ENV_LC_ALL] = SystemConstants.ENV_LC_ALL_VALUE
+            val currentPath = processBuilder.environment()["PATH"] ?: ""
+            val extraPaths = listOf("/usr/local/bin", "/opt/homebrew/bin")
+                .filter { !currentPath.contains(it) }
+            if (extraPaths.isNotEmpty()) {
+                processBuilder.environment()["PATH"] = (extraPaths + currentPath).joinToString(":")
+            }
             val process = processBuilder.start()
             
             val output = process.inputStream.bufferedReader().readText()

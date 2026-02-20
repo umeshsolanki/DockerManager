@@ -436,7 +436,7 @@ class ComposeServiceImpl : IComposeService {
                 if (networkName.isNotEmpty() && !networkName.startsWith("#")) {
                     // Check if network exists
                     try {
-                        val checkProcess = ProcessBuilder("docker", "network", "inspect", networkName)
+                        val checkProcess = ProcessBuilder(AppConfig.dockerCommand, "network", "inspect", networkName)
                             .redirectErrorStream(true)
                             .start()
                         val exists = checkProcess.waitFor(2, TimeUnit.SECONDS) && checkProcess.exitValue() == 0
@@ -677,6 +677,10 @@ class ComposeServiceImpl : IComposeService {
                 directory?.let { directory(it) }
                 redirectErrorStream(true)
                 environment().putAll(env)
+                val currentPath = environment()["PATH"] ?: ""
+                listOf("/usr/local/bin", "/opt/homebrew/bin").filter { !currentPath.contains(it) }.let { extras ->
+                    if (extras.isNotEmpty()) environment()["PATH"] = (extras + currentPath).joinToString(":")
+                }
             }
             
             val process = pb.start()

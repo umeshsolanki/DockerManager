@@ -1,8 +1,10 @@
 package com.umeshsolanki.dockermanager.dns
 
 import com.umeshsolanki.dockermanager.AppConfig
+import com.umeshsolanki.dockermanager.docker.DockerService
 import com.umeshsolanki.dockermanager.utils.CommandExecutor
 import com.umeshsolanki.dockermanager.utils.JsonPersistence
+import com.umeshsolanki.dockermanager.utils.ResourceLoader
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.util.UUID
@@ -13,10 +15,37 @@ class DnsServiceImpl : IDnsService {
     private val logger = LoggerFactory.getLogger(DnsServiceImpl::class.java)
     private val lock = java.util.concurrent.locks.ReentrantLock()
     private val commandExecutor = CommandExecutor(loggerName = DnsServiceImpl::class.java.name)
+    private val isMac = System.getProperty("os.name").lowercase().contains("mac")
 
     private val dataDir = File(AppConfig.dataRoot, "dns")
     private val zonesDir = File(dataDir, "zones")
     private val keysDir = File(dataDir, "keys")
+
+    private val dnsComposeDir = File(AppConfig.composeProjDir, "dns")
+    private val dnsComposeFile get() = File(dnsComposeDir, "docker-compose.yml")
+
+    private val isDockerMode: Boolean
+        get() = dnsComposeFile.exists()
+
+    private val containerName: String
+        get() {
+            val envFile = File(dnsComposeDir, ".env")
+            if (envFile.exists()) {
+                envFile.readLines().forEach { line ->
+                    if (line.startsWith("BIND9_CONTAINER_NAME=")) return line.substringAfter("=").trim()
+                }
+            }
+            return "bind9"
+        }
+
+    private fun bindCmd(command: String): String =
+        if (isDockerMode) "${AppConfig.dockerCommand} exec $containerName $command" else command
+
+    private fun bindExec(command: String) = commandExecutor.execute(bindCmd(command))
+
+    private fun containerConfigDir(): String = if (isDockerMode) "/etc/bind" else getHostNamedConfDir()
+    private fun containerZonesDir(): String = if (isDockerMode) "/var/lib/bind" else zonesDir.absolutePath
+    private fun containerKeysDir(): String = if (isDockerMode) "/var/lib/bind/keys" else keysDir.absolutePath
 
     private val zonesPersistence = JsonPersistence.create<List<DnsZone>>(
         file = File(dataDir, "zones-metadata.json"),
@@ -225,12 +254,12 @@ class DnsServiceImpl : IDnsService {
     // ===================================================================
 
     override fun getStatus(): DnsServiceStatus {
-        val rndcStatus = commandExecutor.execute("rndc status")
+        val rndcStatus = bindExec("rndc status")
         val running = rndcStatus.exitCode == 0
 
         val version = if (running) extractLine(rndcStatus.output, "version:") else ""
         val uptime = if (running) rndcStatus.output.lines().firstOrNull { it.contains("server is up and running") }?.trim() ?: "" else ""
-        val configCheck = commandExecutor.execute("named-checkconf")
+        val configCheck = bindExec("named-checkconf")
 
         return DnsServiceStatus(
             running = running,
@@ -242,25 +271,37 @@ class DnsServiceImpl : IDnsService {
         )
     }
 
-    override fun reload(): DnsActionResult = executeAction("rndc reload", "BIND9 reloaded")
+    override fun reload(): DnsActionResult {
+        val result = bindExec("rndc reload")
+        return DnsActionResult(result.exitCode == 0, if (result.exitCode == 0) "BIND9 reloaded" else result.error.ifBlank { result.output })
+    }
 
-    override fun restart(): DnsActionResult =
-        executeAction("systemctl restart named || systemctl restart bind9", "BIND9 restarted")
+    override fun restart(): DnsActionResult {
+        if (isDockerMode) {
+            val result = commandExecutor.execute("${AppConfig.dockerCommand} restart $containerName")
+            return DnsActionResult(result.exitCode == 0, if (result.exitCode == 0) "BIND9 container restarted" else result.error.ifBlank { result.output })
+        }
+        return executeAction("systemctl restart named || systemctl restart bind9", "BIND9 restarted")
+    }
 
-    override fun flushCache(): DnsActionResult = executeAction("rndc flush", "DNS cache flushed")
+    override fun flushCache(): DnsActionResult {
+        val result = bindExec("rndc flush")
+        return DnsActionResult(result.exitCode == 0, if (result.exitCode == 0) "DNS cache flushed" else result.error.ifBlank { result.output })
+    }
 
     // ===================================================================
     //  Validation
     // ===================================================================
 
     override fun validateConfig(): ZoneValidationResult {
-        val result = commandExecutor.execute("named-checkconf")
+        val result = bindExec("named-checkconf")
         return ZoneValidationResult(result.exitCode == 0, if (result.exitCode == 0) "Configuration OK" else result.error.trim())
     }
 
     override fun validateZone(zoneId: String): ZoneValidationResult {
         val zone = getZone(zoneId) ?: return ZoneValidationResult(false, "Zone not found")
-        val result = commandExecutor.execute("named-checkzone ${zone.name} ${zone.filePath}")
+        val zonePath = if (isDockerMode) "${containerZonesDir()}/${File(zone.filePath).name}" else zone.filePath
+        val result = bindExec("named-checkzone ${zone.name} $zonePath")
         return ZoneValidationResult(result.exitCode == 0, result.output.trim().ifBlank { result.error.trim() })
     }
 
@@ -426,7 +467,7 @@ class DnsServiceImpl : IDnsService {
     }
 
     private fun generateTsigSecret(algorithm: TsigAlgorithm): String {
-        val result = commandExecutor.execute("tsig-keygen -a ${algorithm.toBindName()} temp-key")
+        val result = bindExec("tsig-keygen -a ${algorithm.toBindName()} temp-key")
         if (result.exitCode != 0) {
             val fallback = commandExecutor.execute("openssl rand -base64 32")
             return if (fallback.exitCode == 0) fallback.output.trim() else ""
@@ -500,7 +541,8 @@ class DnsServiceImpl : IDnsService {
         val kskFiles = keysDir.listFiles()?.filter { it.name.startsWith("K${zone.name}") && it.name.contains("ksk") } ?: emptyList()
         val zskFiles = keysDir.listFiles()?.filter { it.name.startsWith("K${zone.name}") && it.name.contains("zsk") } ?: emptyList()
 
-        val dsResult = commandExecutor.execute("dnssec-dsfromkey ${keysDir.absolutePath}/K${zone.name}.*.key 2>/dev/null")
+        val cKeysDir = containerKeysDir()
+        val dsResult = bindExec("dnssec-dsfromkey $cKeysDir/K${zone.name}.*.key 2>/dev/null")
         val dsRecords = if (dsResult.exitCode == 0) dsResult.output.lines().filter { it.isNotBlank() } else emptyList()
 
         return DnssecStatus(
@@ -514,19 +556,21 @@ class DnsServiceImpl : IDnsService {
 
     override fun enableDnssec(zoneId: String): DnsActionResult = lock.withLock {
         val zone = getZone(zoneId) ?: return DnsActionResult(false, "Zone not found")
+        val cKeysDir = containerKeysDir()
+        val cZonePath = if (isDockerMode) "${containerZonesDir()}/${File(zone.filePath).name}" else zone.filePath
 
-        val kskResult = commandExecutor.execute(
-            "dnssec-keygen -K ${keysDir.absolutePath} -a ECDSAP256SHA256 -fKSK ${zone.name}"
+        val kskResult = bindExec(
+            "dnssec-keygen -K $cKeysDir -a ECDSAP256SHA256 -fKSK ${zone.name}"
         )
         if (kskResult.exitCode != 0) return DnsActionResult(false, "KSK generation failed: ${kskResult.error}")
 
-        val zskResult = commandExecutor.execute(
-            "dnssec-keygen -K ${keysDir.absolutePath} -a ECDSAP256SHA256 ${zone.name}"
+        val zskResult = bindExec(
+            "dnssec-keygen -K $cKeysDir -a ECDSAP256SHA256 ${zone.name}"
         )
         if (zskResult.exitCode != 0) return DnsActionResult(false, "ZSK generation failed: ${zskResult.error}")
 
-        val signResult = commandExecutor.execute(
-            "dnssec-signzone -K ${keysDir.absolutePath} -o ${zone.name} -S ${zone.filePath}"
+        val signResult = bindExec(
+            "dnssec-signzone -K $cKeysDir -o ${zone.name} -S $cZonePath"
         )
         if (signResult.exitCode != 0) return DnsActionResult(false, "Zone signing failed: ${signResult.error}")
 
@@ -557,7 +601,7 @@ class DnsServiceImpl : IDnsService {
     override fun lookup(request: DnsLookupRequest): DnsLookupResult {
         val serverArg = if (!request.server.isNullOrBlank()) "@${request.server}" else ""
         val cmd = "dig $serverArg ${request.query} ${request.type} +noall +answer +stats +comments"
-        val result = commandExecutor.execute(cmd)
+        val result = bindExec(cmd)
 
         if (result.exitCode != 0) {
             return DnsLookupResult(false, request.query, request.type, rawOutput = result.error.ifBlank { result.output })
@@ -610,14 +654,23 @@ class DnsServiceImpl : IDnsService {
     // ===================================================================
 
     override fun getQueryStats(): DnsQueryStats {
-        commandExecutor.execute("rndc stats")
-        val statsFile = File("/var/named/data/named_stats.txt").takeIf { it.exists() }
-            ?: File("/var/cache/bind/named.stats").takeIf { it.exists() }
-            ?: File("/var/log/named/named.stats").takeIf { it.exists() }
+        bindExec("rndc stats")
 
-        val raw = statsFile?.readText() ?: run {
-            val rndcStatus = commandExecutor.execute("rndc status")
-            return DnsQueryStats(rawStats = rndcStatus.output)
+        val raw = if (isDockerMode) {
+            val catResult = bindExec("cat /var/cache/bind/named.stats 2>/dev/null || cat /var/log/named/named.stats 2>/dev/null")
+            if (catResult.exitCode != 0 || catResult.output.isBlank()) {
+                val rndcStatus = bindExec("rndc status")
+                return DnsQueryStats(rawStats = rndcStatus.output)
+            }
+            catResult.output
+        } else {
+            val statsFile = File("/var/named/data/named_stats.txt").takeIf { it.exists() }
+                ?: File("/var/cache/bind/named.stats").takeIf { it.exists() }
+                ?: File("/var/log/named/named.stats").takeIf { it.exists() }
+            statsFile?.readText() ?: run {
+                val rndcStatus = bindExec("rndc status")
+                return DnsQueryStats(rawStats = rndcStatus.output)
+            }
         }
 
         var total = 0L; var success = 0L; var failed = 0L; var recursive = 0L
@@ -738,18 +791,35 @@ class DnsServiceImpl : IDnsService {
     //  named.conf Management
     // ===================================================================
 
-    private fun getNamedConfDir(): String {
-        val candidates = listOf("/etc/bind", "/etc/named", "/etc/named")
+    private fun getHostNamedConfDir(): String {
+        val candidates = listOf("/etc/bind", "/etc/named")
         return candidates.firstOrNull { File(it).isDirectory } ?: "/etc/bind"
     }
 
+    private fun getNamedConfDir(): String {
+        if (isDockerMode) {
+            val envFile = File(dnsComposeDir, ".env")
+            if (envFile.exists()) {
+                envFile.readLines().forEach { line ->
+                    if (line.startsWith("BIND9_CONFIG_PATH=")) return line.substringAfter("=").trim()
+                }
+            }
+            return File(dnsComposeDir, "config").absolutePath
+        }
+        return getHostNamedConfDir()
+    }
+
     private fun getNamedConfLocalPath(): String {
-        val candidates = listOf(
-            "/etc/bind/named.conf.local",
-            "/etc/named.conf.local",
-            "/etc/named/named.conf.local"
-        )
-        return candidates.firstOrNull { File(it).exists() } ?: "/etc/bind/named.conf.local"
+        val confDir = getNamedConfDir()
+        val localFile = File(confDir, "named.conf.local")
+        if (localFile.exists()) return localFile.absolutePath
+
+        if (!isDockerMode) {
+            val candidates = listOf("/etc/bind/named.conf.local", "/etc/named.conf.local", "/etc/named/named.conf.local")
+            candidates.firstOrNull { File(it).exists() }?.let { return it }
+        }
+
+        return localFile.absolutePath
     }
 
     private val managedBlockStart = "# --- DockerManager DNS Start: %s ---"
@@ -808,7 +878,7 @@ class DnsServiceImpl : IDnsService {
             if (zone.dnssecEnabled && zone.role == ZoneRole.MASTER) {
                 appendLine("    auto-dnssec maintain;")
                 appendLine("    inline-signing yes;")
-                appendLine("    key-directory \"${keysDir.absolutePath}\";")
+                appendLine("    key-directory \"${containerKeysDir()}\";")
             }
 
             appendLine("};")
@@ -854,38 +924,46 @@ class DnsServiceImpl : IDnsService {
     // ===================================================================
 
     private fun reloadBind() {
-        val result = commandExecutor.execute("rndc reload")
+        val result = bindExec("rndc reload")
         if (result.exitCode != 0) logger.warn("rndc reload failed: ${result.error}")
     }
 
     // ==================== Installation ====================
 
     override fun getInstallStatus(): DnsInstallStatus {
-        val logs = mutableListOf<String>()
+        val osType = if (isMac) "mac" else "linux"
 
-        // Check Docker-based BIND9
-        val dockerCheck = commandExecutor.execute("docker ps -a --filter name=bind9 --format '{{.ID}}|{{.Image}}|{{.Status}}'")
-        if (dockerCheck.exitCode == 0 && dockerCheck.output.isNotBlank()) {
-            val parts = dockerCheck.output.trim().split("|")
-            if (parts.size >= 3) {
-                val running = parts[2].lowercase().startsWith("up")
-                val version = commandExecutor.execute("docker exec bind9 named -v 2>/dev/null").output.trim()
-                return DnsInstallStatus(
-                    installed = true, method = DnsInstallMethod.DOCKER, running = running,
-                    version = version, dockerContainerId = parts[0], dockerImage = parts[1]
-                )
+        // Check Docker Compose-based BIND9
+        if (dnsComposeFile.exists()) {
+            val cName = containerName
+            val docker = AppConfig.dockerCommand
+            val dockerCheck = commandExecutor.execute("$docker ps -a --filter name=$cName --format '{{.ID}}|{{.Image}}|{{.Status}}'")
+            if (dockerCheck.exitCode == 0 && dockerCheck.output.isNotBlank()) {
+                val parts = dockerCheck.output.trim().split("|")
+                if (parts.size >= 3) {
+                    val running = parts[2].lowercase().startsWith("up")
+                    val version = commandExecutor.execute("$docker exec $cName named -v 2>/dev/null").output.trim()
+                    return DnsInstallStatus(
+                        installed = true, method = DnsInstallMethod.DOCKER, running = running,
+                        version = version, dockerContainerId = parts[0], dockerImage = parts[1],
+                        composeFile = dnsComposeFile.absolutePath, osType = osType
+                    )
+                }
+            }
+            return DnsInstallStatus(installed = true, method = DnsInstallMethod.DOCKER, running = false, composeFile = dnsComposeFile.absolutePath, osType = osType)
+        }
+
+        // Check apt-based BIND9 (Linux only)
+        if (!isMac) {
+            val aptCheck = commandExecutor.execute("dpkg -s bind9 2>/dev/null")
+            if (aptCheck.exitCode == 0 && aptCheck.output.contains("Status: install ok installed")) {
+                val version = commandExecutor.execute("named -v 2>/dev/null").output.trim()
+                val running = commandExecutor.execute("systemctl is-active named 2>/dev/null || systemctl is-active bind9 2>/dev/null").output.trim() == "active"
+                return DnsInstallStatus(installed = true, method = DnsInstallMethod.APT, running = running, version = version, osType = osType)
             }
         }
 
-        // Check apt-based BIND9
-        val aptCheck = commandExecutor.execute("dpkg -s bind9 2>/dev/null")
-        if (aptCheck.exitCode == 0 && aptCheck.output.contains("Status: install ok installed")) {
-            val version = commandExecutor.execute("named -v 2>/dev/null").output.trim()
-            val running = commandExecutor.execute("systemctl is-active named 2>/dev/null || systemctl is-active bind9 2>/dev/null").output.trim() == "active"
-            return DnsInstallStatus(installed = true, method = DnsInstallMethod.APT, running = running, version = version)
-        }
-
-        return DnsInstallStatus(installed = false)
+        return DnsInstallStatus(installed = false, osType = osType)
     }
 
     override fun install(request: DnsInstallRequest): DnsActionResult = lock.withLock {
@@ -901,24 +979,34 @@ class DnsServiceImpl : IDnsService {
     }
 
     private fun installDocker(req: DnsInstallRequest): DnsActionResult {
-        val pull = commandExecutor.execute("docker pull ${req.dockerImage}")
-        if (pull.exitCode != 0) return DnsActionResult(false, "Failed to pull image: ${pull.error.ifBlank { pull.output }}")
+        dnsComposeDir.mkdirs()
+        File(req.dataPath).mkdirs()
+        File(req.configPath).mkdirs()
 
-        File(req.dataVolume).mkdirs()
-        File(req.configVolume).mkdirs()
+        val template = ResourceLoader.loadResourceOrThrow("templates/dns/docker-compose.yml")
+        val composeContent = ResourceLoader.replacePlaceholders(template, mapOf(
+            "BIND9_IMAGE" to req.dockerImage,
+            "BIND9_CONTAINER_NAME" to req.containerName,
+            "BIND9_HOST_PORT" to req.hostPort.toString(),
+            "BIND9_CONFIG_PATH" to req.configPath,
+            "BIND9_DATA_PATH" to req.dataPath
+        ))
+        dnsComposeFile.writeText(composeContent)
 
-        val run = commandExecutor.execute(
-            "docker run -d --name ${req.containerName} --restart unless-stopped " +
-                    "-p ${req.hostPort}:53/tcp -p ${req.hostPort}:53/udp -p 953:953/tcp " +
-                    "-v ${req.configVolume}:/etc/bind " +
-                    "-v ${req.dataVolume}:/var/lib/bind " +
-                    "${req.dockerImage}"
-        )
+        val envFile = File(dnsComposeDir, ".env")
+        envFile.writeText(buildString {
+            appendLine("BIND9_IMAGE=${req.dockerImage}")
+            appendLine("BIND9_CONTAINER_NAME=${req.containerName}")
+            appendLine("BIND9_HOST_PORT=${req.hostPort}")
+            appendLine("BIND9_CONFIG_PATH=${req.configPath}")
+            appendLine("BIND9_DATA_PATH=${req.dataPath}")
+        })
 
-        return if (run.exitCode == 0) {
-            DnsActionResult(true, "BIND9 container started (${run.output.take(12)})")
+        val result = DockerService.composeUp(dnsComposeFile.absolutePath)
+        return if (result.success) {
+            DnsActionResult(true, "BIND9 started via Docker Compose. File: ${dnsComposeFile.absolutePath}")
         } else {
-            DnsActionResult(false, "Failed to start container: ${run.error.ifBlank { run.output }}")
+            DnsActionResult(false, "Compose up failed: ${result.message}")
         }
     }
 
@@ -940,9 +1028,14 @@ class DnsServiceImpl : IDnsService {
 
         return when (status.method) {
             DnsInstallMethod.DOCKER -> {
-                commandExecutor.execute("docker stop bind9 2>/dev/null")
-                val rm = commandExecutor.execute("docker rm bind9 2>/dev/null")
-                DnsActionResult(rm.exitCode == 0, if (rm.exitCode == 0) "Container removed" else "Failed to remove container")
+                val result = DockerService.composeDown(dnsComposeFile.absolutePath, removeVolumes = true)
+                if (result.success) {
+                    dnsComposeFile.delete()
+                    File(dnsComposeDir, ".env").delete()
+                    DnsActionResult(true, "BIND9 compose stack removed")
+                } else {
+                    DnsActionResult(false, "Compose down failed: ${result.message}")
+                }
             }
             DnsInstallMethod.APT -> {
                 val r = commandExecutor.execute("systemctl stop named 2>/dev/null; systemctl stop bind9 2>/dev/null; apt-get remove -y bind9 bind9utils")

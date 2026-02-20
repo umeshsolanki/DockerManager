@@ -855,8 +855,8 @@ export interface DnsInstallRequest {
     dockerImage?: string;
     containerName?: string;
     hostPort?: number;
-    dataVolume?: string;
-    configVolume?: string;
+    dataPath?: string;
+    configPath?: string;
 }
 
 export interface DnsInstallStatus {
@@ -866,6 +866,8 @@ export interface DnsInstallStatus {
     version: string;
     dockerContainerId?: string;
     dockerImage?: string;
+    composeFile?: string;
+    osType?: string;
     logs: string[];
 }
 

@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Download, Container, Terminal, CheckCircle, XCircle, Loader2, Trash2, Play, Info } from 'lucide-react';
+import { Download, Container, Terminal, CheckCircle, Loader2, Trash2, Play, Info, FileText } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { DnsInstallStatus, DnsInstallMethod, DnsInstallRequest } from '@/lib/types';
-import { SectionCard, StatusBadge } from './DnsShared';
+import { SectionCard } from './DnsShared';
 import { toast } from 'sonner';
 
 function MethodCard({ selected, onSelect, icon, title, description, tag }: {
@@ -41,22 +41,31 @@ function DockerOptions({ config, onChange }: {
     onChange: (c: DnsInstallRequest) => void;
 }) {
     return (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 p-4 rounded-xl bg-surface-container border border-outline/10">
-            <Field label="Docker Image">
-                <input value={config.dockerImage ?? ''} onChange={e => onChange({ ...config, dockerImage: e.target.value })} className="input-field" />
-            </Field>
-            <Field label="Container Name">
-                <input value={config.containerName ?? ''} onChange={e => onChange({ ...config, containerName: e.target.value })} className="input-field" />
-            </Field>
-            <Field label="Host Port (DNS)">
-                <input type="number" value={config.hostPort ?? 53} onChange={e => onChange({ ...config, hostPort: parseInt(e.target.value) || 53 })} className="input-field" />
-            </Field>
-            <Field label="Config Volume">
-                <input value={config.configVolume ?? ''} onChange={e => onChange({ ...config, configVolume: e.target.value })} className="input-field" />
-            </Field>
-            <Field label="Data Volume" className="sm:col-span-2">
-                <input value={config.dataVolume ?? ''} onChange={e => onChange({ ...config, dataVolume: e.target.value })} className="input-field" />
-            </Field>
+        <div className="space-y-4 mt-4 p-4 rounded-xl bg-surface-container border border-outline/10">
+            <div className="flex items-center gap-2 mb-1">
+                <FileText size={14} className="text-primary" />
+                <span className="text-xs font-semibold">Docker Compose Configuration</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field label="Image">
+                    <input value={config.dockerImage ?? ''} onChange={e => onChange({ ...config, dockerImage: e.target.value })} className="input-field" />
+                </Field>
+                <Field label="Container Name">
+                    <input value={config.containerName ?? ''} onChange={e => onChange({ ...config, containerName: e.target.value })} className="input-field" />
+                </Field>
+                <Field label="Host Port (DNS)">
+                    <input type="number" value={config.hostPort ?? 53} onChange={e => onChange({ ...config, hostPort: parseInt(e.target.value) || 53 })} className="input-field" />
+                </Field>
+                <Field label="Config Mount Path">
+                    <input value={config.configPath ?? ''} onChange={e => onChange({ ...config, configPath: e.target.value })} className="input-field" />
+                </Field>
+                <Field label="Data Mount Path" className="sm:col-span-2">
+                    <input value={config.dataPath ?? ''} onChange={e => onChange({ ...config, dataPath: e.target.value })} className="input-field" />
+                </Field>
+            </div>
+            <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                A <code className="px-1 py-0.5 rounded bg-surface text-on-surface-variant font-mono">docker-compose.yml</code> will be generated and managed alongside your other Compose projects.
+            </p>
         </div>
     );
 }
@@ -74,7 +83,7 @@ function InstalledView({ status, onRefresh }: { status: DnsInstallStatus; onRefr
     const [uninstalling, setUninstalling] = useState(false);
 
     const handleUninstall = async () => {
-        if (!confirm('Are you sure you want to uninstall BIND9? This will stop the DNS service.')) return;
+        if (!confirm('Are you sure you want to uninstall BIND9? This will stop the DNS service and remove the container.')) return;
         setUninstalling(true);
         const r = await DockerClient.uninstallDns();
         setUninstalling(false);
@@ -92,21 +101,27 @@ function InstalledView({ status, onRefresh }: { status: DnsInstallStatus; onRefr
                     <div>
                         <h3 className="font-semibold">BIND9 Installed</h3>
                         <p className="text-xs text-on-surface-variant">
-                            via {status.method === 'DOCKER' ? 'Docker container' : 'system package (apt)'}
+                            via {status.method === 'DOCKER' ? 'Docker Compose' : 'system package (apt)'}
                         </p>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                     <InfoTile label="Status" value={status.running ? 'Running' : 'Stopped'} ok={status.running} />
-                    <InfoTile label="Method" value={status.method === 'DOCKER' ? 'Docker' : 'APT'} />
+                    <InfoTile label="Method" value={status.method === 'DOCKER' ? 'Compose' : 'APT'} />
                     {status.version && <InfoTile label="Version" value={status.version} />}
                     {status.dockerContainerId && <InfoTile label="Container" value={status.dockerContainerId.slice(0, 12)} />}
                 </div>
 
                 {status.dockerImage && (
-                    <p className="text-xs text-on-surface-variant mb-4">
+                    <p className="text-xs text-on-surface-variant mb-2">
                         <span className="font-medium">Image:</span> {status.dockerImage}
+                    </p>
+                )}
+                {status.composeFile && (
+                    <p className="text-xs text-on-surface-variant mb-4">
+                        <span className="font-medium">Compose file:</span>{' '}
+                        <code className="px-1 py-0.5 rounded bg-surface font-mono text-[10px]">{status.composeFile}</code>
                     </p>
                 )}
 
@@ -151,15 +166,19 @@ export default function DnsInstallTab() {
         dockerImage: 'ubuntu/bind9:latest',
         containerName: 'bind9',
         hostPort: 53,
-        dataVolume: '/opt/bind9/data',
-        configVolume: '/opt/bind9/config',
+        dataPath: '/opt/bind9/data',
+        configPath: '/opt/bind9/config',
     });
+
+    const isMac = status?.osType === 'mac';
 
     const refresh = useCallback(async () => {
         setLoading(true);
-        setStatus(await DockerClient.getDnsInstallStatus());
+        const s = await DockerClient.getDnsInstallStatus();
+        setStatus(s);
+        if (s.osType === 'mac' && method === 'APT') setMethod('DOCKER');
         setLoading(false);
-    }, []);
+    }, [method]);
 
     useEffect(() => { refresh(); }, [refresh]);
 
@@ -192,28 +211,34 @@ export default function DnsInstallTab() {
                     </div>
                     <div>
                         <h3 className="font-semibold text-base">Install BIND9</h3>
-                        <p className="text-xs text-on-surface-variant mt-0.5">Choose a method to install BIND9 DNS server on your system</p>
+                        <p className="text-xs text-on-surface-variant mt-0.5">
+                            {isMac
+                                ? 'Install BIND9 DNS server via Docker Compose (macOS detected)'
+                                : 'Choose a method to install BIND9 DNS server on your system'}
+                        </p>
                     </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className={`grid grid-cols-1 ${isMac ? '' : 'sm:grid-cols-2'} gap-3`}>
                 <MethodCard
                     selected={method === 'DOCKER'}
                     onSelect={() => setMethod('DOCKER')}
                     icon={<Container size={20} />}
-                    title="Docker Container"
-                    description="Run BIND9 in an isolated Docker container. Easy to manage, upgrade, and remove. Recommended for most setups."
+                    title="Docker Compose"
+                    description="Run BIND9 via Docker Compose with persistent volumes. Easy to manage, upgrade, and remove. Managed alongside your other Compose projects."
                     tag="Recommended"
                 />
-                <MethodCard
-                    selected={method === 'APT'}
-                    onSelect={() => setMethod('APT')}
-                    icon={<Terminal size={20} />}
-                    title="System Package (apt)"
-                    description="Install directly via apt-get. Runs as a native system service. Best for bare-metal servers."
-                    tag="Advanced"
-                />
+                {!isMac && (
+                    <MethodCard
+                        selected={method === 'APT'}
+                        onSelect={() => setMethod('APT')}
+                        icon={<Terminal size={20} />}
+                        title="System Package (apt)"
+                        description="Install directly via apt-get. Runs as a native systemd service. Best for bare-metal servers without Docker."
+                        tag="Linux Only"
+                    />
+                )}
             </div>
 
             {method === 'DOCKER' && <DockerOptions config={config} onChange={setConfig} />}
@@ -231,7 +256,7 @@ export default function DnsInstallTab() {
 
             <button onClick={handleInstall} disabled={installing} className="btn-primary disabled:opacity-50 w-full sm:w-auto">
                 {installing ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-                {installing ? 'Installing BIND9...' : `Install via ${method === 'DOCKER' ? 'Docker' : 'apt-get'}`}
+                {installing ? 'Installing BIND9...' : `Install via ${method === 'DOCKER' ? 'Docker Compose' : 'apt-get'}`}
             </button>
         </div>
     );

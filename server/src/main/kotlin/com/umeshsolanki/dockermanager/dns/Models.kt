@@ -220,8 +220,8 @@ data class DnsInstallRequest(
     val dockerImage: String = "ubuntu/bind9:latest",
     val containerName: String = "bind9",
     val hostPort: Int = 53,
-    val dataVolume: String = "/opt/bind9/data",
-    val configVolume: String = "/opt/bind9/config"
+    val dataPath: String = "/opt/bind9/data",
+    val configPath: String = "/opt/bind9/config"
 )
 
 @Serializable
@@ -232,6 +232,8 @@ data class DnsInstallStatus(
     val version: String = "",
     val dockerContainerId: String? = null,
     val dockerImage: String? = null,
+    val composeFile: String? = null,
+    val osType: String = "",
     val logs: List<String> = emptyList()
 )
 

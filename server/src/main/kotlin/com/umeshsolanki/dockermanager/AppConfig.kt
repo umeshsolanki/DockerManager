@@ -632,7 +632,10 @@ object AppConfig {
 
     val dockerComposeCommand: String
         get() = if (isDocker) SystemConstants.DOCKER_COMPOSE_BIN_USR else {
-            if (File(SystemConstants.DOCKER_COMPOSE_BIN_HOMEBREW).exists()) {
+            val resolvedDocker = dockerCommand
+            if (resolvedDocker != SystemConstants.DOCKER_COMMAND && hasComposePlugin(resolvedDocker)) {
+                "$resolvedDocker compose"
+            } else if (File(SystemConstants.DOCKER_COMPOSE_BIN_HOMEBREW).exists()) {
                 SystemConstants.DOCKER_COMPOSE_BIN_HOMEBREW
             } else if (File(SystemConstants.DOCKER_BIN_DOCKER).exists()) {
                 SystemConstants.DOCKER_COMPOSE_BIN_USR
@@ -640,6 +643,18 @@ object AppConfig {
                 SystemConstants.DOCKER_COMPOSE_COMMAND
             }
         }
+
+    private fun hasComposePlugin(dockerPath: String): Boolean {
+        return try {
+            val p = ProcessBuilder(dockerPath, "compose", "version")
+                .redirectErrorStream(true)
+                .start()
+            val finished = p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
+            finished && p.exitValue() == 0
+        } catch (_: Exception) {
+            false
+        }
+    }
 
     val dockerSocket: String
         get() = _settings.dockerSocket
