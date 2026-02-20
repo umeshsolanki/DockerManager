@@ -165,6 +165,9 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
         }
     }
 
+    private fun JsonElement?.asJsonArrayOrNull(): JsonArray? =
+        if (this is JsonArray) this else null
+
     private fun inspectContainerFallback(id: String): ContainerDetails? {
         return try {
             val process = Runtime.getRuntime().exec(arrayOf(AppConfig.dockerCommand, "inspect", id))
@@ -178,7 +181,7 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
             val config = details["Config"]?.jsonObject
             val state = details["State"]?.jsonObject
             val networkSettings = details["NetworkSettings"]?.jsonObject
-            val mounts = details["Mounts"]?.jsonArray
+            val mounts = details["Mounts"].asJsonArrayOrNull()
             
             val hostConfig = details["HostConfig"]?.jsonObject
             
@@ -203,14 +206,14 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
                 driver = details["Driver"]?.jsonPrimitive?.content ?: "unknown",
                 hostname = config?.get("Hostname")?.jsonPrimitive?.content,
                 workingDir = config?.get("WorkingDir")?.jsonPrimitive?.content,
-                command = config?.get("Cmd")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
-                entrypoint = config?.get("Entrypoint")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
+                command = config?.get("Cmd").asJsonArrayOrNull()?.map { it.jsonPrimitive.content } ?: emptyList(),
+                entrypoint = config?.get("Entrypoint").asJsonArrayOrNull()?.map { it.jsonPrimitive.content } ?: emptyList(),
                 restartPolicy = hostConfig?.get("RestartPolicy")?.jsonObject?.get("Name")?.jsonPrimitive?.content ?: "no",
                 autoRemove = hostConfig?.get("AutoRemove")?.jsonPrimitive?.boolean ?: false,
                 privileged = hostConfig?.get("Privileged")?.jsonPrimitive?.boolean ?: false,
                 tty = config?.get("Tty")?.jsonPrimitive?.boolean ?: false,
                 stdinOpen = config?.get("OpenStdin")?.jsonPrimitive?.boolean ?: false,
-                env = config?.get("Env")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
+                env = config?.get("Env").asJsonArrayOrNull()?.map { it.jsonPrimitive.content } ?: emptyList(),
                 labels = config?.get("Labels")?.jsonObject?.mapValues { it.value.jsonPrimitive.content } ?: emptyMap(),
                 mounts = mounts?.map { m ->
                     val mo = m.jsonObject
