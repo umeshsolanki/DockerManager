@@ -858,6 +858,100 @@ class DnsServiceImpl : IDnsService {
         if (result.exitCode != 0) logger.warn("rndc reload failed: ${result.error}")
     }
 
+    // ==================== Installation ====================
+
+    override fun getInstallStatus(): DnsInstallStatus {
+        val logs = mutableListOf<String>()
+
+        // Check Docker-based BIND9
+        val dockerCheck = commandExecutor.execute("docker ps -a --filter name=bind9 --format '{{.ID}}|{{.Image}}|{{.Status}}'")
+        if (dockerCheck.exitCode == 0 && dockerCheck.output.isNotBlank()) {
+            val parts = dockerCheck.output.trim().split("|")
+            if (parts.size >= 3) {
+                val running = parts[2].lowercase().startsWith("up")
+                val version = commandExecutor.execute("docker exec bind9 named -v 2>/dev/null").output.trim()
+                return DnsInstallStatus(
+                    installed = true, method = DnsInstallMethod.DOCKER, running = running,
+                    version = version, dockerContainerId = parts[0], dockerImage = parts[1]
+                )
+            }
+        }
+
+        // Check apt-based BIND9
+        val aptCheck = commandExecutor.execute("dpkg -s bind9 2>/dev/null")
+        if (aptCheck.exitCode == 0 && aptCheck.output.contains("Status: install ok installed")) {
+            val version = commandExecutor.execute("named -v 2>/dev/null").output.trim()
+            val running = commandExecutor.execute("systemctl is-active named 2>/dev/null || systemctl is-active bind9 2>/dev/null").output.trim() == "active"
+            return DnsInstallStatus(installed = true, method = DnsInstallMethod.APT, running = running, version = version)
+        }
+
+        return DnsInstallStatus(installed = false)
+    }
+
+    override fun install(request: DnsInstallRequest): DnsActionResult = lock.withLock {
+        try {
+            when (request.method) {
+                DnsInstallMethod.DOCKER -> installDocker(request)
+                DnsInstallMethod.APT -> installApt()
+            }
+        } catch (e: Exception) {
+            logger.error("DNS install failed", e)
+            DnsActionResult(false, "Install failed: ${e.message}")
+        }
+    }
+
+    private fun installDocker(req: DnsInstallRequest): DnsActionResult {
+        val pull = commandExecutor.execute("docker pull ${req.dockerImage}")
+        if (pull.exitCode != 0) return DnsActionResult(false, "Failed to pull image: ${pull.error.ifBlank { pull.output }}")
+
+        File(req.dataVolume).mkdirs()
+        File(req.configVolume).mkdirs()
+
+        val run = commandExecutor.execute(
+            "docker run -d --name ${req.containerName} --restart unless-stopped " +
+                    "-p ${req.hostPort}:53/tcp -p ${req.hostPort}:53/udp -p 953:953/tcp " +
+                    "-v ${req.configVolume}:/etc/bind " +
+                    "-v ${req.dataVolume}:/var/lib/bind " +
+                    "${req.dockerImage}"
+        )
+
+        return if (run.exitCode == 0) {
+            DnsActionResult(true, "BIND9 container started (${run.output.take(12)})")
+        } else {
+            DnsActionResult(false, "Failed to start container: ${run.error.ifBlank { run.output }}")
+        }
+    }
+
+    private fun installApt(): DnsActionResult {
+        val install = commandExecutor.execute("apt-get update && apt-get install -y bind9 bind9utils bind9-doc dnsutils")
+        if (install.exitCode != 0) return DnsActionResult(false, "apt install failed: ${install.error.take(500)}")
+
+        val start = commandExecutor.execute("systemctl enable --now named 2>/dev/null || systemctl enable --now bind9 2>/dev/null")
+        return if (start.exitCode == 0) {
+            DnsActionResult(true, "BIND9 installed and started via apt")
+        } else {
+            DnsActionResult(true, "BIND9 installed. Service start returned: ${start.output.take(200)}")
+        }
+    }
+
+    override fun uninstall(): DnsActionResult = lock.withLock {
+        val status = getInstallStatus()
+        if (!status.installed) return DnsActionResult(false, "BIND9 is not installed")
+
+        return when (status.method) {
+            DnsInstallMethod.DOCKER -> {
+                commandExecutor.execute("docker stop bind9 2>/dev/null")
+                val rm = commandExecutor.execute("docker rm bind9 2>/dev/null")
+                DnsActionResult(rm.exitCode == 0, if (rm.exitCode == 0) "Container removed" else "Failed to remove container")
+            }
+            DnsInstallMethod.APT -> {
+                val r = commandExecutor.execute("systemctl stop named 2>/dev/null; systemctl stop bind9 2>/dev/null; apt-get remove -y bind9 bind9utils")
+                DnsActionResult(r.exitCode == 0, if (r.exitCode == 0) "BIND9 removed" else r.error.take(300))
+            }
+            else -> DnsActionResult(false, "Unknown install method")
+        }
+    }
+
     private fun executeAction(command: String, successMsg: String): DnsActionResult {
         val result = commandExecutor.execute(command)
         return DnsActionResult(result.exitCode == 0, if (result.exitCode == 0) successMsg else result.error.ifBlank { result.output })
@@ -973,4 +1067,9 @@ object DnsService {
     fun createTemplate(t: ZoneTemplate) = service.createTemplate(t)
     fun deleteTemplate(id: String) = service.deleteTemplate(id)
     fun applyTemplate(zoneId: String, templateId: String) = service.applyTemplate(zoneId, templateId)
+
+    // Installation
+    fun getInstallStatus() = service.getInstallStatus()
+    fun install(req: DnsInstallRequest) = service.install(req)
+    fun uninstall() = service.uninstall()
 }

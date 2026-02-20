@@ -81,15 +81,15 @@ body {
   }
 
   .btn-primary {
-    @apply px-4 py-2 text-sm rounded-lg bg-primary text-on-primary hover:bg-primary/90 transition-colors;
+    @apply inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-xl bg-primary text-on-primary hover:bg-primary/90 active:scale-[0.97] transition-all cursor-pointer;
   }
 
   .btn-secondary {
-    @apply px-4 py-2 text-sm rounded-lg bg-surface-container hover:bg-surface-container-high transition-colors;
+    @apply inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl bg-surface-container text-on-surface-variant hover:bg-surface-container-high active:scale-[0.97] transition-all cursor-pointer;
   }
 
   .btn-sm {
-    @apply flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium hover:brightness-110 transition-all;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer active:scale-[0.97] transition-all;
   }
 
   .input-field {

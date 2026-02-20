@@ -209,6 +209,32 @@ data class BulkImportResult(
     val errors: List<String> = emptyList()
 )
 
+// ========== Installation ==========
+
+@Serializable
+enum class DnsInstallMethod { DOCKER, APT }
+
+@Serializable
+data class DnsInstallRequest(
+    val method: DnsInstallMethod,
+    val dockerImage: String = "ubuntu/bind9:latest",
+    val containerName: String = "bind9",
+    val hostPort: Int = 53,
+    val dataVolume: String = "/opt/bind9/data",
+    val configVolume: String = "/opt/bind9/config"
+)
+
+@Serializable
+data class DnsInstallStatus(
+    val installed: Boolean = false,
+    val method: DnsInstallMethod? = null,
+    val running: Boolean = false,
+    val version: String = "",
+    val dockerContainerId: String? = null,
+    val dockerImage: String? = null,
+    val logs: List<String> = emptyList()
+)
+
 // ========== Requests ==========
 
 @Serializable

@@ -63,4 +63,9 @@ interface IDnsService {
     fun createTemplate(template: ZoneTemplate): ZoneTemplate
     fun deleteTemplate(templateId: String): Boolean
     fun applyTemplate(zoneId: String, templateId: String): Boolean
+
+    // -- Installation --
+    fun getInstallStatus(): DnsInstallStatus
+    fun install(request: DnsInstallRequest): DnsActionResult
+    fun uninstall(): DnsActionResult
 }

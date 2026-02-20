@@ -848,6 +848,27 @@ export interface BulkImportResult {
     errors: string[];
 }
 
+export type DnsInstallMethod = 'DOCKER' | 'APT';
+
+export interface DnsInstallRequest {
+    method: DnsInstallMethod;
+    dockerImage?: string;
+    containerName?: string;
+    hostPort?: number;
+    dataVolume?: string;
+    configVolume?: string;
+}
+
+export interface DnsInstallStatus {
+    installed: boolean;
+    method?: DnsInstallMethod;
+    running: boolean;
+    version: string;
+    dockerContainerId?: string;
+    dockerImage?: string;
+    logs: string[];
+}
+
 export type Screen = 'Dashboard' | 'Docker' | 'Containers' | 'Images' | 'Compose' | 'Networks' | 'Resources' | 'Volumes' | 'Secrets' | 'Logs' | 'Firewall' | 'Proxy' | 'Emails' | 'Files' | 'Settings' | 'Security' | 'Analytics' | 'DB' | 'Kafka' | 'IP' | 'DNS';
 
 

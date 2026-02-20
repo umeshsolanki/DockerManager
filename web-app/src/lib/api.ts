@@ -16,7 +16,8 @@ import {
     PullProgress,
     DnsZone, DnsRecord, DnsServiceStatus, ZoneValidationResult, CreateZoneRequest, DnsActionResult,
     DnsAcl, TsigKey, DnsForwarderConfig, DnssecStatus, DnsLookupRequest, DnsLookupResult,
-    DnsQueryStats, ZoneTemplate, BulkImportRequest, BulkImportResult
+    DnsQueryStats, ZoneTemplate, BulkImportRequest, BulkImportResult,
+    DnsInstallRequest, DnsInstallStatus
 } from './types';
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
@@ -518,4 +519,9 @@ export const DockerClient = {
     // Global Forwarders
     getDnsForwarders: () => req<DnsForwarderConfig>('/dns/forwarders', {}, { forwarders: [], forwardOnly: false }),
     updateDnsForwarders: (config: DnsForwarderConfig) => safeReq('/dns/forwarders', { method: 'POST', body: JSON.stringify(config) }),
+
+    // Installation
+    getDnsInstallStatus: () => req<DnsInstallStatus>('/dns/install/status', {}, { installed: false, running: false, version: '', logs: [] }),
+    installDns: (body: DnsInstallRequest) => req<DnsActionResult>('/dns/install', { method: 'POST', body: JSON.stringify(body) }, { success: false, message: 'Network error' }),
+    uninstallDns: () => req<DnsActionResult>('/dns/uninstall', { method: 'POST' }, { success: false, message: 'Network error' }),
 };

@@ -198,6 +198,17 @@ fun Route.dnsRoutes() {
             }
         }
 
+        // ==================== Installation ====================
+
+        get("/install/status") { call.respond(DnsService.getInstallStatus()) }
+
+        post("/install") {
+            val request = call.receive<DnsInstallRequest>()
+            call.respond(DnsService.install(request))
+        }
+
+        post("/uninstall") { call.respond(DnsService.uninstall()) }
+
         // ==================== Templates ====================
 
         route("/templates") {
