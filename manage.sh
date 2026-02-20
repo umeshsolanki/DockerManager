@@ -115,17 +115,17 @@ stop_all() {
     echo "Cleaning up ports 9091 (Server) and 3000 (UI)..."
     
     # Server port
-    SERVER_PORT_PID=$(lsof -t -i:9091 2>/dev/null)
-    if [ ! -z "$SERVER_PORT_PID" ]; then
-        echo "Killing remains on port 9091 (PID: $SERVER_PORT_PID)..."
-        kill -9 $SERVER_PORT_PID 2>/dev/null
+    SERVER_PORT_PIDS=$(lsof -t -i:9091 2>/dev/null | tr '\n' ' ')
+    if [ ! -z "$SERVER_PORT_PIDS" ]; then
+        echo "Killing remains on port 9091 (PIDs: $SERVER_PORT_PIDS)..."
+        kill -9 $SERVER_PORT_PIDS 2>/dev/null
     fi
 
     # UI port (Next.js)
-    UI_PORT_PID=$(lsof -t -i:3000 2>/dev/null)
-    if [ ! -z "$UI_PORT_PID" ]; then
-        echo "Killing remains on port 3000 (PID: $UI_PORT_PID)..."
-        kill -9 $UI_PORT_PID 2>/dev/null
+    UI_PORT_PIDS=$(lsof -t -i:3000 2>/dev/null | tr '\n' ' ')
+    if [ ! -z "$UI_PORT_PIDS" ]; then
+        echo "Killing remains on port 3000 (PIDs: $UI_PORT_PIDS)..."
+        kill -9 $UI_PORT_PIDS 2>/dev/null
     fi
 
     # Fallback cleanup for processes
@@ -163,20 +163,27 @@ case "$COMMAND" in
                 
                 echo "Launching Server in background..."
                 java -jar server/build/libs/server-all.jar > "$SERVER_LOG" 2>&1 &
-                echo $! > "$SERVER_PID"
+                SERVER_PID_VAL=$!
+                echo $SERVER_PID_VAL > "$SERVER_PID"
                 
                 sleep 5 # Give server some time to start
                 
-                echo "Launching UI..."
-                cd web-app && bash -c "source ~/.nvm/nvm.sh && nvm use $NODE_VERSION && npm run dev" 2>&1 | tee "../$UI_LOG" &
-                echo $! > "../$UI_PID"
+                echo "Launching UI in background..."
+                cd web-app && bash -c "source ~/.nvm/nvm.sh && nvm use $NODE_VERSION && npm run dev" > "../$UI_LOG" 2>&1 &
+                UI_PID_VAL=$!
+                echo $UI_PID_VAL > "../$UI_PID"
                 cd ..
 
-                echo "Server (PID: $(cat $SERVER_PID)) and UI (PID: $(cat $UI_PID)) are running."
+                echo "Server (PID: $SERVER_PID_VAL) and UI (PID: $UI_PID_VAL) are running."
                 echo "Press Ctrl+C to stop both."
                 
+                # Tail both logs in background for visibility
+                tail -f "$SERVER_LOG" "$UI_LOG" &
+                TAIL_PID=$!
+
                 # Wait for both background processes
-                wait $(cat $SERVER_PID) $(cat $UI_PID)
+                wait $SERVER_PID_VAL $UI_PID_VAL
+                kill $TAIL_PID 2>/dev/null
                 ;;
         esac
         ;;

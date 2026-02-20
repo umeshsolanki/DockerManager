@@ -23,3 +23,5 @@ node_modules/
 /server/src/main/resources/access.log
 /server/bin/
 **.log
+.server.pid
+.ui.pid

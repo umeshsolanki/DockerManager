@@ -5,6 +5,7 @@ import com.umeshsolanki.dockermanager.docker.DockerService
 import com.umeshsolanki.dockermanager.utils.CommandExecutor
 import com.umeshsolanki.dockermanager.utils.JsonPersistence
 import com.umeshsolanki.dockermanager.utils.ResourceLoader
+
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.util.UUID
@@ -15,13 +16,14 @@ class DnsServiceImpl : IDnsService {
     private val logger = LoggerFactory.getLogger(DnsServiceImpl::class.java)
     private val lock = java.util.concurrent.locks.ReentrantLock()
     private val commandExecutor = CommandExecutor(loggerName = DnsServiceImpl::class.java.name)
+    private val longCmdExecutor = CommandExecutor(timeoutSeconds = 300, loggerName = DnsServiceImpl::class.java.name)
     private val isMac = System.getProperty("os.name").lowercase().contains("mac")
 
     private val dataDir = File(AppConfig.dataRoot, "dns")
     private val zonesDir = File(dataDir, "zones")
     private val keysDir = File(dataDir, "keys")
 
-    private val dnsComposeDir = File(AppConfig.composeProjDir, "dns")
+    private val dnsComposeDir = File(AppConfig.composeProjDir, "dnsbind")
     private val dnsComposeFile get() = File(dnsComposeDir, "docker-compose.yml")
 
     private val isDockerMode: Boolean
@@ -979,9 +981,32 @@ class DnsServiceImpl : IDnsService {
     }
 
     private fun installDocker(req: DnsInstallRequest): DnsActionResult {
+        val docker = AppConfig.dockerCommand
+
+        val daemonCheck = commandExecutor.execute("$docker info")
+        if (daemonCheck.exitCode != 0) {
+            return DnsActionResult(false, "Docker is not running. Please start Docker Desktop and try again.")
+        }
+
         dnsComposeDir.mkdirs()
         File(req.dataPath).mkdirs()
         File(req.configPath).mkdirs()
+
+        logger.info("Pulling BIND9 image: ${req.dockerImage}")
+        val pullResult = longCmdExecutor.execute("$docker pull ${req.dockerImage}")
+        if (pullResult.exitCode != 0) {
+            val err = (pullResult.error + " " + pullResult.output).trim().take(500)
+            return DnsActionResult(false, "Failed to pull image '${req.dockerImage}': $err")
+        }
+
+        val envFile = File(dnsComposeDir, ".env")
+        envFile.writeText(buildString {
+            appendLine("BIND9_IMAGE=${req.dockerImage}")
+            appendLine("BIND9_CONTAINER_NAME=${req.containerName}")
+            appendLine("BIND9_HOST_PORT=${req.hostPort}")
+            appendLine("BIND9_CONFIG_PATH=${req.configPath}")
+            appendLine("BIND9_DATA_PATH=${req.dataPath}")
+        })
 
         val template = ResourceLoader.loadResourceOrThrow("templates/dns/docker-compose.yml")
         val composeContent = ResourceLoader.replacePlaceholders(template, mapOf(
@@ -993,20 +1018,16 @@ class DnsServiceImpl : IDnsService {
         ))
         dnsComposeFile.writeText(composeContent)
 
-        val envFile = File(dnsComposeDir, ".env")
-        envFile.writeText(buildString {
-            appendLine("BIND9_IMAGE=${req.dockerImage}")
-            appendLine("BIND9_CONTAINER_NAME=${req.containerName}")
-            appendLine("BIND9_HOST_PORT=${req.hostPort}")
-            appendLine("BIND9_CONFIG_PATH=${req.configPath}")
-            appendLine("BIND9_DATA_PATH=${req.dataPath}")
-        })
-
         val result = DockerService.composeUp(dnsComposeFile.absolutePath)
         return if (result.success) {
-            DnsActionResult(true, "BIND9 started via Docker Compose. File: ${dnsComposeFile.absolutePath}")
+            DnsActionResult(true, "BIND9 started via Docker Compose")
         } else {
-            DnsActionResult(false, "Compose up failed: ${result.message}")
+            val msg = result.message
+            if (msg.contains("address already in use", ignoreCase = true) || msg.contains("port is already allocated", ignoreCase = true)) {
+                DnsActionResult(false, "Port ${req.hostPort} is already in use. On macOS, port 53 is used by mDNSResponder — try a different port (e.g., 5353).")
+            } else {
+                DnsActionResult(false, "Compose up failed: $msg")
+            }
         }
     }
 
