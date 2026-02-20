@@ -29,7 +29,6 @@ build_ui() {
     cd web-app && bash -c "source ~/.nvm/nvm.sh && nvm use $NODE_VERSION && npm run build" && cd ..
 }
 
-# Function to run server
 run_server() {
     echo "----------------------------------------"
     echo "Starting Server (Logging to $SERVER_LOG)..."
@@ -40,10 +39,20 @@ run_server() {
     fi
     # Truncate and run
     : > "$SERVER_LOG"
-    java -jar server/build/libs/server-all.jar 2>&1 | tee "$SERVER_LOG" &
-    echo $! > "$SERVER_PID"
-    echo "Server started with PID $(cat $SERVER_PID)"
-    wait $(cat $SERVER_PID)
+    
+    # Run in background, redirect to log, and save TRUE pid
+    java -jar server/build/libs/server-all.jar > "$SERVER_LOG" 2>&1 &
+    SERVER_PID_VAL=$!
+    echo $SERVER_PID_VAL > "$SERVER_PID"
+    echo "Server started with PID $SERVER_PID_VAL (Logging to $SERVER_LOG)"
+    
+    # Optional: tail the log if run in foreground
+    tail -f "$SERVER_LOG" &
+    TAIL_PID=$!
+    
+    # Wait for server to die
+    wait $SERVER_PID_VAL
+    kill $TAIL_PID 2>/dev/null
 }
 
 # Function to run UI
@@ -53,12 +62,18 @@ run_ui() {
     echo "----------------------------------------"
     # Truncate and run
     : > "$UI_LOG"
-    cd web-app && bash -c "source ~/.nvm/nvm.sh && nvm use $NODE_VERSION && npm run dev" 2>&1 | tee "../$UI_LOG" &
-    echo $! > "../$UI_PID"
-    UI_PID_VAL=$(cat "../$UI_PID")
+    cd web-app && bash -c "source ~/.nvm/nvm.sh && nvm use $NODE_VERSION && npm run dev" > "../$UI_LOG" 2>&1 &
+    UI_PID_VAL=$!
+    echo $UI_PID_VAL > "../$UI_PID"
     echo "UI started with PID $UI_PID_VAL"
     cd ..
+    
+    # Tail log
+    tail -f "$UI_LOG" &
+    TAIL_PID=$!
+    
     wait $UI_PID_VAL
+    kill $TAIL_PID 2>/dev/null
 }
 
 # Cleanup on exit
@@ -73,13 +88,14 @@ stop_all() {
     echo "Stopping Server and UI..."
     echo "----------------------------------------"
     
+    # 1. Try stopping by PID
     if [ -f "$SERVER_PID" ]; then
         PID=$(cat "$SERVER_PID")
         if ps -p $PID > /dev/null; then
             echo "Stopping Server (PID: $PID)..."
             kill $PID 2>/dev/null
-            sleep 1
-            kill -9 $PID 2>/dev/null # Ensure it's gone
+            sleep 2
+            kill -9 $PID 2>/dev/null
         fi
         rm "$SERVER_PID"
     fi
@@ -88,16 +104,35 @@ stop_all() {
         PID=$(cat "$UI_PID")
         if ps -p $PID > /dev/null; then
             echo "Stopping UI (PID: $PID)..."
-            # Next.js often has child processes, pkill -P could be used too but we'll try standard kill first
             kill $PID 2>/dev/null
-            sleep 1
+            sleep 2
             kill -9 $PID 2>/dev/null
         fi
         rm "$UI_PID"
     fi
 
-    # Fallback cleanup for remaining next processes
+    # 2. Port-based cleanup (Critical for restart reliability)
+    echo "Cleaning up ports 9091 (Server) and 3000 (UI)..."
+    
+    # Server port
+    SERVER_PORT_PID=$(lsof -t -i:9091 2>/dev/null)
+    if [ ! -z "$SERVER_PORT_PID" ]; then
+        echo "Killing remains on port 9091 (PID: $SERVER_PORT_PID)..."
+        kill -9 $SERVER_PORT_PID 2>/dev/null
+    fi
+
+    # UI port (Next.js)
+    UI_PORT_PID=$(lsof -t -i:3000 2>/dev/null)
+    if [ ! -z "$UI_PORT_PID" ]; then
+        echo "Killing remains on port 3000 (PID: $UI_PORT_PID)..."
+        kill -9 $UI_PORT_PID 2>/dev/null
+    fi
+
+    # Fallback cleanup for processes
+    pkill -f "server-all.jar" 2>/dev/null || true
     pkill -f "next dev" 2>/dev/null || true
+    pkill -f "tail -f server.log" 2>/dev/null || true
+    pkill -f "tail -f ui.log" 2>/dev/null || true
 }
 
 COMMAND=$1
