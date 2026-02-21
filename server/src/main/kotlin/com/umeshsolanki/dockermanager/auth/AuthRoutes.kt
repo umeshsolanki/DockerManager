@@ -27,7 +27,7 @@ fun Route.authRoutes() {
                 }
 
                 is AuthResult.Requires2FA -> {
-                    call.respond(HttpStatusCode.Unauthorized, AuthResponse("", requires2FA = true))
+                    call.respond(HttpStatusCode.OK, AuthResponse("", requires2FA = true))
                 }
 
                 is AuthResult.InvalidCredentials -> {
