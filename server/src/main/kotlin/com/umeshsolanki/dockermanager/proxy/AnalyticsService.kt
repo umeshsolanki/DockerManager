@@ -28,6 +28,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.*
+import kotlinx.serialization.builtins.*
 
 interface IAnalyticsService {
     fun getStats(): ProxyStats
@@ -171,10 +173,14 @@ class AnalyticsServiceImpl(
 
     // Cache key prefix for historical stats
     private val CACHE_KEY_PREFIX = "proxy:historical:stats:"
+    private val offsetFile = File(logDir, "analytics/offsets.json")
 
     init {
         // Ensure log directory exists for Nginx
         logDir.mkdirs()
+        File(logDir, "analytics").mkdirs()
+
+        loadOffsets()
 
         // Start background worker for stats
         startStatsWorker()
@@ -190,6 +196,7 @@ class AnalyticsServiceImpl(
                     val settings = AppConfig.settings
                     if (settings.proxyStatsActive) {
                         updateStatsNatively()
+                        saveOffsets()
                     }
                     delay(settings.proxyStatsIntervalMs)
                 } catch (e: Exception) {
@@ -298,8 +305,37 @@ class AnalyticsServiceImpl(
         }
     }
 
+    private fun saveOffsets() {
+        try {
+            val json = AppConfig.json.encodeToString(
+                MapSerializer(serializer<String>(), serializer<Long>()),
+                lastProcessedOffsets
+            )
+            offsetFile.writeText(json)
+        } catch (e: Exception) {
+            logger.error("Failed to save log offsets", e)
+        }
+    }
+
+    private fun loadOffsets() {
+        try {
+            if (offsetFile.exists()) {
+                val json = offsetFile.readText()
+                val map = AppConfig.json.decodeFromString(
+                    MapSerializer(serializer<String>(), serializer<Long>()),
+                    json
+                )
+                lastProcessedOffsets.putAll(map)
+                logger.debug("Loaded log offsets for ${lastProcessedOffsets.size} files")
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to load log offsets", e)
+        }
+    }
+
     private fun resetDailyStats() {
         totalHitsCounter.set(0)
+        securityHitsCounter.set(0)
         hitsByStatusMap.clear()
         hitsByDomainMap.clear()
         hitsByDomainErrorMap.clear()
@@ -321,7 +357,8 @@ class AnalyticsServiceImpl(
         websocketConnectionsByEndpointMap.clear()
         websocketConnectionsByIpMap.clear()
         recentWebSocketConnectionsList.clear()
-
+        saveOffsets()
+        
         cachedStats = ProxyStats(
             totalHits = 0,
             hitsByStatus = emptyMap(),
@@ -338,7 +375,8 @@ class AnalyticsServiceImpl(
             websocketConnections = 0,
             websocketConnectionsByEndpoint = emptyMap(),
             websocketConnectionsByIp = emptyMap(),
-            recentWebSocketConnections = emptyList()
+            recentWebSocketConnections = emptyList(),
+            hostwiseStats = emptyMap()
         )
     }
 
@@ -450,6 +488,12 @@ class AnalyticsServiceImpl(
                                     return@let
                                 }
 
+                                // Filter out hits to the security mirror itself to prevent loops/double-counting
+                                // These are generated when Nginx mirrors a request to the manager
+                                if (path.startsWith("/security/mirror") || path.startsWith("security/mirror") || path.contains("security/mirror")) {
+                                    return@let
+                                }
+
                                 // Filter 200 responses for static assets
                                 if (status == 200) {
                                     val cleanPath = path.substringBefore('?')
@@ -557,6 +601,9 @@ class AnalyticsServiceImpl(
                                     )
                                     recentHitsList.addFirst(hit)
                                     ClickHouseService.log(hit)
+                                    if (status >= 400 || (logFile.name.contains("security") || logFile.name.contains("danger"))) {
+                                        hitsToInsert.add(hit)
+                                    }
                                     while (recentHitsList.size > MAX_RECENT_HITS) {
                                         recentHitsList.removeLast()
                                     }

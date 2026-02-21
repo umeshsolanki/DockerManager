@@ -135,7 +135,8 @@ object ProxyService {
         status: Int,
         headers: Map<String, String>,
         body: String?,
-    ) = service.processMirrorRequest(ip, userAgent, method, path, status, headers, body)
+        timestamp: Long? = null
+    ) = service.processMirrorRequest(ip, userAgent, method, path, status, headers, body, timestamp)
 }
 
 interface IProxyService {
@@ -203,6 +204,7 @@ interface IProxyService {
         status: Int,
         headers: Map<String, String>,
         body: String? = null,
+        timestamp: Long? = null
     )
 
     // Analytics History
@@ -517,12 +519,13 @@ class ProxyServiceImpl(
         status: Int,
         headers: Map<String, String>,
         body: String?,
+        timestamp: Long?
     ) {
         if (IpFilterUtils.isLocalIp(ip)) return  // Skip local/internal IPs
         val violationReason = headers["X-Mirror-Reason"]?.takeIf { it.isNotBlank() }
         val domain = headers["X-Mirror-Host"]?.takeIf { it.isNotBlank() }
         val hit = ProxyHit(
-            timestamp = System.currentTimeMillis(),
+            timestamp = timestamp ?: System.currentTimeMillis(),
             ip = ip,
             method = method,
             path = path,

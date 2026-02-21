@@ -452,6 +452,12 @@ fun Route.securityMirrorRoutes() {
                             jsonLog.hst?.let { put("X-Mirror-Host", it) }
                         }
 
+                        val mirrorTimestamp = jsonLog.ts?.let { ts ->
+                            try {
+                                java.text.SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z", java.util.Locale.US).parse(ts).time
+                            } catch (e: Exception) { null }
+                        }
+
                         ProxyService.processMirrorRequest(
                             ip = ip,
                             userAgent = userAgent,
@@ -459,7 +465,8 @@ fun Route.securityMirrorRoutes() {
                             path = path,
                             status = status,
                             headers = headersMap,
-                            body = if (lines.size == 1) body else AppConfig.json.encodeToString(NginxSecurityLog.serializer(), jsonLog)
+                            body = if (lines.size == 1) body else AppConfig.json.encodeToString(NginxSecurityLog.serializer(), jsonLog),
+                            timestamp = mirrorTimestamp
                         )
                     }
                     call.respondText("ok")
