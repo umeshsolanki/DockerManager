@@ -847,7 +847,10 @@ class DnsServiceImpl : IDnsService {
             val envFile = File(dnsComposeDir, ".env")
             if (envFile.exists()) {
                 envFile.readLines().forEach { line ->
-                    if (line.startsWith("BIND9_CONFIG_PATH=")) return line.substringAfter("=").trim()
+                    if (line.startsWith("BIND9_CONFIG_PATH=")) {
+                        val path = line.substringAfter("=").trim()
+                        return resolveDataPath(path)
+                    }
                 }
             }
             return File(dnsComposeDir, "config").absolutePath
@@ -1034,6 +1037,11 @@ class DnsServiceImpl : IDnsService {
         }
     }
 
+    private fun resolveDataPath(path: String): String {
+        val file = File(path)
+        return if (file.isAbsolute) path else File(AppConfig.dataRoot, path).absolutePath
+    }
+
     private fun installDocker(req: DnsInstallRequest): DnsActionResult {
         val docker = AppConfig.dockerCommand
 
@@ -1042,11 +1050,14 @@ class DnsServiceImpl : IDnsService {
             return DnsActionResult(false, "Docker is not running. Please start Docker Desktop and try again.")
         }
 
-        dnsComposeDir.mkdirs()
-        File(req.dataPath).mkdirs()
-        File(req.configPath).mkdirs()
+        val configPath = resolveDataPath(req.configPath)
+        val dataPath = resolveDataPath(req.dataPath)
 
-        seedDefaultConfig(File(req.configPath))
+        dnsComposeDir.mkdirs()
+        File(dataPath).mkdirs()
+        File(configPath).mkdirs()
+
+        seedDefaultConfig(File(configPath))
 
         logger.info("Pulling BIND9 image: ${req.dockerImage}")
         val pullResult = longCmdExecutor.execute("$docker pull ${req.dockerImage}")
@@ -1060,8 +1071,8 @@ class DnsServiceImpl : IDnsService {
             appendLine("BIND9_IMAGE=${req.dockerImage}")
             appendLine("BIND9_CONTAINER_NAME=${req.containerName}")
             appendLine("BIND9_HOST_PORT=${req.hostPort}")
-            appendLine("BIND9_CONFIG_PATH=${req.configPath}")
-            appendLine("BIND9_DATA_PATH=${req.dataPath}")
+            appendLine("BIND9_CONFIG_PATH=$configPath")
+            appendLine("BIND9_DATA_PATH=$dataPath")
         })
 
         val template = ResourceLoader.loadResourceOrThrow("templates/dns/docker-compose.yml")
@@ -1069,8 +1080,8 @@ class DnsServiceImpl : IDnsService {
             "BIND9_IMAGE" to req.dockerImage,
             "BIND9_CONTAINER_NAME" to req.containerName,
             "BIND9_HOST_PORT" to req.hostPort.toString(),
-            "BIND9_CONFIG_PATH" to req.configPath,
-            "BIND9_DATA_PATH" to req.dataPath
+            "BIND9_CONFIG_PATH" to configPath,
+            "BIND9_DATA_PATH" to dataPath
         ))
         dnsComposeFile.writeText(composeContent)
 
