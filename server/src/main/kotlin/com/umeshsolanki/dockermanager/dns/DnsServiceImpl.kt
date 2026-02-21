@@ -804,15 +804,26 @@ class DnsServiceImpl : IDnsService {
 
     override fun applyTemplate(zoneId: String, templateId: String): Boolean {
         val template = templatesPersistence.load().find { it.id == templateId } ?: return false
-        val newRecords = template.records.map { it.copy(id = UUID.randomUUID().toString()) }
         return lock.withLock {
             val zones = loadZones()
             val index = zones.indexOfFirst { it.id == zoneId }
             if (index == -1) return false
             val zone = zones[index]
+
+            // Detect the representative domain used in the template records.
+            // We look at record names to find the most common apparent zone root
+            // (e.g. "example.com." or "example.com"). Fall back to a simple dot-suffix check.
+            val templateDomain = detectTemplateDomain(template.records)
+
+            val newRecords = template.records.map { record ->
+                val mappedName  = remapDomain(record.name,  templateDomain, zone.name)
+                val mappedValue = remapDomain(record.value, templateDomain, zone.name)
+                record.copy(id = UUID.randomUUID().toString(), name = mappedName, value = mappedValue)
+            }
+
             val updated = zone.copy(
                 records = zone.records + newRecords,
-                soa = zone.soa.copy(serial = zone.soa.serial + 1)
+                soa = zone.soa.copy(serial = generateNextSerial(zone.soa.serial))
             )
             zones[index] = updated
             writeZoneFile(updated)
@@ -820,6 +831,55 @@ class DnsServiceImpl : IDnsService {
             reloadBind()
             true
         }
+    }
+
+    /**
+     * Infers the template's own domain by looking at the record names for the most common
+     * root-level non-origin name (longest common suffix). Falls back to "example.com".
+     */
+    private fun detectTemplateDomain(records: List<DnsRecord>): String {
+        val candidates = records
+            .map { it.name.trimEnd('.') }
+            .filter { it.isNotBlank() && it != "@" && it.contains('.') }
+        if (candidates.isEmpty()) return "example.com"
+
+        // Pick the candidate that appears most frequently (the zone root)
+        return candidates
+            .groupingBy { it }
+            .eachCount()
+            .maxByOrNull { it.value }
+            ?.key ?: "example.com"
+    }
+
+    /**
+     * Replaces occurrences of [templateDomain] (with or without trailing dot) in [text]
+     * with [zoneName], preserving subdomain prefixes.
+     *
+     * Examples (templateDomain="example.com", zoneName="mysite.io"):
+     *   "example.com."   -> "mysite.io."
+     *   "example.com"    -> "mysite.io"
+     *   "www.example.com." -> "www.mysite.io."
+     *   "ns1.example.com"  -> "ns1.mysite.io"
+     *   "@"              -> "@"  (unchanged)
+     */
+    private fun remapDomain(text: String, templateDomain: String, zoneName: String): String {
+        if (text.isBlank() || templateDomain.isBlank()) return text
+        val td = templateDomain.trimEnd('.')
+        val zn = zoneName.trimEnd('.')
+
+        // Exact match with optional trailing dot
+        if (text.equals("$td.", ignoreCase = true)) return "$zn."
+        if (text.equals(td, ignoreCase = true)) return zn
+
+        // Subdomain — keep the subdomain prefix
+        val withDot = "$td."
+        if (text.endsWith(withDot, ignoreCase = true)) {
+            return text.dropLast(withDot.length) + "$zn."
+        }
+        if (text.endsWith(td, ignoreCase = true) && text.length > td.length && text[text.length - td.length - 1] == '.') {
+            return text.dropLast(td.length) + zn
+        }
+        return text
     }
 
     // ===================================================================
