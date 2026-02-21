@@ -71,7 +71,8 @@ object ProxyService {
         dangerProxyEnabled: Boolean? = null,
         dangerProxyHost: String? = null,
         recommendedRules: List<ProxyJailRule>? = null,
-        proxyJailIgnore404Patterns: List<String>? = null
+        proxyJailIgnore404Patterns: List<String>? = null,
+        proxyJailStatusThresholds: Map<Int, Int>? = null
     ) = service.updateSecuritySettings(
         enabled,
         thresholdNon200,
@@ -83,7 +84,8 @@ object ProxyService {
         dangerProxyEnabled,
         dangerProxyHost,
         recommendedRules,
-        proxyJailIgnore404Patterns
+        proxyJailIgnore404Patterns,
+        proxyJailStatusThresholds
     )
 
     fun updateDefaultBehavior(return404: Boolean) = service.updateDefaultBehavior(return404)
@@ -179,7 +181,8 @@ interface IProxyService {
         dangerProxyEnabled: Boolean? = null,
         dangerProxyHost: String? = null,
         recommendedRules: List<ProxyJailRule>? = null,
-        proxyJailIgnore404Patterns: List<String>? = null
+        proxyJailIgnore404Patterns: List<String>? = null,
+        proxyJailStatusThresholds: Map<Int, Int>? = null
     ): Pair<Boolean, String>
     fun updateDefaultBehavior(return404: Boolean): Pair<Boolean, String>
     fun updateRsyslogSettings(enabled: Boolean, dualLogging: Boolean): Pair<Boolean, String>
@@ -273,7 +276,8 @@ class ProxyServiceImpl(
         dangerProxyEnabled: Boolean?,
         dangerProxyHost: String?,
         recommendedRules: List<ProxyJailRule>?,
-        proxyJailIgnore404Patterns: List<String>?
+        proxyJailIgnore404Patterns: List<String>?,
+        proxyJailStatusThresholds: Map<Int, Int>?
     ): Pair<Boolean, String> {
         // Validate Regexes
         val allRulesToCheck = (rules + (recommendedRules ?: emptyList()))
@@ -298,7 +302,8 @@ class ProxyServiceImpl(
             dangerProxyEnabled = dangerProxyEnabled,
             dangerProxyHost = dangerProxyHost,
             recommendedRules = recommendedRules,
-            proxyJailIgnore404Patterns = proxyJailIgnore404Patterns
+            proxyJailIgnore404Patterns = proxyJailIgnore404Patterns,
+            proxyJailStatusThresholds = proxyJailStatusThresholds
         )
         return true to "Security settings updated"
     }

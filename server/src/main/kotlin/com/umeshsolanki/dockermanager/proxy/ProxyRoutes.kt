@@ -236,7 +236,8 @@ fun Route.proxyRoutes() {
                 dangerProxyEnabled = request.dangerProxyEnabled ?: AppConfig.settings.dangerProxyEnabled,
                 dangerProxyHost = request.dangerProxyHost ?: AppConfig.settings.dangerProxyHost,
                 recommendedRules = request.recommendedProxyJailRules ?: AppConfig.settings.recommendedProxyJailRules,
-                proxyJailIgnore404Patterns = request.proxyJailIgnore404Patterns ?: AppConfig.settings.proxyJailIgnore404Patterns
+                proxyJailIgnore404Patterns = request.proxyJailIgnore404Patterns ?: AppConfig.settings.proxyJailIgnore404Patterns,
+                proxyJailStatusThresholds = request.proxyJailStatusThresholds ?: AppConfig.settings.proxyJailStatusThresholds
             )
             
             if (result.first) {

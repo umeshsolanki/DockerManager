@@ -103,6 +103,7 @@ data class AppSettings(
         "humans.txt", "apple-touch-icon.png", "apple-touch-icon-precomposed.png", 
         "browserconfig.xml", "crossdomain.xml", ".well-known/", ".ico", ".png", ".jpg", ".jpeg"
     ),
+    val proxyJailStatusThresholds: Map<Int, Int> = emptyMap(),
     
     // Redis Cache Configuration
     val redisConfig: RedisConfig = RedisConfig(),
@@ -425,7 +426,8 @@ object AppConfig {
         dangerProxyEnabled: Boolean? = null,
         dangerProxyHost: String? = null,
         recommendedRules: List<ProxyJailRule>? = null,
-        proxyJailIgnore404Patterns: List<String>? = null
+        proxyJailIgnore404Patterns: List<String>? = null,
+        proxyJailStatusThresholds: Map<Int, Int>? = null
     ) = synchronized(lock) {
         // Validate Regexes
         val allRulesToCheck = (rules + (recommendedRules ?: emptyList()))
@@ -450,7 +452,8 @@ object AppConfig {
             dangerProxyEnabled = if (dangerProxyEnabled != null) dangerProxyEnabled else _settings.dangerProxyEnabled,
             dangerProxyHost = if (dangerProxyHost != null) dangerProxyHost else _settings.dangerProxyHost,
             recommendedProxyJailRules = if (recommendedRules != null) recommendedRules else _settings.recommendedProxyJailRules,
-            proxyJailIgnore404Patterns = if (proxyJailIgnore404Patterns != null) proxyJailIgnore404Patterns else _settings.proxyJailIgnore404Patterns
+            proxyJailIgnore404Patterns = if (proxyJailIgnore404Patterns != null) proxyJailIgnore404Patterns else _settings.proxyJailIgnore404Patterns,
+            proxyJailStatusThresholds = if (proxyJailStatusThresholds != null) proxyJailStatusThresholds else _settings.proxyJailStatusThresholds
         )
         saveSettings()
     }

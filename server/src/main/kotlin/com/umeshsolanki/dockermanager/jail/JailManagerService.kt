@@ -48,6 +48,9 @@ class JailManagerServiceImpl(
     
     // Generic proxy error tracking (4xx/5xx from logs)
     private val proxyViolationsInWindow = ConcurrentHashMap<String, Int>()
+    
+    // Per-rule threshold tracking: key = "ruleId:ip", value = hit count
+    private val ruleViolationsInWindow = ConcurrentHashMap<String, Int>()
 
     init {
         startUnjailWorker()
@@ -301,6 +304,7 @@ class JailManagerServiceImpl(
                     dangerViolationsInWindow.clear()
                     burstViolationsInWindow.clear()
                     cidrViolationsInWindow.clear()
+                    ruleViolationsInWindow.clear()
                     
                     logger.debug("Cleared all violation records (window reset: ${windowMinutes}m)")
                 } catch (e: Exception) {
@@ -309,6 +313,17 @@ class JailManagerServiceImpl(
                 }
             }
         }
+    }
+
+    private fun checkRuleThreshold(rule: com.umeshsolanki.dockermanager.proxy.ProxyJailRule, ip: String): Boolean {
+        if (rule.threshold <= 1) return true
+        val key = "${rule.id}:$ip"
+        val count = ruleViolationsInWindow.merge(key, 1, Int::plus) ?: 1
+        if (count >= rule.threshold) {
+            ruleViolationsInWindow.remove(key)
+            return true
+        }
+        return false
     }
 
     override fun checkProxySecurityViolation(ip: String, userAgent: String, method: String, path: String, status: Int, errorCount: Long) {
@@ -392,11 +407,13 @@ class JailManagerServiceImpl(
                 val pathMatches = cached.regex?.containsMatchIn(path) == true
                 val statusMatches = cached.rule.statusCodePattern?.let {
                     it.toRegex().containsMatchIn(status.toString())
-                } ?: true // If no status pattern, just check path
+                } ?: true
 
                 if (pathMatches && statusMatches) {
-                    shouldJail = true
-                    reason = "Matched COMPOSITE rule: ${cached.rule.description ?: cached.rule.pattern}"
+                    if (checkRuleThreshold(cached.rule, ip)) {
+                        shouldJail = true
+                        reason = "Matched COMPOSITE rule: ${cached.rule.description ?: cached.rule.pattern}"
+                    }
                     break
                 }
             }
@@ -406,8 +423,10 @@ class JailManagerServiceImpl(
         if (!shouldJail) {
             for (cached in cachedPathRules) {
                 if (cached.regex?.containsMatchIn(path) == true) {
-                    shouldJail = true
-                    reason = "Matched PATH rule: ${cached.rule.description ?: cached.rule.pattern}"
+                    if (checkRuleThreshold(cached.rule, ip)) {
+                        shouldJail = true
+                        reason = "Matched PATH rule: ${cached.rule.description ?: cached.rule.pattern}"
+                    }
                     break
                 }
             }
@@ -415,10 +434,12 @@ class JailManagerServiceImpl(
 
         // 3. Check User Agent Rules
         if (!shouldJail) {
-             for (cached in cachedUserAgentRules) {
+            for (cached in cachedUserAgentRules) {
                 if (cached.regex?.containsMatchIn(userAgent) == true) {
-                    shouldJail = true
-                    reason = "Matched UA rule: ${cached.rule.description ?: cached.rule.pattern}"
+                    if (checkRuleThreshold(cached.rule, ip)) {
+                        shouldJail = true
+                        reason = "Matched UA rule: ${cached.rule.description ?: cached.rule.pattern}"
+                    }
                     break
                 }
             }
@@ -426,10 +447,12 @@ class JailManagerServiceImpl(
         
         // 4. Check Method Rules
         if (!shouldJail) {
-             for (cached in cachedMethodRules) {
+            for (cached in cachedMethodRules) {
                 if (cached.rule.pattern.equals(method, ignoreCase = true)) {
-                    shouldJail = true
-                    reason = "Matched METHOD rule: ${cached.rule.description ?: cached.rule.pattern}"
+                    if (checkRuleThreshold(cached.rule, ip)) {
+                        shouldJail = true
+                        reason = "Matched METHOD rule: ${cached.rule.description ?: cached.rule.pattern}"
+                    }
                     break
                 }
             }
@@ -437,10 +460,12 @@ class JailManagerServiceImpl(
         
         // 5. Check Status Rules
         if (!shouldJail) {
-             for (cached in cachedStatusRules) {
+            for (cached in cachedStatusRules) {
                 if (cached.rule.pattern == status.toString()) {
-                    shouldJail = true
-                    reason = "Matched STATUS rule: ${cached.rule.description ?: cached.rule.pattern}"
+                    if (checkRuleThreshold(cached.rule, ip)) {
+                        shouldJail = true
+                        reason = "Matched STATUS rule: ${cached.rule.description ?: cached.rule.pattern}"
+                    }
                     break
                 }
             }
@@ -448,10 +473,21 @@ class JailManagerServiceImpl(
         
         // Threshold check (Windowed)
         if (!shouldJail) {
-            // Only count Client Errors (4xx) as violations.
-            // Ignore Server Errors (5xx) as they are likely app issues.
-            // Ignore Nginx special codes: 444 (No Response/Blocked), 499 (Client Closed Request)
-            if (status in 400..499 && status != 444 && status != 499) {
+            // Check status-code specific thresholds first
+            val statusThreshold = secSettings.proxyJailStatusThresholds[status] ?: secSettings.proxyJailStatusThresholds[status.toString().toIntOrNull() ?: 0]
+            
+            if (statusThreshold != null && statusThreshold > 0) {
+                val key = "status:$status:$ip"
+                val count = ruleViolationsInWindow.merge(key, 1, Int::plus) ?: 1
+                if (count >= statusThreshold) {
+                    shouldJail = true
+                    reason = "Too many $status errors ($count in window)"
+                    ruleViolationsInWindow.remove(key)
+                }
+            }
+            
+            // Fallback to global client error threshold if not already jailed
+            if (!shouldJail && status in 400..499 && status != 444 && status != 499) {
                 
                 // Weighted Scoring
                 var weight = 1

@@ -197,7 +197,8 @@ data class ProxyJailRule(
     val type: ProxyJailRuleType,
     val pattern: String,
     val description: String? = null,
-    val statusCodePattern: String? = null // For COMPOSITE rules: regex pattern to match status codes (e.g., "404|403")
+    val statusCodePattern: String? = null, // For COMPOSITE rules: regex pattern to match status codes (e.g., "404|403")
+    val threshold: Int = 1 // Number of matches in window before jailing (1 = instant jail)
 )
 
 @Serializable
@@ -229,7 +230,8 @@ data class UpdateProxySecurityRequest(
     val dangerProxyEnabled: Boolean? = null,
     val dangerProxyHost: String? = null,
     val recommendedProxyJailRules: List<ProxyJailRule>? = null,
-    val proxyJailIgnore404Patterns: List<String>? = null
+    val proxyJailIgnore404Patterns: List<String>? = null,
+    val proxyJailStatusThresholds: Map<Int, Int>? = null
 )
 
 @Serializable

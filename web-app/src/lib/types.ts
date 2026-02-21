@@ -398,7 +398,8 @@ export enum ProxyJailRuleType {
   USER_AGENT = 'USER_AGENT',
   METHOD = 'METHOD',
   PATH = 'PATH',
-  STATUS_CODE = 'STATUS_CODE'
+  STATUS_CODE = 'STATUS_CODE',
+  COMPOSITE = 'COMPOSITE'
 }
 
 export interface ProxyJailRule {
@@ -406,6 +407,8 @@ export interface ProxyJailRule {
   type: ProxyJailRuleType;
   pattern: string;
   description?: string;
+  statusCodePattern?: string;
+  threshold?: number;
 }
 
 export interface WebSocketConnection {
