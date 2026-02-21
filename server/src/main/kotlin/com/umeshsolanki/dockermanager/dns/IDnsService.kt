@@ -9,6 +9,7 @@ interface IDnsService {
     fun deleteZone(zoneId: String): Boolean
     fun toggleZone(zoneId: String): Boolean
     fun updateZoneOptions(zoneId: String, request: UpdateZoneOptionsRequest): Boolean
+    fun updateZone(zoneId: String, request: UpdateZoneRequest): Boolean
 
     // -- Record management --
     fun getRecords(zoneId: String): List<DnsRecord>

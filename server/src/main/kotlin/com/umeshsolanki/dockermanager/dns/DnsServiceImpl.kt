@@ -118,6 +118,11 @@ class DnsServiceImpl : IDnsService {
 
     override fun listZones(): List<DnsZone> = loadZones()
 
+    private val bindAclPattern = Regex("""^[a-zA-Z0-9.:/_\-!]+$""")
+
+    private fun sanitizeAclEntries(entries: List<String>): List<String> =
+        entries.map { it.trim() }.filter { it.isNotBlank() && bindAclPattern.matches(it) }
+
     override fun getZone(zoneId: String): DnsZone? = loadZones().find { it.id == zoneId }
 
     override fun createZone(request: CreateZoneRequest): DnsZone? = lock.withLock {
@@ -137,9 +142,12 @@ class DnsServiceImpl : IDnsService {
             role = request.role,
             filePath = zoneFile.absolutePath,
             soa = request.soa,
-            masterAddresses = request.masterAddresses,
-            allowTransfer = request.allowTransfer,
-            forwarders = request.forwarders
+            masterAddresses = sanitizeAclEntries(request.masterAddresses),
+            allowTransfer = sanitizeAclEntries(request.allowTransfer),
+            allowUpdate = sanitizeAclEntries(request.allowUpdate),
+            allowQuery = sanitizeAclEntries(request.allowQuery),
+            alsoNotify = sanitizeAclEntries(request.alsoNotify),
+            forwarders = sanitizeAclEntries(request.forwarders)
         )
 
         if (zone.role == ZoneRole.MASTER) {
@@ -186,12 +194,48 @@ class DnsServiceImpl : IDnsService {
 
         val zone = zones[index]
         val updated = zone.copy(
-            allowTransfer = request.allowTransfer ?: zone.allowTransfer,
-            alsoNotify = request.alsoNotify ?: zone.alsoNotify,
-            forwarders = request.forwarders ?: zone.forwarders
+            allowTransfer = request.allowTransfer?.let { sanitizeAclEntries(it) } ?: zone.allowTransfer,
+            allowUpdate = request.allowUpdate?.let { sanitizeAclEntries(it) } ?: zone.allowUpdate,
+            allowQuery = request.allowQuery?.let { sanitizeAclEntries(it) } ?: zone.allowQuery,
+            alsoNotify = request.alsoNotify?.let { sanitizeAclEntries(it) } ?: zone.alsoNotify,
+            forwarders = request.forwarders?.let { sanitizeAclEntries(it) } ?: zone.forwarders,
+            masterAddresses = request.masterAddresses?.let { sanitizeAclEntries(it) } ?: zone.masterAddresses
         )
         zones[index] = updated
         writeNamedConfEntry(updated)
+        saveZones(zones)
+        reloadBind()
+        true
+    }
+
+    override fun updateZone(zoneId: String, request: UpdateZoneRequest): Boolean = lock.withLock {
+        val zones = loadZones()
+        val index = zones.indexOfFirst { it.id == zoneId }
+        if (index == -1) return false
+
+        val zone = zones[index]
+        val updated = zone.copy(
+            role = request.role ?: zone.role,
+            type = request.type ?: zone.type,
+            soa = request.soa ?: zone.soa,
+            allowTransfer = request.allowTransfer?.let { sanitizeAclEntries(it) } ?: zone.allowTransfer,
+            allowUpdate = request.allowUpdate?.let { sanitizeAclEntries(it) } ?: zone.allowUpdate,
+            allowQuery = request.allowQuery?.let { sanitizeAclEntries(it) } ?: zone.allowQuery,
+            alsoNotify = request.alsoNotify?.let { sanitizeAclEntries(it) } ?: zone.alsoNotify,
+            forwarders = request.forwarders?.let { sanitizeAclEntries(it) } ?: zone.forwarders,
+            masterAddresses = request.masterAddresses?.let { sanitizeAclEntries(it) } ?: zone.masterAddresses
+        )
+
+        val needsZoneFileWrite = request.soa != null ||
+            (request.role != null && request.role != zone.role && updated.role == ZoneRole.MASTER)
+
+        val final = if (request.soa != null) {
+            updated.copy(soa = updated.soa.copy(serial = updated.soa.serial + 1))
+        } else updated
+
+        zones[index] = final
+        if (needsZoneFileWrite) writeZoneFile(final)
+        writeNamedConfEntry(final)
         saveZones(zones)
         reloadBind()
         true
@@ -873,6 +917,16 @@ class DnsServiceImpl : IDnsService {
                 appendLine("    allow-transfer { none; };")
             }
 
+            if (zone.allowUpdate.isNotEmpty()) {
+                appendLine("    allow-update { ${zone.allowUpdate.joinToString("; ")}; };")
+            } else if (zone.role == ZoneRole.MASTER) {
+                appendLine("    allow-update { none; };")
+            }
+
+            if (zone.allowQuery.isNotEmpty()) {
+                appendLine("    allow-query { ${zone.allowQuery.joinToString("; ")}; };")
+            }
+
             if (zone.alsoNotify.isNotEmpty()) {
                 appendLine("    also-notify { ${zone.alsoNotify.joinToString("; ")}; };")
             }
@@ -992,6 +1046,8 @@ class DnsServiceImpl : IDnsService {
         File(req.dataPath).mkdirs()
         File(req.configPath).mkdirs()
 
+        seedDefaultConfig(File(req.configPath))
+
         logger.info("Pulling BIND9 image: ${req.dockerImage}")
         val pullResult = longCmdExecutor.execute("$docker pull ${req.dockerImage}")
         if (pullResult.exitCode != 0) {
@@ -1028,6 +1084,45 @@ class DnsServiceImpl : IDnsService {
             } else {
                 DnsActionResult(false, "Compose up failed: $msg")
             }
+        }
+    }
+
+    private fun seedDefaultConfig(configDir: File) {
+        val namedConf = File(configDir, "named.conf")
+        if (namedConf.exists()) return
+
+        logger.info("Seeding default BIND9 config in ${configDir.absolutePath}")
+
+        namedConf.writeText("""
+options {
+    directory "/var/lib/bind";
+    listen-on { any; };
+    listen-on-v6 { any; };
+    allow-query { any; };
+    allow-recursion { 127.0.0.0/8; 10.0.0.0/8; 172.16.0.0/12; 192.168.0.0/16; };
+    forwarders { 8.8.8.8; 8.8.4.4; };
+    dnssec-validation auto;
+    recursion yes;
+};
+
+logging {
+    channel default_log {
+        stderr;
+        severity info;
+        print-time yes;
+        print-severity yes;
+        print-category yes;
+    };
+    category default { default_log; };
+    category queries { default_log; };
+};
+
+include "/etc/bind/named.conf.local";
+""".trimIndent() + "\n")
+
+        val localConf = File(configDir, "named.conf.local")
+        if (!localConf.exists()) {
+            localConf.writeText("// Zone definitions go here\n")
         }
     }
 
@@ -1127,6 +1222,7 @@ object DnsService {
     fun deleteZone(id: String) = service.deleteZone(id)
     fun toggleZone(id: String) = service.toggleZone(id)
     fun updateZoneOptions(id: String, req: UpdateZoneOptionsRequest) = service.updateZoneOptions(id, req)
+    fun updateZone(id: String, req: UpdateZoneRequest) = service.updateZone(id, req)
 
     // Records
     fun getRecords(zoneId: String) = service.getRecords(zoneId)

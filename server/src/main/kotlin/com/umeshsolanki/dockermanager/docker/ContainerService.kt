@@ -170,20 +170,23 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
 
     private fun inspectContainerFallback(id: String): ContainerDetails? {
         return try {
-            val process = Runtime.getRuntime().exec(arrayOf(AppConfig.dockerCommand, "inspect", id))
+            val process = ProcessBuilder(AppConfig.dockerCommand, "inspect", id)
+                .redirectErrorStream(true)
+                .start()
             val output = process.inputStream.readBytes().decodeToString()
+            process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
             if (output.isBlank() || output == "[]") return null
             
             val jsonArray = AppConfig.json.parseToJsonElement(output).jsonArray
             if (jsonArray.isEmpty()) return null
             val details = jsonArray[0].jsonObject
             
-            val config = details["Config"]?.jsonObject
-            val state = details["State"]?.jsonObject
-            val networkSettings = details["NetworkSettings"]?.jsonObject
+            val config = details["Config"]?.takeIf { it !is JsonNull }?.jsonObject
+            val state = details["State"]?.takeIf { it !is JsonNull }?.jsonObject
+            val networkSettings = details["NetworkSettings"]?.takeIf { it !is JsonNull }?.jsonObject
             val mounts = details["Mounts"].asJsonArrayOrNull()
             
-            val hostConfig = details["HostConfig"]?.jsonObject
+            val hostConfig = details["HostConfig"]?.takeIf { it !is JsonNull }?.jsonObject
             
             ContainerDetails(
                 id = details["Id"]?.jsonPrimitive?.content ?: id,
@@ -225,15 +228,14 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
                         rw = mo["RW"]?.jsonPrimitive?.boolean ?: false
                     )
                 } ?: emptyList(),
-                ports = (networkSettings?.get("Ports")?.jsonObject?.flatMap { (portSpec, bindings) ->
+                ports = (networkSettings?.get("Ports")?.takeIf { it !is JsonNull }?.jsonObject?.flatMap { (portSpec, bindings) ->
                     val specParts = portSpec.split("/")
                     val port = specParts[0].toIntOrNull() ?: 0
                     val proto = if (specParts.size > 1) specParts[1] else "tcp"
                     
-                    if (bindings is JsonNull) {
-                        listOf(PortMapping(port, 0, proto))
-                    } else {
-                        bindings.jsonArray.map { b ->
+                    val bindingArray = bindings.asJsonArrayOrNull()
+                    if (bindingArray != null) {
+                        bindingArray.map { b ->
                             val bo = b.jsonObject
                             PortMapping(
                                 containerPort = port,
@@ -241,9 +243,11 @@ class ContainerServiceImpl(private val dockerClient: DockerClient) :
                                 protocol = proto
                             )
                         }
+                    } else {
+                        listOf(PortMapping(port, 0, proto))
                     }
                 } ?: emptyList()).distinct(),
-                networks = networkSettings?.get("Networks")?.jsonObject?.mapValues { (name, network) ->
+                networks = networkSettings?.get("Networks")?.takeIf { it !is JsonNull }?.jsonObject?.mapValues { (name, network) ->
                     val no = network.jsonObject
                     NetworkContainerDetails(
                         name = name,

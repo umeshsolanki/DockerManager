@@ -458,10 +458,13 @@ class JailManagerServiceImpl(
             }
         }
         
-        // 5. Check Status Rules
+        // 5. Check Status Rules (support regex patterns like "5\\d\\d")
         if (!shouldJail) {
+            val statusStr = status.toString()
             for (cached in cachedStatusRules) {
-                if (cached.rule.pattern == status.toString()) {
+                val matches = cached.regex?.containsMatchIn(statusStr) == true
+                    || cached.rule.pattern == statusStr
+                if (matches) {
                     if (checkRuleThreshold(cached.rule, ip)) {
                         shouldJail = true
                         reason = "Matched STATUS rule: ${cached.rule.description ?: cached.rule.pattern}"
@@ -473,21 +476,10 @@ class JailManagerServiceImpl(
         
         // Threshold check (Windowed)
         if (!shouldJail) {
-            // Check status-code specific thresholds first
-            val statusThreshold = secSettings.proxyJailStatusThresholds[status] ?: secSettings.proxyJailStatusThresholds[status.toString().toIntOrNull() ?: 0]
-            
-            if (statusThreshold != null && statusThreshold > 0) {
-                val key = "status:$status:$ip"
-                val count = ruleViolationsInWindow.merge(key, 1, Int::plus) ?: 1
-                if (count >= statusThreshold) {
-                    shouldJail = true
-                    reason = "Too many $status errors ($count in window)"
-                    ruleViolationsInWindow.remove(key)
-                }
-            }
-            
-            // Fallback to global client error threshold if not already jailed
-            if (!shouldJail && status in 400..499 && status != 444 && status != 499) {
+            // Only count Client Errors (4xx) as violations.
+            // Ignore Server Errors (5xx) as they are likely app issues.
+            // Ignore Nginx special codes: 444 (No Response/Blocked), 499 (Client Closed Request)
+            if (status in 400..499 && status != 444 && status != 499) {
                 
                 // Weighted Scoring
                 var weight = 1

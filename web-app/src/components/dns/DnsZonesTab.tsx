@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Power, Shield, FileText, Upload, BookTemplate } from 'lucide-react';
+import { Plus, Trash2, Power, Shield, FileText, Upload, BookTemplate, Settings2 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { DnsZone, DnsRecord, DnsRecordType, ZoneValidationResult, ZoneTemplate } from '@/lib/types';
+import { DnsZone, DnsRecord, DnsRecordType, ZoneValidationResult, ZoneTemplate, UpdateZoneRequest, SoaRecord } from '@/lib/types';
 import { StatusBadge, EmptyState, CreateZoneModal, TagInput, SectionCard } from './DnsShared';
 import { toast } from 'sonner';
 
@@ -44,6 +44,115 @@ function RecordRow({ record, onUpdate, onDelete }: { record: DnsRecord; onUpdate
     );
 }
 
+function ZoneSettings({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void }) {
+    const [allowTransfer, setAllowTransfer] = useState(zone.allowTransfer);
+    const [allowUpdate, setAllowUpdate] = useState(zone.allowUpdate);
+    const [allowQuery, setAllowQuery] = useState(zone.allowQuery);
+    const [alsoNotify, setAlsoNotify] = useState(zone.alsoNotify);
+    const [masterAddresses, setMasterAddresses] = useState(zone.masterAddresses);
+    const [forwarders, setForwarders] = useState(zone.forwarders);
+    const [soa, setSoa] = useState(zone.soa);
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        setAllowTransfer(zone.allowTransfer);
+        setAllowUpdate(zone.allowUpdate);
+        setAllowQuery(zone.allowQuery);
+        setAlsoNotify(zone.alsoNotify);
+        setMasterAddresses(zone.masterAddresses);
+        setForwarders(zone.forwarders);
+        setSoa(zone.soa);
+    }, [zone.id]);
+
+    const handleSave = async () => {
+        setSaving(true);
+        const req: UpdateZoneRequest = {
+            soa: JSON.stringify(soa) !== JSON.stringify(zone.soa) ? soa : undefined,
+            allowTransfer,
+            allowUpdate,
+            allowQuery,
+            alsoNotify,
+            masterAddresses,
+            forwarders,
+        };
+        const r = await DockerClient.updateDnsZone(zone.id, req) as { success: boolean; message?: string };
+        setSaving(false);
+        if (r.success) { toast.success('Zone settings saved'); onRefresh(); }
+        else toast.error(r.message || 'Failed to update zone');
+    };
+
+    return (
+        <div className="space-y-4">
+            <SectionCard title="SOA Record">
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className="block text-xs text-on-surface-variant mb-1">Primary NS</label>
+                        <input value={soa.primaryNs} onChange={e => setSoa({ ...soa, primaryNs: e.target.value })} className="input-field" />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-on-surface-variant mb-1">Admin Email</label>
+                        <input value={soa.adminEmail} onChange={e => setSoa({ ...soa, adminEmail: e.target.value })} className="input-field" />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-on-surface-variant mb-1">Refresh (s)</label>
+                        <input type="number" value={soa.refresh} onChange={e => setSoa({ ...soa, refresh: parseInt(e.target.value) || 3600 })} className="input-field" />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-on-surface-variant mb-1">Retry (s)</label>
+                        <input type="number" value={soa.retry} onChange={e => setSoa({ ...soa, retry: parseInt(e.target.value) || 900 })} className="input-field" />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-on-surface-variant mb-1">Expire (s)</label>
+                        <input type="number" value={soa.expire} onChange={e => setSoa({ ...soa, expire: parseInt(e.target.value) || 1209600 })} className="input-field" />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-on-surface-variant mb-1">Minimum TTL (s)</label>
+                        <input type="number" value={soa.minimumTtl} onChange={e => setSoa({ ...soa, minimumTtl: parseInt(e.target.value) || 86400 })} className="input-field" />
+                    </div>
+                </div>
+            </SectionCard>
+
+            <SectionCard title="Zone Protection">
+                <div className="space-y-3">
+                    <div>
+                        <label className="block text-xs text-on-surface-variant mb-1">Allow Transfer <span className="opacity-50">(IPs/ACLs allowed to AXFR)</span></label>
+                        <TagInput value={allowTransfer} onChange={setAllowTransfer} placeholder="e.g. 10.0.0.2 or key tsig-key" />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-on-surface-variant mb-1">Allow Update <span className="opacity-50">(IPs/keys for dynamic updates)</span></label>
+                        <TagInput value={allowUpdate} onChange={setAllowUpdate} placeholder="e.g. key dhcp-key or 192.168.1.0/24" />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-on-surface-variant mb-1">Allow Query <span className="opacity-50">(restrict who can query this zone)</span></label>
+                        <TagInput value={allowQuery} onChange={setAllowQuery} placeholder="e.g. any or 10.0.0.0/8" />
+                    </div>
+                </div>
+            </SectionCard>
+
+            <SectionCard title="Transfer & Notification">
+                <div className="space-y-3">
+                    <div>
+                        <label className="block text-xs text-on-surface-variant mb-1">Also Notify <span className="opacity-50">(send NOTIFY to these servers)</span></label>
+                        <TagInput value={alsoNotify} onChange={setAlsoNotify} placeholder="e.g. 10.0.0.3" />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-on-surface-variant mb-1">Master Addresses <span className="opacity-50">(for slave/stub zones)</span></label>
+                        <TagInput value={masterAddresses} onChange={setMasterAddresses} placeholder="e.g. 10.0.0.1" />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-on-surface-variant mb-1">Forwarders <span className="opacity-50">(zone-specific forwarders)</span></label>
+                        <TagInput value={forwarders} onChange={setForwarders} placeholder="e.g. 8.8.8.8" />
+                    </div>
+                </div>
+            </SectionCard>
+
+            <button onClick={handleSave} disabled={saving} className="btn-primary w-full disabled:opacity-50">
+                {saving ? 'Saving...' : 'Save Zone Settings'}
+            </button>
+        </div>
+    );
+}
+
 function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void }) {
     const [records, setRecords] = useState<DnsRecord[]>(zone.records);
     const [dirty, setDirty] = useState(false);
@@ -55,11 +164,13 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
     const [importText, setImportText] = useState('');
     const [templates, setTemplates] = useState<ZoneTemplate[]>([]);
     const [showTemplates, setShowTemplates] = useState(false);
+    const [showSettings, setShowSettings] = useState(false);
 
     useEffect(() => {
         setRecords(zone.records);
         setDirty(false);
         setShowFile(false);
+        setShowSettings(false);
         setValidation(null);
     }, [zone.id, zone.records]);
 
@@ -119,6 +230,7 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                 <button onClick={handleShowFile} className="btn-sm bg-surface-container"><FileText size={14} /> {showFile ? 'Hide' : 'View'} File</button>
                 <button onClick={() => setShowImport(!showImport)} className="btn-sm bg-surface-container"><Upload size={14} /> Import</button>
                 <button onClick={loadTemplates} className="btn-sm bg-surface-container"><BookTemplate size={14} /> Templates</button>
+                <button onClick={() => setShowSettings(!showSettings)} className={`btn-sm ${showSettings ? 'bg-primary/20 text-primary' : 'bg-surface-container'}`}><Settings2 size={14} /> Zone Settings</button>
             </div>
 
             {validation && (
@@ -147,6 +259,8 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                     </div>
                 </SectionCard>
             )}
+
+            {showSettings && <ZoneSettings zone={zone} onRefresh={onRefresh} />}
 
             {records.length > 0 ? (
                 <div className="overflow-x-auto rounded-xl border border-outline/10">
@@ -217,7 +331,11 @@ export default function DnsZonesTab({ zones, selectedZoneId, onSelectZone, onRef
                             <div className={`w-2 h-2 rounded-full shrink-0 ${z.enabled ? 'bg-green-400' : 'bg-gray-500'}`} />
                             <div className="flex-1 min-w-0">
                                 <div className="text-sm font-medium truncate">{z.name}</div>
-                                <div className="text-[10px] text-on-surface-variant">{z.records.length} rec &middot; {z.role.toLowerCase()}</div>
+                                <div className="text-[10px] text-on-surface-variant">
+                                    {z.records.length} rec &middot; {z.role.toLowerCase()}
+                                    {z.allowTransfer.length > 0 && ' · xfr'}
+                                    {z.allowUpdate.length > 0 && ' · dyn'}
+                                </div>
                             </div>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button onClick={e => { e.stopPropagation(); handleToggle(z.id); }} className="p-1 rounded hover:bg-surface-container-high"><Power size={12} className={z.enabled ? 'text-green-400' : 'text-gray-500'} /></button>

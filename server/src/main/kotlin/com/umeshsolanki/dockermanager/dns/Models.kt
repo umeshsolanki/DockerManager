@@ -70,6 +70,8 @@ data class DnsZone(
     // Advanced zone options
     val masterAddresses: List<String> = emptyList(),
     val allowTransfer: List<String> = emptyList(),
+    val allowUpdate: List<String> = emptyList(),
+    val allowQuery: List<String> = emptyList(),
     val alsoNotify: List<String> = emptyList(),
     val forwarders: List<String> = emptyList(),
     val dnssecEnabled: Boolean = false
@@ -233,8 +235,7 @@ data class DnsInstallStatus(
     val dockerContainerId: String? = null,
     val dockerImage: String? = null,
     val composeFile: String? = null,
-    val osType: String = "",
-    val logs: List<String> = emptyList()
+    val osType: String = ""
 )
 
 // ========== Requests ==========
@@ -247,6 +248,9 @@ data class CreateZoneRequest(
     val soa: SoaRecord = SoaRecord(),
     val masterAddresses: List<String> = emptyList(),
     val allowTransfer: List<String> = emptyList(),
+    val allowUpdate: List<String> = emptyList(),
+    val allowQuery: List<String> = emptyList(),
+    val alsoNotify: List<String> = emptyList(),
     val forwarders: List<String> = emptyList()
 )
 
@@ -258,6 +262,22 @@ data class UpdateRecordRequest(
 @Serializable
 data class UpdateZoneOptionsRequest(
     val allowTransfer: List<String>? = null,
+    val allowUpdate: List<String>? = null,
+    val allowQuery: List<String>? = null,
     val alsoNotify: List<String>? = null,
-    val forwarders: List<String>? = null
+    val forwarders: List<String>? = null,
+    val masterAddresses: List<String>? = null
+)
+
+@Serializable
+data class UpdateZoneRequest(
+    val soa: SoaRecord? = null,
+    val role: ZoneRole? = null,
+    val type: ZoneType? = null,
+    val allowTransfer: List<String>? = null,
+    val allowUpdate: List<String>? = null,
+    val allowQuery: List<String>? = null,
+    val alsoNotify: List<String>? = null,
+    val forwarders: List<String>? = null,
+    val masterAddresses: List<String>? = null
 )

@@ -734,6 +734,8 @@ export interface DnsZone {
     createdAt: number;
     masterAddresses: string[];
     allowTransfer: string[];
+    allowUpdate: string[];
+    allowQuery: string[];
     alsoNotify: string[];
     forwarders: string[];
     dnssecEnabled: boolean;
@@ -760,7 +762,22 @@ export interface CreateZoneRequest {
     soa?: Partial<SoaRecord>;
     masterAddresses?: string[];
     allowTransfer?: string[];
+    allowUpdate?: string[];
+    allowQuery?: string[];
+    alsoNotify?: string[];
     forwarders?: string[];
+}
+
+export interface UpdateZoneRequest {
+    soa?: SoaRecord;
+    role?: DnsZoneRole;
+    type?: DnsZoneType;
+    allowTransfer?: string[];
+    allowUpdate?: string[];
+    allowQuery?: string[];
+    alsoNotify?: string[];
+    forwarders?: string[];
+    masterAddresses?: string[];
 }
 
 export interface DnsActionResult {

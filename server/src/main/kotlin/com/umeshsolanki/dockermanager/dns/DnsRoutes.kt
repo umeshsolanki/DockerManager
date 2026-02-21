@@ -40,6 +40,12 @@ fun Route.dnsRoutes() {
                     call.respondNullableResult(DnsService.getZone(id), "Zone not found")
                 }
 
+                put {
+                    val id = call.requireParameter("id") ?: return@put
+                    val request = call.receive<UpdateZoneRequest>()
+                    call.respondBooleanResult(DnsService.updateZone(id, request), "Zone updated", "Failed to update zone")
+                }
+
                 delete {
                     val id = call.requireParameter("id") ?: return@delete
                     call.respondBooleanResult(DnsService.deleteZone(id), "Zone deleted", "Failed to delete zone")

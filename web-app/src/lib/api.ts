@@ -14,7 +14,7 @@ import {
     ExternalDbConfig, SqlQueryRequest, KafkaRule, KafkaProcessedEvent, CustomPage,
     IpReputation, SavedQuery, EmailFolder, EmailMessage, EmailClientConfig, ProxyJailRule,
     PullProgress,
-    DnsZone, DnsRecord, DnsServiceStatus, ZoneValidationResult, CreateZoneRequest, DnsActionResult,
+    DnsZone, DnsRecord, DnsServiceStatus, ZoneValidationResult, CreateZoneRequest, UpdateZoneRequest, DnsActionResult,
     DnsAcl, TsigKey, DnsForwarderConfig, DnssecStatus, DnsLookupRequest, DnsLookupResult,
     DnsQueryStats, ZoneTemplate, BulkImportRequest, BulkImportResult,
     DnsInstallRequest, DnsInstallStatus
@@ -475,8 +475,10 @@ export const DockerClient = {
     createDnsZone: (body: CreateZoneRequest) => safeReq<DnsZone>('/dns/zones', { method: 'POST', body: JSON.stringify(body) }),
     deleteDnsZone: (id: string) => apiFetch(`/dns/zones/${id}`, { method: 'DELETE' }).then(r => r.ok),
     toggleDnsZone: (id: string) => apiFetch(`/dns/zones/${id}/toggle`, { method: 'POST' }).then(r => r.ok),
-    updateDnsZoneOptions: (id: string, opts: { allowTransfer?: string[]; alsoNotify?: string[]; forwarders?: string[] }) =>
+    updateDnsZoneOptions: (id: string, opts: { allowTransfer?: string[]; allowUpdate?: string[]; allowQuery?: string[]; alsoNotify?: string[]; forwarders?: string[]; masterAddresses?: string[] }) =>
         safeReq(`/dns/zones/${id}/options`, { method: 'PUT', body: JSON.stringify(opts) }),
+    updateDnsZone: (id: string, body: UpdateZoneRequest) =>
+        safeReq(`/dns/zones/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
     validateDnsZone: (id: string) => req<ZoneValidationResult>(`/dns/zones/${id}/validate`, {}, { valid: false, output: '' }),
     getDnsZoneFile: (id: string) => textReq(`/dns/zones/${id}/file`),
     exportDnsZone: (id: string) => textReq(`/dns/zones/${id}/export`),
