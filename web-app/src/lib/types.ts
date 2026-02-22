@@ -174,6 +174,19 @@ export interface DockerMount {
   rw?: boolean;
 }
 
+export interface JailedIP {
+  ip: string;
+  country: string;
+  city?: string;
+  isp?: string;
+  lat?: number;
+  lon?: number;
+  asn?: string;
+  reason: string;
+  expiresAt: number;
+  createdAt: number;
+}
+
 export interface ContainerDetails {
   id: string;
   name: string;
@@ -264,6 +277,7 @@ export interface FirewallRule {
   country?: string;
   city?: string;
   isp?: string;
+  asn?: string;
 }
 
 export interface BlockIPRequest {
@@ -272,6 +286,7 @@ export interface BlockIPRequest {
   protocol: string;
   comment?: string;
   expiresAt?: number;
+  asn?: string;
 }
 
 export interface IptablesRule {
@@ -402,7 +417,8 @@ export enum ProxyJailRuleType {
   METHOD = 'METHOD',
   PATH = 'PATH',
   STATUS_CODE = 'STATUS_CODE',
-  COMPOSITE = 'COMPOSITE'
+  COMPOSITE = 'COMPOSITE',
+  HOST_HEADER = 'HOST_HEADER'
 }
 
 export interface ProxyJailRule {

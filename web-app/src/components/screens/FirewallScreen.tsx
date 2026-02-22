@@ -844,9 +844,9 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
                                                 <td className="px-4 py-2.5">
                                                     {row.type ? (
                                                         <span className={`inline-block px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider ${row.type === 'hosting' ? 'bg-blue-500/10 text-blue-400' :
-                                                                row.type === 'residential' ? 'bg-green-500/10 text-green-400' :
-                                                                    row.type === 'dynamic' ? 'bg-yellow-500/10 text-yellow-400' :
-                                                                        'bg-surface text-on-surface-variant/60'
+                                                            row.type === 'residential' ? 'bg-green-500/10 text-green-400' :
+                                                                row.type === 'dynamic' ? 'bg-yellow-500/10 text-yellow-400' :
+                                                                    'bg-surface text-on-surface-variant/60'
                                                             }`}>{row.type}</span>
                                                     ) : <span className="text-on-surface-variant/30 italic text-xs">—</span>}
                                                 </td>
@@ -1023,6 +1023,11 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
                                                         )}
                                                         {jail.city && (
                                                             <span className="text-[10px] text-on-surface-variant/40">{jail.city}</span>
+                                                        )}
+                                                        {jail.asn && (
+                                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-on-surface-variant font-bold uppercase tracking-wider">
+                                                                {jail.asn}
+                                                            </span>
                                                         )}
                                                         <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${reasonColor}`}>
                                                             {reasonLabel}

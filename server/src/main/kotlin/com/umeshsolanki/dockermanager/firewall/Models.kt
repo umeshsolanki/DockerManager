@@ -17,6 +17,7 @@ data class FirewallRule(
     val isp: String? = null,
     val lat: Double? = null,
     val lon: Double? = null,
+    val asn: String? = null,
     val timezone: String? = null,
     val zip: String? = null,
     val region: String? = null,
@@ -35,6 +36,7 @@ data class BlockIPRequest(
     val isp: String? = null,
     val lat: Double? = null,
     val lon: Double? = null,
+    val asn: String? = null,
     val timezone: String? = null,
     val zip: String? = null,
     val region: String? = null

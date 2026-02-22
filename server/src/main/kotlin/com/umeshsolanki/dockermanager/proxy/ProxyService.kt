@@ -529,6 +529,8 @@ class ProxyServiceImpl(
         if (IpFilterUtils.isLocalIp(ip)) return  // Skip local/internal IPs
         val violationReason = headers["X-Mirror-Reason"]?.takeIf { it.isNotBlank() }
         val domain = headers["X-Mirror-Host"]?.takeIf { it.isNotBlank() }
+        val hostHeader = headers["X-Mirror-Host"] ?: headers["Host"] ?: ""
+        
         val hit = ProxyHit(
             timestamp = timestamp ?: System.currentTimeMillis(),
             ip = ip,
@@ -552,7 +554,8 @@ class ProxyServiceImpl(
                     method = method,
                     path = path,
                     status = status,
-                    errorCount = 1L
+                    errorCount = 1L,
+                    hostHeader = hostHeader
                 )
                 
                 // Publish to Kafka if enabled

@@ -12,6 +12,7 @@ data class JailedIP(
     val isp: String?,
     val lat: Double?,
     val lon: Double?,
+    val asn: String? = null,
     val reason: String,
     val expiresAt: Long,
     val createdAt: Long

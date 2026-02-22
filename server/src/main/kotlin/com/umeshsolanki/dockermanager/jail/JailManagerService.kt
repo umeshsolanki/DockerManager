@@ -24,7 +24,7 @@ interface IJailManagerService {
     fun clearFailedAttempts(ip: String)
     
     // Proxy security violation checking
-    fun checkProxySecurityViolation(ip: String, userAgent: String, method: String, path: String, status: Int, errorCount: Long)
+    fun checkProxySecurityViolation(ip: String, userAgent: String, method: String, path: String, status: Int, errorCount: Long, hostHeader: String = "")
 }
 
 class JailManagerServiceImpl(
@@ -97,6 +97,7 @@ class JailManagerServiceImpl(
                     isp = rule.isp,
                     lat = rule.lat,
                     lon = rule.lon,
+                    asn = rule.asn,
                     reason = rule.comment ?: "Auto-jailed",
                     expiresAt = expiresAt,
                     createdAt = rule.createdAt
@@ -262,6 +263,7 @@ class JailManagerServiceImpl(
     private var cachedMethodRules: List<CachedRule> = emptyList()
     private var cachedStatusRules: List<CachedRule> = emptyList()
     private var cachedCompositeRules: List<CachedRule> = emptyList()
+    private var cachedHostHeaderRules: List<CachedRule> = emptyList()
 
     private fun updateRuleCache(currentRules: List<com.umeshsolanki.dockermanager.proxy.ProxyJailRule>) {
         if (cachedRulesVersion === currentRules) return // Same object, no update needed
@@ -272,6 +274,7 @@ class JailManagerServiceImpl(
         val methodRules = mutableListOf<CachedRule>()
         val statusRules = mutableListOf<CachedRule>()
         val compositeRules = mutableListOf<CachedRule>()
+        val hostHeaderRules = mutableListOf<CachedRule>()
         
         for (rule in currentRules) {
             when (rule.type) {
@@ -280,6 +283,7 @@ class JailManagerServiceImpl(
                 ProxyJailRuleType.METHOD -> methodRules.add(CachedRule(rule, null)) // Method is exact match
                 ProxyJailRuleType.STATUS_CODE -> statusRules.add(CachedRule(rule, null)) // Status is exact match
                 ProxyJailRuleType.COMPOSITE -> compositeRules.add(CachedRule(rule, rule.pattern.toRegex(RegexOption.IGNORE_CASE)))
+                ProxyJailRuleType.HOST_HEADER -> hostHeaderRules.add(CachedRule(rule, rule.pattern.toRegex(RegexOption.IGNORE_CASE)))
             }
         }
         
@@ -288,8 +292,9 @@ class JailManagerServiceImpl(
         cachedMethodRules = methodRules
         cachedStatusRules = statusRules
         cachedCompositeRules = compositeRules
+        cachedHostHeaderRules = hostHeaderRules
         cachedRulesVersion = currentRules
-        logger.debug("Proxy Jail Rules cache updated. UA: ${uaRules.size}, Path: ${pathRules.size}, Composite: ${compositeRules.size}")
+        logger.debug("Proxy Jail Rules cache updated. UA: ${uaRules.size}, Path: ${pathRules.size}, Composite: ${compositeRules.size}, Host: ${hostHeaderRules.size}")
     }
 
     private fun startViolationCleanupWorker() {
@@ -328,7 +333,7 @@ class JailManagerServiceImpl(
         return false
     }
 
-    override fun checkProxySecurityViolation(ip: String, userAgent: String, method: String, path: String, status: Int, errorCount: Long) {
+    override fun checkProxySecurityViolation(ip: String, userAgent: String, method: String, path: String, status: Int, errorCount: Long, hostHeader: String) {
         if (ip.isBlank() || AppConfig.isLocalIP(ip)) return
         
         // Record activity in reputation service
@@ -476,6 +481,19 @@ class JailManagerServiceImpl(
             }
         }
         
+        // 6. Check Host Header Rules
+        if (!shouldJail && hostHeader.isNotBlank()) {
+            for (cached in cachedHostHeaderRules) {
+                if (cached.regex?.containsMatchIn(hostHeader) == true) {
+                    if (checkRuleThreshold(cached.rule, ip)) {
+                        shouldJail = true
+                        reason = "Matched HOST_HEADER rule: ${cached.rule.description ?: cached.rule.pattern}"
+                    }
+                    break
+                }
+            }
+        }
+        
         // Threshold check (Windowed)
         if (!shouldJail) {
             // Only count Client Errors (4xx) as violations.
@@ -535,8 +553,8 @@ object JailManagerService {
     fun isIPJailed(ip: String) = service.isIPJailed(ip)
     fun recordFailedLoginAttempt(ip: String) = service.recordFailedLoginAttempt(ip)
     fun clearFailedAttempts(ip: String) = service.clearFailedAttempts(ip)
-    fun checkProxySecurityViolation(ip: String, userAgent: String, method: String, path: String, status: Int, errorCount: Long) = 
-        service.checkProxySecurityViolation(ip, userAgent, method, path, status, errorCount)
+    fun checkProxySecurityViolation(ip: String, userAgent: String, method: String, path: String, status: Int, errorCount: Long, hostHeader: String = "") = 
+        service.checkProxySecurityViolation(ip, userAgent, method, path, status, errorCount, hostHeader)
         
     // Access to underlying IP DB
     // fun getIpInfo(ip: String) = (service as JailManagerServiceImpl).ipInfoService.getIpInfo(ip) // Accessor if needed

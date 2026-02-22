@@ -190,7 +190,7 @@ data class KafkaActionResult(
 
 @Serializable
 enum class ProxyJailRuleType {
-    USER_AGENT, METHOD, PATH, STATUS_CODE, COMPOSITE
+    USER_AGENT, METHOD, PATH, STATUS_CODE, COMPOSITE, HOST_HEADER
 }
 
 @Serializable

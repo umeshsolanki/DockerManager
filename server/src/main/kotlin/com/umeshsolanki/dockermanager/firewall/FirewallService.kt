@@ -89,6 +89,7 @@ class FirewallServiceImpl(
             val lookupInfo = if (request.country == null || request.isp == null) IpLookupService.lookup(request.ip) else null
             val resolvedCountry = request.country ?: lookupInfo?.countryCode
             val resolvedIsp = request.isp ?: lookupInfo?.provider // provider = range provider (aws, cloudflare) from ip_ranges
+            val resolvedAsn = request.asn ?: lookupInfo?.asn
 
             val id = UUID.randomUUID().toString()
             val newRule = FirewallRule(
@@ -101,6 +102,7 @@ class FirewallServiceImpl(
                 country = resolvedCountry,
                 city = request.city,
                 isp = resolvedIsp,
+                asn = resolvedAsn,
                 lat = request.lat,
                 lon = request.lon,
                 timezone = request.timezone,
