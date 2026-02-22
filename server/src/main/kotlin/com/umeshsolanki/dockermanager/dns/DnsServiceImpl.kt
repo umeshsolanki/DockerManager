@@ -1003,6 +1003,13 @@ class DnsServiceImpl : IDnsService {
             appendLine("             ${soa.minimumTtl}      ; Minimum TTL")
             appendLine(")")
             appendLine()
+            // BIND9 requires at least one NS record per zone. Emit one automatically
+            // derived from the SOA's primaryNs if the zone has no explicit NS records.
+            val hasNsRecord = zone.records.any { it.type == DnsRecordType.NS }
+            if (!hasNsRecord) {
+                appendLine("@        86400  IN  NS  ${soa.primaryNs}")
+            }
+            appendLine()
             for (record in zone.records) {
                 val line = formatRecord(record)
                 if (line.isNotBlank()) appendLine(line)
@@ -1179,19 +1186,35 @@ class DnsServiceImpl : IDnsService {
 
     private fun ensureRndcConfig() {
         if (!isDockerMode) return
-        
-        // We check if rndc.key exists in the container's config dir
+
+        // Generate rndc.key if missing inside the container
         val check = bindExec("ls /etc/bind/rndc.key")
         if (check.exitCode != 0) {
             logger.info("rndc.key not found in container, generating it...")
-            // rndc-confgen -a generates /etc/bind/rndc.key by default
             val gen = bindExec("rndc-confgen -a")
             if (gen.exitCode != 0) {
                 logger.warn("Failed to generate rndc.key: ${gen.error}")
-            } else {
-                // Ensure proper permissions
-                bindExec("chown root:bind /etc/bind/rndc.key 2>/dev/null")
-                bindExec("chmod 640 /etc/bind/rndc.key 2>/dev/null")
+                return
+            }
+            bindExec("chown root:bind /etc/bind/rndc.key 2>/dev/null")
+            bindExec("chmod 640 /etc/bind/rndc.key 2>/dev/null")
+        }
+
+        // Ensure named.conf includes the rndc key and controls block
+        // This is required for rndc to authenticate with BIND9
+        val namedConf = File(getNamedConfDir(), "named.conf")
+        if (namedConf.exists()) {
+            val content = namedConf.readText()
+            if (!content.contains("rndc.key")) {
+                namedConf.appendText("""
+
+// RNDC control channel — required for rndc to communicate with named
+include "/etc/bind/rndc.key";
+controls {
+    inet 127.0.0.1 port 953 allow { 127.0.0.1; } keys { "rndc-key"; };
+};
+""".trimIndent() + "\n")
+                logger.info("Appended rndc controls block to named.conf")
             }
         }
     }
@@ -1338,11 +1361,19 @@ class DnsServiceImpl : IDnsService {
         val loggingPath = if (forDocker) "/etc/bind/named.conf.logging" else File(configDir, "named.conf.logging").absolutePath
 
         // 1. Root named.conf — must use container paths so BIND9 can find them inside the container
+        val rndcBlock = if (forDocker) """
+
+// RNDC control channel — required for rndc to communicate with named
+include "/etc/bind/rndc.key";
+controls {
+    inet 127.0.0.1 port 953 allow { 127.0.0.1; } keys { "rndc-key"; };
+};
+""".trimIndent() else ""
         namedConf.writeText("""
 include "$optionsPath";
 include "$loggingPath";
 include "$localPath";
-""".trimIndent() + "\n")
+""".trimIndent() + "\n" + rndcBlock)
 
         // 2. named.conf.options
         writeOptionsConfig(configDir, forDocker)
@@ -1574,6 +1605,7 @@ logging {
             soa = SoaRecord(primaryNs = "ns1.localhost.", adminEmail = "admin.localhost.")
         )
         createZone(localhostRequest)?.let { zone ->
+            addRecord(zone.id, DnsRecord(id = "", name = "@", type = DnsRecordType.NS, value = "ns1.localhost.", ttl = 86400))
             addRecord(zone.id, DnsRecord(id = "", name = "@", type = DnsRecordType.A, value = "127.0.0.1", ttl = 86400))
             addRecord(zone.id, DnsRecord(id = "", name = "@", type = DnsRecordType.AAAA, value = "::1", ttl = 86400))
             created.add(getZone(zone.id)!!)
@@ -1586,6 +1618,7 @@ logging {
             soa = SoaRecord(primaryNs = "ns1.localhost.", adminEmail = "admin.localhost.")
         )
         createZone(loopbackRequest)?.let { zone ->
+            addRecord(zone.id, DnsRecord(id = "", name = "@", type = DnsRecordType.NS, value = "ns1.localhost.", ttl = 86400))
             addRecord(zone.id, DnsRecord(id = "", name = "1.0.0", type = DnsRecordType.PTR, value = "localhost.", ttl = 86400))
             created.add(getZone(zone.id)!!)
         }
@@ -1597,6 +1630,7 @@ logging {
             soa = SoaRecord(primaryNs = "ns1.localhost.", adminEmail = "admin.localhost.")
         )
         createZone(zeroRequest)?.let { zone ->
+            addRecord(zone.id, DnsRecord(id = "", name = "@", type = DnsRecordType.NS, value = "ns1.localhost.", ttl = 86400))
             addRecord(zone.id, DnsRecord(id = "", name = "@", type = DnsRecordType.PTR, value = "localhost.", ttl = 86400))
             created.add(getZone(zone.id)!!)
         }
