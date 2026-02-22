@@ -1399,6 +1399,12 @@ logging {
     private fun translateToContainerPath(hostPath: String): String {
         if (!isDockerMode) return hostPath
         val file = File(hostPath)
+        
+        // Return exactly the container keys directory path if it's the keys dir
+        if (hostPath == keysDir.absolutePath) {
+            return containerKeysDir()
+        }
+        
         // If the path contains "/keys/", it's likely a DNSSEC key
         return if (hostPath.contains("/keys/")) {
             "/var/lib/bind/keys/${file.name}"
