@@ -288,7 +288,7 @@ class DnsServiceImpl : IDnsService {
             )
         }
         val zone = zones[index]
-        val updated = zone.copy(records = cleaned, soa = zone.soa.copy(serial = zone.soa.serial + 1))
+        val updated = zone.copy(records = cleaned, soa = zone.soa.copy(serial = generateNextSerial(zone.soa.serial)))
         zones[index] = updated
         writeZoneFile(updated)
         saveZones(zones)
@@ -307,7 +307,7 @@ class DnsServiceImpl : IDnsService {
             name = record.name.trim(),
             value = record.value.trim()
         )
-        val updated = zone.copy(records = zone.records + newRec, soa = zone.soa.copy(serial = zone.soa.serial + 1))
+        val updated = zone.copy(records = zone.records + newRec, soa = zone.soa.copy(serial = generateNextSerial(zone.soa.serial)))
         zones[index] = updated
         writeZoneFile(updated)
         saveZones(zones)
@@ -324,7 +324,7 @@ class DnsServiceImpl : IDnsService {
         val filtered = zone.records.filter { it.id != recordId }
         if (filtered.size == zone.records.size) return false
 
-        val updated = zone.copy(records = filtered, soa = zone.soa.copy(serial = zone.soa.serial + 1))
+        val updated = zone.copy(records = filtered, soa = zone.soa.copy(serial = generateNextSerial(zone.soa.serial)))
         zones[index] = updated
         writeZoneFile(updated)
         saveZones(zones)

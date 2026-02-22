@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 enum class DnsRecordType {
-    A, AAAA, CNAME, MX, TXT, NS, SRV, PTR, CAA, SOA
+    A, AAAA, CNAME, MX, TXT, NS, SRV, PTR, CAA, SOA, TLSA, SSHFP, HTTPS, NAPTR
 }
 
 @Serializable

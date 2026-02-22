@@ -701,7 +701,7 @@ export interface EmailUserDetail {
 
 // -- DNS / BIND9 Management --
 
-export type DnsRecordType = 'A' | 'AAAA' | 'CNAME' | 'MX' | 'TXT' | 'NS' | 'SRV' | 'PTR' | 'CAA' | 'SOA';
+export type DnsRecordType = 'A' | 'AAAA' | 'CNAME' | 'MX' | 'TXT' | 'NS' | 'SRV' | 'PTR' | 'CAA' | 'SOA' | 'TLSA' | 'SSHFP' | 'HTTPS' | 'NAPTR';
 export type DnsZoneType = 'FORWARD' | 'REVERSE';
 export type DnsZoneRole = 'MASTER' | 'SLAVE' | 'STUB' | 'FORWARD_ONLY';
 export type TsigAlgorithm = 'HMAC_SHA256' | 'HMAC_SHA512' | 'HMAC_SHA1' | 'HMAC_MD5';

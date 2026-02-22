@@ -11,13 +11,28 @@ import { StatusBadge, EmptyState, CreateZoneModal, TagInput, SectionCard } from 
 import { SpfWizard, DkimWizard, DmarcWizard, PropagationChecker, ReverseDnsWizard, SrvWizard, EmailHealthCheck, ReverseDnsDashboard } from './DnsWizards';
 import { toast } from 'sonner';
 
-const RECORD_TYPES: DnsRecordType[] = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'SRV', 'PTR', 'CAA'];
+const RECORD_TYPES: DnsRecordType[] = [
+    'A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'SRV', 'PTR', 'CAA',
+    'TLSA', 'SSHFP', 'HTTPS', 'NAPTR'
+];
 
 const HINTS: Record<string, string> = {
     A: '192.168.1.1', AAAA: '2001:db8::1', CNAME: 'alias.example.com.',
     MX: 'mail.example.com.', TXT: 'v=spf1 include:...', NS: 'ns1.example.com.',
     SRV: 'target.example.com.', PTR: 'host.example.com.', CAA: '0 issue "letsencrypt.org"',
+    TLSA: '3 1 1 <hex>', SSHFP: '1 1 <hex>', HTTPS: '1 . alpn="h2"', NAPTR: '100 10 "u" "sip+E2U" "!^.*$!sip:user@example.com!" .'
 };
+
+const TTL_PRESETS = [
+    { value: 60, label: '1 min' },
+    { value: 300, label: '5 min' },
+    { value: 1800, label: '30 min' },
+    { value: 3600, label: '1 hr' },
+    { value: 21600, label: '6 hr' },
+    { value: 43200, label: '12 hr' },
+    { value: 86400, label: '1 day' },
+    { value: 604800, label: '7 days' }
+];
 
 function RecordRow({ record, onUpdate, onDelete, onCheck }: {
     record: DnsRecord;
@@ -38,8 +53,19 @@ function RecordRow({ record, onUpdate, onDelete, onCheck }: {
             <td className="px-3 py-2">
                 <input value={record.value} onChange={e => onUpdate({ ...record, value: e.target.value })} placeholder={HINTS[record.type] || ''} className="w-full bg-transparent border-b border-outline/10 focus:border-primary px-1 py-0.5 text-sm focus:outline-none" />
             </td>
-            <td className="px-3 py-2 w-20">
-                <input type="number" value={record.ttl} onChange={e => onUpdate({ ...record, ttl: parseInt(e.target.value) || 3600 })} className="w-full bg-transparent border-b border-outline/10 focus:border-primary px-1 py-0.5 text-sm focus:outline-none text-center" />
+            <td className="px-3 py-2 w-24">
+                <select
+                    value={record.ttl}
+                    onChange={e => onUpdate({ ...record, ttl: parseInt(e.target.value) || 3600 })}
+                    className="w-full bg-surface-container rounded border border-outline/10 focus:border-primary px-1 py-1 text-xs focus:outline-none"
+                >
+                    {!TTL_PRESETS.some(p => p.value === record.ttl) && (
+                        <option value={record.ttl}>{record.ttl}s (Custom)</option>
+                    )}
+                    {TTL_PRESETS.map(p => (
+                        <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                </select>
             </td>
             {(record.type === 'MX' || record.type === 'SRV') && (
                 <td className="px-3 py-2 w-16">
@@ -240,7 +266,10 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                 <span className="text-xs text-on-surface-variant bg-surface-container px-2 py-0.5 rounded">{zone.role}</span>
                 <StatusBadge ok={zone.enabled} label={zone.enabled ? 'Enabled' : 'Disabled'} />
                 {zone.dnssecEnabled && <StatusBadge ok={true} label="DNSSEC" />}
-                <span className="text-xs text-on-surface-variant">Serial: {zone.soa.serial}</span>
+                <span className="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20 flex items-center gap-1" title="SOA Serial">
+                    <RefreshCw size={10} className="text-primary/70" />
+                    {zone.soa.serial}
+                </span>
             </div>
 
             <div className="flex gap-2 flex-wrap p-3 rounded-lg bg-surface border border-outline/10 text-xs items-center text-on-surface-variant">
@@ -475,21 +504,34 @@ export default function DnsZonesTab({ zones, selectedZoneId, onSelectZone, onRef
                 </div>
 
                 {filteredZones.length === 0 && <EmptyState message={searchZone ? "No matching zones" : "No zones configured"} />}
-                <div className="space-y-1">
+                <div className="space-y-1 py-1">
                     {filteredZones.map(z => (
-                        <div key={z.id} className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${selectedZoneId === z.id ? 'bg-primary/10 border border-primary/20' : 'bg-surface-container hover:bg-surface-container-high border border-transparent'}`} onClick={() => onSelectZone(z.id)}>
-                            <div className={`w-2 h-2 rounded-full shrink-0 ${z.enabled ? 'bg-green-400' : 'bg-gray-500'}`} />
-                            <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium truncate">{z.name}</div>
-                                <div className="text-[10px] text-on-surface-variant">
-                                    {z.records.length} rec &middot; {z.role.toLowerCase()}
-                                    {z.allowTransfer.length > 0 && ' · xfr'}
-                                    {z.allowUpdate.length > 0 && ' · dyn'}
+                        <div key={z.id} className={`group flex flex-col gap-1.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${selectedZoneId === z.id ? 'bg-primary/10 border border-primary/20' : 'bg-surface-container hover:bg-surface-container-high border border-transparent'}`} onClick={() => onSelectZone(z.id)}>
+                            <div className="flex justify-between items-start gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <div className={`w-2 h-2 rounded-full shrink-0 ${z.enabled ? 'bg-green-400 animate-pulse' : 'bg-gray-500'}`} />
+                                    <div className="text-sm font-semibold truncate leading-none">{z.name}</div>
+                                </div>
+                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                    <button onClick={e => { e.stopPropagation(); handleToggle(z.id); }} title={z.enabled ? "Disable Zone" : "Enable Zone"} className="p-1 rounded hover:bg-surface-container-high text-on-surface-variant"><Power size={12} className={z.enabled ? 'text-green-400' : ''} /></button>
+                                    <button onClick={e => { e.stopPropagation(); handleDelete(z.id, z.name); }} title="Delete Zone" className="p-1 rounded hover:bg-red-500/10 text-red-400"><Trash2 size={12} /></button>
                                 </div>
                             </div>
-                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={e => { e.stopPropagation(); handleToggle(z.id); }} className="p-1 rounded hover:bg-surface-container-high"><Power size={12} className={z.enabled ? 'text-green-400' : 'text-gray-500'} /></button>
-                                <button onClick={e => { e.stopPropagation(); handleDelete(z.id, z.name); }} className="p-1 rounded hover:bg-red-500/10 text-red-400"><Trash2 size={12} /></button>
+                            <div className="flex flex-wrap items-center gap-1.5 pl-4">
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-sm tracking-wide ${z.type === 'FORWARD' ? 'bg-blue-500/10 text-blue-400' : 'bg-purple-500/10 text-purple-400'}`}>
+                                    {z.type}
+                                </span>
+                                <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-sm tracking-wide ${z.role === 'MASTER' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                                    {z.role}
+                                </span>
+                                <span className="text-[10px] text-on-surface-variant font-medium bg-black/20 px-1.5 py-0.5 rounded-sm">
+                                    {z.records.length} recs
+                                </span>
+                                {z.dnssecEnabled && (
+                                    <span title="DNSSEC Enabled" className="text-green-400 flex items-center ml-auto">
+                                        <ShieldCheck size={13} />
+                                    </span>
+                                )}
                             </div>
                         </div>
                     ))}
