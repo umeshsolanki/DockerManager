@@ -136,6 +136,7 @@ class AnalyticsServiceImpl(
     private val hitsByUserAgentMap = ConcurrentHashMap<String, Long>()
     private val hitsByCountryMap = ConcurrentHashMap<String, Long>()
     private val hitsByProviderMap = ConcurrentHashMap<String, Long>()
+    private val hitsByAsnMap = ConcurrentHashMap<String, Long>()
     private val hitsByTimeMap = ConcurrentHashMap<String, Long>()
     private val recentHitsList = ConcurrentLinkedDeque<ProxyHit>()
     private val MAX_RECENT_HITS = 100
@@ -347,6 +348,7 @@ class AnalyticsServiceImpl(
         hitsByUserAgentMap.clear()
         hitsByCountryMap.clear()
         hitsByProviderMap.clear()
+        hitsByAsnMap.clear()
         hitsByTimeMap.clear()
         recentHitsList.clear()
         lastProcessedOffsets.clear()
@@ -552,6 +554,7 @@ class AnalyticsServiceImpl(
                                 val ipInfo = localIpInfoCache.getOrPut(ip) { IpLookupService.lookup(ip) }
                                 ipInfo?.countryCode?.let { hitsByCountryMap.merge(it, 1L, Long::plus) }
                                 ipInfo?.provider?.let { hitsByProviderMap.merge(it, 1L, Long::plus) }
+                                ipInfo?.asn?.let { hitsByAsnMap.merge(it, 1L, Long::plus) }
 
                                 if (status >= 400 || status == 0) {
                                     hitsByIpErrorMap.merge(ip, 1L, Long::plus)
@@ -597,6 +600,7 @@ class AnalyticsServiceImpl(
                                         domain = domain,
                                         countryCode = ipInfo?.countryCode,
                                         provider = ipInfo?.provider,
+                                        asn = ipInfo?.asn,
                                         violationReason = if (isSystemLog) "rate_limit_exceeded" else null
                                     )
                                     recentHitsList.addFirst(hit)
@@ -637,6 +641,7 @@ class AnalyticsServiceImpl(
                         val ipInfo = IpLookupService.lookup(hit.ip)
                         this[ProxyLogsTable.countryCode] = ipInfo?.countryCode
                         this[ProxyLogsTable.provider] = ipInfo?.provider
+                        this[ProxyLogsTable.asn] = ipInfo?.asn
                     }
                 }
                 logger.debug("Inserted ${hitsToInsert.size} suspicious proxy logs into Database")
@@ -682,6 +687,7 @@ class AnalyticsServiceImpl(
                 .map { GenericHitEntry(it.key, it.value) },
             hitsByCountry = hitsByCountryMap.toMap(),
             hitsByProvider = hitsByProviderMap.toMap(),
+            hitsByAsn = hitsByAsnMap.toMap(),
             websocketConnections = websocketConnectionsCounter.get(),
             websocketConnectionsByEndpoint = websocketConnectionsByEndpointMap.toMap(),
             websocketConnectionsByIp = websocketConnectionsByIpMap.toMap(),

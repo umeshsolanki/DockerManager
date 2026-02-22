@@ -76,4 +76,17 @@ interface IDnsService {
     fun getInstallStatus(): DnsInstallStatus
     fun install(request: DnsInstallRequest): DnsActionResult
     fun uninstall(): DnsActionResult
+
+    // -- Professional Hosting Features --
+    fun generateDkimKey(request: DkimKeyGenRequest): DkimKey
+    fun buildSpfRecord(config: SpfConfig): String
+    fun buildDmarcRecord(config: DmarcConfig): String
+    fun suggestReverseZone(ip: String): IpPtrSuggestion
+    fun checkPropagation(zoneId: String, recordName: String, recordType: DnsRecordType): PropagationCheckResult
+    fun createDefaultZones(): List<DnsZone>
+
+    // Phase 2 Improvements
+    fun buildSrvRecord(config: SrvConfig): String
+    fun getEmailHealth(zoneId: String): EmailHealthStatus
+    fun getReverseDnsDashboard(): ReverseDnsDashboard
 }

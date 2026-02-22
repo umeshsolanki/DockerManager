@@ -11,6 +11,7 @@ object IpRangesTable : Table("ip_ranges") {
     val provider = varchar("provider", 255).nullable()
     val type = varchar("type", 50).nullable() // e.g., hosting, residential, dynamic
     val cidr = varchar("cidr", 50).nullable()
+    val asn = varchar("asn", 50).nullable()
 
     override val primaryKey = PrimaryKey(id)
 }

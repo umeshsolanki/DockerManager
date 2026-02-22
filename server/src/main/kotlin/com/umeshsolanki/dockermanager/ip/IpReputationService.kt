@@ -32,7 +32,7 @@ interface IIpReputationService {
     suspend fun recordBlock(ipAddress: String, reason: String, countryCode: String? = null, isp: String? = null, tag: String? = null, range: String? = null, dangerTag: String? = null, durationMinutes: Int = 0)
     suspend fun updateStats(stats: Map<String, Pair<Long, Long>>) // Map<IP, Pair<RequestCount, ErrorCount>>
     suspend fun deleteIpReputation(ipAddress: String): Boolean
-    suspend fun saveGeoInfo(ip: String, city: String?, lat: Double?, lon: Double?, timezone: String?, zip: String?, region: String?, regionName: String?, asName: String?, countryCode: String?, isp: String?)
+    suspend fun saveGeoInfo(ip: String, city: String?, lat: Double?, lon: Double?, timezone: String?, zip: String?, region: String?, regionName: String?, asName: String?, asn: String?, countryCode: String?, isp: String?)
     /**
      * Manually add or remove tags for an IP.
      * @param add   Tags to add (merged with existing)
@@ -209,6 +209,7 @@ class IpReputationServiceImpl : IIpReputationService {
                 it[IpReputationTable.dangerTags] = updatedDangerTags
                 it[IpReputationTable.lastTaggedOn] = now
                 resolvedRange?.let { v -> it[IpReputationTable.range] = v }
+                lookupInfo?.asn?.let { v -> it[IpReputationTable.asn] = v }
             }
             publishToKafka(IpReputationEvent(
                 type = "ACTIVITY", ip = ipAddress, country = resolvedCountry, isp = resolvedIsp,
@@ -234,6 +235,7 @@ class IpReputationServiceImpl : IIpReputationService {
                     it[dangerTags] = initialDangerTags
                     it[lastTaggedOn] = now
                     it[range] = resolvedRange
+                    it[asn] = lookupInfo?.asn
                 }
                 publishToKafka(IpReputationEvent(
                     type = "OBSERVED", ip = ipAddress, country = resolvedCountry, isp = resolvedIsp,
@@ -339,6 +341,7 @@ class IpReputationServiceImpl : IIpReputationService {
                     it[IpReputationTable.dangerTags] = initialDangerTags
                     it[IpReputationTable.lastTaggedOn] = now
                     it[IpReputationTable.range] = resolvedRange
+                    it[IpReputationTable.asn] = lookupInfo?.asn
                 }
             } catch (e: Exception) {
                 // Race condition fallback
@@ -387,6 +390,7 @@ class IpReputationServiceImpl : IIpReputationService {
                 it[IpReputationTable.dangerTags] = updatedDangerTags
                 it[IpReputationTable.lastTaggedOn] = now
                 resolvedRange?.let { v -> it[IpReputationTable.range] = v }
+                lookupInfo?.asn?.let { v -> it[IpReputationTable.asn] = v }
             }
         }
         
@@ -488,6 +492,7 @@ class IpReputationServiceImpl : IIpReputationService {
         timezone: String?, zip: String?,
         region: String?, regionName: String?,
         asName: String?,
+        asn: String?,
         countryCode: String?, isp: String?
     ) {
         val now = LocalDateTime.now()
@@ -501,6 +506,7 @@ class IpReputationServiceImpl : IIpReputationService {
                 it[IpReputationTable.region]         = region
                 it[IpReputationTable.regionName]     = regionName
                 it[IpReputationTable.asName]         = asName
+                it[IpReputationTable.asn]            = asn
                 it[IpReputationTable.geoInfoUpdatedOn] = now
                 countryCode?.let { cc -> it[country] = cc }
                 isp?.let { v -> it[IpReputationTable.isp] = v }
@@ -520,6 +526,7 @@ class IpReputationServiceImpl : IIpReputationService {
                         it[IpReputationTable.region]       = region
                         it[IpReputationTable.regionName]   = regionName
                         it[IpReputationTable.asName]       = asName
+                        it[IpReputationTable.asn]          = asn
                         it[IpReputationTable.geoInfoUpdatedOn] = now
                         countryCode?.let { cc -> it[country] = cc }
                         isp?.let { v -> it[IpReputationTable.isp] = v }
@@ -571,6 +578,7 @@ class IpReputationServiceImpl : IIpReputationService {
             region = row[IpReputationTable.region],
             regionName = row[IpReputationTable.regionName],
             asName = row[IpReputationTable.asName],
+            asn = row[IpReputationTable.asn],
             geoInfoUpdatedOn = row[IpReputationTable.geoInfoUpdatedOn]?.format(DateTimeFormatter.ISO_DATE_TIME),
             lastTaggedOn = row[IpReputationTable.lastTaggedOn]?.format(DateTimeFormatter.ISO_DATE_TIME)
         )

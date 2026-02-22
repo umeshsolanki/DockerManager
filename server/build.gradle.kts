@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.umeshsolanki.dockermanager"
-version = "5.0.0"
+version = "5.0.1"
 
 application {
     mainClass.set("com.umeshsolanki.dockermanager.ApplicationKt")
@@ -81,6 +81,7 @@ dependencies {
     implementation(libs.clickhouse.jdbc)
     implementation(projects.kafka)
     implementation("org.slf4j:slf4j-api:2.0.9")
+    implementation(libs.dnsjava)
     testImplementation(libs.ktor.serverTestHost)
     testImplementation(libs.kotlin.testJunit)
     testImplementation("io.mockk:mockk:1.13.8")

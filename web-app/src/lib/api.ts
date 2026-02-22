@@ -17,7 +17,10 @@ import {
     DnsZone, DnsRecord, DnsServiceStatus, ZoneValidationResult, CreateZoneRequest, UpdateZoneRequest, DnsActionResult,
     DnsAcl, TsigKey, DnsForwarderConfig, DnssecStatus, DnsLookupRequest, DnsLookupResult,
     DnsQueryStats, ZoneTemplate, BulkImportRequest, BulkImportResult,
-    DnsInstallRequest, DnsInstallStatus, GlobalSecurityConfig
+    DnsInstallRequest, DnsInstallStatus, GlobalSecurityConfig,
+    SpfConfig, DmarcConfig, DkimKey, DkimKeyGenRequest, PropagationStatus,
+    PropagationCheckResult, IpPtrSuggestion, DnsRecordType,
+    SrvConfig, EmailHealthStatus, ReverseDnsDashboard
 } from './types';
 
 
@@ -540,4 +543,17 @@ export const DockerClient = {
     getDnsInstallStatus: () => req<DnsInstallStatus>('/dns/install/status', {}, { installed: false, running: false, version: '', logs: [] }),
     installDns: (body: DnsInstallRequest) => req<DnsActionResult>('/dns/install', { method: 'POST', body: JSON.stringify(body) }, { success: false, message: 'Network error' }),
     uninstallDns: () => req<DnsActionResult>('/dns/uninstall', { method: 'POST' }, { success: false, message: 'Network error' }),
+    createDefaultDnsZones: () => req<DnsZone[]>('/dns/zones/create-defaults', { method: 'POST' }, []),
+
+    // Professional Hosting
+    generateDkimKey: (body: DkimKeyGenRequest) => req<DkimKey>('/dns/hosting/dkim/generate', { method: 'POST', body: JSON.stringify(body) }, { selector: body.selector, publicKey: '', privateKey: '', dnsRecord: '' }),
+    buildSpfRecord: (config: SpfConfig) => textReq('/dns/hosting/spf/build', { method: 'POST', body: JSON.stringify(config) }),
+    buildDmarcRecord: (config: DmarcConfig) => textReq('/dns/hosting/dmarc/build', { method: 'POST', body: JSON.stringify(config) }),
+    suggestReverseZone: (ip: string) => req<IpPtrSuggestion>(`/dns/hosting/reverse/suggest?ip=${encodeURIComponent(ip)}`, {}, { ip, domain: '', reverseZone: '', ptrRecordName: '' }),
+    checkPropagation: (zoneId: string, name: string, type: DnsRecordType) => req<PropagationCheckResult>(`/dns/hosting/propagation/${zoneId}?name=${encodeURIComponent(name)}&type=${type}`, {}, { zoneId, recordName: name, recordType: type, expectedValue: '', checks: [] }),
+
+    // Phase 2 Improvements
+    buildSrvRecord: (body: SrvConfig) => req<{ record: string }>('/dns/hosting/srv/build', { method: 'POST', body: JSON.stringify(body) }, { record: '' }),
+    getEmailHealth: (zoneId: string) => req<EmailHealthStatus>(`/dns/hosting/health/${zoneId}`, {}, { zoneId, hasMx: false, hasSpf: false, hasDkim: false, hasDmarc: false, issues: [] }),
+    getReverseDnsDashboard: () => req<ReverseDnsDashboard>('/dns/hosting/reverse-dashboard', {}, { serverIps: [], managedReverseZones: [], ptrStatuses: [] }),
 };

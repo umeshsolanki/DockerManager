@@ -16,7 +16,8 @@ data class IpInfo(
     val countryName: String?,
     val provider: String?,
     val type: String?,
-    val cidr: String?
+    val cidr: String?,
+    val asn: String?
 )
 
 object IpLookupService {
@@ -24,7 +25,7 @@ object IpLookupService {
     private val cache = ConcurrentHashMap<String, IpInfo>()
 
     fun lookup(ip: String): IpInfo? {
-        if (ip == "127.0.0.1" || ip == "::1" || ip == "localhost") return IpInfo("LOCAL", "Local Address", "Internal", "loopback", "127.0.0.0/8")
+        if (ip == "127.0.0.1" || ip == "::1" || ip == "localhost") return IpInfo("LOCAL", "Local Address", "Internal", "loopback", "127.0.0.0/8", "AS0")
         
         // Check cache first
         cache[ip]?.let { return it }
@@ -44,7 +45,8 @@ object IpLookupService {
                         countryName = it[IpRangesTable.countryName],
                         provider = it[IpRangesTable.provider],
                         type = it[IpRangesTable.type],
-                        cidr = it[IpRangesTable.cidr]
+                        cidr = it[IpRangesTable.cidr],
+                        asn = it[IpRangesTable.asn]
                     )
                 }
             }

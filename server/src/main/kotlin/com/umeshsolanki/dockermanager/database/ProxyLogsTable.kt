@@ -16,6 +16,7 @@ object ProxyLogsTable : Table("proxy_logs") {
     val domain = varchar("domain", 255).index().nullable()
     val countryCode = varchar("country_code", 2).nullable()
     val provider = varchar("provider", 255).nullable()
+    val asn = varchar("asn", 50).nullable()
 
     override val primaryKey = PrimaryKey(id)
 }

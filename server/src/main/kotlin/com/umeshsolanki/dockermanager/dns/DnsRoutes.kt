@@ -39,6 +39,10 @@ fun Route.dnsRoutes() {
                 else call.respond(HttpStatusCode.Conflict, DnsActionResult(false, "Zone already exists"))
             }
 
+            post("/create-defaults") {
+                call.respond(DnsService.createDefaultZones())
+            }
+
             route("/{id}") {
                 get {
                     val id = call.requireParameter("id") ?: return@get
@@ -249,6 +253,52 @@ fun Route.dnsRoutes() {
             delete("/{id}") {
                 val id = call.requireParameter("id") ?: return@delete
                 call.respondBooleanResult(DnsService.deleteTemplate(id), "Template deleted", "Failed to delete template")
+            }
+        }
+
+        // ==================== Professional Hosting ====================
+
+        route("/hosting") {
+            post("/dkim/generate") {
+                val request = call.receive<DkimKeyGenRequest>()
+                call.respond(DnsService.generateDkimKey(request))
+            }
+
+            post("/spf/build") {
+                val config = call.receive<SpfConfig>()
+                call.respondText(DnsService.buildSpfRecord(config), ContentType.Text.Plain)
+            }
+
+            post("/dmarc/build") {
+                val config = call.receive<DmarcConfig>()
+                call.respondText(DnsService.buildDmarcRecord(config), ContentType.Text.Plain)
+            }
+
+            get("/reverse/suggest") {
+                val ip = call.request.queryParameters["ip"] ?: return@get call.respond(HttpStatusCode.BadRequest, "IP missing")
+                call.respond(DnsService.suggestReverseZone(ip))
+            }
+
+            get("/propagation/{id}") {
+                val zoneId = call.requireParameter("id") ?: return@get
+                val name = call.request.queryParameters["name"] ?: "@"
+                val typeStr = call.request.queryParameters["type"] ?: "A"
+                val type = try { DnsRecordType.valueOf(typeStr) } catch(e: Exception) { DnsRecordType.A }
+                call.respond(DnsService.checkPropagation(zoneId, name, type))
+            }
+
+            post("/srv/build") {
+                val config = call.receive<SrvConfig>()
+                call.respond(mapOf("record" to DnsService.buildSrvRecord(config)))
+            }
+
+            get("/health/{id}") {
+                val id = call.requireParameter("id") ?: return@get
+                call.respond(DnsService.getEmailHealth(id))
+            }
+
+            get("/reverse-dashboard") {
+                call.respond(DnsService.getReverseDnsDashboard())
             }
         }
     }

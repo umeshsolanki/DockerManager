@@ -380,6 +380,9 @@ export interface ProxyHit {
   userAgent: string;
   domain?: string;
   referer?: string;
+  countryCode?: string;
+  provider?: string;
+  asn?: string;
   violationReason?: string;
   source?: string;  // "mirror" when from /security/mirror route
 }
@@ -440,6 +443,7 @@ export interface ProxyStats {
   websocketConnectionsByIp: Record<string, number>;
   hitsByCountry?: Record<string, number>;
   hitsByProvider?: Record<string, number>;
+  hitsByAsn?: Record<string, number>;
   recentWebSocketConnections: WebSocketConnection[];
   hostwiseStats?: Record<string, DetailedHostStats>;
 }
@@ -471,6 +475,7 @@ export interface DailyProxyStats {
   websocketConnectionsByIp: Record<string, number>;
   hitsByCountry?: Record<string, number>;
   hitsByProvider?: Record<string, number>;
+  hitsByAsn?: Record<string, number>;
   hostwiseStats?: Record<string, DetailedHostStats>;
 }
 
@@ -808,6 +813,92 @@ export interface GlobalSecurityConfig {
   rateLimitWindow: number;
 }
 
+// ========== Professional Hosting Structures ==========
+
+export interface SpfConfig {
+  allowMx: boolean;
+  allowA: boolean;
+  ipAddresses: string[];
+  includeDomains: string[];
+  allMechanism: string; // "-all", "~all", "?all"
+}
+
+export interface DmarcConfig {
+  policy: string; // none, quarantine, reject
+  pct: number;
+  rua: string;
+  ruf: string;
+  aspf: string; // r, s
+  adkim: string; // r, s
+}
+
+export interface SrvConfig {
+  service: string;
+  protocol: string;
+  priority: number;
+  weight: number;
+  port: number;
+  target: string;
+}
+
+export interface EmailHealthStatus {
+  zoneId: string;
+  hasMx: boolean;
+  hasSpf: boolean;
+  hasDkim: boolean;
+  hasDmarc: boolean;
+  issues: string[];
+}
+
+export interface ReverseDnsDashboard {
+  serverIps: string[];
+  managedReverseZones: string[];
+  ptrStatuses: PtrStatus[];
+}
+
+export interface PtrStatus {
+  ip: string;
+  ptrValue: string | null;
+  isManagedLocally: boolean;
+  health: string;
+}
+
+export interface DkimKey {
+  selector: string;
+  publicKey: string;
+  privateKey: string;
+  dnsRecord: string;
+}
+
+export interface DkimKeyGenRequest {
+  domain: string;
+  selector: string;
+  keySize: number;
+}
+
+export interface PropagationStatus {
+  serverName: string;
+  serverIp: string;
+  resolvedValues: string[];
+  matches: boolean;
+  error?: string;
+}
+
+export interface PropagationCheckResult {
+  zoneId: string;
+  recordName: string;
+  recordType: DnsRecordType;
+  expectedValue: string;
+  checks: PropagationStatus[];
+}
+
+export interface IpPtrSuggestion {
+  ip: string;
+  domain: string;
+  reverseZone: string;
+  ptrRecordName: string;
+}
+
 
 export interface DnsForwarderConfig {
   forwarders: string[];
@@ -1039,6 +1130,12 @@ export interface IpReputation {
   country?: string;
   isp?: string;
   range?: string;  // range provider (e.g. cloudflare, aws) when IP is in ip_ranges
+  region?: string;
+  regionName?: string;
+  asName?: string;
+  asn?: string;
+  geoInfoUpdatedOn?: string;
+  lastTaggedOn?: string;
 }
 
 export interface SavedQuery {

@@ -5,7 +5,7 @@ import {
     BarChart3, Activity, Globe, Server, User, Link2,
     RefreshCw, MousePointerClick, Zap, TrendingUp, Clock,
     Network, Hash, Search, Download, ChevronDown, ChevronUp,
-    Trash2, ShieldAlert, X, ChevronRight
+    Trash2, ShieldAlert, X, ChevronRight, Database
 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { ProxyStats, GenericHitEntry, DailyProxyStats, ProxyHit, ProxyActionResult } from '@/lib/types';
@@ -38,7 +38,8 @@ export default function AnalyticsScreen() {
         methods: false,
         domains: false,
         countries: false,
-        providers: false
+        providers: false,
+        asns: false
     });
     const [itemsToShow, setItemsToShow] = useState<Record<string, number>>({
         paths: 10,
@@ -48,7 +49,8 @@ export default function AnalyticsScreen() {
         methods: 10,
         domains: 10,
         countries: 10,
-        providers: 10
+        providers: 10,
+        asns: 10
     });
 
     // Security Logs Modal State
@@ -330,6 +332,15 @@ export default function AnalyticsScreen() {
                 .map(([provider, count]) => ({ label: provider.length > 40 ? provider.substring(0, 40) + '...' : provider, value: count, sub: 'Provider' }))
             : [];
     }, [stats?.hitsByProvider, searchQuery]);
+
+    const filteredAsns = useMemo(() => {
+        return stats?.hitsByAsn
+            ? Object.entries(stats.hitsByAsn)
+                .filter(([asn]) => !searchQuery || asn.toLowerCase().includes(searchQuery.toLowerCase()))
+                .sort(([, a], [, b]) => (b as number) - (a as number))
+                .map(([asn, count]) => ({ label: asn, value: count, sub: 'ASN' }))
+            : [];
+    }, [stats?.hitsByAsn, searchQuery]);
 
     const chartData = useMemo(() => {
         return stats?.hitsOverTime ?
@@ -1040,6 +1051,20 @@ export default function AnalyticsScreen() {
                     itemsToShow={itemsToShow.providers}
                     onShowMore={() => setItemsToShow(prev => ({ ...prev, providers: prev.providers + 20 }))}
                 />
+
+                {/* ASNs */}
+                <ExpandableStatsCard
+                    title="Top ASNs"
+                    icon={<Database size={18} />}
+                    items={filteredAsns}
+                    color="indigo"
+                    total={stats?.totalHits || 1}
+                    sectionKey="asns"
+                    expanded={expandedSections.asns}
+                    onToggle={() => setExpandedSections(prev => ({ ...prev, asns: !prev.asns }))}
+                    itemsToShow={itemsToShow.asns}
+                    onShowMore={() => setItemsToShow(prev => ({ ...prev, asns: prev.asns + 20 }))}
+                />
             </div>
 
             {/* Advanced Analytics Table - Recent Hits Log (only for today) */}
@@ -1183,7 +1208,7 @@ export default function AnalyticsScreen() {
                                                 <span className={`px-2 py-0.5 rounded text-[9px] font-black ${log.method === 'GET' ? 'bg-green-500/10 text-green-500' :
                                                     log.method === 'POST' ? 'bg-blue-500/10 text-blue-500' :
                                                         'bg-purple-500/10 text-purple-500'
-                                                }`}>
+                                                    }`}>
                                                     {log.method}
                                                 </span>
                                             </td>
@@ -1210,7 +1235,7 @@ export default function AnalyticsScreen() {
                                                 <span className={`font-black ${log.status.toString().startsWith('2') ? 'text-green-500' :
                                                     log.status.toString().startsWith('4') ? 'text-orange-500' :
                                                         'text-red-500'
-                                                }`}>
+                                                    }`}>
                                                     {log.status}
                                                 </span>
                                             </td>
@@ -1319,41 +1344,41 @@ function ExpandableStatsCard({
                     displayedItems.map((item, i) => {
                         const isClickable = onItemClick && clickableItemKeys?.includes(sectionKey);
                         return (
-                        <div key={i} className="group">
-                            <div className="flex justify-between items-center mb-1.5 px-1 truncate">
-                                <div className="flex flex-col min-w-0 flex-1">
-                                    {isClickable ? (
-                                        <button
-                                            onClick={() => onItemClick?.(item.label)}
-                                            className="text-[11px] font-bold truncate pr-3 text-left w-full hover:text-primary transition-colors flex items-center gap-1.5 group/btn"
-                                            title={`Click to drill into ${item.label}`}
-                                        >
-                                            <span className="truncate">{item.label}</span>
-                                            <ChevronRight size={10} className="opacity-0 group-hover/btn:opacity-100 shrink-0 text-primary" />
-                                        </button>
-                                    ) : (
-                                        <span className="text-[11px] font-bold truncate pr-3 group-hover:text-on-surface transition-colors" title={item.label}>
-                                            {item.label}
-                                        </span>
-                                    )}
-                                    <span className="text-[8px] font-black uppercase text-on-surface-variant/40 tracking-wider font-mono">{item.sub}</span>
+                            <div key={i} className="group">
+                                <div className="flex justify-between items-center mb-1.5 px-1 truncate">
+                                    <div className="flex flex-col min-w-0 flex-1">
+                                        {isClickable ? (
+                                            <button
+                                                onClick={() => onItemClick?.(item.label)}
+                                                className="text-[11px] font-bold truncate pr-3 text-left w-full hover:text-primary transition-colors flex items-center gap-1.5 group/btn"
+                                                title={`Click to drill into ${item.label}`}
+                                            >
+                                                <span className="truncate">{item.label}</span>
+                                                <ChevronRight size={10} className="opacity-0 group-hover/btn:opacity-100 shrink-0 text-primary" />
+                                            </button>
+                                        ) : (
+                                            <span className="text-[11px] font-bold truncate pr-3 group-hover:text-on-surface transition-colors" title={item.label}>
+                                                {item.label}
+                                            </span>
+                                        )}
+                                        <span className="text-[8px] font-black uppercase text-on-surface-variant/40 tracking-wider font-mono">{item.sub}</span>
+                                    </div>
+                                    <span className="text-[10px] font-black text-on-surface-variant ml-2 shrink-0">{item.value?.toLocaleString()}</span>
                                 </div>
-                                <span className="text-[10px] font-black text-on-surface-variant ml-2 shrink-0">{item.value?.toLocaleString()}</span>
+                                <div className={`h-1 ${theme === 'dark' ? 'bg-white/5' : 'bg-black/5'} rounded-full overflow-hidden border ${theme === 'dark' ? 'border-white/5' : 'border-black/5'}`}>
+                                    <div
+                                        className={`h-full opacity-60 rounded-full transition-all duration-1000 ${color === 'primary' ? 'bg-primary' :
+                                            color === 'indigo' ? 'bg-indigo-500' :
+                                                color === 'pink' ? 'bg-pink-500' :
+                                                    color === 'teal' ? 'bg-teal-500' :
+                                                        color === 'orange' ? 'bg-orange-500' :
+                                                            color === 'green' ? 'bg-green-500' :
+                                                                'bg-primary'
+                                            }`}
+                                        style={{ width: `${Math.min((item.value / total) * 100, 100)}%` }}
+                                    />
+                                </div>
                             </div>
-                            <div className={`h-1 ${theme === 'dark' ? 'bg-white/5' : 'bg-black/5'} rounded-full overflow-hidden border ${theme === 'dark' ? 'border-white/5' : 'border-black/5'}`}>
-                                <div
-                                    className={`h-full opacity-60 rounded-full transition-all duration-1000 ${color === 'primary' ? 'bg-primary' :
-                                        color === 'indigo' ? 'bg-indigo-500' :
-                                            color === 'pink' ? 'bg-pink-500' :
-                                                color === 'teal' ? 'bg-teal-500' :
-                                                    color === 'orange' ? 'bg-orange-500' :
-                                                        color === 'green' ? 'bg-green-500' :
-                                                            'bg-primary'
-                                        }`}
-                                    style={{ width: `${Math.min((item.value / total) * 100, 100)}%` }}
-                                />
-                            </div>
-                        </div>
                         );
                     })
                 ) : (

@@ -93,6 +93,7 @@ class IpEnrichmentWorker(
         val region: String? = null,
         val regionName: String? = null,
         val asName: String? = null,
+        val asn: String? = null,
         val org: String? = null
     )
 
@@ -120,7 +121,8 @@ class IpEnrichmentWorker(
                     zip = cached.zip,
                     region = cached.region,
                     regionName = cached.regionName,
-                    asName = cached.asName
+                    asName = cached.asName,
+                    asn = cached.asn
                 )
             }
         } catch (e: Exception) {
@@ -156,6 +158,7 @@ class IpEnrichmentWorker(
                 region       = json.get("region")?.asString,
                 regionName   = json.get("regionName")?.asString,
                 asName       = json.get("as")?.asString,
+                asn          = json.get("as")?.asString?.split(" ")?.getOrNull(0),
                 org          = json.get("org")?.asString
             )
 
@@ -172,6 +175,7 @@ class IpEnrichmentWorker(
                         region      = result.region,
                         regionName  = result.regionName,
                         asName      = result.asName,
+                        asn         = result.asn,
                         countryCode = result.countryCode,
                         isp         = result.isp
                     )

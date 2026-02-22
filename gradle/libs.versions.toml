@@ -21,6 +21,7 @@ mysql = "8.3.0"
 mariadb = "3.3.3"
 sqlite = "3.45.1.0"
 clickhouse = "0.6.0"
+dnsjava = "3.5.3"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -76,6 +77,7 @@ clickhouse-jdbc = { module = "com.clickhouse:clickhouse-jdbc", version.ref = "cl
 exposed-r2dbc = { module = "org.jetbrains.exposed:exposed-r2dbc", version = "1.0.0" }
 r2dbc-postgresql = { module = "io.r2dbc:r2dbc-postgresql", version = "1.0.5.RELEASE" }
 r2dbc-pool = { module = "io.r2dbc:r2dbc-pool", version = "1.0.1.RELEASE" }
+dnsjava = { module = "dnsjava:dnsjava", version.ref = "dnsjava" }
 
 [plugins]
 shadowJar = { id = "com.gradleup.shadow", version.ref = "shadow" }

@@ -11,8 +11,13 @@ import java.io.File
 import java.util.UUID
 import kotlin.concurrent.withLock
 
-class DnsServiceImpl : IDnsService {
+import java.util.*
+import java.security.*
+import java.net.InetAddress
+import org.xbill.DNS.*
+import org.xbill.DNS.Record
 
+class DnsServiceImpl : IDnsService {
     private val logger = LoggerFactory.getLogger(DnsServiceImpl::class.java)
     private val lock = java.util.concurrent.locks.ReentrantLock()
     private val commandExecutor = CommandExecutor(loggerName = DnsServiceImpl::class.java.name)
@@ -1435,6 +1440,230 @@ logging {
         }
     }
 
+    // ===================================================================
+    //  Professional Hosting Features
+    // ===================================================================
+
+    override fun generateDkimKey(request: DkimKeyGenRequest): DkimKey {
+        return try {
+            val keyGen = KeyPairGenerator.getInstance("RSA")
+            keyGen.initialize(request.keySize)
+            val pair = keyGen.generateKeyPair()
+
+            val encoder = Base64.getEncoder()
+            val publicKey = encoder.encodeToString(pair.public.encoded)
+            val privateKey = encoder.encodeToString(pair.private.encoded)
+
+            // Format for DNS TXT record: v=DKIM1; k=rsa; p=MIIB...
+            val dnsRecord = "v=DKIM1; k=rsa; p=$publicKey"
+
+            // Persist the private key if it's for a real domain
+            if (request.domain.isNotBlank()) {
+                val dkimDir = File(dataDir, "dkim")
+                dkimDir.mkdirs()
+                val keyFile = File(dkimDir, "${request.domain}.${request.selector}.key")
+                keyFile.writeText(privateKey)
+                logger.info("Persisted DKIM private key for ${request.domain} selector ${request.selector}")
+            }
+
+            DkimKey(
+                selector = request.selector,
+                publicKey = publicKey,
+                privateKey = privateKey,
+                dnsRecord = dnsRecord
+            )
+        } catch (e: Exception) {
+            logger.error("Failed to generate DKIM key", e)
+            throw RuntimeException("DKIM generation failed: ${e.message}")
+        }
+    }
+
+    override fun buildSpfRecord(config: SpfConfig): String {
+        val parts = mutableListOf("v=spf1")
+        if (config.allowA) parts.add("a")
+        if (config.allowMx) parts.add("mx")
+        
+        config.ipAddresses.forEach { ip ->
+            if (ip.contains(":")) parts.add("ip6:$ip")
+            else parts.add("ip4:$ip")
+        }
+        
+        config.includeDomains.forEach { domain ->
+            parts.add("include:$domain")
+        }
+        
+        parts.add(config.allMechanism)
+        return parts.joinToString(" ")
+    }
+
+    override fun buildDmarcRecord(config: DmarcConfig): String {
+        val parts = mutableListOf("v=DMARC1", "p=${config.policy}")
+        if (config.pct < 100) parts.add("pct=${config.pct}")
+        if (config.rua.isNotBlank()) parts.add("rua=mailto:${config.rua}")
+        if (config.ruf.isNotBlank()) parts.add("ruf=mailto:${config.ruf}")
+        if (config.aspf != "r") parts.add("aspf=${config.aspf}")
+        if (config.adkim != "r") parts.add("adkim=${config.adkim}")
+        
+        return parts.joinToString("; ")
+    }
+
+    override fun suggestReverseZone(ip: String): IpPtrSuggestion {
+        return try {
+            val addr = InetAddress.getByName(ip)
+            val bytes = addr.address
+            
+            if (bytes.size == 4) { // IPv4
+                val octets = bytes.map { it.toInt() and 0xFF }
+                val reverseZone = "${octets[2]}.${octets[1]}.${octets[0]}.in-addr.arpa"
+                val ptrRecordName = "${octets[3]}"
+                IpPtrSuggestion(ip, "", reverseZone, ptrRecordName)
+            } else { // IPv6
+                // Simplified IPv6 nibble format
+                val hex = bytes.joinToString("") { "%02x".format(it) }
+                val reverseParts = hex.reversed().chunked(1)
+                val reverseZone = reverseParts.drop(4).joinToString(".") + ".ip6.arpa"
+                val ptrRecordName = reverseParts.take(4).joinToString(".")
+                IpPtrSuggestion(ip, "", reverseZone, ptrRecordName)
+            }
+        } catch (e: Exception) {
+            IpPtrSuggestion(ip, "", "invalid.in-addr.arpa", "0")
+        }
+    }
+
+    override fun checkPropagation(zoneId: String, recordName: String, recordType: DnsRecordType): PropagationCheckResult {
+        val zone = getZone(zoneId) ?: throw IllegalArgumentException("Zone not found")
+        val expectedRecords = zone.records.filter { it.name == recordName && it.type == recordType }
+        val expectedValue = expectedRecords.firstOrNull()?.value ?: ""
+        
+        val publicServers = mapOf(
+            "Google" to "8.8.8.8",
+            "Cloudflare" to "1.1.1.1",
+            "Quad9" to "9.9.9.9",
+            "OpenDNS" to "208.67.222.222"
+        )
+        
+        val fullQueryName = if (recordName == "@") zone.name else "${recordName}.${zone.name}"
+        
+        val checks = publicServers.map { (name, ip) ->
+            try {
+                val lookup = Lookup(fullQueryName, Type.value(recordType.name))
+                val resolver = SimpleResolver(ip)
+                resolver.setTimeout(2)
+                lookup.setResolver(resolver)
+                
+                val result = lookup.run()
+                val values = result?.map { it.rdataToString() } ?: emptyList()
+                val matches = values.any { it.contains(expectedValue) || expectedValue.contains(it) }
+                
+                PropagationStatus(name, ip, values, matches)
+            } catch (e: Exception) {
+                PropagationStatus(name, ip, emptyList(), false, e.message)
+            }
+        }
+        
+        return PropagationCheckResult(zoneId, recordName, recordType, expectedValue, checks)
+    }
+
+    override fun createDefaultZones(): List<DnsZone> {
+        val created = mutableListOf<DnsZone>()
+        
+        // 1. localhost Forward
+        val localhostRequest = CreateZoneRequest(
+            name = "localhost",
+            type = ZoneType.FORWARD,
+            soa = SoaRecord(primaryNs = "ns1.localhost.", adminEmail = "admin.localhost.")
+        )
+        createZone(localhostRequest)?.let { zone ->
+            addRecord(zone.id, DnsRecord(id = "", name = "@", type = DnsRecordType.A, value = "127.0.0.1", ttl = 86400))
+            addRecord(zone.id, DnsRecord(id = "", name = "@", type = DnsRecordType.AAAA, value = "::1", ttl = 86400))
+            created.add(getZone(zone.id)!!)
+        }
+
+        // 2. 127.in-addr.arpa (Reverse loopback)
+        val loopbackRequest = CreateZoneRequest(
+            name = "127.in-addr.arpa",
+            type = ZoneType.REVERSE,
+            soa = SoaRecord(primaryNs = "ns1.localhost.", adminEmail = "admin.localhost.")
+        )
+        createZone(loopbackRequest)?.let { zone ->
+            addRecord(zone.id, DnsRecord(id = "", name = "1.0.0", type = DnsRecordType.PTR, value = "localhost.", ttl = 86400))
+            created.add(getZone(zone.id)!!)
+        }
+
+        // 3. 0.in-addr.arpa
+        val zeroRequest = CreateZoneRequest(
+            name = "0.in-addr.arpa",
+            type = ZoneType.REVERSE,
+            soa = SoaRecord(primaryNs = "ns1.localhost.", adminEmail = "admin.localhost.")
+        )
+        createZone(zeroRequest)?.let { zone ->
+            addRecord(zone.id, DnsRecord(id = "", name = "@", type = DnsRecordType.PTR, value = "localhost.", ttl = 86400))
+            created.add(getZone(zone.id)!!)
+        }
+
+        return created
+    }
+
+    override fun buildSrvRecord(config: SrvConfig): String {
+        return "${config.priority} ${config.weight} ${config.port} ${config.target.ensureTrailingDot()}"
+    }
+
+    private fun String.ensureTrailingDot() = if (endsWith(".")) this else "$this."
+
+    override fun getEmailHealth(zoneId: String): EmailHealthStatus {
+        val zone = getZone(zoneId) ?: throw IllegalArgumentException("Zone not found")
+        val records = zone.records
+        
+        val hasMx = records.any { it.type == DnsRecordType.MX }
+        val hasSpf = records.any { it.type == DnsRecordType.TXT && it.value.contains("v=spf1") }
+        val hasDkim = records.any { it.type == DnsRecordType.TXT && it.name.contains("_domainkey") }
+        val hasDmarc = records.any { it.type == DnsRecordType.TXT && it.name.startsWith("_dmarc") }
+        
+        val issues = mutableListOf<String>()
+        if (!hasMx) issues.add("Missing MX records - emails cannot be received")
+        if (!hasSpf) issues.add("Missing SPF record - emails may be marked as spam")
+        if (!hasDkim) issues.add("Missing DKIM record - emails may fail authentication")
+        if (!hasDmarc) issues.add("Missing DMARC record - no reporting or spoofing protection")
+        
+        return EmailHealthStatus(zoneId, hasMx, hasSpf, hasDkim, hasDmarc, issues)
+    }
+
+    override fun getReverseDnsDashboard(): ReverseDnsDashboard {
+        val serverIps = mutableListOf<String>()
+        // In a real scenario, we'd fetch actual server interface IPs. 
+        // For now, let's try to detect from configured 'A' records of all zones.
+        val zones = loadZones()
+        zones.forEach { z ->
+            z.records.filter { it.type == DnsRecordType.A || it.type == DnsRecordType.AAAA }.forEach {
+                if (!serverIps.contains(it.value)) serverIps.add(it.value)
+            }
+        }
+        
+        val managedReverseZones = zones.filter { it.type == ZoneType.REVERSE }.map { it.name }
+        
+        val statuses = serverIps.map { ip ->
+            val suggestion = suggestReverseZone(ip)
+            val reverseZoneName = suggestion.reverseZone
+            val isManaged = managedReverseZones.contains(reverseZoneName)
+            
+            var ptrValue: String? = null
+            if (isManaged) {
+                val rZone = zones.find { it.name == reverseZoneName }
+                ptrValue = rZone?.records?.find { it.name == suggestion.ptrRecordName && it.type == DnsRecordType.PTR }?.value
+            }
+            
+            val health = when {
+                ptrValue != null -> "OK"
+                isManaged -> "MISSING"
+                else -> "UNMANAGED"
+            }
+            
+            PtrStatus(ip, ptrValue, isManaged, health)
+        }
+        
+        return ReverseDnsDashboard(serverIps, managedReverseZones, statuses)
+    }
+
     companion object {
         fun defaultTemplates(): List<ZoneTemplate> = listOf(
             ZoneTemplate(
@@ -1554,4 +1783,16 @@ object DnsService {
     fun getInstallStatus() = service.getInstallStatus()
     fun install(req: DnsInstallRequest) = service.install(req)
     fun uninstall() = service.uninstall()
+
+    // Professional Hosting
+    fun generateDkimKey(req: DkimKeyGenRequest) = service.generateDkimKey(req)
+    fun buildSpfRecord(config: SpfConfig) = service.buildSpfRecord(config)
+    fun buildDmarcRecord(config: DmarcConfig) = service.buildDmarcRecord(config)
+    fun suggestReverseZone(ip: String) = service.suggestReverseZone(ip)
+    fun checkPropagation(zoneId: String, recordName: String, recordType: DnsRecordType) = service.checkPropagation(zoneId, recordName, recordType)
+    fun createDefaultZones() = service.createDefaultZones()
+
+    fun buildSrvRecord(config: SrvConfig) = service.buildSrvRecord(config)
+    fun getEmailHealth(zoneId: String) = service.getEmailHealth(zoneId)
+    fun getReverseDnsDashboard() = service.getReverseDnsDashboard()
 }

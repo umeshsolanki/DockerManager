@@ -31,6 +31,7 @@ data class DailyProxyStats(
     val topMethods: List<GenericHitEntry> = emptyList(),
     val hitsByCountry: Map<String, Long> = emptyMap(),
     val hitsByProvider: Map<String, Long> = emptyMap(),
+    val hitsByAsn: Map<String, Long> = emptyMap(),
     val websocketConnections: Long = 0,
     val websocketConnectionsByEndpoint: Map<String, Long> = emptyMap(),
     val websocketConnectionsByIp: Map<String, Long> = emptyMap(),
@@ -68,8 +69,9 @@ class AnalyticsPersistenceService {
                 topUserAgents = stats.topUserAgents,
                 topReferers = stats.topReferers,
                 topMethods = stats.topMethods,
-                hitsByCountry = emptyMap(), // This is tricky as ProxyStats doesn't have it yet, 
-                hitsByProvider = emptyMap(), // but saveDailyStats is mostly for daily rotation/backup
+                hitsByCountry = stats.hitsByCountry,
+                hitsByProvider = stats.hitsByProvider,
+                hitsByAsn = stats.hitsByAsn,
                 websocketConnections = stats.websocketConnections,
                 websocketConnectionsByEndpoint = stats.websocketConnectionsByEndpoint,
                 websocketConnectionsByIp = stats.websocketConnectionsByIp
@@ -171,6 +173,11 @@ class AnalyticsPersistenceService {
                         .groupBy(ProxyLogsTable.provider)
                         .associate { (it[ProxyLogsTable.provider] ?: "Unknown") to it[ProxyLogsTable.provider.count()] }
 
+                    val hitsByAsn = ProxyLogsTable.select(ProxyLogsTable.asn, ProxyLogsTable.asn.count())
+                        .where { (ProxyLogsTable.timestamp greaterEq start) and (ProxyLogsTable.timestamp less end) }
+                        .groupBy(ProxyLogsTable.asn)
+                        .associate { (it[ProxyLogsTable.asn] ?: "Unknown") to it[ProxyLogsTable.asn.count()] }
+
                     // For hitsOverTime, we'd ideally use SQL HOUR() function, but Exposed support varies.
                     // Doing a simple aggregation for now.
                     val hitsOverTime = mutableMapOf<String, Long>()
@@ -197,7 +204,8 @@ class AnalyticsPersistenceService {
                         topMethods = topMethods,
                         topUserAgents = topUserAgents,
                         hitsByCountry = hitsByCountry,
-                        hitsByProvider = hitsByProvider
+                        hitsByProvider = hitsByProvider,
+                        hitsByAsn = hitsByAsn
                     )
                 }
             } catch (e: Exception) {

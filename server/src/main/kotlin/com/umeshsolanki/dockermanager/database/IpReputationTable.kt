@@ -34,6 +34,7 @@ object IpReputationTable : Table("ip_reputation") {
     val region      = varchar("region", 100).nullable()
     val regionName  = varchar("region_name", 100).nullable()
     val asName      = varchar("as_name", 255).nullable()
+    val asn         = varchar("asn", 50).nullable()
     val geoInfoUpdatedOn = datetime("geo_info_updated_on").nullable()
     val lastTaggedOn = datetime("last_tagged_on").nullable()
 
@@ -70,6 +71,7 @@ data class IpReputation(
     val region: String? = null,
     val regionName: String? = null,
     val asName: String? = null,
+    val asn: String? = null,
     val geoInfoUpdatedOn: String? = null,
     val lastTaggedOn: String? = null
 )

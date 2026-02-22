@@ -142,6 +142,87 @@ data class DnssecStatus(
     val signedAt: Long? = null
 )
 
+// ========== Professional Hosting Structures ==========
+
+@Serializable
+data class SpfConfig(
+    val allowMx: Boolean = true,
+    val allowA: Boolean = true,
+    val ipAddresses: List<String> = emptyList(),
+    val includeDomains: List<String> = emptyList(),
+    val allMechanism: String = "~all" // "-all", "~all", "?all"
+)
+
+@Serializable
+data class DmarcConfig(
+    val policy: String = "none", // none, quarantine, reject
+    val pct: Int = 100,
+    val rua: String = "",
+    val ruf: String = "",
+    val aspf: String = "r", // r (relaxed), s (strict)
+    val adkim: String = "r"
+)
+
+@Serializable
+data class SrvConfig(
+    val service: String, // e.g. _sip, _autodiscover
+    val protocol: String, // e.g. _tcp, _udp
+    val priority: Int = 0,
+    val weight: Int = 0,
+    val port: Int,
+    val target: String
+)
+
+@Serializable
+data class EmailHealthStatus(
+    val zoneId: String,
+    val hasMx: Boolean,
+    val hasSpf: Boolean,
+    val hasDkim: Boolean,
+    val hasDmarc: Boolean,
+    val issues: List<String> = emptyList()
+)
+
+@Serializable
+data class ReverseDnsDashboard(
+    val serverIps: List<String>,
+    val managedReverseZones: List<String>,
+    val ptrStatuses: List<PtrStatus>
+)
+
+@Serializable
+data class PtrStatus(
+    val ip: String,
+    val ptrValue: String?,
+    val isManagedLocally: Boolean,
+    val health: String // OK, MISSING, ERROR
+)
+
+@Serializable
+data class DkimKey(
+    val selector: String,
+    val publicKey: String,
+    val privateKey: String,
+    val dnsRecord: String = ""
+)
+
+@Serializable
+data class PropagationStatus(
+    val serverName: String, // Google, Cloudflare, etc.
+    val serverIp: String,
+    val resolvedValues: List<String>,
+    val matches: Boolean,
+    val error: String? = null
+)
+
+@Serializable
+data class IpPtrSuggestion(
+    val ip: String,
+    val domain: String,
+    val reverseZone: String,
+    val ptrRecordName: String
+)
+
 // ========== DNS Lookup (dig) ==========
 
 @Serializable
@@ -196,14 +277,30 @@ data class GlobalSecurityConfig(
 )
 
 
-// ========== Zone Templates ==========
-
 @Serializable
 data class ZoneTemplate(
     val id: String = "",
     val name: String,
     val description: String = "",
     val records: List<DnsRecord> = emptyList()
+)
+
+// ========== New Requests/Results ==========
+
+@Serializable
+data class DkimKeyGenRequest(
+    val domain: String,
+    val selector: String = "default",
+    val keySize: Int = 2048
+)
+
+@Serializable
+data class PropagationCheckResult(
+    val zoneId: String,
+    val recordName: String,
+    val recordType: DnsRecordType,
+    val expectedValue: String,
+    val checks: List<PropagationStatus> = emptyList()
 )
 
 // ========== Bulk Import ==========

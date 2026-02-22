@@ -102,6 +102,7 @@ data class ProxyStats(
     val topMethods: List<GenericHitEntry> = emptyList(),
     val hitsByCountry: Map<String, Long> = emptyMap(),
     val hitsByProvider: Map<String, Long> = emptyMap(),
+    val hitsByAsn: Map<String, Long> = emptyMap(),
     val websocketConnections: Long = 0,
     val websocketConnectionsByEndpoint: Map<String, Long> = emptyMap(),
     val websocketConnectionsByIp: Map<String, Long> = emptyMap(),
@@ -131,6 +132,7 @@ data class ProxyHit(
     val domain: String? = null,
     val countryCode: String? = null,
     val provider: String? = null,
+    val asn: String? = null,
     val violationReason: String? = null,
     val source: String? = null  // "mirror" when from /security/mirror route
 )

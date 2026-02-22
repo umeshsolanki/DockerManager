@@ -1,10 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Power, Shield, FileText, Upload, BookTemplate, Settings2, Search } from 'lucide-react';
+import { Plus, Trash2, Power, Shield, FileText, Upload, BookTemplate, Settings2, Search, Lock, Mail, ShieldCheck, CheckCircle2, RefreshCw, Globe } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { DnsZone, DnsRecord, DnsRecordType, ZoneValidationResult, ZoneTemplate, UpdateZoneRequest, SoaRecord } from '@/lib/types';
+import {
+    DnsZone, DnsRecord, DnsRecordType, ZoneValidationResult, ZoneTemplate,
+    UpdateZoneRequest, SoaRecord, PropagationCheckResult, IpPtrSuggestion
+} from '@/lib/types';
 import { StatusBadge, EmptyState, CreateZoneModal, TagInput, SectionCard } from './DnsShared';
+import { SpfWizard, DkimWizard, DmarcWizard, PropagationChecker, ReverseDnsWizard, SrvWizard, EmailHealthCheck, ReverseDnsDashboard } from './DnsWizards';
 import { toast } from 'sonner';
 
 const RECORD_TYPES: DnsRecordType[] = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'SRV', 'PTR', 'CAA'];
@@ -15,7 +19,12 @@ const HINTS: Record<string, string> = {
     SRV: 'target.example.com.', PTR: 'host.example.com.', CAA: '0 issue "letsencrypt.org"',
 };
 
-function RecordRow({ record, onUpdate, onDelete }: { record: DnsRecord; onUpdate: (r: DnsRecord) => void; onDelete: () => void }) {
+function RecordRow({ record, onUpdate, onDelete, onCheck }: {
+    record: DnsRecord;
+    onUpdate: (r: DnsRecord) => void;
+    onDelete: () => void;
+    onCheck: () => void;
+}) {
     return (
         <tr className="border-b border-outline/5 hover:bg-surface-container/50 transition-colors">
             <td className="px-3 py-2">
@@ -37,6 +46,13 @@ function RecordRow({ record, onUpdate, onDelete }: { record: DnsRecord; onUpdate
                     <input type="number" value={record.priority ?? 10} onChange={e => onUpdate({ ...record, priority: parseInt(e.target.value) || 0 })} className="w-full bg-transparent border-b border-outline/10 focus:border-primary px-1 py-0.5 text-sm focus:outline-none text-center" />
                 </td>
             )}
+            <td className="px-3 py-2 w-20">
+                {record.type !== 'SOA' && (
+                    <button onClick={onCheck} title="Check Propagation" className="text-primary hover:text-primary-high transition-colors p-1">
+                        <Search size={14} />
+                    </button>
+                )}
+            </td>
             <td className="px-3 py-2 w-10">
                 <button onClick={onDelete} className="text-red-400 hover:text-red-300 transition-colors p-1"><Trash2 size={14} /></button>
             </td>
@@ -166,6 +182,9 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
     const [showTemplates, setShowTemplates] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
     const [searchRecord, setSearchRecord] = useState('');
+    const [showWizards, setShowWizards] = useState(false);
+    const [activeWizard, setActiveWizard] = useState<'spf' | 'dkim' | 'dmarc' | 'srv' | 'propagation' | 'reverse' | null>(null);
+    const [propRecord, setPropRecord] = useState<DnsRecord | null>(null);
 
     useEffect(() => {
         setRecords(zone.records);
@@ -263,7 +282,57 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                 <button onClick={() => setShowImport(!showImport)} className="btn-sm bg-surface-container"><Upload size={14} /> Import</button>
                 <button onClick={loadTemplates} className="btn-sm bg-surface-container"><BookTemplate size={14} /> Templates</button>
                 <button onClick={() => setShowSettings(!showSettings)} className={`btn-sm ${showSettings ? 'bg-primary/20 text-primary' : 'bg-surface-container'}`}><Settings2 size={14} /> Zone Settings</button>
+                <div className="relative">
+                    <button onClick={() => setShowWizards(!showWizards)} className={`btn-sm ${showWizards || (activeWizard && activeWizard !== 'propagation') ? 'bg-primary/20 text-primary' : 'bg-surface-container'}`}>
+                        <ShieldCheck size={14} /> Hosting Tools
+                    </button>
+                    {showWizards && (
+                        <div className="absolute top-full mt-1 right-0 w-48 bg-surface rounded-xl border border-outline/10 shadow-xl z-20 py-1 flex flex-col">
+                            <button onClick={() => { setActiveWizard('spf'); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><Mail size={12} /> SPF Wizard</button>
+                            <button onClick={() => { setActiveWizard('srv'); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><Globe size={12} /> SRV Auto-config</button>
+                            <button onClick={() => { setActiveWizard('dkim'); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><Lock size={12} /> DKIM Producer</button>
+                            <button onClick={() => { setActiveWizard('dmarc'); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><Shield size={12} /> DMARC Setup</button>
+                            <button onClick={() => { setActiveWizard('reverse'); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><RefreshCw size={12} /> Reverse DNS Helper</button>
+                        </div>
+                    )}
+                </div>
             </div>
+
+            {activeWizard && (
+                <SectionCard
+                    title={
+                        activeWizard === 'spf' ? 'SPF Wizard' :
+                            activeWizard === 'srv' ? 'SRV Auto-config' :
+                                activeWizard === 'dkim' ? 'DKIM Producer' :
+                                    activeWizard === 'dmarc' ? 'DMARC Setup' :
+                                        activeWizard === 'propagation' ? 'Propagation Check' :
+                                            'Reverse DNS Helper'
+                    }
+                    actions={<button onClick={() => { setActiveWizard(null); setPropRecord(null); }} className="text-on-surface-variant hover:text-on-surface">Close</button>}
+                >
+                    {activeWizard === 'spf' && <SpfWizard zone={zone} onAddRecord={r => { setRecords([...records, { ...r, id: `new-${Date.now()}` } as DnsRecord]); setDirty(true); }} />}
+                    {activeWizard === 'srv' && <SrvWizard zone={zone} onAddRecord={r => { setRecords([...records, { ...r, id: `new-${Date.now()}` } as DnsRecord]); setDirty(true); }} />}
+                    {activeWizard === 'dkim' && <DkimWizard zone={zone} onAddRecord={r => { setRecords([...records, { ...r, id: `new-${Date.now()}` } as DnsRecord]); setDirty(true); }} />}
+                    {activeWizard === 'dmarc' && <DmarcWizard zone={zone} onAddRecord={r => { setRecords([...records, { ...r, id: `new-${Date.now()}` } as DnsRecord]); setDirty(true); }} />}
+                    {activeWizard === 'propagation' && propRecord && <PropagationChecker zone={zone} record={propRecord} />}
+                    {activeWizard === 'reverse' && <ReverseDnsWizard onZoneSuggested={(s: IpPtrSuggestion) => {
+                        DockerClient.createDnsZone({ name: s.reverseZone, type: 'REVERSE', role: 'MASTER' }).then(r => {
+                            if (r) {
+                                toast.success(`Created reverse zone ${s.reverseZone}`);
+                                DockerClient.addDnsRecord(r.id, { id: '', name: s.ptrRecordName, type: 'PTR', value: 'localhost.', ttl: 86400 } as DnsRecord);
+                                onRefresh();
+                                setActiveWizard(null);
+                            }
+                        });
+                    }} />}
+                </SectionCard>
+            )}
+
+            {zone.type === 'FORWARD' && (
+                <SectionCard title="Email Health Check">
+                    <EmailHealthCheck zoneId={zone.id} />
+                </SectionCard>
+            )}
 
             {validation && (
                 <div className={`rounded-lg p-3 text-xs font-mono ${validation.valid ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>{validation.output}</div>
@@ -316,6 +385,7 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                                 <th className="px-3 py-2 text-left font-medium">Value</th>
                                 <th className="px-3 py-2 text-center font-medium">TTL</th>
                                 {hasPriority && <th className="px-3 py-2 text-center font-medium">Pri</th>}
+                                <th className="px-3 py-2 w-20">Tools</th>
                                 <th className="px-3 py-2 w-10"></th>
                             </tr>
                         </thead>
@@ -327,7 +397,8 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                             ).map((r, i) => (
                                 <RecordRow key={r.id || i} record={r}
                                     onUpdate={u => { const next = [...records]; next[i] = u; setRecords(next); setDirty(true); }}
-                                    onDelete={() => { setRecords(records.filter((_, j) => j !== i)); setDirty(true); }} />
+                                    onDelete={() => { setRecords(records.filter((_, j) => j !== i)); setDirty(true); }}
+                                    onCheck={() => { setPropRecord(r); setActiveWizard('propagation'); }} />
                             ))}
                         </tbody>
                     </table>
@@ -353,6 +424,7 @@ export default function DnsZonesTab({ zones, selectedZoneId, onSelectZone, onRef
 }) {
     const [showCreate, setShowCreate] = useState(false);
     const [searchZone, setSearchZone] = useState('');
+    const [showReverseDashboard, setShowReverseDashboard] = useState(false);
     const selectedZone = zones.find(z => z.id === selectedZoneId) || null;
 
     const filteredZones = useMemo(() => {
@@ -377,7 +449,19 @@ export default function DnsZonesTab({ zones, selectedZoneId, onSelectZone, onRef
             <div className="w-72 shrink-0 space-y-3">
                 <div className="flex items-center justify-between">
                     <h2 className="text-sm font-semibold">Zones</h2>
-                    <button onClick={() => setShowCreate(true)} className="btn-sm bg-primary/10 text-primary"><Plus size={13} /> New</button>
+                    <div className="flex gap-1">
+                        <button onClick={async () => {
+                            if (confirm('Create standard default zones?')) {
+                                await DockerClient.createDefaultDnsZones();
+                                onRefresh();
+                                toast.success('Default zones created');
+                            }
+                        }} className="p-1.5 rounded-lg bg-surface-container-high text-on-surface-variant hover:text-primary transition-colors" title="Create Default Zones">
+                            <RefreshCw size={13} />
+                        </button>
+                        <button onClick={() => setShowCreate(true)} className="btn-sm bg-primary/10 text-primary"><Plus size={13} /> New</button>
+                        <button onClick={() => setShowReverseDashboard(true)} className="btn-sm bg-surface-container" title="Reverse DNS Dashboard"><RefreshCw size={13} /></button>
+                    </div>
                 </div>
 
                 <div className="relative">
@@ -415,6 +499,24 @@ export default function DnsZonesTab({ zones, selectedZoneId, onSelectZone, onRef
                 {selectedZone ? <ZoneDetail zone={selectedZone} onRefresh={onRefresh} /> : <EmptyState message={zones.length > 0 ? 'Select a zone' : 'Create your first DNS zone'} />}
             </div>
             {showCreate && <CreateZoneModal onClose={() => setShowCreate(false)} onCreated={onRefresh} />}
+            {showReverseDashboard && (
+                <div className="fixed inset-0 bg-surface/80 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+                    <div className="bg-surface-container rounded-3xl border border-outline/10 shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <div className="p-6 border-b border-outline/10 flex justify-between items-center">
+                            <div>
+                                <h2 className="text-xl font-bold">Reverse DNS Dashboard</h2>
+                                <p className="text-xs text-on-surface-variant">Global overview of server IPs and PTR records</p>
+                            </div>
+                            <button onClick={() => setShowReverseDashboard(false)} className="p-2 rounded-xl hover:bg-surface-container-high transition-colors">
+                                <Plus size={24} className="rotate-45" />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-6">
+                            <ReverseDnsDashboard />
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
