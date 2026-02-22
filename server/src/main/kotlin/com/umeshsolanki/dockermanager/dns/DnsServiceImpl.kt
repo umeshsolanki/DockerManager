@@ -1846,6 +1846,7 @@ object DnsService {
     fun suggestReverseZone(ip: String) = service.suggestReverseZone(ip)
     fun checkPropagation(zoneId: String, recordName: String, recordType: DnsRecordType) = service.checkPropagation(zoneId, recordName, recordType)
     fun createDefaultZones() = service.createDefaultZones()
+    fun regenerateZoneFiles() = service.regenerateZoneFiles()
 
     fun buildSrvRecord(config: SrvConfig) = service.buildSrvRecord(config)
     fun getEmailHealth(zoneId: String) = service.getEmailHealth(zoneId)
