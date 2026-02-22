@@ -3,20 +3,16 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-    Shield,
-    Globe,
     Activity,
-    Zap,
-    ShieldAlert,
+    Globe,
     TrendingUp,
-    Lock,
-    MousePointerClick,
     Container,
     ArrowRight,
-    Server
+    Server,
+    Shield
 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { ProxyStats, DockerContainer } from '@/lib/types';
+import { ProxyStats, DockerContainer, DnsServiceStatus, DnsQueryStats } from '@/lib/types';
 import {
     AreaChart,
     Area,
@@ -31,18 +27,23 @@ export default function DashboardScreen() {
     const router = useRouter();
     const [proxyStats, setProxyStats] = useState<ProxyStats | null>(null);
     const [containers, setContainers] = useState<DockerContainer[]>([]);
+    const [dnsStatus, setDnsStatus] = useState<DnsServiceStatus | null>(null);
+    const [dnsStats, setDnsStats] = useState<DnsQueryStats | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     const fetchData = async () => {
         setIsLoading(true);
         try {
-            const [proxy, conts] = await Promise.all([
+            const [proxy, conts, dnsS, dnsQ] = await Promise.all([
                 DockerClient.getProxyStats(),
-                DockerClient.listContainers()
+                DockerClient.listContainers(),
+                DockerClient.getDnsStatus(),
+                DockerClient.getDnsQueryStats()
             ]);
             setProxyStats(proxy);
-            setProxyStats(proxy);
             setContainers(conts);
+            setDnsStatus(dnsS);
+            setDnsStats(dnsQ);
         } catch (e) {
             console.error('Failed to fetch dashboard data', e);
         } finally {
@@ -109,6 +110,14 @@ export default function DashboardScreen() {
                     subValue="Total Traffic"
                     color="blue"
                     onClick={() => navigateTo('Analytics')}
+                />
+                <StatCard
+                    icon={<Shield size={20} />}
+                    label="DNS Server"
+                    value={dnsStatus?.zoneCount?.toString() || '0'}
+                    subValue={dnsStatus?.running ? 'Active Zones' : 'Offline'}
+                    color="orange"
+                    onClick={() => navigateTo('DNS')}
                 />
                 <StatCard
                     icon={<Server size={20} />}
@@ -179,10 +188,6 @@ export default function DashboardScreen() {
                     </div>
                 </div>
 
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
                 {/* Popular Proxy Paths */}
                 <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[24px] p-5 flex flex-col gap-4">
                     <div className="flex items-center justify-between">
@@ -201,15 +206,15 @@ export default function DashboardScreen() {
                             <ArrowRight size={16} />
                         </button>
                     </div>
-                    <div className="space-y-2">
-                        {proxyStats?.topPaths?.slice(0, 4).map(({ path, count }, i) => (
+                    <div className="flex-1 overflow-y-auto min-h-0 space-y-2 pr-1 -mr-2">
+                        {proxyStats?.topPaths?.slice(0, 5).map(({ path, count }, i) => (
                             <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
                                 <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500">
-                                    <Server size={14} />
+                                    <Globe size={14} />
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-xs font-bold truncate">{path}</span>
+                                        <span className="text-xs font-bold truncate pr-2">{path}</span>
                                         <span className="text-xs font-black text-blue-400">{count}</span>
                                     </div>
                                     <div className="mt-1.5 w-full h-1 bg-white/5 rounded-full overflow-hidden">
@@ -221,8 +226,95 @@ export default function DashboardScreen() {
                                 </div>
                             </div>
                         ))}
+                        {(!proxyStats?.topPaths || proxyStats.topPaths.length === 0) && (
+                            <div className="text-center text-xs text-on-surface-variant/50 py-4">
+                                No path data available
+                            </div>
+                        )}
                     </div>
                 </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+                {/* Top DNS Queries */}
+                <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[24px] p-5 flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                            <h3 className="text-sm font-bold flex items-center gap-2">
+                                <Shield size={16} className="text-orange-400" />
+                                Top DNS Queries
+                            </h3>
+                            <span className="text-[9px] uppercase font-bold text-on-surface-variant/30 tracking-wider">Most requested domains</span>
+                        </div>
+                        <button
+                            onClick={() => navigateTo('DNS')}
+                            className="p-1.5 hover:bg-white/5 rounded-lg text-on-surface-variant hover:text-primary transition-colors"
+                            title="View full DNS analytics"
+                        >
+                            <ArrowRight size={16} />
+                        </button>
+                    </div>
+                    <div className="space-y-2">
+                        {dnsStats?.topDomains && Object.entries(dnsStats.topDomains)
+                            .sort((a, b) => b[1] - a[1])
+                            .slice(0, 4)
+                            .map(([domain, count], i, arr) => (
+                                <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
+                                    <div className="p-1.5 rounded-lg bg-orange-500/10 text-orange-500">
+                                        <Shield size={14} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-bold truncate pr-2">{domain}</span>
+                                            <span className="text-xs font-black text-orange-400">{count}</span>
+                                        </div>
+                                        <div className="mt-1.5 w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full bg-orange-500/50"
+                                                style={{ width: `${Math.min(100, (count / (arr[0]?.[1] || 1)) * 100)}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        {(!dnsStats?.topDomains || Object.keys(dnsStats.topDomains).length === 0) && (
+                            <div className="text-center text-xs text-on-surface-variant/50 py-4">
+                                No DNS query data available
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* DNS Query Types Summary */}
+                <div className="bg-surface/30 backdrop-blur-xl border border-outline/10 rounded-[24px] p-5 flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                            <h3 className="text-sm font-bold flex items-center gap-2">
+                                <Activity size={16} className="text-primary" />
+                                DNS Request Types
+                            </h3>
+                            <span className="text-[9px] uppercase font-bold text-on-surface-variant/30 tracking-wider">Distribution of query types</span>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 mt-2">
+                        {dnsStats?.queryTypes && Object.entries(dnsStats.queryTypes)
+                            .sort((a, b) => b[1] - a[1])
+                            .slice(0, 4)
+                            .map(([type, count], i) => (
+                                <div key={i} className="flex flex-col p-4 bg-white/5 rounded-[16px] border border-white/5">
+                                    <span className="text-[10px] font-bold text-on-surface-variant/50 uppercase tracking-widest">{type}</span>
+                                    <span className="text-xl font-black mt-1 text-primary">{count}</span>
+                                </div>
+                            ))}
+                        {(!dnsStats?.queryTypes || Object.keys(dnsStats.queryTypes).length === 0) && (
+                            <div className="col-span-2 text-center text-xs text-on-surface-variant/50 py-4">
+                                No query type data available
+                            </div>
+                        )}
+                    </div>
+                </div>
+
             </div>
         </div>
     );
@@ -261,3 +353,4 @@ function StatCard({ icon, label, value, subValue, color, onClick }: {
         </Component>
     );
 }
+

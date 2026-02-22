@@ -476,6 +476,7 @@ export const DockerClient = {
     dnsFlushCache: () => req<DnsActionResult>('/dns/flush-cache', { method: 'POST' }, { success: false, message: 'Network error' }),
     dnsValidateConfig: () => req<ZoneValidationResult>('/dns/validate', {}, { valid: false, output: '' }),
     getDnsQueryStats: () => req<DnsQueryStats>('/dns/stats', {}, { totalQueries: 0, successQueries: 0, failedQueries: 0, recursiveQueries: 0, queryTypes: {}, topDomains: {}, rawStats: '' }),
+    getDnsLogs: (tail = 100) => textReq(`/dns/logs?tail=${tail}`),
 
     // Zones
     listDnsZones: () => req<DnsZone[]>('/dns/zones', {}, []),

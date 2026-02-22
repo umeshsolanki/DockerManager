@@ -62,8 +62,9 @@ interface IDnsService {
     // -- DNS Lookup (dig) --
     fun lookup(request: DnsLookupRequest): DnsLookupResult
 
-    // -- Statistics --
+    // -- Statistics and Logs --
     fun getQueryStats(): DnsQueryStats
+    fun getLogs(tail: Int = 100): String
 
     // -- Zone Templates --
     fun listTemplates(): List<ZoneTemplate>

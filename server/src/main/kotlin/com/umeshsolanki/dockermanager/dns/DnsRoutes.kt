@@ -21,6 +21,11 @@ fun Route.dnsRoutes() {
         post("/flush-cache") { call.respond(DnsService.flushCache()) }
         get("/validate") { call.respond(DnsService.validateConfig()) }
         get("/stats") { call.respond(DnsService.getQueryStats()) }
+        get("/logs") {
+            val tail = call.request.queryParameters["tail"]?.toIntOrNull() ?: 100
+            call.respondText(DnsService.getLogs(tail), ContentType.Text.Plain)
+        }
+
 
         // ==================== Zones ====================
 

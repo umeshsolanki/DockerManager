@@ -9,13 +9,23 @@ import { RefreshCw } from 'lucide-react';
 
 export default function DnsAnalyticsTab() {
     const [stats, setStats] = useState<DnsQueryStats | null>(null);
+    const [logs, setLogs] = useState<string>('');
     const [loading, setLoading] = useState(true);
 
     const loadStats = async () => {
         setLoading(true);
-        const data = await DockerClient.getDnsQueryStats();
-        setStats(data);
-        setLoading(false);
+        try {
+            const [data, logsData] = await Promise.all([
+                DockerClient.getDnsQueryStats(),
+                DockerClient.getDnsLogs(200)
+            ]);
+            setStats(data);
+            setLogs(logsData);
+        } catch (e) {
+            console.error('Failed to load DNS analytics', e);
+        } finally {
+            setLoading(false);
+        }
     };
 
     useEffect(() => {
@@ -66,13 +76,21 @@ export default function DnsAnalyticsTab() {
                 </SectionCard>
             )}
 
-            {stats.rawStats && (
-                <SectionCard title="Raw Output (rndc stats / named.stats)">
-                    <pre className="text-[10px] font-mono text-on-surface-variant whitespace-pre-wrap max-h-64 overflow-y-auto bg-surface p-3 rounded-lg border border-outline/10">
-                        {stats.rawStats}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {stats.rawStats && (
+                    <SectionCard title="Raw Output (rndc stats / named.stats)">
+                        <pre className="text-[10px] font-mono text-on-surface-variant whitespace-pre-wrap h-64 overflow-y-auto bg-surface p-3 rounded-lg border border-outline/10">
+                            {stats.rawStats}
+                        </pre>
+                    </SectionCard>
+                )}
+
+                <SectionCard title="System Logs">
+                    <pre className="text-[10px] font-mono text-on-surface-variant whitespace-pre-wrap h-64 overflow-y-auto bg-[#1e1e2d] p-3 rounded-lg border border-outline/10">
+                        {logs || "No logs available"}
                     </pre>
                 </SectionCard>
-            )}
+            </div>
         </div>
     );
 }

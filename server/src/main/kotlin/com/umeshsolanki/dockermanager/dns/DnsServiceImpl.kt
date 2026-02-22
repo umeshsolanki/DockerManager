@@ -810,6 +810,21 @@ class DnsServiceImpl : IDnsService {
     //  Statistics
     // ===================================================================
 
+    override fun getLogs(tail: Int): String {
+        val status = getInstallStatus()
+        if (!status.installed || !status.running) return "DNS service is not running."
+
+        return if (status.method == DnsInstallMethod.DOCKER && status.dockerContainerId != null) {
+            val cmd = "${AppConfig.dockerCommand} logs --tail $tail ${status.dockerContainerId} 2>&1"
+            commandExecutor.execute(cmd).output
+        } else if (status.method == DnsInstallMethod.APT && status.osType != "mac") {
+            val cmd = "journalctl -u named -u bind9 -n $tail --no-pager"
+            commandExecutor.execute(cmd).output
+        } else {
+            "Log retrieval not supported for this installation type."
+        }
+    }
+
     override fun getQueryStats(): DnsQueryStats {
         bindExec("rndc stats")
 
@@ -1496,6 +1511,7 @@ object DnsService {
 
     // Stats
     fun getQueryStats() = service.getQueryStats()
+    fun getLogs(tail: Int = 100) = service.getLogs(tail)
 
     // Templates
     fun listTemplates() = service.listTemplates()
