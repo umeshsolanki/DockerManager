@@ -125,6 +125,11 @@ fun Route.dnsRoutes() {
                     call.respond(DnsService.disableDnssec(id))
                 }
 
+                post("/dnssec/sign") {
+                    val id = call.requireParameter("id") ?: return@post
+                    call.respond(DnsService.signZone(id))
+                }
+
                 get("/dnssec/ds") {
                     val id = call.requireParameter("id") ?: return@get
                     call.respond(DnsService.getDsRecords(id))
@@ -201,6 +206,17 @@ fun Route.dnsRoutes() {
             post {
                 val config = call.receive<DnsForwarderConfig>()
                 call.respondBooleanResult(DnsService.updateForwarderConfig(config), "Forwarders updated", "Failed to update forwarders")
+            }
+        }
+
+        // ==================== Global Security ====================
+
+        route("/security") {
+            get { call.respond(DnsService.getGlobalSecurityConfig()) }
+
+            post {
+                val config = call.receive<GlobalSecurityConfig>()
+                call.respondBooleanResult(DnsService.updateGlobalSecurityConfig(config), "Security config updated", "Failed to update security config")
             }
         }
 

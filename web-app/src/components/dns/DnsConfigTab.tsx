@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Save, Plus, Trash2 } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { DnsForwarderConfig, ZoneTemplate, DnsQueryStats } from '@/lib/types';
+import { DnsForwarderConfig, ZoneTemplate } from '@/lib/types';
 import { SectionCard, EmptyState, TagInput } from './DnsShared';
 import { toast } from 'sonner';
 
@@ -77,53 +77,14 @@ function TemplatesSection() {
     );
 }
 
-function StatsSection() {
-    const [stats, setStats] = useState<DnsQueryStats | null>(null);
+// StatsSection removed and moved to DnsAnalyticsTab.tsx
 
-    useEffect(() => { DockerClient.getDnsQueryStats().then(setStats); }, []);
+// StatMini removed and moved to DnsAnalyticsTab.tsx
 
-    if (!stats) return null;
-
-    const typeEntries = Object.entries(stats.queryTypes).sort((a, b) => b[1] - a[1]);
-
-    return (
-        <SectionCard title="Query Statistics">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                <StatMini label="Total" value={stats.totalQueries} />
-                <StatMini label="Success" value={stats.successQueries} />
-                <StatMini label="Failed" value={stats.failedQueries} />
-                <StatMini label="Recursive" value={stats.recursiveQueries} />
-            </div>
-            {typeEntries.length > 0 && (
-                <div>
-                    <p className="text-xs font-medium mb-2">Query Types</p>
-                    <div className="flex gap-2 flex-wrap">
-                        {typeEntries.map(([type, count]) => (
-                            <span key={type} className="text-[10px] bg-surface px-2 py-1 rounded font-mono">{type}: {count}</span>
-                        ))}
-                    </div>
-                </div>
-            )}
-            {stats.rawStats && typeEntries.length === 0 && (
-                <pre className="text-[10px] font-mono text-on-surface-variant whitespace-pre-wrap max-h-40 overflow-y-auto">{stats.rawStats.slice(0, 2000)}</pre>
-            )}
-        </SectionCard>
-    );
-}
-
-function StatMini({ label, value }: { label: string; value: number }) {
-    return (
-        <div className="rounded-lg bg-surface p-3 text-center">
-            <div className="text-lg font-bold">{value.toLocaleString()}</div>
-            <div className="text-[10px] text-on-surface-variant">{label}</div>
-        </div>
-    );
-}
 
 export default function DnsConfigTab() {
     return (
         <div className="space-y-5">
-            <StatsSection />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 <ForwardersSection />
                 <TemplatesSection />

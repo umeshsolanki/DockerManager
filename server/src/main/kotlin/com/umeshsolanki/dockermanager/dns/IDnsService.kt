@@ -47,10 +47,16 @@ interface IDnsService {
     fun getForwarderConfig(): DnsForwarderConfig
     fun updateForwarderConfig(config: DnsForwarderConfig): Boolean
 
+    // -- Global Security Config --
+    fun getGlobalSecurityConfig(): GlobalSecurityConfig
+    fun updateGlobalSecurityConfig(config: GlobalSecurityConfig): Boolean
+
+
     // -- DNSSEC --
     fun getDnssecStatus(zoneId: String): DnssecStatus
     fun enableDnssec(zoneId: String): DnsActionResult
     fun disableDnssec(zoneId: String): DnsActionResult
+    fun signZone(zoneId: String): DnsActionResult
     fun getDsRecords(zoneId: String): List<String>
 
     // -- DNS Lookup (dig) --

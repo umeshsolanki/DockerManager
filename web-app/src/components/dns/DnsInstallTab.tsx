@@ -164,10 +164,10 @@ export default function DnsInstallTab() {
     const [config, setConfig] = useState<DnsInstallRequest>({
         method: 'DOCKER',
         dockerImage: 'ubuntu/bind9:latest',
-        containerName: 'bind9',
+        containerName: 'binddns',
         hostPort: 53,
-        dataPath: '/opt/bind9/data',
-        configPath: '/opt/bind9/config',
+        dataPath: 'binddns/data',
+        configPath: 'binddns/config',
     });
 
     const isMac = status?.osType === 'mac';

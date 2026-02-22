@@ -1,11 +1,89 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, Key, ShieldCheck, Lock } from 'lucide-react';
+import { Plus, Trash2, Key, ShieldCheck, Lock, Globe, ServerCrash } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { DnsAcl, TsigKey, DnsZone, DnssecStatus, TsigAlgorithm } from '@/lib/types';
+import { DnsAcl, TsigKey, DnsZone, DnssecStatus, TsigAlgorithm, GlobalSecurityConfig } from '@/lib/types';
 import { SectionCard, EmptyState, StatusBadge, TagInput } from './DnsShared';
 import { toast } from 'sonner';
+
+function GlobalSecuritySection() {
+    const [config, setConfig] = useState<GlobalSecurityConfig | null>(null);
+    const [saving, setSaving] = useState(false);
+
+    const refresh = useCallback(async () => setConfig(await DockerClient.getGlobalSecurityConfig()), []);
+    useEffect(() => { refresh(); }, [refresh]);
+
+    const handleSave = async () => {
+        if (!config) return;
+        setSaving(true);
+        const r = await DockerClient.updateGlobalSecurityConfig(config);
+        setSaving(false);
+        r.success ? toast.success('Security settings saved') : toast.error(r.message || 'Failed to save');
+        refresh();
+    };
+
+    if (!config) return null;
+
+    return (
+        <SectionCard title="Global Security & Query Control" actions={<Globe size={14} className="text-on-surface-variant" />}>
+            <div className="space-y-4">
+
+                {/* Recursion Control */}
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium">Allow Recursion</label>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" className="sr-only peer" checked={config.recursionEnabled} onChange={e => setConfig({ ...config, recursionEnabled: e.target.checked })} />
+                            <div className="w-9 h-5 bg-surface-container-high peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                        </label>
+                    </div>
+                    <p className="text-xs text-on-surface-variant">WARNING: Enabling recursion without restricting access can turn your server into an open resolver, vulnerable to DNS amplification attacks.</p>
+
+                    {config.recursionEnabled && (
+                        <div>
+                            <label className="block text-xs font-medium mb-1">Allowed IPs / ACLs</label>
+                            <TagInput value={config.allowRecursion} onChange={v => setConfig({ ...config, allowRecursion: v })} placeholder="e.g. 192.168.1.0/24, localnets" />
+                        </div>
+                    )}
+                </div>
+
+                <div className="border-t border-outline/10 pt-3"></div>
+
+                {/* Rate Limiting */}
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium flex items-center gap-1"><ServerCrash size={14} className="text-amber-400" /> Response Rate Limiting (RRL)</label>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" className="sr-only peer" checked={config.rateLimitEnabled} onChange={e => setConfig({ ...config, rateLimitEnabled: e.target.checked })} />
+                            <div className="w-9 h-5 bg-surface-container-high peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                        </label>
+                    </div>
+                    <p className="text-xs text-on-surface-variant">Mitigates DNS amplification attacks by limiting duplicate responses.</p>
+
+                    {config.rateLimitEnabled && (
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-medium mb-1">Responses strictly per second</label>
+                                <input type="number" min="1" value={config.rateLimitResponsesPerSecond} onChange={e => setConfig({ ...config, rateLimitResponsesPerSecond: parseInt(e.target.value) || 10 })} className="input-field" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium mb-1">Window (seconds)</label>
+                                <input type="number" min="1" value={config.rateLimitWindow} onChange={e => setConfig({ ...config, rateLimitWindow: parseInt(e.target.value) || 5 })} className="input-field" />
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="pt-2">
+                    <button onClick={handleSave} disabled={saving} className="btn-primary w-full disabled:opacity-50">
+                        {saving ? 'Saving...' : 'Apply Security Settings'}
+                    </button>
+                </div>
+            </div>
+        </SectionCard>
+    );
+}
 
 function AclSection() {
     const [acls, setAcls] = useState<DnsAcl[]>([]);
@@ -151,9 +229,27 @@ function DnssecSection({ zones }: { zones: DnsZone[] }) {
                                     {status.dsRecords.map((ds, i) => <pre key={i} className="text-[10px] font-mono bg-surface p-2 rounded mb-1 break-all">{ds}</pre>)}
                                 </div>
                             )}
-                            <button onClick={handleToggle} disabled={loading} className={`btn-sm ${status.enabled ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'} disabled:opacity-50`}>
-                                {loading ? 'Processing...' : status.enabled ? 'Disable DNSSEC' : 'Enable DNSSEC'}
-                            </button>
+                            <div className="flex gap-2">
+                                <button onClick={handleToggle} disabled={loading} className={`btn-sm flex-1 justify-center ${status.enabled ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'} disabled:opacity-50`}>
+                                    {loading ? 'Processing...' : status.enabled ? 'Disable DNSSEC' : 'Enable DNSSEC'}
+                                </button>
+                                {status.enabled && (
+                                    <button
+                                        onClick={async () => {
+                                            setLoading(true);
+                                            const r = await DockerClient.signDnsZone(selectedId!);
+                                            setLoading(false);
+                                            r.success ? toast.success(r.message) : toast.error(r.message);
+                                            refreshStatus();
+                                        }}
+                                        disabled={loading}
+                                        className="btn-sm bg-primary/10 text-primary disabled:opacity-50"
+                                        title="Manually re-sign the zone with the current keys"
+                                    >
+                                        Resign Zone
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>
@@ -164,10 +260,12 @@ function DnssecSection({ zones }: { zones: DnsZone[] }) {
 
 export default function DnsSecurityTab({ zones }: { zones: DnsZone[] }) {
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+            <GlobalSecuritySection />
             <DnssecSection zones={zones} />
             <TsigSection />
             <AclSection />
         </div>
     );
 }
+

@@ -11,9 +11,10 @@ import DnsLookupTab from '@/components/dns/DnsLookupTab';
 import DnsSecurityTab from '@/components/dns/DnsSecurityTab';
 import DnsConfigTab from '@/components/dns/DnsConfigTab';
 import DnsInstallTab from '@/components/dns/DnsInstallTab';
+import DnsAnalyticsTab from '@/components/dns/DnsAnalyticsTab';
 import { toast } from 'sonner';
 
-type DnsTab = 'zones' | 'lookup' | 'security' | 'config' | 'install';
+type DnsTab = 'analytics' | 'zones' | 'lookup' | 'security' | 'config' | 'install';
 
 export default function DnsScreen() {
     const [tab, setTab] = useState<DnsTab>('install');
@@ -73,13 +74,15 @@ export default function DnsScreen() {
 
             <TabsList>
                 <TabButton id="install" label="Install" active={tab === 'install'} onClick={() => setTab('install')} />
+                <TabButton id="analytics" label="Analytics" active={tab === 'analytics'} onClick={() => setTab('analytics')} />
                 <TabButton id="zones" label="Zones & Records" active={tab === 'zones'} onClick={() => setTab('zones')} />
                 <TabButton id="lookup" label="Lookup" active={tab === 'lookup'} onClick={() => setTab('lookup')} />
                 <TabButton id="security" label="Security" active={tab === 'security'} onClick={() => setTab('security')} />
-                <TabButton id="config" label="Config & Stats" active={tab === 'config'} onClick={() => setTab('config')} />
+                <TabButton id="config" label="Config" active={tab === 'config'} onClick={() => setTab('config')} />
             </TabsList>
 
             {tab === 'install' && <DnsInstallTab />}
+            {tab === 'analytics' && <DnsAnalyticsTab />}
             {tab === 'zones' && <DnsZonesTab zones={zones} selectedZoneId={selectedZoneId} onSelectZone={setSelectedZoneId} onRefresh={refresh} />}
             {tab === 'lookup' && <DnsLookupTab />}
             {tab === 'security' && <DnsSecurityTab zones={zones} />}

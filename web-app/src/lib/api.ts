@@ -17,8 +17,9 @@ import {
     DnsZone, DnsRecord, DnsServiceStatus, ZoneValidationResult, CreateZoneRequest, UpdateZoneRequest, DnsActionResult,
     DnsAcl, TsigKey, DnsForwarderConfig, DnssecStatus, DnsLookupRequest, DnsLookupResult,
     DnsQueryStats, ZoneTemplate, BulkImportRequest, BulkImportResult,
-    DnsInstallRequest, DnsInstallStatus
+    DnsInstallRequest, DnsInstallStatus, GlobalSecurityConfig
 } from './types';
+
 
 const DEFAULT_SERVER_URL = "http://localhost:9091";
 
@@ -497,9 +498,10 @@ export const DockerClient = {
     deleteDnsRecord: (zoneId: string, recordId: string) => apiFetch(`/dns/zones/${zoneId}/records/${recordId}`, { method: 'DELETE' }).then(r => r.ok),
 
     // DNSSEC
-    getDnssecStatus: (zoneId: string) => req<DnssecStatus>(`/dns/zones/${zoneId}/dnssec`, {}, { enabled: false, signed: false, kskKeyTag: '', zskKeyTag: '', dsRecords: [] }),
+    getDnssecStatus: (zoneId: String) => req<DnssecStatus>(`/dns/zones/${zoneId}/dnssec`, {}, { enabled: false, signed: false, kskKeyTag: '', zskKeyTag: '', dsRecords: [] }),
     enableDnssec: (zoneId: string) => req<DnsActionResult>(`/dns/zones/${zoneId}/dnssec/enable`, { method: 'POST' }, { success: false, message: 'Error' }),
     disableDnssec: (zoneId: string) => req<DnsActionResult>(`/dns/zones/${zoneId}/dnssec/disable`, { method: 'POST' }, { success: false, message: 'Error' }),
+    signDnsZone: (zoneId: string) => req<DnsActionResult>(`/dns/zones/${zoneId}/dnssec/sign`, { method: 'POST' }, { success: false, message: 'Error' }),
     getDsRecords: (zoneId: string) => req<string[]>(`/dns/zones/${zoneId}/dnssec/ds`, {}, []),
 
     // Templates
@@ -528,6 +530,10 @@ export const DockerClient = {
     // Global Forwarders
     getDnsForwarders: () => req<DnsForwarderConfig>('/dns/forwarders', {}, { forwarders: [], forwardOnly: false }),
     updateDnsForwarders: (config: DnsForwarderConfig) => safeReq('/dns/forwarders', { method: 'POST', body: JSON.stringify(config) }),
+
+    // Global Security
+    getGlobalSecurityConfig: () => req<GlobalSecurityConfig>('/dns/security', {}, { recursionEnabled: false, allowRecursion: ['localnets', 'localhost'], rateLimitEnabled: false, rateLimitResponsesPerSecond: 10, rateLimitWindow: 5 }),
+    updateGlobalSecurityConfig: (config: GlobalSecurityConfig) => safeReq('/dns/security', { method: 'POST', body: JSON.stringify(config) }),
 
     // Installation
     getDnsInstallStatus: () => req<DnsInstallStatus>('/dns/install/status', {}, { installed: false, running: false, version: '', logs: [] }),

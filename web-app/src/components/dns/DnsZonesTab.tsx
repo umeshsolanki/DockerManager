@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Power, Shield, FileText, Upload, BookTemplate, Settings2 } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Plus, Trash2, Power, Shield, FileText, Upload, BookTemplate, Settings2, Search } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { DnsZone, DnsRecord, DnsRecordType, ZoneValidationResult, ZoneTemplate, UpdateZoneRequest, SoaRecord } from '@/lib/types';
 import { StatusBadge, EmptyState, CreateZoneModal, TagInput, SectionCard } from './DnsShared';
@@ -165,6 +165,7 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
     const [templates, setTemplates] = useState<ZoneTemplate[]>([]);
     const [showTemplates, setShowTemplates] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
+    const [searchRecord, setSearchRecord] = useState('');
 
     useEffect(() => {
         setRecords(zone.records);
@@ -223,6 +224,37 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                 <span className="text-xs text-on-surface-variant">Serial: {zone.soa.serial}</span>
             </div>
 
+            <div className="flex gap-2 flex-wrap p-3 rounded-lg bg-surface border border-outline/10 text-xs items-center text-on-surface-variant">
+                <span className="font-medium mr-2">Quick Settings:</span>
+                <label className="flex items-center gap-2 cursor-pointer hover:text-on-surface transition-colors">
+                    <input
+                        type="checkbox"
+                        checked={zone.allowQuery.includes('any')}
+                        onChange={async (e) => {
+                            const newAllowQuery = e.target.checked ? ['any'] : [];
+                            const r = await DockerClient.updateDnsZoneOptions(zone.id, { allowQuery: newAllowQuery });
+                            if (r) { toast.success('Options updated'); onRefresh(); } else toast.error('Failed to update');
+                        }}
+                        className="rounded bg-surface border-outline/20 text-primary w-3.5 h-3.5 focus:ring-primary focus:ring-offset-0"
+                    />
+                    Allow Query (Any)
+                </label>
+                <span className="text-outline/20 mx-1">|</span>
+                <label className="flex items-center gap-2 cursor-pointer hover:text-on-surface transition-colors">
+                    <input
+                        type="checkbox"
+                        checked={zone.allowTransfer.includes('any')}
+                        onChange={async (e) => {
+                            const newAllowTransfer = e.target.checked ? ['any'] : [];
+                            const r = await DockerClient.updateDnsZoneOptions(zone.id, { allowTransfer: newAllowTransfer });
+                            if (r) { toast.success('Options updated'); onRefresh(); } else toast.error('Failed to update');
+                        }}
+                        className="rounded bg-surface border-outline/20 text-primary w-3.5 h-3.5 focus:ring-primary focus:ring-offset-0"
+                    />
+                    Allow Transfer (Any)
+                </label>
+            </div>
+
             <div className="flex gap-2 flex-wrap">
                 <button onClick={() => { setRecords(r => [...r, { id: '', name: '@', type: 'A', value: '', ttl: 3600 }]); setDirty(true); }} className="btn-sm bg-primary/10 text-primary"><Plus size={14} /> Add Record</button>
                 {dirty && <button onClick={saveRecords} disabled={saving} className="btn-sm bg-primary text-on-primary disabled:opacity-50">{saving ? 'Saving...' : 'Save Changes'}</button>}
@@ -262,6 +294,18 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
 
             {showSettings && <ZoneSettings zone={zone} onRefresh={onRefresh} />}
 
+            <div className="flex items-center gap-2 mb-2">
+                <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant w-4 h-4" />
+                    <input
+                        value={searchRecord}
+                        onChange={e => setSearchRecord(e.target.value)}
+                        placeholder="Search records by name, type, or value..."
+                        className="w-full bg-surface pl-9 pr-3 py-1.5 rounded-lg text-sm border border-outline/10 focus:border-primary focus:outline-none transition-colors"
+                    />
+                </div>
+            </div>
+
             {records.length > 0 ? (
                 <div className="overflow-x-auto rounded-xl border border-outline/10">
                     <table className="w-full text-sm">
@@ -276,7 +320,11 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                             </tr>
                         </thead>
                         <tbody>
-                            {records.map((r, i) => (
+                            {records.filter(r =>
+                                r.name.toLowerCase().includes(searchRecord.toLowerCase()) ||
+                                r.type.toLowerCase().includes(searchRecord.toLowerCase()) ||
+                                r.value.toLowerCase().includes(searchRecord.toLowerCase())
+                            ).map((r, i) => (
                                 <RecordRow key={r.id || i} record={r}
                                     onUpdate={u => { const next = [...records]; next[i] = u; setRecords(next); setDirty(true); }}
                                     onDelete={() => { setRecords(records.filter((_, j) => j !== i)); setDirty(true); }} />
@@ -304,7 +352,14 @@ export default function DnsZonesTab({ zones, selectedZoneId, onSelectZone, onRef
     onRefresh: () => void;
 }) {
     const [showCreate, setShowCreate] = useState(false);
+    const [searchZone, setSearchZone] = useState('');
     const selectedZone = zones.find(z => z.id === selectedZoneId) || null;
+
+    const filteredZones = useMemo(() => {
+        if (!searchZone.trim()) return zones;
+        const q = searchZone.toLowerCase();
+        return zones.filter(z => z.name.toLowerCase().includes(q) || z.role.toLowerCase().includes(q));
+    }, [zones, searchZone]);
 
     const handleToggle = async (id: string) => { await DockerClient.toggleDnsZone(id); onRefresh(); };
 
@@ -324,9 +379,20 @@ export default function DnsZonesTab({ zones, selectedZoneId, onSelectZone, onRef
                     <h2 className="text-sm font-semibold">Zones</h2>
                     <button onClick={() => setShowCreate(true)} className="btn-sm bg-primary/10 text-primary"><Plus size={13} /> New</button>
                 </div>
-                {zones.length === 0 && <EmptyState message="No zones configured" />}
+
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant w-4 h-4" />
+                    <input
+                        value={searchZone}
+                        onChange={e => setSearchZone(e.target.value)}
+                        placeholder="Search zones..."
+                        className="w-full bg-surface-container-high pl-9 pr-3 py-1.5 rounded-lg text-sm border border-outline/10 focus:border-primary focus:outline-none transition-colors"
+                    />
+                </div>
+
+                {filteredZones.length === 0 && <EmptyState message={searchZone ? "No matching zones" : "No zones configured"} />}
                 <div className="space-y-1">
-                    {zones.map(z => (
+                    {filteredZones.map(z => (
                         <div key={z.id} className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${selectedZoneId === z.id ? 'bg-primary/10 border border-primary/20' : 'bg-surface-container hover:bg-surface-container-high border border-transparent'}`} onClick={() => onSelectZone(z.id)}>
                             <div className={`w-2 h-2 rounded-full shrink-0 ${z.enabled ? 'bg-green-400' : 'bg-gray-500'}`} />
                             <div className="flex-1 min-w-0">

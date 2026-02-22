@@ -184,6 +184,18 @@ data class DnsQueryStats(
     val rawStats: String = ""
 )
 
+// ========== Global Security Config ==========
+
+@Serializable
+data class GlobalSecurityConfig(
+    val recursionEnabled: Boolean = false,
+    val allowRecursion: List<String> = listOf("localnets", "localhost"),
+    val rateLimitEnabled: Boolean = false,
+    val rateLimitResponsesPerSecond: Int = 10,
+    val rateLimitWindow: Int = 5
+)
+
+
 // ========== Zone Templates ==========
 
 @Serializable
