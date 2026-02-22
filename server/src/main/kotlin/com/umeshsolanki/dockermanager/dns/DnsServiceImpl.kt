@@ -270,6 +270,11 @@ class DnsServiceImpl : IDnsService {
     override fun getRecords(zoneId: String): List<DnsRecord> =
         getZone(zoneId)?.records ?: emptyList()
 
+    override fun updateRecords(zoneId: String, records: List<DnsRecord>): Boolean = lock.withLock {
+        val zones = loadZones()
+        val index = zones.indexOfFirst { it.id == zoneId }
+        if (index == -1) return false
+
         val cleaned = records.map {
             it.copy(
                 id = if (it.id.isBlank()) UUID.randomUUID().toString() else it.id,
@@ -1479,7 +1484,12 @@ object DnsService {
     fun getDnssecStatus(zoneId: String) = service.getDnssecStatus(zoneId)
     fun enableDnssec(zoneId: String) = service.enableDnssec(zoneId)
     fun disableDnssec(zoneId: String) = service.disableDnssec(zoneId)
+    fun signZone(zoneId: String) = service.signZone(zoneId)
     fun getDsRecords(zoneId: String) = service.getDsRecords(zoneId)
+
+    // Security Options
+    fun getGlobalSecurityConfig() = service.getGlobalSecurityConfig()
+    fun updateGlobalSecurityConfig(config: GlobalSecurityConfig) = service.updateGlobalSecurityConfig(config)
 
     // Lookup
     fun lookup(req: DnsLookupRequest) = service.lookup(req)

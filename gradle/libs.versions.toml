@@ -38,6 +38,7 @@ ktor-serverWebsockets = { module = "io.ktor:ktor-server-websockets", version.ref
 ktor-serializationKotlinxJson = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
 ktor-clientCore = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-clientJava = { module = "io.ktor:ktor-client-java", version.ref = "ktor" }
+ktor-clientOkhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 ktor-clientContentNegotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
 ktor-serverAuth = { module = "io.ktor:ktor-server-auth", version.ref = "ktor" }
 ktor-serverSessions = { module = "io.ktor:ktor-server-sessions", version.ref = "ktor" }
