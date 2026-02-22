@@ -84,6 +84,7 @@ interface IDnsService {
     fun suggestReverseZone(ip: String): IpPtrSuggestion
     fun checkPropagation(zoneId: String, recordName: String, recordType: DnsRecordType): PropagationCheckResult
     fun createDefaultZones(): List<DnsZone>
+    fun regenerateZoneFiles(): DnsActionResult
 
     // Phase 2 Improvements
     fun buildSrvRecord(config: SrvConfig): String

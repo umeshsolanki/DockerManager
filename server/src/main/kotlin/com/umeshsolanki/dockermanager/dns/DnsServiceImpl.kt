@@ -1638,6 +1638,27 @@ logging {
         return created
     }
 
+    override fun regenerateZoneFiles(): DnsActionResult = lock.withLock {
+        val zones = loadZones()
+        var count = 0
+        val errors = mutableListOf<String>()
+        for (zone in zones) {
+            try {
+                writeZoneFile(zone)
+                count++
+            } catch (e: Exception) {
+                logger.error("Failed to regenerate zone file for ${zone.name}", e)
+                errors.add(zone.name)
+            }
+        }
+        reloadBind()
+        return if (errors.isEmpty()) {
+            DnsActionResult(true, "Regenerated $count zone file(s) and reloaded BIND9")
+        } else {
+            DnsActionResult(false, "Regenerated $count zone(s), but failed for: ${errors.joinToString()}")
+        }
+    }
+
     override fun buildSrvRecord(config: SrvConfig): String {
         return "${config.priority} ${config.weight} ${config.port} ${config.target.ensureTrailingDot()}"
     }

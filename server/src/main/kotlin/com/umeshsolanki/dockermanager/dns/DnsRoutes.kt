@@ -43,6 +43,10 @@ fun Route.dnsRoutes() {
                 call.respond(DnsService.createDefaultZones())
             }
 
+            post("/regenerate") {
+                call.respond(DnsService.regenerateZoneFiles())
+            }
+
             route("/{id}") {
                 get {
                     val id = call.requireParameter("id") ?: return@get
