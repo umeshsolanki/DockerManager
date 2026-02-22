@@ -368,6 +368,7 @@ class DnsServiceImpl : IDnsService {
     }
 
     override fun flushCache(): DnsActionResult {
+        ensureRndcConfig()
         val result = bindExec("rndc flush")
         return DnsActionResult(result.exitCode == 0, if (result.exitCode == 0) "DNS cache flushed" else result.error.ifBlank { result.output })
     }
@@ -1172,7 +1173,27 @@ class DnsServiceImpl : IDnsService {
     //  Helpers
     // ===================================================================
 
+    private fun ensureRndcConfig() {
+        if (!isDockerMode) return
+        
+        // We check if rndc.key exists in the container's config dir
+        val check = bindExec("ls /etc/bind/rndc.key")
+        if (check.exitCode != 0) {
+            logger.info("rndc.key not found in container, generating it...")
+            // rndc-confgen -a generates /etc/bind/rndc.key by default
+            val gen = bindExec("rndc-confgen -a")
+            if (gen.exitCode != 0) {
+                logger.warn("Failed to generate rndc.key: ${gen.error}")
+            } else {
+                // Ensure proper permissions
+                bindExec("chown root:bind /etc/bind/rndc.key 2>/dev/null")
+                bindExec("chmod 640 /etc/bind/rndc.key 2>/dev/null")
+            }
+        }
+    }
+
     private fun reloadBind() {
+        ensureRndcConfig()
         val result = bindExec("rndc reload")
         if (result.exitCode != 0) logger.warn("rndc reload failed: ${result.error}")
     }
@@ -1289,6 +1310,7 @@ class DnsServiceImpl : IDnsService {
 
         val result = DockerService.composeUp(dnsComposeFile.absolutePath)
         return if (result.success) {
+            ensureRndcConfig()
             DnsActionResult(true, "BIND9 started via Docker Compose")
         } else {
             val msg = result.message
