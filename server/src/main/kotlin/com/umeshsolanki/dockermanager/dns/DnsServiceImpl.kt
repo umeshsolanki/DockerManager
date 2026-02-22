@@ -1126,9 +1126,8 @@ class DnsServiceImpl : IDnsService {
             }
 
             if (zone.dnssecEnabled && zone.role == ZoneRole.MASTER) {
-                appendLine("    auto-dnssec maintain;")
+                appendLine("    dnssec-policy default;")
                 appendLine("    inline-signing yes;")
-                appendLine("    key-directory \"${translateToContainerPath(keysDir.absolutePath)}\";")
             }
 
             appendLine("};")
