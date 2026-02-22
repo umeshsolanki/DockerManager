@@ -2,8 +2,7 @@ package com.umeshsolanki.dockermanager.jail
 
 import com.umeshsolanki.dockermanager.AppConfig
 import com.umeshsolanki.dockermanager.firewall.IFirewallService
-import com.umeshsolanki.dockermanager.ip.IIpInfoService
-import com.umeshsolanki.dockermanager.ip.IpInfo
+import com.umeshsolanki.dockermanager.ip.IIpReputationService
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import io.ktor.client.*
@@ -15,7 +14,7 @@ import org.slf4j.LoggerFactory
 
 class IpEnrichmentWorker(
     private val firewallService: IFirewallService,
-    private val ipInfoService: IIpInfoService
+    private val ipReputationService: IIpReputationService
 ) {
     private val logger = LoggerFactory.getLogger(IpEnrichmentWorker::class.java)
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -26,7 +25,7 @@ class IpEnrichmentWorker(
     fun start() {
         job?.cancel()
         job = scope.launch {
-            logger.info("IpEnrichmentWorker started (Optimized)")
+            logger.info("IpEnrichmentWorker started")
             while (isActive) {
                 try {
                     enrichMissingLocationData()
@@ -34,7 +33,7 @@ class IpEnrichmentWorker(
                     if (e is CancellationException) throw e
                     logger.error("Error in IpEnrichmentWorker loop", e)
                 }
-                delay(30_000) // 30 seconds interval in production
+                delay(30_000)
             }
         }
     }
@@ -46,22 +45,20 @@ class IpEnrichmentWorker(
     }
 
     private suspend fun enrichMissingLocationData() {
-        // Only fetch a batch of rules needing enrichment to avoid memory spikes
         val allRules = firewallService.listRules()
+        // Enrich firewall rules that are missing location data
         val rulesMissingData = allRules.filter {
             it.country == null || it.city == null
-        }.take(100) // Batch of 100 per cycle
+        }.take(100)
 
         if (rulesMissingData.isNotEmpty()) {
             logger.info("Enrichment Worker: Processing batch of ${rulesMissingData.size} IPs")
 
             for (rule in rulesMissingData) {
                 if (!scope.isActive) break
-
                 try {
-                    val loc = fetchLocationInfo(rule.ip)
-
-                    if (loc.countryCode != null || loc.country != null) {
+                    val loc = fetchAndSaveGeoInfo(rule.ip)
+                    if (loc != null) {
                         val updatedRule = rule.copy(
                             country = loc.countryCode,
                             city = loc.city,
@@ -74,21 +71,17 @@ class IpEnrichmentWorker(
                         )
                         firewallService.updateRule(updatedRule)
                     }
-
-                    // Respect ip-api.com rate limits (45 requests per minute)
-                    delay(1500) 
-
+                    delay(1500) // Respect ip-api.com rate limit (45 req/min)
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                     logger.error("Failed to enrich rule ${rule.id} for IP ${rule.ip}", e)
-                    // If we hit a rate limit or network error, wait longer
                     delay(5000)
                 }
             }
         }
     }
 
-    private data class IpLocation(
+    private data class GeoResult(
         val country: String? = null,
         val countryCode: String? = null,
         val city: String? = null,
@@ -97,90 +90,101 @@ class IpEnrichmentWorker(
         val lon: Double? = null,
         val timezone: String? = null,
         val zip: String? = null,
-        val region: String? = null
+        val region: String? = null,
+        val regionName: String? = null,
+        val asName: String? = null,
+        val org: String? = null
     )
 
-    private suspend fun fetchLocationInfo(ip: String): IpLocation {
-        if (ip.isBlank()) return IpLocation()
-        if (AppConfig.isLocalIP(ip)) return IpLocation(countryCode = "LOC", country = "Local Network")
+    /**
+     * Checks the ip_reputation table for cached geo data first.
+     * If not present, fetches from ip-api.com and persists it back via saveGeoInfo.
+     * Returns null if the IP is local or the fetch failed.
+     */
+    private suspend fun fetchAndSaveGeoInfo(ip: String): GeoResult? {
+        if (ip.isBlank()) return null
+        if (AppConfig.isLocalIP(ip)) return GeoResult(countryCode = "LOC", country = "Local Network")
 
-        // 1. Check local cache/DB first (High Performance)
+        // 1. Check reputation cache first
         try {
-            val cached = ipInfoService.getIpInfo(ip)
-            if (cached != null) {
-                return IpLocation(
+            val cached = ipReputationService.getIpReputation(ip)
+            if (cached?.geoInfoUpdatedOn != null) {
+                return GeoResult(
                     country = cached.country,
-                    countryCode = cached.countryCode,
+                    countryCode = cached.country, // country col holds code in ip_reputation
                     city = cached.city,
                     isp = cached.isp,
                     lat = cached.lat,
                     lon = cached.lon,
                     timezone = cached.timezone,
                     zip = cached.zip,
-                    region = cached.region
+                    region = cached.region,
+                    regionName = cached.regionName,
+                    asName = cached.asName
                 )
             }
         } catch (e: Exception) {
-            logger.warn("Database cache lookup failed for $ip", e)
+            logger.warn("Reputation cache lookup failed for $ip", e)
         }
 
-        // 2. Fetch from External API (Optimized non-blocking)
+        // 2. Fetch from ip-api.com
         return try {
             val response = client.get("http://ip-api.com/json/$ip")
             if (response.status.value == 429) {
                 logger.warn("Rate limit hit for IP-API. Throttling...")
                 delay(60_000)
-                return IpLocation()
+                return null
             }
-            
+
             val text = response.bodyAsText()
             val json = gson.fromJson(text, JsonObject::class.java)
 
             if (json.get("status")?.asString == "fail") {
-                 logger.debug("IP-API failed for $ip: ${json.get("message")?.asString}")
-                 return IpLocation()
+                logger.debug("IP-API failed for $ip: ${json.get("message")?.asString}")
+                return null
             }
 
-            val info = IpInfo(
-                ip = ip,
-                country = json.get("country")?.asString,
-                countryCode = json.get("countryCode")?.asString,
-                city = json.get("city")?.asString,
-                isp = json.get("isp")?.asString,
-                lat = json.get("lat")?.asDouble,
-                lon = json.get("lon")?.asDouble,
-                timezone = json.get("timezone")?.asString,
-                zip = json.get("zip")?.asString,
-                region = json.get("region")?.asString,
-                regionName = json.get("regionName")?.asString,
-                org = json.get("org")?.asString,
-                asName = json.get("as")?.asString
+            val result = GeoResult(
+                country      = json.get("country")?.asString,
+                countryCode  = json.get("countryCode")?.asString,
+                city         = json.get("city")?.asString,
+                isp          = json.get("isp")?.asString,
+                lat          = json.get("lat")?.asDouble,
+                lon          = json.get("lon")?.asDouble,
+                timezone     = json.get("timezone")?.asString,
+                zip          = json.get("zip")?.asString,
+                region       = json.get("region")?.asString,
+                regionName   = json.get("regionName")?.asString,
+                asName       = json.get("as")?.asString,
+                org          = json.get("org")?.asString
             )
 
-            // Async save to not block the current flow
+            // Persist asynchronously — don't block the caller
             scope.launch {
                 try {
-                    ipInfoService.saveIpInfo(info)
+                    ipReputationService.saveGeoInfo(
+                        ip          = ip,
+                        city        = result.city,
+                        lat         = result.lat,
+                        lon         = result.lon,
+                        timezone    = result.timezone,
+                        zip         = result.zip,
+                        region      = result.region,
+                        regionName  = result.regionName,
+                        asName      = result.asName,
+                        countryCode = result.countryCode,
+                        isp         = result.isp
+                    )
                 } catch (e: Exception) {
-                    logger.error("Failed to async save IP info for $ip", e)
+                    logger.error("Failed to async-save geo info for $ip", e)
                 }
             }
 
-            IpLocation(
-                country = info.country,
-                countryCode = info.countryCode,
-                city = info.city,
-                isp = info.isp,
-                lat = info.lat,
-                lon = info.lon,
-                timezone = info.timezone,
-                zip = info.zip,
-                region = info.region
-            )
+            result
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             logger.debug("Network failure enriching $ip: ${e.message}")
-            IpLocation()
+            null
         }
     }
 }

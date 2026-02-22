@@ -25,6 +25,17 @@ object IpReputationTable : Table("ip_reputation") {
     val tag = text("tag").nullable()
     val dangerTags = text("danger_tags").default("") // CSV of danger tags
     val range = varchar("range", 50).nullable()
+    // Geo-enrichment fields (populated asynchronously by IpEnrichmentWorker)
+    val city        = varchar("city", 100).nullable()
+    val lat         = double("lat").nullable()
+    val lon         = double("lon").nullable()
+    val timezone    = varchar("timezone", 100).nullable()
+    val zip         = varchar("zip", 20).nullable()
+    val region      = varchar("region", 100).nullable()
+    val regionName  = varchar("region_name", 100).nullable()
+    val asName      = varchar("as_name", 255).nullable()
+    val geoInfoUpdatedOn = datetime("geo_info_updated_on").nullable()
+    val lastTaggedOn = datetime("last_tagged_on").nullable()
 
     override val primaryKey = PrimaryKey(ip)
 }
@@ -32,7 +43,7 @@ object IpReputationTable : Table("ip_reputation") {
 @Serializable
 data class IpReputation(
     val ip: String,
-    val firstObserved: String, // ISO formatted string for frontend
+    val firstObserved: String,
     val lastActivity: String,
     val firstBlocked: String? = null,
     val blockedTimes: Int = 0,
@@ -45,9 +56,20 @@ data class IpReputation(
     val reasons: List<String> = emptyList(),
     val country: String? = null,
     val isp: String? = null,
-    val tags: List<String> = emptyList(), // Regular tags
-    val dangerTags: List<String> = emptyList(), // Tags from danger logs
+    val tags: List<String> = emptyList(),
+    val dangerTags: List<String> = emptyList(),
     val range: String? = null,
     val requestCount: Long = 0,
-    val errorCount: Long = 0
+    val errorCount: Long = 0,
+    // Geo-enrichment fields
+    val city: String? = null,
+    val lat: Double? = null,
+    val lon: Double? = null,
+    val timezone: String? = null,
+    val zip: String? = null,
+    val region: String? = null,
+    val regionName: String? = null,
+    val asName: String? = null,
+    val geoInfoUpdatedOn: String? = null,
+    val lastTaggedOn: String? = null
 )

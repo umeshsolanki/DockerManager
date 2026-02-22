@@ -7,7 +7,15 @@ import io.ktor.server.application.*
 import io.ktor.http.HttpStatusCode
 
 
+import kotlinx.serialization.Serializable
 import com.umeshsolanki.dockermanager.ServiceContainer
+
+@Serializable
+data class TagIpRequest(
+    val add: List<String> = emptyList(),
+    val remove: List<String> = emptyList(),
+    val danger: Boolean = false
+)
 
 fun Route.ipReputationRoutes() {
     val ipReputationService = ServiceContainer.ipReputationService
@@ -38,6 +46,28 @@ fun Route.ipReputationRoutes() {
              } else {
                  call.respond(HttpStatusCode.NotFound)
              }
+        }
+
+        patch("/{ip}/tags") {
+            val ip = call.parameters["ip"] ?: return@patch call.respond(HttpStatusCode.BadRequest, "Missing IP")
+            val request = runCatching { call.receive<TagIpRequest>() }.getOrElse {
+                return@patch call.respond(HttpStatusCode.BadRequest, "Invalid body")
+            }
+            // Check if IP exists first
+            val existing = ipReputationService.getIpReputation(ip)
+            if (existing == null) {
+                return@patch call.respond(HttpStatusCode.NotFound, "IP not found in reputation DB")
+            }
+            
+            ipReputationService.tagIpReputation(ip, request.add, request.remove, request.danger)
+            
+            // Return updated
+            val updated = ipReputationService.getIpReputation(ip)
+            if (updated != null) {
+                call.respond(HttpStatusCode.OK, updated)
+            } else {
+                call.respond(HttpStatusCode.InternalServerError)
+            }
         }
     }
 }

@@ -442,6 +442,88 @@ function ThresholdInput({ label, sublabel, value, onChange, onBlur, color = 'pri
     );
 }
 
+// ---------------------------------------------------------------------------
+// PCRE-aware regex validator
+// Strategy: nginx uses PCRE (with JIT). JS uses a different engine.
+// We strip known PCRE-only constructs before testing with new RegExp() so
+// that valid PCRE patterns aren't incorrectly rejected.  If the pattern only
+// fails because of PCRE-only syntax we emit a soft warning, not a hard error.
+// ---------------------------------------------------------------------------
+type PatternCheckResult =
+    | { ok: true; warning?: string }
+    | { ok: false; error: string };
+
+const PCRE_ONLY_PATTERNS: [RegExp, string][] = [
+    // Possessive quantifiers: a++ a*+ a?+
+    [/\w[*+?]\+/g, 'possessive quantifiers (e.g. a++)'],
+    // Atomic groups: (?>…)
+    [/\(\?>/g, 'atomic groups (?>…)'],
+    // Named capture PCRE style: (?P<name>…) or (?P=name)
+    [/\(\?P[<=]/g, 'PCRE named captures (?P<…>)'],
+    // Reset match start: \K
+    [/\\K/g, '\\K (reset match start)'],
+    // PCRE verbs: (*UTF8) (*ANYCRLF) (*SKIP) (*FAIL) (*MARK:…) etc.
+    [/\(\*[A-Z_:]+\)/g, 'PCRE verb (*…)'],
+    // Conditional patterns: (?(COND)yes|no)
+    [/\(\?\(/g, 'conditional patterns (?(…)…)'],
+    // Relative back-references: (?-1) (?+1)
+    [/\(\?[-+]\d+\)/g, 'relative back-references'],
+    // Extended comment mode (?#…)
+    [/\(\?#[^)]*\)/g, 'inline comments (?#…)'],
+    // Variable-length lookbehind — PCRE2 only, JS doesn't support these generally
+    [/\(\?<[!=][^)]{2,}\)/g, 'variable-length lookbehind'],
+];
+
+function validatePcrePattern(raw: string): PatternCheckResult {
+    if (!raw.trim()) return { ok: false, error: 'Pattern is required' };
+
+    const pcreFeaturesFound: string[] = [];
+    let scrubbed = raw;
+
+    for (const [re, label] of PCRE_ONLY_PATTERNS) {
+        if (re.test(scrubbed)) {
+            pcreFeaturesFound.push(label);
+            scrubbed = scrubbed.replace(re, '');
+        }
+        // reset lastIndex for global regexes
+        re.lastIndex = 0;
+    }
+
+    // Basic structural checks (engine-independent)
+    let depth = 0;
+    for (let i = 0; i < raw.length; i++) {
+        if (raw[i] === '\\') { i++; continue; }
+        if (raw[i] === '(') depth++;
+        if (raw[i] === ')') depth--;
+        if (depth < 0) return { ok: false, error: 'Unmatched closing parenthesis )' };
+    }
+    if (depth > 0) return { ok: false, error: `${depth} unclosed parenthesi${depth > 1 ? 'es' : 's'} (` };
+
+    // Test scrubbed pattern with JS engine
+    try {
+        new RegExp(scrubbed);
+    } catch (err) {
+        if (pcreFeaturesFound.length) {
+            // Failed only because PCRE constructs were removed during scrubbing —
+            // the original pattern may still be valid nginx PCRE.
+            return {
+                ok: true,
+                warning: `Contains PCRE-only syntax not validated by browser: ${pcreFeaturesFound.join(', ')}. Ensure it is correct before saving.`,
+            };
+        }
+        return { ok: false, error: 'Invalid regex: ' + (err as Error).message };
+    }
+
+    if (pcreFeaturesFound.length) {
+        return {
+            ok: true,
+            warning: `Uses PCRE-specific syntax (${pcreFeaturesFound.join(', ')}) — valid for nginx but not testable in browser.`,
+        };
+    }
+
+    return { ok: true };
+}
+
 function RuleFormModal({ rule, onClose, onSave }: {
     rule: ProxyJailRule | null;
     onClose: () => void;
@@ -454,21 +536,55 @@ function RuleFormModal({ rule, onClose, onSave }: {
     const [threshold, setThreshold] = useState(rule?.threshold ?? 1);
     const [statusCodePattern, setStatusCodePattern] = useState(rule?.statusCodePattern ?? '');
     const [error, setError] = useState('');
+    const [warning, setWarning] = useState('');
+    const [validating, setValidating] = useState(false);
 
     const meta = getRuleMeta(type);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setWarning('');
 
         if (!pattern.trim()) { setError('Pattern is required'); return; }
 
-        if (type === ProxyJailRuleType.USER_AGENT || type === ProxyJailRuleType.PATH || type === ProxyJailRuleType.COMPOSITE || type === ProxyJailRuleType.STATUS_CODE) {
-            try { new RegExp(pattern); } catch (err) { setError('Invalid regex: ' + (err as Error).message); return; }
+        const isRegexType = type === ProxyJailRuleType.USER_AGENT
+            || type === ProxyJailRuleType.PATH
+            || type === ProxyJailRuleType.COMPOSITE
+            || type === ProxyJailRuleType.STATUS_CODE;
+
+        if (isRegexType) {
+            setValidating(true);
+            try {
+                const result = await DockerClient.validateRegex(pattern.trim());
+                if (result.valid === 'false') {
+                    setError(result.error || 'Invalid pattern');
+                    return;
+                }
+            } catch {
+                // Server unreachable — fall back to the browser-side PCRE validator
+                const fallback = validatePcrePattern(pattern);
+                if (!fallback.ok) { setError(fallback.error); return; }
+                if (fallback.warning) setWarning(fallback.warning);
+            } finally {
+                setValidating(false);
+            }
         }
 
-        if (type === ProxyJailRuleType.COMPOSITE && statusCodePattern) {
-            try { new RegExp(statusCodePattern); } catch (err) { setError('Invalid status code regex: ' + (err as Error).message); return; }
+        if (type === ProxyJailRuleType.COMPOSITE && statusCodePattern.trim()) {
+            setValidating(true);
+            try {
+                const result = await DockerClient.validateRegex(statusCodePattern.trim());
+                if (result.valid === 'false') {
+                    setError('Status code pattern — ' + (result.error || 'Invalid pattern'));
+                    return;
+                }
+            } catch {
+                const fallback = validatePcrePattern(statusCodePattern);
+                if (!fallback.ok) { setError('Status code pattern — ' + fallback.error); return; }
+            } finally {
+                setValidating(false);
+            }
         }
 
         onSave({
@@ -526,10 +642,10 @@ function RuleFormModal({ rule, onClose, onSave }: {
                         onChange={e => setPattern(e.target.value)}
                         placeholder={
                             type === ProxyJailRuleType.USER_AGENT ? 'e.g. ^sqlmap/.*' :
-                            type === ProxyJailRuleType.PATH ? 'e.g. /wp-admin|/xmlrpc\\.php' :
-                            type === ProxyJailRuleType.METHOD ? 'e.g. DELETE' :
-                            type === ProxyJailRuleType.STATUS_CODE ? 'e.g. 5\\d\\d' :
-                            'e.g. /api/.*'
+                                type === ProxyJailRuleType.PATH ? 'e.g. /wp-admin|/xmlrpc\\.php' :
+                                    type === ProxyJailRuleType.METHOD ? 'e.g. DELETE' :
+                                        type === ProxyJailRuleType.STATUS_CODE ? 'e.g. 5\\d\\d' :
+                                            'e.g. /api/.*'
                         }
                         className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-primary/50"
                     />
@@ -582,6 +698,14 @@ function RuleFormModal({ rule, onClose, onSave }: {
                     </div>
                 )}
 
+                {/* PCRE warning — pattern is valid PCRE but can't be verified in browser */}
+                {warning && !error && (
+                    <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-medium animate-in fade-in duration-200">
+                        <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                        <span>{warning}</span>
+                    </div>
+                )}
+
                 {/* Actions */}
                 <div className="flex gap-3 pt-2">
                     <button
@@ -593,9 +717,16 @@ function RuleFormModal({ rule, onClose, onSave }: {
                     </button>
                     <button
                         type="submit"
-                        className="flex-1 bg-primary text-on-primary px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                        disabled={validating}
+                        className="flex-1 bg-primary text-on-primary px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-wait flex items-center justify-center gap-2"
                     >
-                        {isEdit ? 'Save Changes' : 'Add Rule'}
+                        {validating && (
+                            <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                            </svg>
+                        )}
+                        {validating ? 'Validating…' : isEdit ? 'Save Changes' : 'Add Rule'}
                     </button>
                 </div>
             </form>

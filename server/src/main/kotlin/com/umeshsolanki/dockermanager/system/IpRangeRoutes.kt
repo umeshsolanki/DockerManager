@@ -101,5 +101,70 @@ fun Route.ipRangeRoutes() {
                 call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Unknown error")))
             }
         }
+
+        get("/list") {
+            try {
+                val page  = call.request.queryParameters["page"]?.toIntOrNull()  ?: 0
+                val limit = (call.request.queryParameters["limit"]?.toIntOrNull() ?: 50).coerceIn(1, 500)
+                val search = call.request.queryParameters["search"]?.trim()?.lowercase() ?: ""
+                val offset = (page * limit).toLong()
+
+                data class IpRangeRow(
+                    val id: Int,
+                    val cidr: String?,
+                    val countryCode: String?,
+                    val countryName: String?,
+                    val provider: String?,
+                    val type: String?
+                )
+
+                val rows: List<IpRangeRow> = dbQuery {
+                    val query = if (search.isNotBlank()) {
+                        IpRangesTable.selectAll().where {
+                            (IpRangesTable.cidr.lowerCase() like "%$search%") or
+                            (IpRangesTable.countryCode.lowerCase() like "%$search%") or
+                            (IpRangesTable.countryName.lowerCase() like "%$search%") or
+                            (IpRangesTable.provider.lowerCase() like "%$search%")
+                        }
+                    } else {
+                        IpRangesTable.selectAll()
+                    }
+                    query.orderBy(IpRangesTable.id)
+                        .limit(limit, offset)
+                        .map { row ->
+                            IpRangeRow(
+                                id = row[IpRangesTable.id],
+                                cidr = row[IpRangesTable.cidr],
+                                countryCode = row[IpRangesTable.countryCode],
+                                countryName = row[IpRangesTable.countryName],
+                                provider = row[IpRangesTable.provider],
+                                type = row[IpRangesTable.type]
+                            )
+                        }
+                }
+
+                val total: Long = dbQuery {
+                    if (search.isNotBlank()) {
+                        IpRangesTable.selectAll().where {
+                            (IpRangesTable.cidr.lowerCase() like "%$search%") or
+                            (IpRangesTable.countryCode.lowerCase() like "%$search%") or
+                            (IpRangesTable.countryName.lowerCase() like "%$search%") or
+                            (IpRangesTable.provider.lowerCase() like "%$search%")
+                        }.count()
+                    } else {
+                        IpRangesTable.selectAll().count()
+                    }
+                }
+
+                call.respond(HttpStatusCode.OK, mapOf(
+                    "rows" to rows,
+                    "total" to total,
+                    "page" to page,
+                    "limit" to limit
+                ))
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Unknown error")))
+            }
+        }
     }
 }

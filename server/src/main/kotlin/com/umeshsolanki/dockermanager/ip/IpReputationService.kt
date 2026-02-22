@@ -32,6 +32,14 @@ interface IIpReputationService {
     suspend fun recordBlock(ipAddress: String, reason: String, countryCode: String? = null, isp: String? = null, tag: String? = null, range: String? = null, dangerTag: String? = null, durationMinutes: Int = 0)
     suspend fun updateStats(stats: Map<String, Pair<Long, Long>>) // Map<IP, Pair<RequestCount, ErrorCount>>
     suspend fun deleteIpReputation(ipAddress: String): Boolean
+    suspend fun saveGeoInfo(ip: String, city: String?, lat: Double?, lon: Double?, timezone: String?, zip: String?, region: String?, regionName: String?, asName: String?, countryCode: String?, isp: String?)
+    /**
+     * Manually add or remove tags for an IP.
+     * @param add   Tags to add (merged with existing)
+     * @param remove Tags to remove
+     * @param danger If true, writes to dangerTags; otherwise to the regular tags field
+     */
+    suspend fun tagIpReputation(ip: String, add: List<String> = emptyList(), remove: List<String> = emptyList(), danger: Boolean = false)
 }
 
 private data class ActivityEntry(
@@ -182,6 +190,14 @@ class IpReputationServiceImpl : IIpReputationService {
             val currentDangerTags = existing[IpReputationTable.dangerTags]
             val newDangerTags = if (entry.dangerTag != null) mergeTags(currentDangerTags, entry.dangerTag) else currentDangerTags
 
+            val updatedDangerTags = computeAutoTags(
+                blocked = existing[IpReputationTable.blockedTimes],
+                flagged = existing[IpReputationTable.flaggedTimes] + 1,
+                errorCount = existing[IpReputationTable.errorCount],
+                requestCount = existing[IpReputationTable.requestCount],
+                existingDanger = newDangerTags ?: ""
+            )
+
             IpReputationTable.update({ IpReputationTable.ip eq ipAddress }) {
                 it[lastActivity] = now
                 it[flaggedTimes] = existing[IpReputationTable.flaggedTimes] + 1
@@ -190,16 +206,18 @@ class IpReputationServiceImpl : IIpReputationService {
                 resolvedCountry?.let { code -> it[country] = code }
                 resolvedIsp?.let { v -> it[IpReputationTable.isp] = v }
                 if (newTags != currentTags) it[IpReputationTable.tag] = newTags
-                if (newDangerTags != currentDangerTags) it[IpReputationTable.dangerTags] = newDangerTags ?: ""
+                it[IpReputationTable.dangerTags] = updatedDangerTags
+                it[IpReputationTable.lastTaggedOn] = now
                 resolvedRange?.let { v -> it[IpReputationTable.range] = v }
             }
             publishToKafka(IpReputationEvent(
                 type = "ACTIVITY", ip = ipAddress, country = resolvedCountry, isp = resolvedIsp,
                 flaggedTimes = existing[IpReputationTable.flaggedTimes] + 1,
                 tags = (resolvedTag ?: "").split(",").filter { it.isNotBlank() },
-                dangerTags = (entry.dangerTag ?: "").split(",").filter { it.isNotBlank() }
+                dangerTags = updatedDangerTags.split(",").filter { it.isNotBlank() }
             ))
         } else {
+            val initialDangerTags = computeAutoTags(0, 1, 0, 0, entry.dangerTag ?: "")
             try {
                 IpReputationTable.insert {
                     it[ip] = ipAddress
@@ -211,20 +229,69 @@ class IpReputationServiceImpl : IIpReputationService {
                     it[blockedTimes] = 0
                     it[reasons] = ""
                     it[country] = resolvedCountry
-                    it[IpReputationTable.isp] = resolvedIsp
-                    it[IpReputationTable.tag] = resolvedTag
-                    it[IpReputationTable.dangerTags] = entry.dangerTag ?: ""
-                    it[IpReputationTable.range] = resolvedRange
+                    it[isp] = resolvedIsp
+                    it[tag] = resolvedTag
+                    it[dangerTags] = initialDangerTags
+                    it[lastTaggedOn] = now
+                    it[range] = resolvedRange
                 }
                 publishToKafka(IpReputationEvent(
                     type = "OBSERVED", ip = ipAddress, country = resolvedCountry, isp = resolvedIsp,
                     flaggedTimes = 1, tags = (resolvedTag ?: "").split(",").filter { it.isNotBlank() },
-                    dangerTags = (entry.dangerTag ?: "").split(",").filter { it.isNotBlank() }
+                    dangerTags = initialDangerTags.split(",").filter { it.isNotBlank() }
                 ))
             } catch (e: Exception) {
                 IpReputationTable.update({ IpReputationTable.ip eq ipAddress }) {
                     it[lastActivity] = now
                     resolvedCountry?.let { code -> it[country] = code }
+                }
+            }
+        }
+    }
+
+    // ── Auto-tagging ─────────────────────────────────────────────────────────
+    /**
+     * Derives behavioral threat tags from the current row stats and merges them
+     * into the danger_tags column. Called synchronously inside the DB transaction.
+     */
+    private fun computeAutoTags(
+        blocked: Int, flagged: Int, errorCount: Long, requestCount: Long, existingDanger: String
+    ): String {
+        val auto = mutableSetOf<String>()
+
+        if (blocked >= 10)        auto += "high-threat"
+        if (blocked >= 3)         auto += "repeat-offender"
+        if (flagged >= 20)        auto += "scanner"
+        if (errorCount >= 50 && requestCount > 0 && errorCount.toDouble() / requestCount > 0.5)
+                                  auto += "brute-force"
+        if (errorCount >= 100)    auto += "api-abuser"
+
+        val existing = existingDanger.split(",").map { it.trim() }.filter { it.isNotBlank() }.toMutableSet()
+        existing += auto
+        return existing.joinToString(",")
+    }
+
+     // ── Manual tag management ─────────────────────────────────────────────────
+    override suspend fun tagIpReputation(ip: String, add: List<String>, remove: List<String>, danger: Boolean) {
+        if (ip.isBlank()) return
+        val now = LocalDateTime.now()
+        dbQuery {
+            val row = IpReputationTable.selectAll().where { IpReputationTable.ip eq ip }.singleOrNull() ?: return@dbQuery
+            if (danger) {
+                val current = row[IpReputationTable.dangerTags].split(",").map { it.trim() }.filter { it.isNotBlank() }.toMutableSet()
+                current += add.map { it.trim() }.filter { it.isNotBlank() }
+                current -= remove.map { it.trim() }.toSet()
+                IpReputationTable.update({ IpReputationTable.ip eq ip }) {
+                    it[dangerTags] = current.joinToString(",")
+                    it[lastTaggedOn] = now
+                }
+            } else {
+                val current = (row[IpReputationTable.tag] ?: "").split(",").map { it.trim() }.filter { it.isNotBlank() }.toMutableSet()
+                current += add.map { it.trim() }.filter { it.isNotBlank() }
+                current -= remove.map { it.trim() }.toSet()
+                IpReputationTable.update({ IpReputationTable.ip eq ip }) {
+                    it[tag] = current.joinToString(",").ifBlank { null }
+                    it[lastTaggedOn] = now
                 }
             }
         }
@@ -251,6 +318,7 @@ class IpReputationServiceImpl : IIpReputationService {
         val newFlagged = (existing?.get(IpReputationTable.flaggedTimes) ?: 0) + 1
 
         if (existing == null) {
+            val initialDangerTags = computeAutoTags(newBlocked, newFlagged, 0, 0, dangerTag ?: "")
             try {
                 IpReputationTable.insert {
                     it[ip] = ipAddress
@@ -265,10 +333,11 @@ class IpReputationServiceImpl : IIpReputationService {
                     it[exponentialBlockedTimes] = newExponential
                     it[lastJailDuration] = durationMinutes
                     it[reasons] = shortReason
-                    it[country] = resolvedCountry
+                    it[IpReputationTable.country] = resolvedCountry
                     it[IpReputationTable.isp] = resolvedIsp
                     it[IpReputationTable.tag] = resolvedTag
-                    it[IpReputationTable.dangerTags] = dangerTag ?: ""
+                    it[IpReputationTable.dangerTags] = initialDangerTags
+                    it[IpReputationTable.lastTaggedOn] = now
                     it[IpReputationTable.range] = resolvedRange
                 }
             } catch (e: Exception) {
@@ -278,9 +347,6 @@ class IpReputationServiceImpl : IIpReputationService {
         } else {
             val currentReasons = existing[IpReputationTable.reasons]
             val newReasons = mergeTags(currentReasons, shortReason)
-            // mergeTags returns null if empty, but reasons likely not empty if we are adding one.
-            // If mergeTags returns null (empty), we should put ""? Or shortReason? 
-            // mergeTags returns combination. If default was "", currentReasons is "". mergeTags("", "foo") -> "foo".
             val updatedReasonsString = newReasons ?: shortReason
 
             val currentTags = existing[IpReputationTable.tag]
@@ -288,6 +354,14 @@ class IpReputationServiceImpl : IIpReputationService {
 
             val currentDangerTags = existing[IpReputationTable.dangerTags]
             val newDangerTags = if (dangerTag != null) mergeTags(currentDangerTags, dangerTag) else currentDangerTags
+            
+            val updatedDangerTags = computeAutoTags(
+                blocked = newBlocked,
+                flagged = newFlagged,
+                errorCount = existing[IpReputationTable.errorCount],
+                requestCount = existing[IpReputationTable.requestCount],
+                existingDanger = newDangerTags ?: ""
+            )
 
             IpReputationTable.update({ IpReputationTable.ip eq ipAddress }) {
                 it[lastActivity] = now
@@ -304,15 +378,14 @@ class IpReputationServiceImpl : IIpReputationService {
                 }
                 it[exponentialBlockedTimes] = newExponential
                 it[blockedTimes] = newBlocked
-                it[IpReputationTable.lastJailDuration] = durationMinutes
+                it[lastJailDuration] = durationMinutes
                 resolvedCountry?.let { code -> it[country] = code }
                 resolvedIsp?.let { v -> it[IpReputationTable.isp] = v }
                 if (newTags != currentTags) {
                      it[IpReputationTable.tag] = newTags
                 }
-                if (newDangerTags != currentDangerTags) {
-                    it[IpReputationTable.dangerTags] = newDangerTags ?: ""
-                }
+                it[IpReputationTable.dangerTags] = updatedDangerTags
+                it[IpReputationTable.lastTaggedOn] = now
                 resolvedRange?.let { v -> it[IpReputationTable.range] = v }
             }
         }
@@ -409,10 +482,63 @@ class IpReputationServiceImpl : IIpReputationService {
         IpReputationTable.deleteWhere { IpReputationTable.ip eq ipAddress } > 0
     }
 
+    override suspend fun saveGeoInfo(
+        ip: String,
+        city: String?, lat: Double?, lon: Double?,
+        timezone: String?, zip: String?,
+        region: String?, regionName: String?,
+        asName: String?,
+        countryCode: String?, isp: String?
+    ) {
+        val now = LocalDateTime.now()
+        dbQuery {
+            val updated = IpReputationTable.update({ IpReputationTable.ip eq ip }) {
+                it[IpReputationTable.city]           = city
+                it[IpReputationTable.lat]            = lat
+                it[IpReputationTable.lon]            = lon
+                it[IpReputationTable.timezone]       = timezone
+                it[IpReputationTable.zip]            = zip
+                it[IpReputationTable.region]         = region
+                it[IpReputationTable.regionName]     = regionName
+                it[IpReputationTable.asName]         = asName
+                it[IpReputationTable.geoInfoUpdatedOn] = now
+                countryCode?.let { cc -> it[country] = cc }
+                isp?.let { v -> it[IpReputationTable.isp] = v }
+            }
+            // If IP not yet in reputation table, create a minimal entry so geo data isn't lost
+            if (updated == 0 && !ip.isBlank()) {
+                try {
+                    IpReputationTable.insert {
+                        it[IpReputationTable.ip]           = ip
+                        it[firstObserved]                  = now
+                        it[lastActivity]                   = now
+                        it[IpReputationTable.city]         = city
+                        it[IpReputationTable.lat]          = lat
+                        it[IpReputationTable.lon]          = lon
+                        it[IpReputationTable.timezone]     = timezone
+                        it[IpReputationTable.zip]          = zip
+                        it[IpReputationTable.region]       = region
+                        it[IpReputationTable.regionName]   = regionName
+                        it[IpReputationTable.asName]       = asName
+                        it[IpReputationTable.geoInfoUpdatedOn] = now
+                        countryCode?.let { cc -> it[country] = cc }
+                        isp?.let { v -> it[IpReputationTable.isp] = v }
+                        it[blockedTimes]                   = 0
+                        it[flaggedTimes]                   = 0
+                        it[exponentialBlockedTimes]        = 0
+                        it[lastJailDuration]               = 0
+                        it[reasons]                        = ""
+                    }
+                } catch (e: Exception) {
+                    // Row created by concurrent request — safe to ignore
+                }
+            }
+        }
+    }
+
     private fun toIpReputation(row: ResultRow): IpReputation {
         val reasonsString = row[IpReputationTable.reasons]
         val reasons = reasonsString.split(",").map { it.trim() }.filter { it.isNotBlank() }
-        
         val tagsString = row[IpReputationTable.tag]
         val tags = tagsString?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
 
@@ -435,7 +561,18 @@ class IpReputationServiceImpl : IIpReputationService {
             dangerTags = row[IpReputationTable.dangerTags].split(",").map { it.trim() }.filter { it.isNotBlank() },
             range = row[IpReputationTable.range],
             requestCount = row[IpReputationTable.requestCount],
-            errorCount = row[IpReputationTable.errorCount]
+            errorCount = row[IpReputationTable.errorCount],
+            // Geo-enrichment
+            city = row[IpReputationTable.city],
+            lat = row[IpReputationTable.lat],
+            lon = row[IpReputationTable.lon],
+            timezone = row[IpReputationTable.timezone],
+            zip = row[IpReputationTable.zip],
+            region = row[IpReputationTable.region],
+            regionName = row[IpReputationTable.regionName],
+            asName = row[IpReputationTable.asName],
+            geoInfoUpdatedOn = row[IpReputationTable.geoInfoUpdatedOn]?.format(DateTimeFormatter.ISO_DATE_TIME),
+            lastTaggedOn = row[IpReputationTable.lastTaggedOn]?.format(DateTimeFormatter.ISO_DATE_TIME)
         )
     }
 }

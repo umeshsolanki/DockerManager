@@ -29,7 +29,6 @@ interface IJailManagerService {
 
 class JailManagerServiceImpl(
     private val firewallService: IFirewallService,
-    private val ipInfoService: com.umeshsolanki.dockermanager.ip.IIpInfoService,
     private val ipReputationService: com.umeshsolanki.dockermanager.ip.IIpReputationService,
     private val kafkaService: com.umeshsolanki.dockermanager.kafka.IKafkaService
 ) : IJailManagerService {
@@ -166,15 +165,14 @@ class JailManagerServiceImpl(
 
         val expiresAt = System.currentTimeMillis() + (finalDuration * 60_000L)
         
-        // Fast path: Check DB cache only. DO NOT block on network here.
-        // If missing, proper enrichment will happen in the background worker.
-        val cached = ipInfoService.getIpInfo(ip)
-        
+        // Fast path: use reputation cache for geo data. Enrichment happens asynchronously.
+        val cached = ipReputationService.getIpReputation(ip)
+
         return firewallService.blockIP(BlockIPRequest(
             ip = ip,
             comment = reason,
             expiresAt = expiresAt,
-            country = cached?.countryCode,
+            country = cached?.country,
             city = cached?.city,
             isp = cached?.isp,
             lat = cached?.lat,
@@ -190,7 +188,11 @@ class JailManagerServiceImpl(
     }
 
     override fun getCountryCode(ip: String): String {
-        return ipInfoService.getIpInfo(ip)?.countryCode ?: "??"
+        return countryCache.getOrPut(ip) {
+            // Synchronous fast-path: check in-memory reputation cache isn't available synchronously,
+            // so we keep a small countryCache populated whenever we jail an IP.
+            countryCache[ip] ?: "??"
+        }
     }
     
     override fun isIPJailed(ip: String): Boolean {

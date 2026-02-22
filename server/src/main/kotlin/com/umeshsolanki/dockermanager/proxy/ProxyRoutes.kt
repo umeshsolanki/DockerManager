@@ -377,6 +377,32 @@ fun Route.proxyRoutes() {
                 ProxyActionResult(result.first, result.second)
             )
         }
+
+        // Validate a regex pattern using JVM Pattern (much closer to PCRE than the JS engine)
+        post("/validate-regex") {
+            data class RegexValidateRequest(val pattern: String)
+            val body = try {
+                call.receive<Map<String, String>>()
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("valid" to "false", "error" to "Invalid request body"))
+                return@post
+            }
+            val pattern = body["pattern"]
+            if (pattern.isNullOrBlank()) {
+                call.respond(mapOf("valid" to "false", "error" to "Pattern is required"))
+                return@post
+            }
+            try {
+                java.util.regex.Pattern.compile(pattern)
+                call.respond(HttpStatusCode.OK, mapOf("valid" to "true"))
+            } catch (e: java.util.regex.PatternSyntaxException) {
+                call.respond(HttpStatusCode.OK, mapOf(
+                    "valid" to "false",
+                    "error" to (e.description ?: e.message ?: "Invalid pattern"),
+                    "index" to e.index.toString()
+                ))
+            }
+        }
     }
 }
 

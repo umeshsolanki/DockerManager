@@ -247,6 +247,12 @@ export const DockerClient = {
         });
     },
     getIpRangeStats: () => req<{ totalRanges: number }>('/system/ip-ranges/stats', {}, { totalRanges: 0 }),
+    listIpRanges: (page = 0, limit = 50, search = '') =>
+        req<{ rows: { id: number; cidr: string | null; countryCode: string | null; countryName: string | null; provider: string | null; type: string | null }[]; total: number; page: number; limit: number }>(
+            `/system/ip-ranges/list?page=${page}&limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}`,
+            {},
+            { rows: [], total: 0, page: 0, limit }
+        ),
     getStorageInfo: () => req<StorageInfo | null>('/system/storage', {}, null),
     refreshStorageInfo: () => req<{ status: string; message: string }>('/system/storage/refresh', { method: 'POST' }, { status: 'error', message: 'Failed to trigger refresh' }),
 
@@ -363,6 +369,7 @@ export const DockerClient = {
 
     getProxySecuritySettings: () => req<SystemConfig | null>('/proxy/security/settings', {}, null),
     updateProxySecuritySettings: (body: Partial<SystemConfig>) => safeReq('/proxy/security/settings', { method: 'POST', body: JSON.stringify(body) }),
+    validateRegex: (pattern: string) => req<{ valid: string; error?: string; index?: string }>('/proxy/validate-regex', { method: 'POST', body: JSON.stringify({ pattern }) }, { valid: 'false', error: 'Network error' }),
     updateProxyDefaultBehavior: (return404: boolean) => safeReq('/proxy/settings/default-behavior', { method: 'POST', body: JSON.stringify({ return404 }) }),
     updateProxyRsyslogSettings: (enabled: boolean, dualLogging?: boolean) => safeReq('/proxy/settings/rsyslog', {
         method: 'POST',

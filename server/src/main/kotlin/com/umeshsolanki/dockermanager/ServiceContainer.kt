@@ -25,15 +25,14 @@ object ServiceContainer {
     
     val firewallService: IFirewallService = FirewallServiceImpl(ipReputationService)
     
-    val ipInfoService: com.umeshsolanki.dockermanager.ip.IIpInfoService = com.umeshsolanki.dockermanager.ip.IpInfoServiceImpl()
-    
+
     val kafkaService: IKafkaService = KafkaServiceImpl()
 
     // Dependent services
-    val jailManagerService: IJailManagerService = JailManagerServiceImpl(firewallService, ipInfoService, ipReputationService, kafkaService)
+    val jailManagerService: IJailManagerService = JailManagerServiceImpl(firewallService, ipReputationService, kafkaService)
 
     // Workers
-    val ipEnrichmentWorker = com.umeshsolanki.dockermanager.jail.IpEnrichmentWorker(firewallService, ipInfoService)
+    val ipEnrichmentWorker = com.umeshsolanki.dockermanager.jail.IpEnrichmentWorker(firewallService, ipReputationService)
 
     val sslService: ISSLService = SSLServiceImpl { command ->
          val executor = CommandExecutor(loggerName = "SSLServiceImpl")

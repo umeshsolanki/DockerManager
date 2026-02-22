@@ -35,26 +35,73 @@ data class UpdateProxyStatsRequest(
 )
 
 val DEFAULT_PROXY_JAIL_RULES = listOf(
-    // Block sensitive configuration and system files (immediate jail, no status check needed)
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.(env|git|ini|xml|log|old|backup|db|sqlite)$|/\\.git/", description = "Sensitive file access"),
-    
-    // Block path traversal attempts (immediate jail)
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.\\./|/etc/|/proc/|/sys/|/usr/bin|/windows/|/boot/", description = "Path traversal attempt"),
-    
-    // Block common CMS/framework admin panels and security probes
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "/admin|/wp-admin|/administrator|phpmyadmin|/manager|/console|/actuator/|/jolokia|/cgi-bin|/autodiscover|/owa|/ecp|/phpinfo|/\\.vscode|/\\.idea", description = "Security probe or admin access"),
-    
-    // Block dangerous backend file extensions (SPA uses only JS/CSS/HTML assets)
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.(php|asp|aspx|jsp|cgi|pl|py|rb|sh|bat|cmd|exe)$", description = "Backend script execution attempt"),
-    
-    // Block database and backup files
-    ProxyJailRule(type = ProxyJailRuleType.PATH, pattern = "\\.(sql|bak|backup|old|config|conf|yml|yaml|swp|tar\\.gz|zip|rar|7z)$", description = "Database/backup file access"),
-    
-    // Block suspicious User Agents
-    ProxyJailRule(type = ProxyJailRuleType.USER_AGENT, pattern = "sqlmap|nikto|masscan|gobuster|nmap|metasploit", description = "Security scanner detected"),
-    
-    // Block any non-standard HTTP methods (allows only: GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD)
-    ProxyJailRule(type = ProxyJailRuleType.METHOD, pattern = "^(?!GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD$).*", description = "Non-standard HTTP method")
+
+    // ── 1. Sensitive / hidden files ───────────────────────────────────────────
+    // Non-capturing group, possessive quantifier on the stem, anchored suffix.
+    // Covers: .env*, .git/*, .ini, .xml, .log, .old, .backup*, .db, .sqlite
+    ProxyJailRule(
+        type = ProxyJailRuleType.PATH,
+        pattern = """(?:/\.git(?:/|$)|\.(?:env\w*+|ini|xml|log|old|bak|backup\w*+|db|sqlite|DS_Store)$)""",
+        description = "Sensitive/hidden file access"
+    ),
+
+    // ── 2. Path traversal & system paths ─────────────────────────────────────
+    // Anchored alternatives; possessive on directory names avoids catastrophic
+    // backtracking on long URLs with many slashes.
+    ProxyJailRule(
+        type = ProxyJailRuleType.PATH,
+        pattern = """(?:\.\./|/(?:etc|proc|sys|usr/bin|boot|windows)/++)""",
+        description = "Path traversal / system path probe"
+    ),
+
+    // ── 3. CMS admin panels & well-known attack surfaces ─────────────────────
+    // Ordered by attack frequency. Non-capturing, no unnecessary .*
+    ProxyJailRule(
+        type = ProxyJailRuleType.PATH,
+        pattern = """/(?:wp-admin|wp-login\.php|administrator|phpmyadmin|myadmin|pma|manager|console|actuator|jolokia|cgi-bin|autodiscover|owa|ecp|phpinfo|xmlrpc\.php|\.vscode|\.idea|\.env)(?:/|$|[?#])""",
+        description = "CMS admin panel / security probe"
+    ),
+
+    // ── 4. Server-side script extensions ─────────────────────────────────────
+    // Hard-anchor at end of path (before query). Possessive prevents
+    // the engine retrying after the dot.
+    ProxyJailRule(
+        type = ProxyJailRuleType.PATH,
+        pattern = """\.(?:php\d*+|asp|aspx|jsp|jspx|cgi|pl|py|rb|sh|bash|bat|cmd|exe|cfm|htaccess|htpasswd)(?:\?|#|$)""",
+        description = "Server-side script execution attempt"
+    ),
+
+    // ── 5. Database / archive / config dumps ─────────────────────────────────
+    ProxyJailRule(
+        type = ProxyJailRuleType.PATH,
+        pattern = """\.(?:sql|dump|bak|swp|tmp|tar\.gz|tgz|zip|rar|7z|gz|tar)$""",
+        description = "Database / archive / config dump access"
+    ),
+
+    // ── 6. Known bad User-Agents (security scanners & exploit frameworks) ─────
+    // Case-insensitive flag inline (?i) so the JIT compiles one path.
+    ProxyJailRule(
+        type = ProxyJailRuleType.USER_AGENT,
+        pattern = """(?i)(?:sqlmap|nikto|masscan|gobuster|dirbuster|nmap|metasploit|nuclei|hydra|wpscan|zgrab|python-requests/2\.[01]|curl/7\.[0-4])""",
+        description = "Known scanner / exploit framework user-agent"
+    ),
+
+    // ── 7. Non-standard HTTP methods ─────────────────────────────────────────
+    // Exact-match negation via PCRE negative lookahead; anchor both ends.
+    ProxyJailRule(
+        type = ProxyJailRuleType.METHOD,
+        pattern = """^(?!(?:GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)$)""",
+        description = "Non-standard HTTP method"
+    ),
+
+    // ── 8. Composite: API abuse — repeated 5xx from /api ─────────────────────
+    ProxyJailRule(
+        type = ProxyJailRuleType.COMPOSITE,
+        pattern = """^/api/""",
+        statusCodePattern = """5\d\d""",
+        threshold = 10,
+        description = "API endpoint flooding (5xx)"
+    )
 )
 
 // KafkaSettings removed and moved to shared module
