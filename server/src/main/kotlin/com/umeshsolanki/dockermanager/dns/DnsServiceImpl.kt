@@ -700,6 +700,8 @@ class DnsServiceImpl : IDnsService {
         val cKeysDir = containerKeysDir()
         val cZonePath = if (isDockerMode) "${containerZonesDir()}/${File(zone.filePath).name}" else zone.filePath
 
+        bindExec("mkdir -p $cKeysDir")
+
         val kskResult = bindExec(
             "dnssec-keygen -K $cKeysDir -a ECDSAP256SHA256 -fKSK ${zone.name}"
         )
@@ -727,6 +729,8 @@ class DnsServiceImpl : IDnsService {
         
         val cKeysDir = containerKeysDir()
         val cZonePath = if (isDockerMode) "${containerZonesDir()}/${File(zone.filePath).name}" else zone.filePath
+
+        bindExec("mkdir -p $cKeysDir")
 
         val signResult = bindExec(
             "dnssec-signzone -K $cKeysDir -o ${zone.name} -S $cZonePath"
