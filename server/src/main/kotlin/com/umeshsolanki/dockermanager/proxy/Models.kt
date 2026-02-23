@@ -19,7 +19,8 @@ data class PathRoute(
     val path: String, // e.g., "/api", "/static", "/admin"
     val target: String, // Backend target URL
     val websocketEnabled: Boolean = false,
-    val allowedIps: List<String> = emptyList(),
+    val allowedIps: List<String> = emptyList(), // CIDR or single IP - allow list (when non-empty, only these can access)
+    val blockedIps: List<String> = emptyList(), // CIDR or single IP - block list (deny these, allow others)
     val stripPrefix: Boolean = false, // If true, removes the path prefix before forwarding
     val customConfig: String? = null, // Custom Nginx config for this path
     val enabled: Boolean = true, // Enable/disable this path route
@@ -61,7 +62,8 @@ data class ProxyHost(
     val enabled: Boolean = true,
     val customConfig: String? = null,
     val websocketEnabled: Boolean = false,
-    val allowedIps: List<String> = emptyList(),
+    val allowedIps: List<String> = emptyList(), // CIDR or single IP - allow list (when non-empty, only these can access)
+    val blockedIps: List<String> = emptyList(), // CIDR or single IP - block list (deny these, allow others)
     val customSslPath: String? = null,
     val hstsEnabled: Boolean = false,
     val isWildcard: Boolean = false, // Enable wildcard SSL certificate (*.domain.com)

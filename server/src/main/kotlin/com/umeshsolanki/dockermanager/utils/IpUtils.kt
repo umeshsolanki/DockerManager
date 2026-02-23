@@ -2,24 +2,51 @@ package com.umeshsolanki.dockermanager.utils
 
 import java.math.BigInteger
 import java.net.InetAddress
+import java.util.concurrent.ConcurrentHashMap
 
 object IpUtils {
+    private const val IP_CACHE_MAX_SIZE = 4096
+    private val ipCache = ConcurrentHashMap<String, BigInteger>(256)
+
     /**
      * Converts an IP address (v4 or v6) to a BigInteger for range comparison.
+     * Results are cached to avoid repeated InetAddress.getByName() calls on hot paths.
      */
     fun ipToBigInteger(ipAddress: String): BigInteger? {
+        ipCache[ipAddress]?.let { return it }
         return try {
             val address = InetAddress.getByName(ipAddress)
-            val bytes = address.address
-            BigInteger(1, bytes)
+            val result = BigInteger(1, address.address)
+            if (ipCache.size < IP_CACHE_MAX_SIZE) {
+                ipCache[ipAddress] = result
+            }
+            result
         } catch (e: Exception) {
             null
         }
     }
 
     /**
-     * Parse CIDR notation (e.g., "192.168.1.0/24") into a pair of BigInteger (start, end)
+     * Returns true if [ip] falls within [cidr] (e.g. "10.0.0.0/8").
      */
+    fun isIpInCidr(ip: String, cidr: String): Boolean {
+        val ipVal = ipToBigInteger(ip) ?: return false
+        val range = cidrToRange(cidr) ?: return false
+        return ipVal in range.first..range.second
+    }
+
+    /**
+     * Returns true if [ip] falls within any of the given [cidrs].
+     */
+    fun isIpInAnyCidr(ip: String, cidrs: List<String>): Boolean {
+        if (cidrs.isEmpty()) return false
+        val ipVal = ipToBigInteger(ip) ?: return false
+        return cidrs.any { cidr ->
+            val range = cidrToRange(cidr) ?: return@any false
+            ipVal in range.first..range.second
+        }
+    }
+
     fun cidrToRange(cidr: String): Pair<BigInteger, BigInteger>? {
         return try {
             val parts = cidr.split("/")

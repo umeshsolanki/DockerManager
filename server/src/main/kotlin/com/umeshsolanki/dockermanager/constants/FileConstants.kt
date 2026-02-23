@@ -7,6 +7,7 @@ object FileConstants {
     // File names
     const val SETTINGS_JSON = "settings.json"
     const val RULES_JSON = "rules.json"
+    const val CIDR_RULES_JSON = "cidr_rules.json"
     const val HOSTS_JSON = "hosts.json"
     const val IPS_JSON = "ips.json"
     const val FCM_SERVICE_ACCOUNT_JSON = "fcm-service-account.json"

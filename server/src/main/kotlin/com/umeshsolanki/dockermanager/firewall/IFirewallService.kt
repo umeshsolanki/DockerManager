@@ -10,4 +10,11 @@ interface IFirewallService {
     fun getNftablesVisualisation(): String
     fun getNftablesJson(): String
     fun updateRule(rule: FirewallRule): Boolean
+
+    // CIDR range blocking & whitelisting
+    fun listCidrRules(): List<CidrRule>
+    fun addCidrRule(rule: CidrRule): Boolean
+    fun removeCidrRule(id: String): Boolean
+    fun isIpWhitelisted(ip: String): Boolean
+    fun isIpInBlockedCidr(ip: String): Boolean
 }

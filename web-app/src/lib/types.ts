@@ -316,6 +316,7 @@ export interface PathRoute {
   target: string;
   websocketEnabled: boolean;
   allowedIps?: string[];
+  blockedIps?: string[];
   stripPrefix: boolean;
   customConfig?: string;
   enabled?: boolean;
@@ -357,6 +358,7 @@ export interface ProxyHost {
   dnsConfigId?: string; // Reference to saved DNS config
   customSslPath?: string;
   allowedIps?: string[];
+  blockedIps?: string[];
   paths?: PathRoute[];
   createdAt: number;
   sslChallengeType?: 'http' | 'dns';

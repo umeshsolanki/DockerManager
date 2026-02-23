@@ -4,10 +4,15 @@ package com.umeshsolanki.dockermanager.constants
  * Constants related to firewall and iptables operations.
  */
 object FirewallConstants {
-    // IPSet configuration
+    // IPSet configuration (individual IPs)
     const val IPSET_NAME = "dm-blocklist-ip"
     const val IPSET_TYPE = "hash:ip"
     const val IPSET_TIMEOUT = "timeout 0"
+
+    // IPSet configuration (CIDR ranges)
+    const val IPSET_NET_NAME = "dm-blocklist-net"
+    const val IPSET_NET_TYPE = "hash:net"
+    const val IPSET_NET_TIMEOUT = "timeout 0"
     
     // Iptables chains
     const val CHAIN_DOCKER_USER = "DOCKER-USER"

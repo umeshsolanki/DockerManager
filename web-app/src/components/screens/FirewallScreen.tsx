@@ -741,7 +741,8 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
                                 { id: 'cloudflare', name: 'CF', full: 'Cloudflare', color: 'text-[#F38020] border-[#F38020]/30 hover:bg-[#F38020]/20' },
                                 { id: 'aws', name: 'AWS', full: 'AWS', color: 'text-[#FF9900] border-[#FF9900]/30 hover:bg-[#FF9900]/20' },
                                 { id: 'google', name: 'GCP', full: 'Google', color: 'text-[#4285F4] border-[#4285F4]/30 hover:bg-[#4285F4]/20' },
-                                { id: 'digitalocean', name: 'DO', full: 'DigitalOcean', color: 'text-[#0080FF] border-[#0080FF]/30 hover:bg-[#0080FF]/20' }
+                                { id: 'digitalocean', name: 'DO', full: 'DigitalOcean', color: 'text-[#0080FF] border-[#0080FF]/30 hover:bg-[#0080FF]/20' },
+                                { id: 'github', name: 'GitHub', full: 'GitHub', color: 'text-[#24292F] border-[#24292F]/30 hover:bg-[#24292F]/20' }
                             ].map((p) => (
                                 <button
                                     key={p.id}

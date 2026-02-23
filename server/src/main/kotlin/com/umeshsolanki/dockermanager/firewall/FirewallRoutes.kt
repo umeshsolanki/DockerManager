@@ -58,5 +58,29 @@ fun Route.firewallRoutes() {
                 "Failed to unblock IP"
             )
         }
+
+        // CIDR range blocking & whitelisting
+        get("/cidr") {
+            call.respond(FirewallService.listCidrRules())
+        }
+
+        post("/cidr") {
+            val rule = call.receive<CidrRule>()
+            call.respondBooleanResult(
+                FirewallService.addCidrRule(rule),
+                "CIDR rule added",
+                "Failed to add CIDR rule",
+                HttpStatusCode.Created
+            )
+        }
+
+        delete("/cidr/{id}") {
+            val id = call.requireParameter("id") ?: return@delete
+            call.respondBooleanResult(
+                FirewallService.removeCidrRule(id),
+                "CIDR rule removed",
+                "Failed to remove CIDR rule"
+            )
+        }
     }
 }

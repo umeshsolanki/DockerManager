@@ -2,6 +2,7 @@ package com.umeshsolanki.dockermanager.jail
 
 import com.umeshsolanki.dockermanager.*
 import com.umeshsolanki.dockermanager.ServiceContainer
+import com.umeshsolanki.dockermanager.system.IpLookupService
 import com.umeshsolanki.dockermanager.constants.TimeoutConstants
 import com.umeshsolanki.dockermanager.firewall.IFirewallService
 import com.umeshsolanki.dockermanager.firewall.BlockIPRequest
@@ -82,6 +83,17 @@ class JailManagerServiceImpl(
                 firewallService.unblockIP(rule.id)
             }
         }
+
+        // Clean up expired CIDR rules
+        val expiredCidr = firewallService.listCidrRules().filter { rule ->
+            rule.expiresAt?.let { it <= now } ?: false
+        }
+        if (expiredCidr.isNotEmpty()) {
+            logger.info("JailManager: Removing ${expiredCidr.size} expired CIDR rules")
+            expiredCidr.forEach { rule ->
+                firewallService.removeCidrRule(rule.id)
+            }
+        }
     }
 
     override fun listJails(): List<JailedIP> {
@@ -107,6 +119,11 @@ class JailManagerServiceImpl(
     }
 
     override suspend fun jailIP(ip: String, durationMinutes: Int, reason: String): Boolean {
+        if (firewallService.isIpWhitelisted(ip)) {
+            logger.info("Skipping jail for whitelisted CIDR IP: $ip")
+            return false
+        }
+
         val settings = AppConfig.settings
         
         // If Kafka is enabled, publish the request and let the consumer handle the actual jailing.
@@ -335,6 +352,20 @@ class JailManagerServiceImpl(
 
     override fun checkProxySecurityViolation(ip: String, userAgent: String, method: String, path: String, status: Int, errorCount: Long, hostHeader: String) {
         if (ip.isBlank() || AppConfig.isLocalIP(ip)) return
+
+        // Skip IPs in whitelisted CIDR ranges
+        if (firewallService.isIpWhitelisted(ip)) {
+            logger.debug("Skipping proxy jail check for whitelisted CIDR IP: $ip")
+            return
+        }
+
+        // Allow IPs from trusted CIDR ranges (e.g. GitHub webhooks, Actions, API)
+        IpLookupService.lookup(ip)?.provider?.let { provider ->
+            if (provider.equals("GitHub", ignoreCase = true)) {
+                logger.debug("Skipping proxy jail check for IP in GitHub range: $ip")
+                return
+            }
+        }
         
         // Record activity in reputation service
         scope.launch {

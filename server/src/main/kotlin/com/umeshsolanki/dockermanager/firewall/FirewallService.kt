@@ -6,13 +6,16 @@ import com.umeshsolanki.dockermanager.constants.FileConstants
 import com.umeshsolanki.dockermanager.system.IpLookupService
 import com.umeshsolanki.dockermanager.constants.FirewallConstants
 import com.umeshsolanki.dockermanager.utils.CommandExecutor
+import com.umeshsolanki.dockermanager.utils.IpUtils
 import com.umeshsolanki.dockermanager.utils.JsonPersistence
+import java.math.BigInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.withLock
 
 class FirewallServiceImpl(
@@ -24,30 +27,65 @@ class FirewallServiceImpl(
     private val ipSetCmd = AppConfig.ipsetCmd
     private val nftCmd = AppConfig.nftCmd
     private val rulesFile = File(dataDir, FileConstants.RULES_JSON)
+    private val cidrRulesFile = File(dataDir, FileConstants.CIDR_RULES_JSON)
     private val jsonPersistence = JsonPersistence.create<List<FirewallRule>>(
         file = rulesFile,
+        defaultContent = emptyList(),
+        loggerName = FirewallServiceImpl::class.java.name
+    )
+    private val cidrJsonPersistence = JsonPersistence.create<List<CidrRule>>(
+        file = cidrRulesFile,
         defaultContent = emptyList(),
         loggerName = FirewallServiceImpl::class.java.name
     )
     private val commandExecutor = CommandExecutor(loggerName = FirewallServiceImpl::class.java.name)
     private val reputationScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val lock = java.util.concurrent.locks.ReentrantLock()
+    private val cidrLock = java.util.concurrent.locks.ReentrantLock()
 
     // In-memory cache for rules to avoid frequent file reads
     @Volatile
     private var cachedRules: MutableList<FirewallRule>? = null
+    @Volatile
+    private var cachedCidrRules: MutableList<CidrRule>? = null
+
+    // Pre-computed sorted ranges — sorted by start IP for early-termination lookups
+    @Volatile
+    private var allowRangesCache: Array<Pair<BigInteger, BigInteger>> = emptyArray()
+    @Volatile
+    private var blockRangesCache: Array<Pair<BigInteger, BigInteger>> = emptyArray()
+
+    // Hit counters: CIDR string → in-memory hit count (flushed to disk periodically)
+    private val cidrHitCounters = ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicLong>()
 
     init {
-        // Initialize ipset
-        // We use hash:ip because we only put raw IPs here. Port-specific blocks use direct iptables rules.
+        // Initialize ipset for individual IPs (hash:ip)
         val createSet =
             commandExecutor.execute("$ipSetCmd create ${FirewallConstants.IPSET_NAME} ${FirewallConstants.IPSET_TYPE} ${FirewallConstants.IPSET_TIMEOUT} -exist")
         if (createSet.exitCode != 0) {
             logger.error("Failed to create ipset: ${createSet.error}")
         }
 
+        // Initialize ipset for CIDR ranges (hash:net)
+        val createNetSet =
+            commandExecutor.execute("$ipSetCmd create ${FirewallConstants.IPSET_NET_NAME} ${FirewallConstants.IPSET_NET_TYPE} ${FirewallConstants.IPSET_NET_TIMEOUT} -exist")
+        if (createNetSet.exitCode != 0) {
+            logger.error("Failed to create CIDR ipset: ${createNetSet.error}")
+        }
+
         // Apply existing rules to iptables on startup
         syncRules()
+        syncCidrRules()
+
+        // Periodically flush CIDR hit counters to disk (every 5 minutes)
+        reputationScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(300_000)
+                try { flushHitCounters() } catch (e: Exception) {
+                    logger.error("Failed to flush CIDR hit counters", e)
+                }
+            }
+        }
     }
 
 
@@ -76,6 +114,11 @@ class FirewallServiceImpl(
             if (AppConfig.isLocalIP(request.ip)) {
                 logger.warn("Ignoring block request for local/private IP: ${request.ip}")
                 return@withLock true
+            }
+
+            if (isIpWhitelisted(request.ip)) {
+                logger.warn("Ignoring block request for whitelisted CIDR IP: ${request.ip}")
+                return@withLock false
             }
 
             val rules = loadRules()
@@ -316,6 +359,204 @@ class FirewallServiceImpl(
         }
     }
 
+    // ========== CIDR Range Management ==========
+
+    private fun loadCidrRules(): MutableList<CidrRule> {
+        cachedCidrRules?.let { return it.toMutableList() }
+        return cidrLock.withLock {
+            cachedCidrRules?.let { return@withLock it.toMutableList() }
+            val loaded = cidrJsonPersistence.load().toMutableList()
+            cachedCidrRules = loaded
+            rebuildRangesCaches(loaded)
+            loaded.toMutableList()
+        }
+    }
+
+    private fun saveCidrRules(rules: List<CidrRule>) {
+        cidrLock.withLock {
+            cachedCidrRules = rules.toMutableList()
+            cidrJsonPersistence.save(rules)
+            rebuildRangesCaches(rules)
+        }
+    }
+
+    // Parallel arrays: ranges[i] corresponds to cidrStrings[i]
+    @Volatile
+    private var allowCidrStrings: Array<String> = emptyArray()
+    @Volatile
+    private var blockCidrStrings: Array<String> = emptyArray()
+
+    private fun rebuildRangesCaches(rules: List<CidrRule>) {
+        data class Parsed(val cidr: String, val range: Pair<BigInteger, BigInteger>)
+
+        val allow = rules.filter { it.type == CidrRuleType.ALLOW }
+            .mapNotNull { r -> IpUtils.cidrToRange(r.cidr)?.let { Parsed(r.cidr, it) } }
+            .sortedBy { it.range.first }
+        allowRangesCache = allow.map { it.range }.toTypedArray()
+        allowCidrStrings = allow.map { it.cidr }.toTypedArray()
+
+        val block = rules.filter { it.type == CidrRuleType.BLOCK }
+            .mapNotNull { r -> IpUtils.cidrToRange(r.cidr)?.let { Parsed(r.cidr, it) } }
+            .sortedBy { it.range.first }
+        blockRangesCache = block.map { it.range }.toTypedArray()
+        blockCidrStrings = block.map { it.cidr }.toTypedArray()
+    }
+
+    /**
+     * Returns the index of the matching range, or -1 if no match.
+     * Ranges are sorted by start IP. Once a range's start > ipVal, no further ranges can match.
+     */
+    private fun findMatchingRangeIndex(ipVal: BigInteger, ranges: Array<Pair<BigInteger, BigInteger>>): Int {
+        for (i in ranges.indices) {
+            val (start, end) = ranges[i]
+            if (start > ipVal) return -1
+            if (ipVal <= end) return i
+        }
+        return -1
+    }
+
+    override fun listCidrRules(): List<CidrRule> {
+        return loadCidrRules().map { rule ->
+            val memHits = cidrHitCounters[rule.cidr]?.get() ?: 0
+            if (memHits > 0) rule.copy(hits = rule.hits + memHits) else rule
+        }
+    }
+
+    fun flushHitCounters() {
+        if (cidrHitCounters.isEmpty()) return
+        cidrLock.withLock {
+            val rules = loadCidrRules()
+            var changed = false
+            for (i in rules.indices) {
+                val delta = cidrHitCounters.remove(rules[i].cidr)?.get() ?: 0
+                if (delta > 0) {
+                    rules[i] = rules[i].copy(hits = rules[i].hits + delta)
+                    changed = true
+                }
+            }
+            if (changed) saveCidrRules(rules)
+        }
+    }
+
+    override fun addCidrRule(rule: CidrRule): Boolean {
+        return cidrLock.withLock {
+            val newRange = IpUtils.cidrToRange(rule.cidr)
+            if (newRange == null) {
+                logger.warn("Invalid CIDR notation: ${rule.cidr}")
+                return@withLock false
+            }
+
+            val rules = loadCidrRules()
+            if (rules.any { it.cidr == rule.cidr && it.type == rule.type }) {
+                logger.info("CIDR ${rule.cidr} already has a ${rule.type} rule, skipping")
+                return@withLock true
+            }
+
+            // Warn on conflicts: a BLOCK overlapping an existing ALLOW or vice versa
+            val oppositeType = if (rule.type == CidrRuleType.BLOCK) CidrRuleType.ALLOW else CidrRuleType.BLOCK
+            val conflicting = rules.filter { it.type == oppositeType }.filter { existing ->
+                val existingRange = IpUtils.cidrToRange(existing.cidr) ?: return@filter false
+                newRange.first <= existingRange.second && newRange.second >= existingRange.first
+            }
+            if (conflicting.isNotEmpty()) {
+                val labels = conflicting.joinToString { "${it.type} ${it.cidr}" }
+                logger.warn("New ${rule.type} rule ${rule.cidr} overlaps with: $labels")
+            }
+
+            if (rule.type == CidrRuleType.BLOCK) {
+                val res = commandExecutor.execute("$ipSetCmd add ${FirewallConstants.IPSET_NET_NAME} ${rule.cidr} -exist")
+                if (res.exitCode != 0) {
+                    logger.error("Failed to add CIDR ${rule.cidr} to ipset: ${res.error}")
+                    return@withLock false
+                }
+                ensureCidrBaseRules()
+            }
+
+            rules.add(rule)
+            saveCidrRules(rules)
+            logger.info("Added CIDR rule: ${rule.type} ${rule.cidr} (${rule.comment ?: "no comment"})")
+            true
+        }
+    }
+
+    override fun removeCidrRule(id: String): Boolean {
+        return cidrLock.withLock {
+            val rules = loadCidrRules()
+            val rule = rules.find { it.id == id } ?: return@withLock false
+
+            if (rule.type == CidrRuleType.BLOCK) {
+                commandExecutor.execute("$ipSetCmd del ${FirewallConstants.IPSET_NET_NAME} ${rule.cidr}")
+            }
+
+            rules.removeAll { it.id == id }
+            saveCidrRules(rules)
+            logger.info("Removed CIDR rule: ${rule.type} ${rule.cidr}")
+            true
+        }
+    }
+
+    override fun isIpWhitelisted(ip: String): Boolean {
+        val ranges = allowRangesCache
+        if (ranges.isEmpty()) return false
+        val ipVal = IpUtils.ipToBigInteger(ip) ?: return false
+        val idx = findMatchingRangeIndex(ipVal, ranges)
+        if (idx >= 0) {
+            cidrHitCounters.computeIfAbsent(allowCidrStrings[idx]) { java.util.concurrent.atomic.AtomicLong() }.incrementAndGet()
+            return true
+        }
+        return false
+    }
+
+    override fun isIpInBlockedCidr(ip: String): Boolean {
+        val ranges = blockRangesCache
+        if (ranges.isEmpty()) return false
+        val ipVal = IpUtils.ipToBigInteger(ip) ?: return false
+        val idx = findMatchingRangeIndex(ipVal, ranges)
+        if (idx >= 0) {
+            cidrHitCounters.computeIfAbsent(blockCidrStrings[idx]) { java.util.concurrent.atomic.AtomicLong() }.incrementAndGet()
+            return true
+        }
+        return false
+    }
+
+    private fun ensureCidrBaseRules() {
+        val baseRules = listOf(
+            Triple(FirewallConstants.CHAIN_DOCKER_USER, "dm-managed-cidr", FirewallConstants.MATCH_SET_SRC),
+            Triple(FirewallConstants.CHAIN_INPUT, "dm-managed-cidr-host", FirewallConstants.MATCH_SET_SRC)
+        )
+
+        baseRules.forEach { (chain, comment, match) ->
+            val check = commandExecutor.execute(
+                "$iptablesCmd ${FirewallConstants.FLAG_WAIT} ${FirewallConstants.FLAG_CHECK} $chain " +
+                "-m set --match-set ${FirewallConstants.IPSET_NET_NAME} $match " +
+                "-j ${FirewallConstants.TARGET_DROP} -m comment --comment \"$comment\""
+            )
+            if (check.exitCode != 0) {
+                commandExecutor.execute(
+                    "$iptablesCmd ${FirewallConstants.FLAG_WAIT} ${FirewallConstants.FLAG_INSERT} $chain " +
+                    "-m set --match-set ${FirewallConstants.IPSET_NET_NAME} $match " +
+                    "-j ${FirewallConstants.TARGET_DROP} -m comment --comment \"$comment\""
+                )
+            }
+        }
+    }
+
+    private fun syncCidrRules() {
+        val rules = loadCidrRules()
+        val blockRules = rules.filter { it.type == CidrRuleType.BLOCK }
+        if (blockRules.isNotEmpty()) {
+            ensureCidrBaseRules()
+            blockRules.forEach { rule ->
+                commandExecutor.execute("$ipSetCmd add ${FirewallConstants.IPSET_NET_NAME} ${rule.cidr} -exist")
+            }
+            logger.info("Synced ${blockRules.size} blocked CIDR ranges to ipset")
+        }
+        val allowRules = rules.filter { it.type == CidrRuleType.ALLOW }
+        if (allowRules.isNotEmpty()) {
+            logger.info("Loaded ${allowRules.size} whitelisted CIDR ranges")
+        }
+    }
+
     private fun ensureBaseRules() {
         val baseRules = listOf(
             Triple(
@@ -382,6 +623,13 @@ object FirewallService {
     fun getNftablesVisualisation() = service.getNftablesVisualisation()
     fun getNftablesJson() = service.getNftablesJson()
     fun updateRule(rule: FirewallRule) = service.updateRule(rule)
+
+    // CIDR range management
+    fun listCidrRules() = service.listCidrRules()
+    fun addCidrRule(rule: CidrRule) = service.addCidrRule(rule)
+    fun removeCidrRule(id: String) = service.removeCidrRule(id)
+    fun isIpWhitelisted(ip: String) = service.isIpWhitelisted(ip)
+    fun isIpInBlockedCidr(ip: String) = service.isIpInBlockedCidr(ip)
 }
 
 

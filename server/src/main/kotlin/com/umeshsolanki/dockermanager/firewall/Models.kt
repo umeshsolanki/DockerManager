@@ -43,6 +43,20 @@ data class BlockIPRequest(
 )
 
 @Serializable
+enum class CidrRuleType { BLOCK, ALLOW }
+
+@Serializable
+data class CidrRule(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val cidr: String,
+    val type: CidrRuleType,
+    val comment: String? = null,
+    val expiresAt: Long? = null, // null = permanent, otherwise epoch millis
+    val hits: Long = 0,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Serializable
 data class IptablesRule(
     val pkts: String,
     val bytes: String,

@@ -34,6 +34,9 @@ export function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () 
     const [paths, setPaths] = useState<PathRoute[]>(initialHost?.paths || []);
     const [isPathModalOpen, setIsPathModalOpen] = useState(false);
     const [editingPath, setEditingPath] = useState<PathRoute | null>(null);
+    const [blockedIps, setBlockedIps] = useState<string[]>(initialHost?.blockedIps || []);
+    const [newBlockedIp, setNewBlockedIp] = useState('');
+
 
     // Rate Limiting State
     const [rateLimitEnabled, setRateLimitEnabled] = useState(initialHost?.rateLimit?.enabled || false);
@@ -95,7 +98,8 @@ export function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () 
             isStatic,
             silentDrop,
             underConstruction,
-            underConstructionPageId: underConstructionPageId || undefined
+            underConstructionPageId: underConstructionPageId || undefined,
+            blockedIps: blockedIps.length > 0 ? blockedIps : undefined
         };
 
         const result = initialHost
@@ -634,54 +638,107 @@ export function ProxyHostModal({ onClose, onAdded, initialHost }: { onClose: () 
                         </div>
 
                         {/* IP Restrictions */}
-                        <div className="pt-2 border-t border-outline/10">
-                            <label className="block text-xs font-bold text-on-surface-variant uppercase mb-2 ml-1">IP Restrictions</label>
-                            <div className="flex gap-2 mb-2">
-                                <input
-                                    type="text"
-                                    placeholder="IP or CIDR (e.g. 1.2.3.4)"
-                                    value={newIp}
-                                    onChange={(e) => setNewIp(e.target.value)}
-                                    className="flex-1 bg-white/5 border border-outline/20 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:border-primary"
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
+                        <div className="pt-2 border-t border-outline/10 space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-on-surface-variant uppercase mb-2 ml-1">Allowed IPs / CIDR</label>
+                                <div className="flex gap-2 mb-2">
+                                    <input
+                                        type="text"
+                                        placeholder="Allowed IP/CIDR (e.g. 1.2.3.4)"
+                                        value={newIp}
+                                        onChange={(e) => setNewIp(e.target.value)}
+                                        className="flex-1 bg-white/5 border border-outline/20 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:border-primary"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                if (newIp.trim()) {
+                                                    setAllowedIps([...allowedIps, newIp.trim()]);
+                                                    setNewIp('');
+                                                }
+                                            }
+                                        }}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => {
                                             if (newIp.trim()) {
                                                 setAllowedIps([...allowedIps, newIp.trim()]);
                                                 setNewIp('');
                                             }
-                                        }
-                                    }}
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (newIp.trim()) {
-                                            setAllowedIps([...allowedIps, newIp.trim()]);
-                                            setNewIp('');
-                                        }
-                                    }}
-                                    className="bg-primary/20 text-primary p-2 rounded-xl hover:bg-primary/30 transition-all"
-                                >
-                                    <Plus size={16} />
-                                </button>
+                                        }}
+                                        className="bg-primary/20 text-primary p-2 rounded-xl hover:bg-primary/30 transition-all"
+                                    >
+                                        <Plus size={16} />
+                                    </button>
+                                </div>
+                                <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto no-scrollbar p-1">
+                                    {allowedIps.map(ip => (
+                                        <div key={ip} className="flex items-center gap-2 bg-surface border border-outline/20 px-2 py-1 rounded-lg text-[10px] font-mono group">
+                                            <span>{ip}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setAllowedIps(allowedIps.filter(i => i !== ip))}
+                                                className="text-on-surface-variant hover:text-red-500 transition-colors"
+                                            >
+                                                <Plus size={10} className="rotate-45" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {allowedIps.length === 0 && (
+                                        <span className="text-[10px] text-on-surface-variant italic">No restrictions (Public)</span>
+                                    )}
+                                </div>
                             </div>
-                            <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto no-scrollbar p-1">
-                                {allowedIps.map(ip => (
-                                    <div key={ip} className="flex items-center gap-2 bg-surface border border-outline/20 px-2 py-1 rounded-lg text-[10px] font-mono group">
-                                        <span>{ip}</span>
-                                        <button
-                                            type="button"
-                                            onClick={() => setAllowedIps(allowedIps.filter(i => i !== ip))}
-                                            className="text-on-surface-variant hover:text-red-500 transition-colors"
-                                        >
-                                            <Plus size={10} className="rotate-45" />
-                                        </button>
-                                    </div>
-                                ))}
-                                {allowedIps.length === 0 && (
-                                    <span className="text-[10px] text-on-surface-variant italic">No restrictions (Public)</span>
-                                )}
+
+                            <div>
+                                <label className="block text-xs font-bold text-on-surface-variant uppercase mb-2 ml-1">Blocked IPs / CIDR</label>
+                                <div className="flex gap-2 mb-2">
+                                    <input
+                                        type="text"
+                                        placeholder="Blocked IP/CIDR (e.g. 1.2.3.4)"
+                                        value={newBlockedIp}
+                                        onChange={(e) => setNewBlockedIp(e.target.value)}
+                                        className="flex-1 bg-white/5 border border-outline/20 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:border-red-500"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                if (newBlockedIp.trim()) {
+                                                    setBlockedIps([...blockedIps, newBlockedIp.trim()]);
+                                                    setNewBlockedIp('');
+                                                }
+                                            }
+                                        }}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (newBlockedIp.trim()) {
+                                                setBlockedIps([...blockedIps, newBlockedIp.trim()]);
+                                                setNewBlockedIp('');
+                                            }
+                                        }}
+                                        className="bg-red-500/20 text-red-500 p-2 rounded-xl hover:bg-red-500/30 transition-all"
+                                    >
+                                        <Plus size={16} />
+                                    </button>
+                                </div>
+                                <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto no-scrollbar p-1">
+                                    {blockedIps.map(ip => (
+                                        <div key={ip} className="flex items-center gap-2 bg-surface border border-red-500/10 px-2 py-1 rounded-lg text-[10px] font-mono group">
+                                            <span>{ip}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setBlockedIps(blockedIps.filter(i => i !== ip))}
+                                                className="text-on-surface-variant hover:text-red-500 transition-colors"
+                                            >
+                                                <Plus size={10} className="rotate-45" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {blockedIps.length === 0 && (
+                                        <span className="text-[10px] text-on-surface-variant italic">No explicit blocks</span>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
@@ -827,6 +884,9 @@ function PathRouteModal({
     const [rateLimitBurst, setRateLimitBurst] = useState(initialPath?.rateLimit?.burst?.toString() || '20');
     const [rateLimitNodelay, setRateLimitNodelay] = useState(initialPath?.rateLimit?.nodelay ?? true);
     const [isStatic, setIsStatic] = useState(initialPath?.isStatic || false);
+    const [blockedIps, setBlockedIps] = useState<string[]>(initialPath?.blockedIps || []);
+    const [newBlockedIp, setNewBlockedIp] = useState('');
+
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -850,14 +910,13 @@ function PathRouteModal({
                 burst: parseInt(rateLimitBurst) || 20,
                 nodelay: rateLimitNodelay
             } : undefined,
-            isStatic
+            isStatic,
+            blockedIps: blockedIps.length > 0 ? blockedIps : undefined
         };
 
         await onSave(pathData);
         setIsSubmitting(false);
     };
-
-
 
     return (
         <Modal
@@ -931,6 +990,111 @@ function PathRouteModal({
                         />
                     </div>
 
+                    {/* IP Restrictions for Path */}
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1 mb-2">Allowed IPs / CIDR</label>
+                            <div className="flex gap-2 mb-2">
+                                <input
+                                    type="text"
+                                    placeholder="Allowed IP/CIDR (e.g. 1.2.3.4)"
+                                    value={newIp}
+                                    onChange={(e) => setNewIp(e.target.value)}
+                                    className="flex-1 bg-white/5 border border-outline/20 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-primary"
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            if (newIp.trim()) {
+                                                setAllowedIps([...allowedIps, newIp.trim()]);
+                                                setNewIp('');
+                                            }
+                                        }
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (newIp.trim()) {
+                                            setAllowedIps([...allowedIps, newIp.trim()]);
+                                            setNewIp('');
+                                        }
+                                    }}
+                                    className="bg-primary/20 text-primary p-2 rounded-xl hover:bg-primary/30 transition-all"
+                                >
+                                    <Plus size={14} />
+                                </button>
+                            </div>
+                            <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto no-scrollbar p-1">
+                                {allowedIps.map(ip => (
+                                    <div key={ip} className="flex items-center gap-2 bg-surface border border-outline/20 px-2 py-1 rounded-lg text-[9px] font-mono group">
+                                        <span>{ip}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setAllowedIps(allowedIps.filter(i => i !== ip))}
+                                            className="text-on-surface-variant hover:text-red-500 transition-colors"
+                                        >
+                                            <Plus size={10} className="rotate-45" />
+                                        </button>
+                                    </div>
+                                ))}
+                                {allowedIps.length === 0 && (
+                                    <span className="text-[9px] text-on-surface-variant italic">No restrictions (Public)</span>
+                                )}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1 mb-2">Blocked IPs / CIDR</label>
+                            <div className="flex gap-2 mb-2">
+                                <input
+                                    type="text"
+                                    placeholder="Blocked IP/CIDR (e.g. 1.2.3.4)"
+                                    value={newBlockedIp}
+                                    onChange={(e) => setNewBlockedIp(e.target.value)}
+                                    className="flex-1 bg-white/5 border border-outline/20 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-red-500"
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            if (newBlockedIp.trim()) {
+                                                setBlockedIps([...blockedIps, newBlockedIp.trim()]);
+                                                setNewBlockedIp('');
+                                            }
+                                        }
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (newBlockedIp.trim()) {
+                                            setBlockedIps([...blockedIps, newBlockedIp.trim()]);
+                                            setNewBlockedIp('');
+                                        }
+                                    }}
+                                    className="bg-red-500/20 text-red-500 p-2 rounded-xl hover:bg-red-500/30 transition-all"
+                                >
+                                    <Plus size={14} />
+                                </button>
+                            </div>
+                            <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto no-scrollbar p-1">
+                                {blockedIps.map(ip => (
+                                    <div key={ip} className="flex items-center gap-2 bg-surface border border-red-500/10 px-2 py-1 rounded-lg text-[9px] font-mono group">
+                                        <span>{ip}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setBlockedIps(blockedIps.filter(i => i !== ip))}
+                                            className="text-on-surface-variant hover:text-red-500 transition-colors"
+                                        >
+                                            <Plus size={10} className="rotate-45" />
+                                        </button>
+                                    </div>
+                                ))}
+                                {blockedIps.length === 0 && (
+                                    <span className="text-[9px] text-on-surface-variant italic">No explicit blocks</span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="space-y-2">
                         <label className="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Custom Nginx Config</label>
                         <textarea
@@ -961,5 +1125,4 @@ function PathRouteModal({
             </div>
         </Modal>
     );
-
 }

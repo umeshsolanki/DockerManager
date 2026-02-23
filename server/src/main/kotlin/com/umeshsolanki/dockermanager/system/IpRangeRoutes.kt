@@ -77,6 +77,7 @@ fun Route.ipRangeRoutes() {
                     "aws" -> IpRangeFetchService.fetchAwsRanges()
                     "google" -> IpRangeFetchService.fetchGoogleRanges()
                     "digitalocean" -> IpRangeFetchService.fetchDigitalOceanRanges()
+                    "github" -> IpRangeFetchService.fetchGitHubRanges()
                     "custom" -> {
                         val url = req.url ?: throw IllegalArgumentException("URL is required for custom fetch")
                         val customProvider = req.customProvider ?: "Custom"

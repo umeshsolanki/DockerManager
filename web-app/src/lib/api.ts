@@ -244,7 +244,7 @@ export const DockerClient = {
     getRecommendedProxyRules: () => req<ProxyJailRule[]>('/system/proxy/recommended-rules', {}, []),
     updateSystemConfig: (body: UpdateSystemConfigRequest) => req<{ success: boolean }>('/system/config', { method: 'POST', body: JSON.stringify(body) }, { success: false }),
     importIpRanges: (csv: string) => safeReq('/system/ip-ranges/import', { method: 'POST', body: csv, headers: { 'Content-Type': 'text/plain' } }),
-    fetchIpRanges: (provider: 'cloudflare' | 'aws' | 'google' | 'digitalocean' | 'custom', url?: string, customProvider?: string) => {
+    fetchIpRanges: (provider: 'cloudflare' | 'aws' | 'google' | 'digitalocean' | 'github' | 'custom', url?: string, customProvider?: string) => {
         return safeReq('/system/ip-ranges/fetch', {
             method: 'POST',
             body: JSON.stringify({ provider, url, customProvider })

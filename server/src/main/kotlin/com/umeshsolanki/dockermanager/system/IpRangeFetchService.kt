@@ -71,6 +71,30 @@ object IpRangeFetchService {
         cidrs
     }
 
+    /** GitHub meta: https://api.github.com/meta - returns web, api, git, hooks, actions, packages, pages, etc. */
+    suspend fun fetchGitHubRanges(): Int {
+        logger.info("Fetching GitHub IP ranges from api.github.com/meta...")
+        val response = client.get("https://api.github.com/meta").bodyAsText()
+        val cidrs = parseGitHubMetaJson(response)
+        return importCidrs(cidrs, "GitHub", "git-hosting")
+    }
+
+    /** GitHub meta format: top-level keys (web, api, git, hooks, actions, packages, pages, etc.) map to arrays of CIDR strings. Skips domains, ssh_keys, etc. */
+    private suspend fun parseGitHubMetaJson(jsonString: String): List<String> = withContext(Dispatchers.Default) {
+        val json = AppConfig.json.parseToJsonElement(jsonString).jsonObject
+        val cidrs = mutableSetOf<String>()
+        val skipKeys = setOf("verifiable_password_authentication", "ssh_key_fingerprints", "ssh_keys", "domains", "artifact_attestations", "actions_inbound")
+        for ((key, value) in json) {
+            if (key in skipKeys) continue
+            if (value is JsonArray) {
+                value.forEach { el ->
+                    (el as? JsonPrimitive)?.contentOrNull?.takeIf { it.contains("/") }?.let { cidrs.add(it) }
+                }
+            }
+        }
+        cidrs.toList()
+    }
+
     suspend fun fetchDigitalOceanRanges(): Int {
         logger.info("Fetching DigitalOcean IP ranges...")
         // DigitalOcean provides a CSV formatted for Google Geo protocol

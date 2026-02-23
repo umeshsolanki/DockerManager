@@ -747,6 +747,9 @@ class ProxyServiceImpl(
                 val allowedIps =
                     jsonObject["allowedIps"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }
                         ?: emptyList()
+                val blockedIps =
+                    jsonObject["blockedIps"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }
+                        ?: emptyList()
                 val customSslPath = jsonObject["customSslPath"]?.jsonPrimitive?.contentOrNull
                 val hstsEnabled = jsonObject["hstsEnabled"]?.jsonPrimitive?.booleanOrNull ?: false
 
@@ -761,6 +764,8 @@ class ProxyServiceImpl(
                         websocketEnabled = pathObj["websocketEnabled"]?.jsonPrimitive?.booleanOrNull
                             ?: false,
                         allowedIps = pathObj["allowedIps"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }
+                            ?: emptyList(),
+                        blockedIps = pathObj["blockedIps"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }
                             ?: emptyList(),
                         stripPrefix = pathObj["stripPrefix"]?.jsonPrimitive?.booleanOrNull ?: false,
                         customConfig = pathObj["customConfig"]?.jsonPrimitive?.contentOrNull,
@@ -780,6 +785,7 @@ class ProxyServiceImpl(
                     customConfig = customConfig,
                     websocketEnabled = websocketEnabled,
                     allowedIps = allowedIps,
+                    blockedIps = blockedIps,
                     customSslPath = customSslPath,
                     hstsEnabled = hstsEnabled,
                     paths = paths
@@ -1300,6 +1306,44 @@ class ProxyServiceImpl(
         )
     }
 
+    /**
+     * Builds nginx allow/deny config for IP restrictions. Supports CIDR ranges.
+     * - allowedIps non-empty: allow list mode (only these IPs/CIDRs allowed, deny all others)
+     * - blockedIps non-empty: block list mode (deny these, allow all others)
+     * - both: deny blocked first, then allow list, then deny all
+     */
+    private fun buildIpRestrictionsConfig(
+        allowedIps: List<String>,
+        blockedIps: List<String>
+    ): String {
+        if (allowedIps.isEmpty() && blockedIps.isEmpty()) return ""
+
+        val template = getCachedTemplate("templates/proxy/ip-restrictions.conf")
+        val denyDirectives = blockedIps.distinct().map { it.trim().sanitizeNginx() }
+            .filter { it.isNotBlank() }
+            .joinToString("\n        ") { "deny $it;" }
+            .let { if (it.isNotEmpty()) it else "" }
+
+        val allowDirectives = if (allowedIps.isNotEmpty()) {
+            val allAllowed = mutableListOf("127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+            allAllowed.addAll(allowedIps)
+            allAllowed.distinct().map { it.trim().sanitizeNginx() }
+                .filter { it.isNotBlank() }
+                .joinToString("\n        ") { "allow $it;" }
+        } else ""
+
+        val finalDirective = if (allowedIps.isNotEmpty()) "deny all;" else "allow all;"
+
+        val content = ResourceLoader.replacePlaceholders(
+            template, mapOf(
+                "denyDirectives" to denyDirectives,
+                "allowDirectives" to allowDirectives,
+                "finalDirective" to finalDirective
+            )
+        )
+        return content.lines().joinToString("\n") { if (it.isBlank()) it else "        $it" }.trim()
+    }
+
     private fun generateNginxConfig(host: ProxyHost): Pair<Boolean, String> {
         // Load websocket config if enabled
         val wsConfigRaw = if (host.websocketEnabled) {
@@ -1311,20 +1355,11 @@ class ProxyServiceImpl(
             wsConfigRaw.lines().joinToString("\n        ") { it.trim() }
         } else ""
 
-        // Generate IP restrictions
-        val ipConfig = if (host.allowedIps.isNotEmpty()) {
-            val template = getCachedTemplate("templates/proxy/ip-restrictions.conf")
-            val allAllowed = mutableListOf("127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
-            allAllowed.addAll(host.allowedIps)
-            
-            val allowDirectives = allAllowed.distinct().joinToString("\n        ") { "allow $it;" }
-            val content = ResourceLoader.replacePlaceholders(
-                template, mapOf(
-                    "allowDirectives" to allowDirectives
-                )
-            )
-            content.lines().joinToString("\n") { if (it.isBlank()) it else "        $it" }.trim()
-        } else ""
+        // Generate IP restrictions (allow list, block list, or both - supports CIDR ranges)
+        val ipConfig = buildIpRestrictionsConfig(
+            allowedIps = host.allowedIps,
+            blockedIps = host.blockedIps
+        )
 
         // Generate Rate Limiting config (server level - 4 spaces)
         val serverRateLimit = host.rateLimit?.let { rl ->
@@ -1456,19 +1491,10 @@ class ProxyServiceImpl(
             val safePath = pathRoute.path.sanitizeNginx()
             val safeTarget = pathRoute.target.sanitizeNginx()
 
-            val ipConfig = if (pathRoute.allowedIps.isNotEmpty()) {
-                val template = getCachedTemplate("templates/proxy/ip-restrictions.conf")
-                val allAllowed = mutableListOf("127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
-                allAllowed.addAll(pathRoute.allowedIps)
-                
-                val allowDirectives = allAllowed.distinct().joinToString("\n        ") { "allow ${it.sanitizeNginx()};" }
-                val content = ResourceLoader.replacePlaceholders(
-                    template, mapOf(
-                        "allowDirectives" to allowDirectives
-                    )
-                )
-                content.lines().joinToString("\n") { if (it.isBlank()) it else "        $it" }.trim()
-            } else ""
+            val ipConfig = buildIpRestrictionsConfig(
+                allowedIps = pathRoute.allowedIps,
+                blockedIps = pathRoute.blockedIps
+            )
 
             // Generate Rate Limiting config for this path (indented 8 spaces)
             val rateLimitConfig = pathRoute.rateLimit?.let { rl ->
