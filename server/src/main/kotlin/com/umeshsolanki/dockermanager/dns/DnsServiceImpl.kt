@@ -1575,19 +1575,11 @@ controls {
         val loggingPath = if (forDocker) "/etc/bind/named.conf.logging" else File(configDir, "named.conf.logging").absolutePath
 
         // 1. Root named.conf — must use container paths so BIND9 can find them inside the container
-        val rndcBlock = if (forDocker) """
-
-// RNDC control channel — required for rndc to communicate with named
-include "/etc/bind/rndc.key";
-controls {
-    inet 127.0.0.1 port 953 allow { 127.0.0.1; } keys { "rndc-key"; };
-};
-""".trimIndent() else ""
         namedConf.writeText("""
 include "$optionsPath";
 include "$loggingPath";
 include "$localPath";
-""".trimIndent() + "\n" + rndcBlock)
+""".trimIndent() + "\n")
 
         // 2. named.conf.options
         writeOptionsConfig(configDir, forDocker)
