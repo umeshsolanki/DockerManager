@@ -1,0 +1,5 @@
+#!/bin/bash
+# post-push hook to trigger Jenkins build
+
+echo "Triggering Jenkins build..."
+./scripts/jenkins-trigger.sh
