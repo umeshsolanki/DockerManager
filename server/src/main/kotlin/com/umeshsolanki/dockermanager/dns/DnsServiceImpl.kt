@@ -1383,26 +1383,34 @@ class DnsServiceImpl : IDnsService {
     //  Helpers
     // ===================================================================
 
-    private fun ensureRndcConfig() {
+    private fun ensureRndcConfig(imageName: String? = null) {
         if (!isDockerMode) return
 
-        // Generate rndc.key if missing inside the container
-        val check = bindExec("ls /etc/bind/rndc.key")
-        if (check.exitCode != 0) {
-            logger.info("rndc.key not found in container, generating it...")
-            val gen = bindExec("rndc-confgen -a")
-            if (gen.exitCode != 0) {
-                logger.warn("Failed to generate rndc.key: ${gen.error}")
-                return
+        val configPath = getNamedConfDir()
+        val rndcKeyFile = File(configPath, "rndc.key")
+        val namedConf = File(configPath, "named.conf")
+
+        if (!rndcKeyFile.exists()) {
+            logger.info("rndc.key not found on host, generating it via one-off container...")
+            val image = imageName ?: run {
+                val envFile = File(dnsComposeDir, ".env")
+                if (envFile.exists()) {
+                    envFile.readLines().firstOrNull { it.startsWith("BIND9_IMAGE=") }?.substringAfter("=")
+                } else "ubuntu/bind9:latest"
             }
-            bindExec("chown root:bind /etc/bind/rndc.key 2>/dev/null")
-            bindExec("chmod 640 /etc/bind/rndc.key 2>/dev/null")
+            
+            val docker = AppConfig.dockerCommand
+            val genResult = commandExecutor.execute("$docker run --rm -v \"$configPath\":/etc/bind $image rndc-confgen -a")
+            if (genResult.exitCode != 0) {
+                logger.warn("Failed to generate rndc.key via docker run: ${genResult.error}")
+            } else {
+                // Fix permissions on host so BIND (root/bind) can read it
+                rndcKeyFile.setReadable(true, false)
+                logger.info("Successfully generated rndc.key on host")
+            }
         }
 
-        // Ensure named.conf includes the rndc key and controls block
-        // This is required for rndc to authenticate with BIND9
-        val namedConf = File(getNamedConfDir(), "named.conf")
-        if (namedConf.exists()) {
+        if (namedConf.exists() && rndcKeyFile.exists()) {
             val content = namedConf.readText()
             if (!content.contains("rndc.key")) {
                 namedConf.appendText("""
@@ -1549,9 +1557,11 @@ controls {
         ))
         dnsComposeFile.writeText(composeContent)
 
+        // Ensure RNDC is ready BEFORE the container starts
+        ensureRndcConfig(req.dockerImage)
+
         val result = DockerService.composeUp(dnsComposeFile.absolutePath)
         return if (result.success) {
-            ensureRndcConfig()
             DnsActionResult(true, "BIND9 started via Docker Compose")
         } else {
             val msg = result.message

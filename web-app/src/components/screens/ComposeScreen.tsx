@@ -279,16 +279,20 @@ export default function ComposeScreen() {
     };
 
     const filteredFiles = useMemo(() => {
-        return composeFiles.filter(f =>
-            f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            f.path.toLowerCase().includes(searchQuery.toLowerCase())
-        );
+        return composeFiles
+            .filter(f =>
+                f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                f.path.toLowerCase().includes(searchQuery.toLowerCase())
+            )
+            .sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
     }, [composeFiles, searchQuery]);
 
     const filteredStacks = useMemo(() => {
-        return stacks.filter(s =>
-            s.name.toLowerCase().includes(searchQuery.toLowerCase())
-        );
+        return stacks
+            .filter(s =>
+                s.name.toLowerCase().includes(searchQuery.toLowerCase())
+            )
+            .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }, [stacks, searchQuery]);
 
     const handleDeployStack = async () => {
@@ -491,6 +495,11 @@ export default function ComposeScreen() {
                                                     </span>
                                                 );
                                             })()}
+                                            {file.lastModified > 0 && (
+                                                <span className="text-[10px] text-on-surface-variant/60 font-medium">
+                                                    Updated {new Date(file.lastModified).toLocaleString()}
+                                                </span>
+                                            )}
                                         </div>
                                         {/* <div className="flex items-center gap-1.5 text-[10px] text-on-surface-variant font-mono truncate">
                                             <span className="truncate">{file.path.split('/').pop()}</span>

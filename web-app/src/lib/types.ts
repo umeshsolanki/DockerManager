@@ -50,12 +50,14 @@ export interface ComposeFile {
   name: string;
   status: string; // active, inactive
   otherFiles?: string[];
+  lastModified: number;
 }
 
 export interface DockerStack {
   name: string;
   services: number;
   orchestrator?: string;
+  createdAt?: number;
 }
 
 export interface StackService {

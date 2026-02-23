@@ -195,7 +195,8 @@ data class ComposeFile(
     val path: String,
     val name: String,
     val status: String,
-    val otherFiles: List<String> = emptyList()
+    val otherFiles: List<String> = emptyList(),
+    val lastModified: Long = 0L
 )
 
 @Serializable
@@ -208,7 +209,8 @@ data class ComposeResult(
 data class DockerStack(
     val name: String,
     val services: Int = 0,
-    val orchestrator: String = "swarm"
+    val orchestrator: String = "swarm",
+    val createdAt: Long = 0L
 )
 
 @Serializable

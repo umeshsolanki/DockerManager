@@ -75,11 +75,14 @@ class ComposeServiceImpl : IComposeService {
                 it.absolutePath != primaryFile.absolutePath 
             }.map { it.relativeTo(parentDir).path }
 
+            val lastModified = (allFiles + parentDir).map { it.lastModified() }.maxOrNull() ?: 0L
+
             ComposeFile(
                 path = primaryFile.absolutePath, 
                 name = projectName, 
                 status = status,
-                otherFiles = otherFiles
+                otherFiles = otherFiles,
+                lastModified = lastModified
             )
         }.toList()
     }
@@ -313,11 +316,46 @@ class ComposeServiceImpl : IComposeService {
     }
 
     override fun listStacks(): List<DockerStack> {
-        return parseDockerOutput(listOf(AppConfig.dockerCommand, "stack", "ls", "--format", "{{.Name}}\t{{.Services}}"), "NAME") { parts ->
+        val stacks = parseDockerOutput(listOf(AppConfig.dockerCommand, "stack", "ls", "--format", "{{.Name}}\t{{.Services}}"), "NAME") { parts ->
             DockerStack(
                 name = parts[0],
                 services = parts.getOrNull(1)?.toIntOrNull() ?: 0
             )
+        }
+
+        if (stacks.isEmpty()) return emptyList()
+
+        // Attempt to get creation times from services to provide a "createdAt" for the stack
+        try {
+            val serviceOutput = runProcess(listOf(AppConfig.dockerCommand, "service", "ls", "--format", "{{index .Labels \"com.docker.stack.namespace\"}}\t{{.CreatedAt}}")).message
+            val stackTimes = mutableMapOf<String, Long>()
+            
+            serviceOutput.lines().forEach { line ->
+                val parts = line.split("\t")
+                if (parts.size >= 2) {
+                    val stackName = parts[0].trim()
+                    val createdAtStr = parts[1].trim()
+                    if (stackName.isNotBlank() && createdAtStr.isNotBlank()) {
+                        // Docker format is "2024-05-20 10:00:00 +0000 UTC" or ISO
+                        try {
+                            val time = java.time.ZonedDateTime.parse(createdAtStr, 
+                                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss Z z")).toInstant().toEpochMilli()
+                            stackTimes[stackName] = minOf(stackTimes.getOrDefault(stackName, Long.MAX_VALUE), time)
+                        } catch (e: Exception) {
+                            // Fallback for different formats
+                            try {
+                                val time = java.time.Instant.parse(createdAtStr.replace(" ", "T")).toEpochMilli()
+                                stackTimes[stackName] = minOf(stackTimes.getOrDefault(stackName, Long.MAX_VALUE), time)
+                            } catch (e2: Exception) {}
+                        }
+                    }
+                }
+            }
+            
+            return stacks.map { it.copy(createdAt = stackTimes.getOrDefault(it.name, 0L)) }
+        } catch (e: Exception) {
+            logger.warn("Failed to retrieve service creation times for stacks", e)
+            return stacks
         }
     }
 
