@@ -77,6 +77,19 @@ function GlobalSecuritySection() {
 
                 <div className="border-t border-outline/10 pt-3"></div>
 
+                {/* Global Query Control */}
+                <div className="space-y-2">
+                    <label className="text-sm font-medium">Default Query Access</label>
+                    <p className="text-xs text-on-surface-variant">Controls who can query your DNS server by default. Individual zones can override this.</p>
+                    <TagInput
+                        value={config.allowQuery}
+                        onChange={v => setConfig({ ...config, allowQuery: v })}
+                        placeholder="e.g. any, none, localhost, localnets"
+                    />
+                </div>
+
+                <div className="border-t border-outline/10 pt-3"></div>
+
                 {/* Default Name Servers */}
                 <div className="space-y-2">
                     <label className="text-sm font-medium">Default Name Servers</label>

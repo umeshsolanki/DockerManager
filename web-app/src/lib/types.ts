@@ -316,7 +316,6 @@ export interface PathRoute {
   target: string;
   websocketEnabled: boolean;
   allowedIps?: string[];
-  blockedIps?: string[];
   stripPrefix: boolean;
   customConfig?: string;
   enabled?: boolean;
@@ -358,7 +357,6 @@ export interface ProxyHost {
   dnsConfigId?: string; // Reference to saved DNS config
   customSslPath?: string;
   allowedIps?: string[];
-  blockedIps?: string[];
   paths?: PathRoute[];
   createdAt: number;
   sslChallengeType?: 'http' | 'dns';
@@ -831,6 +829,7 @@ export interface GlobalSecurityConfig {
   rateLimitResponsesPerSecond: number;
   rateLimitWindow: number;
   defaultNameServers: string[];
+  allowQuery: string[];
 }
 
 // ========== Professional Hosting Structures ==========

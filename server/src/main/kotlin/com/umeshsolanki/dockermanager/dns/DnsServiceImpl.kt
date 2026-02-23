@@ -663,7 +663,11 @@ class DnsServiceImpl : IDnsService {
             appendLine("    directory \"/var/lib/bind\";")
             appendLine("    listen-on { any; };")
             appendLine("    listen-on-v6 { any; };")
-            appendLine("    allow-query { any; };")
+            if (security.allowQuery.isNotEmpty()) {
+                appendLine("    allow-query { ${security.allowQuery.joinToString("; ")}; };")
+            } else {
+                appendLine("    allow-query { any; };")
+            }
             appendLine("    ")
             appendLine("    // Global Security configuration")
             appendLine("    recursion ${if (security.recursionEnabled) "yes" else "no"};")

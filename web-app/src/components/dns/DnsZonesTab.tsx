@@ -437,19 +437,29 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
 
                         {/* Quick Switches */}
                         <div className="flex items-center gap-4 bg-surface-container px-4 py-2 rounded-xl border border-transparent">
-                            <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-on-surface-variant hover:text-on-surface transition-colors">
-                                <span className={zone.allowQuery.includes('any') ? 'text-primary' : ''}>Public Query</span>
-                                <input
-                                    type="checkbox"
-                                    checked={zone.allowQuery.includes('any')}
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-container-high rounded-xl border border-outline/10">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant/50">Queries</span>
+                                <select
+                                    value={zone.allowQuery.includes('any') ? 'any' : zone.allowQuery.includes('none') ? 'none' : 'default'}
                                     onChange={async (e) => {
-                                        const newAllowQuery = e.target.checked ? ['any'] : [];
+                                        let newAllowQuery: string[] = [];
+                                        if (e.target.value === 'any') newAllowQuery = ['any'];
+                                        else if (e.target.value === 'none') newAllowQuery = ['none'];
+                                        else newAllowQuery = []; // Inherit Global
+
                                         const r = await DockerClient.updateDnsZoneOptions(zone.id, { allowQuery: newAllowQuery });
-                                        if (r) { toast.success(e.target.checked ? 'Zone made public' : 'Zone made private'); onRefresh(); } else toast.error('Failed to update');
+                                        if (r) {
+                                            toast.success(e.target.value === 'none' ? 'Queries disabled for this zone' : 'Query settings updated');
+                                            onRefresh();
+                                        } else toast.error('Failed to update');
                                     }}
-                                    className="rounded bg-surface-container-high border-outline/20 text-primary w-4 h-4 focus:ring-primary focus:ring-offset-0 transition-all"
-                                />
-                            </label>
+                                    className="bg-transparent text-xs font-bold text-on-surface outline-none cursor-pointer"
+                                >
+                                    <option value="any">🌍 Public (Any)</option>
+                                    <option value="default">🔒 Private (Default)</option>
+                                    <option value="none">🚫 Disabled (None)</option>
+                                </select>
+                            </div>
                             <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-on-surface-variant hover:text-on-surface transition-colors">
                                 <span className={zone.allowTransfer.includes('any') ? 'text-primary' : ''}>Public Transfer</span>
                                 <input
