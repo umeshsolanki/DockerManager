@@ -473,13 +473,13 @@ export const DockerClient = {
     // --- DNS / BIND9 Management ---
 
     // Service control
-    getDnsStatus: () => req<DnsServiceStatus>('/dns/status', {}, { running: false, version: '', configValid: false, configOutput: '', uptime: '', zoneCount: 0 }),
+    getDnsStatus: () => req<DnsServiceStatus>('/dns/status', {}, { running: false, version: '', configValid: false, configOutput: '', uptime: '', zoneCount: 0, loadedZoneCount: 0 }),
     dnsReload: () => req<DnsActionResult>('/dns/reload', { method: 'POST' }, { success: false, message: 'Network error' }),
     dnsRestart: () => req<DnsActionResult>('/dns/restart', { method: 'POST' }, { success: false, message: 'Network error' }),
     dnsFlushCache: () => req<DnsActionResult>('/dns/flush-cache', { method: 'POST' }, { success: false, message: 'Network error' }),
     dnsRegenerateZoneFiles: () => req<DnsActionResult>('/dns/zones/regenerate', { method: 'POST' }, { success: false, message: 'Network error' }),
     dnsValidateConfig: () => req<ZoneValidationResult>('/dns/validate', {}, { valid: false, output: '' }),
-    getDnsQueryStats: () => req<DnsQueryStats>('/dns/stats', {}, { totalQueries: 0, successQueries: 0, failedQueries: 0, nxdomainQueries: 0, servfailQueries: 0, recursiveQueries: 0, tcpQueries: 0, udpQueries: 0, qps: 0, queryTypes: {}, topDomains: {}, rawStats: '' }),
+    getDnsQueryStats: () => req<DnsQueryStats>('/dns/stats', {}, { totalQueries: 0, successQueries: 0, failedQueries: 0, nxdomainQueries: 0, servfailQueries: 0, refusedQueries: 0, droppedQueries: 0, recursiveQueries: 0, tcpQueries: 0, udpQueries: 0, qps: 0, queryTypes: {}, topDomains: {}, rawStats: '' }),
     getDnsLogs: (tail = 100) => textReq(`/dns/logs?tail=${tail}`),
 
     // Zones

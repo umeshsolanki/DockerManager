@@ -90,8 +90,8 @@ export default function DnsScreen() {
             {/* ── Status Strip ── */}
             {status && (
                 <div className={`rounded-2xl border p-4 transition-all ${running && configOk
-                        ? 'bg-emerald-500/5 border-emerald-500/20'
-                        : 'bg-red-500/5 border-red-500/20'
+                    ? 'bg-emerald-500/5 border-emerald-500/20'
+                    : 'bg-red-500/5 border-red-500/20'
                     }`}>
                     <div className="flex items-center gap-3 flex-wrap">
                         {/* Running badge */}
@@ -115,8 +115,18 @@ export default function DnsScreen() {
                             </span>
                         )}
                         <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-white/5 text-on-surface-variant border border-outline/10">
-                            {status.zoneCount} zone{status.zoneCount !== 1 ? 's' : ''}
+                            {status.zoneCount} configured
                         </span>
+
+                        {running && status.loadedZoneCount > 0 && (
+                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${status.loadedZoneCount >= status.zoneCount
+                                    ? 'bg-emerald-500/10 text-emerald-400'
+                                    : 'bg-red-500/15 text-red-400 border border-red-500/20 shadow-lg shadow-red-500/5'
+                                }`}>
+                                {status.loadedZoneCount >= status.zoneCount ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
+                                {status.loadedZoneCount} loaded
+                            </span>
+                        )}
 
                         <div className="flex-1" />
 
@@ -171,8 +181,8 @@ export default function DnsScreen() {
                         key={t.id}
                         onClick={() => setTab(t.id)}
                         className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all flex-1 justify-center ${tab === t.id
-                                ? 'bg-primary text-on-primary shadow-lg shadow-primary/20'
-                                : 'text-on-surface-variant hover:text-on-surface hover:bg-white/5'
+                            ? 'bg-primary text-on-primary shadow-lg shadow-primary/20'
+                            : 'text-on-surface-variant hover:text-on-surface hover:bg-white/5'
                             }`}
                     >
                         {t.icon}

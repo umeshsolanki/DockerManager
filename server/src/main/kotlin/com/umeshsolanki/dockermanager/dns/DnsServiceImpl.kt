@@ -364,6 +364,17 @@ class DnsServiceImpl : IDnsService {
 
         val version = if (rndcSuccess) extractLine(rndcStatus.output, "version:") else iStatus.version
         val uptime = if (rndcSuccess) rndcStatus.output.lines().firstOrNull { it.contains("server is up and running") }?.trim() ?: "" else ""
+        
+        var loadedZoneCount = 0
+        if (rndcSuccess) {
+            val zoneMatch = Regex("number of zones: (\\d+)").find(rndcStatus.output)
+            if (zoneMatch != null) {
+                // rndc status includes automatic zones (usually 3 to 9 depending on version)
+                // We'll try to refine this or just report the raw number for now.
+                loadedZoneCount = zoneMatch.groupValues[1].toIntOrNull() ?: 0
+            }
+        }
+        
         val configCheck = bindExec("named-checkconf")
 
         return DnsServiceStatus(
@@ -372,7 +383,8 @@ class DnsServiceImpl : IDnsService {
             configValid = configCheck.exitCode == 0,
             configOutput = if (configCheck.exitCode == 0) "Configuration OK" else configCheck.error.trim(),
             uptime = uptime,
-            zoneCount = loadZones().size
+            zoneCount = loadZones().size,
+            loadedZoneCount = loadedZoneCount
         )
     }
 
@@ -884,7 +896,8 @@ class DnsServiceImpl : IDnsService {
         }
 
         var total = 0L; var success = 0L; var failed = 0L; var recursive = 0L
-        var nxdomain = 0L; var servfail = 0L; var tcp = 0L; var udp = 0L
+        var nxdomain = 0L; var servfail = 0L; var refused = 0L; var dropped = 0L
+        var tcp = 0L; var udp = 0L
         val queryTypes = mutableMapOf<String, Long>()
 
         var inIncoming = false
@@ -918,6 +931,12 @@ class DnsServiceImpl : IDnsService {
                 trimmed.contains("queries resulted in SERVFAIL") -> {
                     servfail = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
                 }
+                trimmed.contains("queries resulted in REFUSED") -> {
+                    refused = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                }
+                trimmed.contains("queries resulted in DROPPED") || trimmed.contains("queries dropped") -> {
+                    dropped = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                }
                 trimmed.contains("recursive queries answered") -> {
                     recursive = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
                 }
@@ -930,6 +949,9 @@ class DnsServiceImpl : IDnsService {
                 }
                 trimmed.contains("NXDOMAIN") && trimmed.first().isDigit() && nxdomain == 0L -> {
                     nxdomain = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                }
+                trimmed.contains("REFUSED") && trimmed.first().isDigit() && refused == 0L -> {
+                    refused = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
                 }
             }
         }
@@ -945,7 +967,7 @@ class DnsServiceImpl : IDnsService {
             }
         }
 
-        failed = servfail + nxdomain // Generic failed count
+        failed = servfail + nxdomain + refused + dropped
 
         return DnsQueryStats(
             totalQueries = total,
@@ -953,6 +975,8 @@ class DnsServiceImpl : IDnsService {
             failedQueries = failed,
             nxdomainQueries = nxdomain,
             servfailQueries = servfail,
+            refusedQueries = refused,
+            droppedQueries = dropped,
             recursiveQueries = recursive,
             tcpQueries = tcp,
             udpQueries = udp,

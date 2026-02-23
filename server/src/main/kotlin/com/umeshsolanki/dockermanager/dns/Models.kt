@@ -86,7 +86,8 @@ data class DnsServiceStatus(
     val configValid: Boolean = false,
     val configOutput: String = "",
     val uptime: String = "",
-    val zoneCount: Int = 0
+    val zoneCount: Int = 0,
+    val loadedZoneCount: Int = 0
 )
 
 @Serializable
@@ -261,6 +262,8 @@ data class DnsQueryStats(
     val failedQueries: Long = 0,
     val nxdomainQueries: Long = 0,
     val servfailQueries: Long = 0,
+    val refusedQueries: Long = 0,
+    val droppedQueries: Long = 0,
     val recursiveQueries: Long = 0,
     val tcpQueries: Long = 0,
     val udpQueries: Long = 0,

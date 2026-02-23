@@ -47,17 +47,19 @@ export default function DnsAnalyticsTab() {
                 </button>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                 <StatCard label="Total Queries" value={stats.totalQueries} color="text-blue-400" />
                 <StatCard label="Throughput (QPS)" value={stats.qps.toFixed(2)} color="text-indigo-400" />
                 <StatCard label="Successful" value={stats.successQueries} color="text-green-400" />
                 <StatCard label="Recursive" value={stats.recursiveQueries} color="text-purple-400" />
+                <StatCard label="Dropped / Blocked" value={stats.droppedQueries} color="text-slate-400" />
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pb-2">
-                <StatCard label="NXDOMAIN (Floods)" value={stats.nxdomainQueries} color="text-amber-400" />
-                <StatCard label="SERVFAIL (Spikes)" value={stats.servfailQueries} color="text-red-400" />
-                <StatCard label="TCP Queries (Fallback)" value={stats.tcpQueries} color="text-orange-400" />
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 pb-2">
+                <StatCard label="NXDOMAIN (Floods)" value={stats.nxdomainQueries} color={stats.nxdomainQueries > 1000 ? "text-amber-400" : "text-amber-400/60"} />
+                <StatCard label="SERVFAIL (Unloaded)" value={stats.servfailQueries} color={stats.servfailQueries > 0 ? "text-red-400 font-black animate-pulse" : "text-red-400/60"} />
+                <StatCard label="REFUSED (Critical)" value={stats.refusedQueries} color={stats.refusedQueries > 0 ? "text-rose-400 font-black animate-pulse" : "text-rose-400/60"} />
+                <StatCard label="TCP Queries" value={stats.tcpQueries} color="text-orange-400" />
                 <StatCard label="TCP Fallback Rate" value={`${(stats.totalQueries > 0 ? (stats.tcpQueries / stats.totalQueries) * 100 : 0).toFixed(1)}%`} color="text-yellow-400" />
             </div>
 

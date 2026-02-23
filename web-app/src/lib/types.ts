@@ -770,6 +770,7 @@ export interface DnsServiceStatus {
   configOutput: string;
   uptime: string;
   zoneCount: number;
+  loadedZoneCount: number;
 }
 
 export interface ZoneValidationResult {
@@ -970,6 +971,8 @@ export interface DnsQueryStats {
   failedQueries: number;
   nxdomainQueries: number;
   servfailQueries: number;
+  refusedQueries: number;
+  droppedQueries: number;
   recursiveQueries: number;
   tcpQueries: number;
   udpQueries: number;
