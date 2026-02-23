@@ -934,6 +934,7 @@ class DnsServiceImpl : IDnsService {
 
         val raw = if (isDockerMode) {
             val dockerStatsPaths = listOf(
+                "/var/lib/bind/named_stats.txt", // Explicit volume mapping
                 "/var/named/data/named_stats.txt",
                 "/var/cache/bind/named_stats.txt",
                 "/var/cache/bind/named.stats",
@@ -953,8 +954,8 @@ class DnsServiceImpl : IDnsService {
                 return DnsQueryStats(rawStats = rndcStatus.output)
             }
         } else {
-            val statsFile = File("/var/named/data/named_stats.txt").takeIf { it.exists() }
-                ?: File("/var/cache/bind/named_stats.txt").takeIf { it.exists() }
+            val statsFile = File("/var/lib/bind/named_stats.txt").takeIf { it.exists() }
+                ?: File("/var/named/data/named_stats.txt").takeIf { it.exists() }
                 ?: File("/var/cache/bind/named.stats").takeIf { it.exists() }
                 ?: File("/var/log/named/named_stats.txt").takeIf { it.exists() }
                 ?: File("/var/log/named/named.stats").takeIf { it.exists() }
