@@ -3,6 +3,8 @@ package com.umeshsolanki.dockermanager.jail
 import com.umeshsolanki.dockermanager.AppConfig
 import com.umeshsolanki.dockermanager.firewall.IFirewallService
 import com.umeshsolanki.dockermanager.ip.IIpReputationService
+import com.umeshsolanki.dockermanager.utils.DigLookup
+import com.umeshsolanki.dockermanager.utils.WhoisLookup
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import io.ktor.client.*
@@ -129,21 +131,20 @@ class IpEnrichmentWorker(
             logger.warn("Reputation cache lookup failed for $ip", e)
         }
 
-        // 2. Fetch from ip-api.com
+        // 2. Fetch from ip-api.com, fall back to local whois on 429
         return try {
             val response = client.get("http://ip-api.com/json/$ip")
             if (response.status.value == 429) {
-                logger.warn("Rate limit hit for IP-API. Throttling...")
-                delay(60_000)
-                return null
+                logger.warn("Rate limit hit for IP-API, falling back to dig/whois for $ip")
+                return fetchFromDigOrWhois(ip)
             }
 
             val text = response.bodyAsText()
             val json = gson.fromJson(text, JsonObject::class.java)
 
             if (json.get("status")?.asString == "fail") {
-                logger.debug("IP-API failed for $ip: ${json.get("message")?.asString}")
-                return null
+                logger.debug("IP-API failed for $ip: ${json.get("message")?.asString}, trying dig/whois")
+                return fetchFromDigOrWhois(ip)
             }
 
             val result = GeoResult(
@@ -187,8 +188,58 @@ class IpEnrichmentWorker(
             result
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            logger.debug("Network failure enriching $ip: ${e.message}")
-            null
+            logger.debug("Network failure enriching $ip: ${e.message}, trying dig/whois")
+            fetchFromDigOrWhois(ip)
         }
+    }
+
+    /**
+     * Fallback: try dig (ASN + CIDR + country) first, then whois (org/isp).
+     * Merges results when both succeed.
+     */
+    private fun fetchFromDigOrWhois(ip: String): GeoResult? {
+        val dig = DigLookup.lookupIp(ip)
+        val whois = WhoisLookup.lookup(ip)
+
+        val country = dig?.countryCode ?: whois?.country
+        val isp = whois?.isp ?: whois?.org ?: dig?.asn
+        val asn = dig?.asn ?: whois?.asn
+        val cidr = dig?.cidr ?: whois?.cidr
+
+        if (country == null && isp == null && asn == null) return null
+
+        val result = GeoResult(
+            country     = null,
+            countryCode = country,
+            city        = null,
+            isp         = isp,
+            org         = whois?.org,
+            asName      = asn,
+            asn         = asn
+        )
+
+        scope.launch {
+            try {
+                ipReputationService.saveGeoInfo(
+                    ip          = ip,
+                    city        = null,
+                    lat         = null,
+                    lon         = null,
+                    timezone    = null,
+                    zip         = null,
+                    region      = null,
+                    regionName  = null,
+                    asName      = asn,
+                    asn         = asn,
+                    countryCode = country,
+                    isp         = isp
+                )
+            } catch (e: Exception) {
+                logger.error("Failed to save dig/whois geo info for $ip", e)
+            }
+        }
+
+        logger.info("dig/whois fallback resolved $ip → country=$country, isp=$isp, asn=$asn, cidr=$cidr")
+        return result
     }
 }
