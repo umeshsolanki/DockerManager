@@ -327,7 +327,7 @@ class DnsServiceImpl : IDnsService {
             (request.role != null && request.role != zone.role && updated.role == ZoneRole.MASTER)
 
         val final = if (request.soa != null) {
-            updated.copy(soa = updated.soa.copy(serial = generateNextSerial(updated.soa.serial, zoneName)))
+            updated.copy(soa = updated.soa.copy(serial = generateNextSerial(updated.soa.serial, zone.name)))
         } else updated
 
         zones[index] = final
@@ -934,7 +934,9 @@ class DnsServiceImpl : IDnsService {
         val raw = if (isDockerMode) {
             val dockerStatsPaths = listOf(
                 "/var/named/data/named_stats.txt",
+                "/var/cache/bind/named_stats.txt",
                 "/var/cache/bind/named.stats",
+                "/var/log/named/named_stats.txt",
                 "/var/log/named/named.stats"
             )
             var content: String? = null
@@ -951,7 +953,9 @@ class DnsServiceImpl : IDnsService {
             }
         } else {
             val statsFile = File("/var/named/data/named_stats.txt").takeIf { it.exists() }
+                ?: File("/var/cache/bind/named_stats.txt").takeIf { it.exists() }
                 ?: File("/var/cache/bind/named.stats").takeIf { it.exists() }
+                ?: File("/var/log/named/named_stats.txt").takeIf { it.exists() }
                 ?: File("/var/log/named/named.stats").takeIf { it.exists() }
             statsFile?.readText() ?: run {
                 val rndcStatus = bindExec("rndc status")
