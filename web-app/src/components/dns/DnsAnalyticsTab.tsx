@@ -49,9 +49,16 @@ export default function DnsAnalyticsTab() {
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard label="Total Queries" value={stats.totalQueries} color="text-blue-400" />
+                <StatCard label="Throughput (QPS)" value={stats.qps.toFixed(2)} color="text-indigo-400" />
                 <StatCard label="Successful" value={stats.successQueries} color="text-green-400" />
-                <StatCard label="Failed (SERVFAIL)" value={stats.failedQueries} color="text-red-400" />
                 <StatCard label="Recursive" value={stats.recursiveQueries} color="text-purple-400" />
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pb-2">
+                <StatCard label="NXDOMAIN (Floods)" value={stats.nxdomainQueries} color="text-amber-400" />
+                <StatCard label="SERVFAIL (Spikes)" value={stats.servfailQueries} color="text-red-400" />
+                <StatCard label="TCP Queries (Fallback)" value={stats.tcpQueries} color="text-orange-400" />
+                <StatCard label="TCP Fallback Rate" value={`${(stats.totalQueries > 0 ? (stats.tcpQueries / stats.totalQueries) * 100 : 0).toFixed(1)}%`} color="text-yellow-400" />
             </div>
 
             {typeEntries.length > 0 && (
@@ -95,10 +102,11 @@ export default function DnsAnalyticsTab() {
     );
 }
 
-function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
+function StatCard({ label, value, color }: { label: string; value: any; color: string }) {
+    const displayValue = typeof value === 'number' ? value.toLocaleString() : value;
     return (
         <div className="rounded-xl border border-outline/10 bg-surface-container p-4">
-            <div className={`text-2xl font-bold ${color}`}>{value.toLocaleString()}</div>
+            <div className={`text-2xl font-bold ${color}`}>{displayValue}</div>
             <div className="text-xs text-on-surface-variant mt-1 font-medium">{label}</div>
         </div>
     );

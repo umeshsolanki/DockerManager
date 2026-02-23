@@ -834,6 +834,9 @@ export interface GlobalSecurityConfig {
   ednsUdpSize: number;
   ipv4Enabled: boolean;
   ipv6Enabled: boolean;
+  tcpClients: number;
+  maxCacheSize: string;
+  reuseport: boolean;
 }
 
 // ========== Professional Hosting Structures ==========
@@ -965,7 +968,12 @@ export interface DnsQueryStats {
   totalQueries: number;
   successQueries: number;
   failedQueries: number;
+  nxdomainQueries: number;
+  servfailQueries: number;
   recursiveQueries: number;
+  tcpQueries: number;
+  udpQueries: number;
+  qps: number;
   queryTypes: Record<string, number>;
   topDomains: Record<string, number>;
   rawStats: string;

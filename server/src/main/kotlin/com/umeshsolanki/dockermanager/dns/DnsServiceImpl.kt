@@ -683,6 +683,9 @@ class DnsServiceImpl : IDnsService {
             appendLine("    minimal-any ${if (security.minimalResponses) "yes" else "no"};")
             appendLine("    edns-udp-size ${security.ednsUdpSize};")
             appendLine("    max-udp-size ${security.ednsUdpSize};")
+            appendLine("    tcp-clients ${security.tcpClients};")
+            appendLine("    max-cache-size ${security.maxCacheSize};")
+            appendLine("    reuseport ${if (security.reuseport) "yes" else "no"};")
             appendLine("    ")
             
             if (security.rateLimitEnabled) {
@@ -881,13 +884,14 @@ class DnsServiceImpl : IDnsService {
         }
 
         var total = 0L; var success = 0L; var failed = 0L; var recursive = 0L
+        var nxdomain = 0L; var servfail = 0L; var tcp = 0L; var udp = 0L
         val queryTypes = mutableMapOf<String, Long>()
 
         var inIncoming = false
         for (line in raw.lines()) {
             val trimmed = line.trim()
             when {
-                trimmed.contains("++ Incoming Requests ++") -> inIncoming = true
+                trimmed.contains("++ Incoming Requests ++") || trimmed.contains("++ Incoming Queries ++") -> inIncoming = true
                 trimmed.contains("++") && inIncoming -> inIncoming = false
                 inIncoming -> {
                     val match = Regex("^(\\d+)\\s+(.+)$").find(trimmed)
@@ -895,22 +899,67 @@ class DnsServiceImpl : IDnsService {
                         val count = match.groupValues[1].toLongOrNull() ?: 0
                         val type = match.groupValues[2].trim()
                         queryTypes[type] = count
-                        total += count
+                        if (!type.contains("queries received") && !type.contains("responses sent")) {
+                             // Only add to total if it's a specific record type or generic query
+                             if (!type.contains("IPv") && !type.contains("UDP") && !type.contains("TCP")) {
+                                 total += count
+                             }
+                        }
+                        if (type.contains("TCP queries received")) tcp = count
+                        if (type.contains("UDP queries received")) udp = count
                     }
                 }
-                trimmed.contains("QUERY") && trimmed.first().isDigit() -> {
+                trimmed.contains("queries resulted in successful answer") -> {
                     success = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
                 }
-                trimmed.contains("SERVFAIL") && trimmed.first().isDigit() -> {
-                    failed = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                trimmed.contains("queries resulted in NXDOMAIN") -> {
+                    nxdomain = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
                 }
-                trimmed.contains("Recursion") && trimmed.first().isDigit() -> {
+                trimmed.contains("queries resulted in SERVFAIL") -> {
+                    servfail = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                }
+                trimmed.contains("recursive queries answered") -> {
                     recursive = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                }
+                // Fallback for older BIND formats
+                trimmed.contains("QUERY") && trimmed.first().isDigit() && success == 0L -> {
+                    success = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                }
+                trimmed.contains("SERVFAIL") && trimmed.first().isDigit() && servfail == 0L -> {
+                    servfail = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                }
+                trimmed.contains("NXDOMAIN") && trimmed.first().isDigit() && nxdomain == 0L -> {
+                    nxdomain = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
                 }
             }
         }
 
-        return DnsQueryStats(total, success, failed, recursive, queryTypes, rawStats = raw.takeLast(4000))
+        // Calculate QPS
+        var qps = 0.0
+        val rndcStatus = bindExec("rndc status")
+        val uptimeMatch = Regex("server is up for (\\d+) seconds").find(rndcStatus.output)
+        if (uptimeMatch != null) {
+            val seconds = uptimeMatch.groupValues[1].toLongOrNull() ?: 0
+            if (seconds > 0) {
+                qps = total.toDouble() / seconds.toDouble()
+            }
+        }
+
+        failed = servfail + nxdomain // Generic failed count
+
+        return DnsQueryStats(
+            totalQueries = total,
+            successQueries = success,
+            failedQueries = failed,
+            nxdomainQueries = nxdomain,
+            servfailQueries = servfail,
+            recursiveQueries = recursive,
+            tcpQueries = tcp,
+            udpQueries = udp,
+            qps = qps,
+            queryTypes = queryTypes,
+            rawStats = raw.takeLast(4000)
+        )
     }
 
     // ===================================================================

@@ -479,7 +479,7 @@ export const DockerClient = {
     dnsFlushCache: () => req<DnsActionResult>('/dns/flush-cache', { method: 'POST' }, { success: false, message: 'Network error' }),
     dnsRegenerateZoneFiles: () => req<DnsActionResult>('/dns/zones/regenerate', { method: 'POST' }, { success: false, message: 'Network error' }),
     dnsValidateConfig: () => req<ZoneValidationResult>('/dns/validate', {}, { valid: false, output: '' }),
-    getDnsQueryStats: () => req<DnsQueryStats>('/dns/stats', {}, { totalQueries: 0, successQueries: 0, failedQueries: 0, recursiveQueries: 0, queryTypes: {}, topDomains: {}, rawStats: '' }),
+    getDnsQueryStats: () => req<DnsQueryStats>('/dns/stats', {}, { totalQueries: 0, successQueries: 0, failedQueries: 0, nxdomainQueries: 0, servfailQueries: 0, recursiveQueries: 0, tcpQueries: 0, udpQueries: 0, qps: 0, queryTypes: {}, topDomains: {}, rawStats: '' }),
     getDnsLogs: (tail = 100) => textReq(`/dns/logs?tail=${tail}`),
 
     // Zones
@@ -538,7 +538,7 @@ export const DockerClient = {
     updateDnsForwarders: (config: DnsForwarderConfig) => safeReq('/dns/forwarders', { method: 'POST', body: JSON.stringify(config) }),
 
     // Global Security
-    getGlobalSecurityConfig: () => req<GlobalSecurityConfig>('/dns/security', {}, { recursionEnabled: false, allowRecursion: ['localnets', 'localhost'], rateLimitEnabled: false, rateLimitResponsesPerSecond: 10, rateLimitWindow: 5, defaultNameServers: [], allowQuery: ['any'], minimalResponses: false, ednsUdpSize: 1232, ipv4Enabled: true, ipv6Enabled: true }),
+    getGlobalSecurityConfig: () => req<GlobalSecurityConfig>('/dns/security', {}, { recursionEnabled: false, allowRecursion: ['localnets', 'localhost'], rateLimitEnabled: false, rateLimitResponsesPerSecond: 10, rateLimitWindow: 5, defaultNameServers: [], allowQuery: ['any'], minimalResponses: false, ednsUdpSize: 1232, ipv4Enabled: true, ipv6Enabled: true, tcpClients: 100, maxCacheSize: '128M', reuseport: false }),
     updateGlobalSecurityConfig: (config: GlobalSecurityConfig) => safeReq('/dns/security', { method: 'POST', body: JSON.stringify(config) }),
 
     // Installation

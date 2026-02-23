@@ -51,9 +51,9 @@ data class SoaRecord(
     val adminEmail: String = "admin.localhost.",
     val serial: Long = 1,
     val refresh: Int = 3600,
-    val retry: Int = 900,
-    val expire: Int = 1209600,
-    val minimumTtl: Int = 86400
+    val retry: Int = 600,
+    val expire: Int = 604800,
+    val minimumTtl: Int = 300
 )
 
 @Serializable
@@ -259,7 +259,12 @@ data class DnsQueryStats(
     val totalQueries: Long = 0,
     val successQueries: Long = 0,
     val failedQueries: Long = 0,
+    val nxdomainQueries: Long = 0,
+    val servfailQueries: Long = 0,
     val recursiveQueries: Long = 0,
+    val tcpQueries: Long = 0,
+    val udpQueries: Long = 0,
+    val qps: Double = 0.0,
     val queryTypes: Map<String, Long> = emptyMap(),
     val topDomains: Map<String, Long> = emptyMap(),
     val rawStats: String = ""
@@ -279,7 +284,10 @@ data class GlobalSecurityConfig(
     val minimalResponses: Boolean = false,
     val ednsUdpSize: Int = 1232,
     val ipv4Enabled: Boolean = true,
-    val ipv6Enabled: Boolean = true
+    val ipv6Enabled: Boolean = true,
+    val tcpClients: Int = 100,
+    val maxCacheSize: String = "128M",
+    val reuseport: Boolean = false
 )
 
 

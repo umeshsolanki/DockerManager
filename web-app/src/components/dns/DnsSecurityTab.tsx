@@ -139,6 +139,35 @@ function GlobalSecuritySection() {
 
                 <div className="border-t border-outline/10 pt-3"></div>
 
+                {/* Performance Tuning */}
+                <div className="space-y-3">
+                    <label className="text-sm font-semibold flex items-center gap-2">🚀 Performance Tuning</label>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-xs font-medium mb-1">TCP Clients</label>
+                            <input type="number" min="10" max="1000" value={config.tcpClients} onChange={e => setConfig({ ...config, tcpClients: parseInt(e.target.value) || 100 })} className="input-field" title="Maximum number of simultaneous TCP clients" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium mb-1">Max Cache Size</label>
+                            <input type="text" value={config.maxCacheSize} onChange={e => setConfig({ ...config, maxCacheSize: e.target.value })} className="input-field" placeholder="e.g. 128M, 2G" title="Maximum amount of memory to use for the cache" />
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-container-low border border-outline/5">
+                        <div className="flex-1">
+                            <span className="text-sm font-medium">SO_REUSEPORT</span>
+                            <p className="text-[10px] text-on-surface-variant">Enable kernel-level load balancing across multiple threads.</p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" className="sr-only peer" checked={config.reuseport} onChange={e => setConfig({ ...config, reuseport: e.target.checked })} />
+                            <div className="w-9 h-5 bg-surface-container-high peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                        </label>
+                    </div>
+                </div>
+
+                <div className="border-t border-outline/10 pt-3"></div>
+
                 {/* Default Name Servers */}
                 <div className="space-y-2">
                     <label className="text-sm font-medium">Default Name Servers</label>

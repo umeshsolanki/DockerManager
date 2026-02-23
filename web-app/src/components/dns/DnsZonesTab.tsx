@@ -156,15 +156,15 @@ function ZoneSettings({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => voi
                     </div>
                     <div>
                         <label className="block text-xs text-on-surface-variant mb-1">Retry (s)</label>
-                        <input type="number" value={soa.retry} onChange={e => setSoa({ ...soa, retry: parseInt(e.target.value) || 900 })} className="input-field" />
+                        <input type="number" value={soa.retry} onChange={e => setSoa({ ...soa, retry: parseInt(e.target.value) || 600 })} className="input-field" />
                     </div>
                     <div>
                         <label className="block text-xs text-on-surface-variant mb-1">Expire (s)</label>
-                        <input type="number" value={soa.expire} onChange={e => setSoa({ ...soa, expire: parseInt(e.target.value) || 1209600 })} className="input-field" />
+                        <input type="number" value={soa.expire} onChange={e => setSoa({ ...soa, expire: parseInt(e.target.value) || 604800 })} className="input-field" />
                     </div>
                     <div>
                         <label className="block text-xs text-on-surface-variant mb-1">Minimum TTL (s)</label>
-                        <input type="number" value={soa.minimumTtl} onChange={e => setSoa({ ...soa, minimumTtl: parseInt(e.target.value) || 86400 })} className="input-field" />
+                        <input type="number" value={soa.minimumTtl} onChange={e => setSoa({ ...soa, minimumTtl: parseInt(e.target.value) || 300 })} className="input-field" />
                     </div>
                 </div>
             </SectionCard>
