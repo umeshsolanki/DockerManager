@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { CheckCircle, XCircle, Plus } from 'lucide-react';
+import { CheckCircle, XCircle, Plus, ChevronDown, ChevronRight } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { CreateZoneRequest, DnsZoneType, DnsZoneRole } from '@/lib/types';
 import { toast } from 'sonner';
@@ -15,14 +15,18 @@ export function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
     );
 }
 
-export function SectionCard({ title, children, actions }: { title: string; children: React.ReactNode; actions?: React.ReactNode }) {
+export function SectionCard({ title, children, actions, collapsible = false, defaultExpanded = true }: { title: string; children: React.ReactNode; actions?: React.ReactNode; collapsible?: boolean; defaultExpanded?: boolean }) {
+    const [expanded, setExpanded] = useState(defaultExpanded);
     return (
         <div className="rounded-xl border border-outline/10 bg-surface-container p-4">
-            <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold">{title}</h3>
-                {actions}
+            <div className={`flex items-center justify-between ${collapsible ? 'cursor-pointer select-none' : ''} ${(!collapsible || expanded) ? 'mb-3' : ''}`} onClick={() => collapsible && setExpanded(!expanded)}>
+                <h3 className="text-sm font-semibold flex items-center gap-2">
+                    {collapsible && (expanded ? <ChevronDown size={14} className="text-on-surface-variant" /> : <ChevronRight size={14} className="text-on-surface-variant" />)}
+                    {title}
+                </h3>
+                {actions && <div onClick={e => e.stopPropagation()}>{actions}</div>}
             </div>
-            {children}
+            {(!collapsible || expanded) && children}
         </div>
     );
 }
