@@ -82,6 +82,31 @@ export function CreateZoneModal({ onClose, onCreated }: { onClose: () => void; o
     const [forwarders, setForwarders] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
 
+    const [hasManualNs, setHasManualNs] = useState(false);
+    const [hasManualEmail, setHasManualEmail] = useState(false);
+
+    React.useEffect(() => {
+        DockerClient.getGlobalSecurityConfig().then(config => {
+            if (config.defaultNameServers && config.defaultNameServers.length > 0) {
+                const ns = config.defaultNameServers[0];
+                setPrimaryNs(ns.endsWith('.') ? ns : `${ns}.`);
+            }
+        }).catch(console.error);
+    }, []);
+
+    const handleNameChange = (val: string) => {
+        setName(val);
+        const domain = val.trim();
+        if (domain) {
+            if (!hasManualNs && primaryNs.includes('example.com')) {
+                setPrimaryNs(`ns1.${domain}.`);
+            }
+            if (!hasManualEmail) {
+                setAdminEmail(`admin.${domain}.`);
+            }
+        }
+    };
+
     const handleSubmit = async () => {
         if (!name.trim()) return;
         setLoading(true);
@@ -114,7 +139,7 @@ export function CreateZoneModal({ onClose, onCreated }: { onClose: () => void; o
                 <h3 className="text-lg font-semibold mb-4">Create DNS Zone</h3>
                 <div className="space-y-3">
                     <Field label="Zone Name">
-                        <input value={name} onChange={e => setName(e.target.value)} placeholder="example.com" className="input-field" />
+                        <input value={name} onChange={e => handleNameChange(e.target.value)} placeholder="example.com" className="input-field" />
                     </Field>
                     <div className="grid grid-cols-2 gap-3">
                         <Field label="Type">
@@ -135,10 +160,18 @@ export function CreateZoneModal({ onClose, onCreated }: { onClose: () => void; o
                     {showSoa && (
                         <>
                             <Field label="Primary NS">
-                                <input value={primaryNs} onChange={e => setPrimaryNs(e.target.value)} className="input-field" />
+                                <input
+                                    value={primaryNs}
+                                    onChange={e => { setPrimaryNs(e.target.value); setHasManualNs(true); }}
+                                    className="input-field"
+                                />
                             </Field>
                             <Field label="Admin Email (SOA format)">
-                                <input value={adminEmail} onChange={e => setAdminEmail(e.target.value)} className="input-field" />
+                                <input
+                                    value={adminEmail}
+                                    onChange={e => { setAdminEmail(e.target.value); setHasManualEmail(true); }}
+                                    className="input-field"
+                                />
                             </Field>
                         </>
                     )}
