@@ -216,7 +216,9 @@ class JailManagerServiceImpl(
     
     override fun isIPJailed(ip: String): Boolean {
         val now = System.currentTimeMillis()
-        return listJails().any { it.ip == ip && it.expiresAt > now }
+        return firewallService.listRules().any { 
+            it.ip == ip && it.expiresAt?.let { it > now } ?: false 
+        }
     }
     
     override fun recordFailedLoginAttempt(ip: String) {
