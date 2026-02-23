@@ -106,6 +106,59 @@ class DnsServiceImpl : IDnsService {
     init {
         zonesDir.mkdirs()
         keysDir.mkdirs()
+        
+        // Asynchronously synchronize DNSSEC state on startup to recover any missing keys
+        Thread {
+            try {
+                Thread.sleep(2000) // Wait briefly for BIND to be fully up if restarting
+                syncDnssecState()
+            } catch (e: Exception) {
+                logger.error("Failed to sync DNSSEC state on startup", e)
+            }
+        }.start()
+    }
+
+    private fun syncDnssecState() {
+        val zones = loadZones()
+        var reloaded = false
+        val cKeysDir = containerKeysDir()
+        
+        for (zone in zones) {
+            if (zone.dnssecEnabled && zone.role == ZoneRole.MASTER) {
+                val zskFiles = keysDir.listFiles { _, name -> name.startsWith("K${zone.name}.") && name.endsWith(".key") } ?: emptyArray()
+                if (zskFiles.isEmpty()) {
+                    logger.warn("DNSSEC is enabled for ${zone.name} but keys are missing. Auto-recovering...")
+                    
+                    // Generate KSK
+                    val kskResult = bindExec("dnssec-keygen -K $cKeysDir -a ECDSAP256SHA256 -fKSK ${zone.name}")
+                    if (kskResult.exitCode != 0) {
+                        logger.error("Auto-recovery KSK generation failed for ${zone.name}: ${kskResult.error}")
+                        continue
+                    }
+
+                    // Generate ZSK
+                    val zskResult = bindExec("dnssec-keygen -K $cKeysDir -a ECDSAP256SHA256 ${zone.name}")
+                    if (zskResult.exitCode != 0) {
+                        logger.error("Auto-recovery ZSK generation failed for ${zone.name}: ${zskResult.error}")
+                        continue
+                    }
+
+                    // Re-sign zone
+                    val cZonePath = if (isDockerMode) "${containerZonesDir()}/${File(zone.filePath).name}" else zone.filePath
+                    val signResult = bindExec("dnssec-signzone -K $cKeysDir -o ${zone.name} -S $cZonePath")
+                    if (signResult.exitCode == 0) {
+                        logger.info("Successfully recovered DNSSEC keys for ${zone.name}")
+                        reloaded = true
+                    } else {
+                        logger.error("Auto-recovery Zone signing failed for ${zone.name}: ${signResult.error}")
+                    }
+                }
+            }
+        }
+        
+        if (reloaded) {
+            reloadBind()
+        }
     }
 
     // ===================================================================
@@ -274,7 +327,7 @@ class DnsServiceImpl : IDnsService {
             (request.role != null && request.role != zone.role && updated.role == ZoneRole.MASTER)
 
         val final = if (request.soa != null) {
-            updated.copy(soa = updated.soa.copy(serial = generateNextSerial(updated.soa.serial)))
+            updated.copy(soa = updated.soa.copy(serial = generateNextSerial(updated.soa.serial, zoneName)))
         } else updated
 
         zones[index] = final
@@ -305,7 +358,7 @@ class DnsServiceImpl : IDnsService {
             )
         }
         val zone = zones[index]
-        val updated = zone.copy(records = cleaned, soa = zone.soa.copy(serial = generateNextSerial(zone.soa.serial)))
+        val updated = zone.copy(records = cleaned, soa = zone.soa.copy(serial = generateNextSerial(zone.soa.serial, zone.name)))
         zones[index] = updated
         writeZoneFile(updated)
         saveZones(zones)
@@ -324,7 +377,7 @@ class DnsServiceImpl : IDnsService {
             name = record.name.trim(),
             value = record.value.trim()
         )
-        val updated = zone.copy(records = zone.records + newRec, soa = zone.soa.copy(serial = generateNextSerial(zone.soa.serial)))
+        val updated = zone.copy(records = zone.records + newRec, soa = zone.soa.copy(serial = generateNextSerial(zone.soa.serial, zone.name)))
         zones[index] = updated
         writeZoneFile(updated)
         saveZones(zones)
@@ -341,7 +394,7 @@ class DnsServiceImpl : IDnsService {
         val filtered = zone.records.filter { it.id != recordId }
         if (filtered.size == zone.records.size) return false
 
-        val updated = zone.copy(records = filtered, soa = zone.soa.copy(serial = generateNextSerial(zone.soa.serial)))
+        val updated = zone.copy(records = filtered, soa = zone.soa.copy(serial = generateNextSerial(zone.soa.serial, zone.name)))
         zones[index] = updated
         writeZoneFile(updated)
         saveZones(zones)
@@ -1056,7 +1109,7 @@ class DnsServiceImpl : IDnsService {
 
             val updated = zone.copy(
                 records = zone.records + newRecords,
-                soa = zone.soa.copy(serial = generateNextSerial(zone.soa.serial))
+                soa = zone.soa.copy(serial = generateNextSerial(zone.soa.serial, zone.name))
             )
             zones[index] = updated
             writeZoneFile(updated)
@@ -1420,15 +1473,30 @@ controls {
         return if (file.isAbsolute) path else File(AppConfig.dataRoot, path).absolutePath
     }
 
-    private fun generateNextSerial(currentSerial: Long): Long {
+    private fun generateNextSerial(currentSerial: Long, zoneName: String? = null): Long {
+        var baseSerial = currentSerial
+
+        // Attempt to fetch the true live serial from BIND if the zone is running.
+        // BIND's auto-signing increments internal serials that we must respect to avoid "out of range" errors.
+        if (zoneName != null) {
+            val digOutput = commandExecutor.execute("dig +short SOA $zoneName @127.0.0.1").output.trim()
+            if (digOutput.isNotBlank() && !digOutput.startsWith(";") && digOutput.split("\\s+".toRegex()).size >= 3) {
+                val liveSerialStr = digOutput.split("\\s+".toRegex())[2]
+                val liveSerial = liveSerialStr.toLongOrNull()
+                if (liveSerial != null && liveSerial > baseSerial) {
+                    baseSerial = liveSerial
+                }
+            }
+        }
+
         val now = java.time.LocalDateTime.now()
         val today = now.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"))
         val datePart = today.toLong() * 100
         
         return when {
-            currentSerial / 100 < today.toLong() -> datePart + 1
-            currentSerial / 100 == today.toLong() -> currentSerial + 1
-            else -> currentSerial + 1 // Handled manual future serials by just incrementing
+            baseSerial / 100 < today.toLong() -> datePart + 1
+            baseSerial / 100 == today.toLong() -> baseSerial + 1
+            else -> baseSerial + 1 // Handled manual future serials by just incrementing
         }
     }
 
