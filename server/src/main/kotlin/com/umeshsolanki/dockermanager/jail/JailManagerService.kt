@@ -31,7 +31,8 @@ interface IJailManagerService {
 class JailManagerServiceImpl(
     private val firewallService: IFirewallService,
     private val ipReputationService: com.umeshsolanki.dockermanager.ip.IIpReputationService,
-    private val kafkaService: com.umeshsolanki.dockermanager.kafka.IKafkaService
+    private val kafkaService: com.umeshsolanki.dockermanager.kafka.IKafkaService,
+    private val settingsProvider: () -> AppSettings = { AppConfig.settings }
 ) : IJailManagerService {
     private val logger = LoggerFactory.getLogger(JailManagerServiceImpl::class.java)
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -124,7 +125,7 @@ class JailManagerServiceImpl(
             return false
         }
 
-        val settings = AppConfig.settings
+        val settings = settingsProvider()
         
         // If Kafka is enabled, publish the request and let the consumer handle the actual jailing.
         // This effectively centralizes all blocking logic through Kafka.
@@ -149,7 +150,7 @@ class JailManagerServiceImpl(
     }
 
     override suspend fun performJailExecution(ip: String, durationMinutes: Int, reason: String): Boolean {
-        val settings = AppConfig.settings
+        val settings = settingsProvider()
         var finalDuration = durationMinutes
 
         if (settings.exponentialJailEnabled) {
@@ -230,7 +231,7 @@ class JailManagerServiceImpl(
             }
         }
         
-        val settings = AppConfig.settings
+        val settings = settingsProvider()
         if (!settings.jailEnabled) return
         
         // Check if already jailed
@@ -318,7 +319,7 @@ class JailManagerServiceImpl(
         scope.launch {
             while (isActive) {
                 try {
-                    val windowMinutes = AppConfig.settings.proxyJailWindowMinutes
+                    val windowMinutes = settingsProvider().proxyJailWindowMinutes
                     val interval = windowMinutes * 60_000L
                     
                     delay(interval)
@@ -376,7 +377,7 @@ class JailManagerServiceImpl(
             }
         }
         
-        val secSettings = AppConfig.settings
+        val secSettings = settingsProvider()
         if (!secSettings.proxyJailEnabled) return
         
         // Ignore common assets for 404 jailing noise reduction
@@ -555,7 +556,7 @@ class JailManagerServiceImpl(
         
         if (shouldJail) {
             logger.warn("Jailing IP $ip for proxy violation: $reason")
-            val duration = AppConfig.settings.jailDurationMinutes
+            val duration = settingsProvider().jailDurationMinutes
             
             scope.launch {
                 val success = jailIP(ip, duration, "Proxy: $reason")

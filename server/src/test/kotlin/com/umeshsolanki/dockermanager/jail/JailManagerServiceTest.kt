@@ -5,6 +5,7 @@ import com.umeshsolanki.dockermanager.firewall.FirewallRule
 import com.umeshsolanki.dockermanager.firewall.IFirewallService
 import com.umeshsolanki.dockermanager.ip.IIpReputationService
 import com.umeshsolanki.dockermanager.database.IpReputation
+import com.umeshsolanki.dockermanager.AppSettings
 import io.mockk.*
 import org.junit.After
 import org.junit.Before
@@ -34,14 +35,17 @@ class JailManagerServiceTest {
     fun setup() {
         mockFirewallService = mockk<IFirewallService>(relaxed = true)
         mockIpReputationService = mockk<IIpReputationService>(relaxed = true)
-        jailManagerService = JailManagerServiceImpl(
-            firewallService = mockFirewallService,
-            ipReputationService = mockIpReputationService,
-            kafkaService = mockk<com.umeshsolanki.dockermanager.kafka.IKafkaService>(relaxed = true)
-        )
         
         // Mock the firewall list to return empty by default
         every { mockFirewallService.listRules() } returns emptyList()
+        every { mockFirewallService.listCidrRules() } returns emptyList()
+
+        jailManagerService = JailManagerServiceImpl(
+            firewallService = mockFirewallService,
+            ipReputationService = mockIpReputationService,
+            kafkaService = mockk<com.umeshsolanki.dockermanager.kafka.IKafkaService>(relaxed = true),
+            settingsProvider = { AppSettings() }
+        )
     }
 
     @After
@@ -55,7 +59,7 @@ class JailManagerServiceTest {
         val durationMinutes = 30
         val reason = "Test jail reason"
         
-        every { mockFirewallService.blockIP(any()) } returns true
+        every { mockFirewallService.blockIP(any<BlockIPRequest>()) } returns true
 
         val result = runBlocking {
             jailManagerService.jailIP(testIp, durationMinutes, reason)
