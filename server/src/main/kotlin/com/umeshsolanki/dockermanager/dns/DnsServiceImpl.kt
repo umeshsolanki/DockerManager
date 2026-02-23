@@ -1434,27 +1434,40 @@ class DnsServiceImpl : IDnsService {
 
     private fun writeZoneFile(zone: DnsZone) {
         val soa = zone.soa
-        val zoneName = zone.name.ensureTrailingDot()
+        val zoneName = zone.name.ensureTrailingDot().lowercase()
         val records = zone.records.toMutableList()
 
         // 1. Identify all NS records (explicit or default)
-        val nsNames = records.filter { it.type == DnsRecordType.NS }.map { it.value.ensureTrailingDot() }.toMutableSet()
-        if (nsNames.isEmpty()) {
-            nsNames.add(soa.primaryNs.ensureTrailingDot())
-        }
+        val nsNames = records.filter { it.type == DnsRecordType.NS }
+            .map { it.value.ensureTrailingDot().lowercase() }
+            .toMutableSet()
+        
+        // Always include the SOA primary NS as it needs to be resolvable
+        nsNames.add(soa.primaryNs.ensureTrailingDot().lowercase())
 
         // 2. For each in-bailiwick NS, ensure there's an A/AAAA record
         for (nsName in nsNames) {
-            if (nsName.endsWith(".$zoneName") || nsName == zoneName) {
-                val shortName = if (nsName == zoneName) "@" else nsName.dropLast(zoneName.length + 1).removeSuffix(".")
-                val hasAddress = records.any { 
-                    (it.name == shortName || it.name == nsName.removeSuffix(".")) && 
-                    (it.type == DnsRecordType.A || it.type == DnsRecordType.AAAA) 
+            val isRoot = nsName == zoneName
+            val isSub = nsName.endsWith(".$zoneName")
+            
+            if (isRoot || isSub) {
+                val shortName = if (isRoot) "@" else nsName.substring(0, nsName.length - (zoneName.length + 1))
+                
+                // Compare carefully: check short name, full name without dot, or full name with dot
+                val hasAddress = records.any { rec ->
+                    val rName = rec.name.lowercase()
+                    val match = (rName == shortName.lowercase()) || 
+                                (rName == nsName.removeSuffix(".")) || 
+                                (rName == nsName)
+                    
+                    match && (rec.type == DnsRecordType.A || rec.type == DnsRecordType.AAAA)
                 }
                 
                 if (!hasAddress) {
                     // Automatically add an A record for the nameserver if missing
-                    val serverIp = try { InetAddress.getLocalHost().hostAddress } catch (_: Exception) { "127.0.0.1" }
+                    val serverIp = System.getenv("BIND_GLUE_IP") 
+                        ?: try { InetAddress.getLocalHost().hostAddress } catch (_: Exception) { "127.0.0.1" }
+                        
                     records.add(DnsRecord(
                         id = UUID.randomUUID().toString(),
                         name = if (shortName.isEmpty()) "@" else shortName,
@@ -1462,7 +1475,7 @@ class DnsServiceImpl : IDnsService {
                         value = serverIp,
                         ttl = 3600
                     ))
-                    logger.info("Added missing glue record for in-bailiwick NS $nsName in zone ${zone.name}")
+                    logger.info("Automatically inserted missing glue record for in-bailiwick NS '$nsName' -> $serverIp in zone '${zone.name}'")
                 }
             }
         }
@@ -1484,7 +1497,8 @@ class DnsServiceImpl : IDnsService {
             appendLine(")")
             appendLine()
             
-            // Emit NS records. If none were provided, use the default from SOA
+            // Emit explicit NS records if they exist.
+            // If the user didn't specify any NS records, emit the default one from SOA.
             val hasExplicitNs = records.any { it.type == DnsRecordType.NS }
             if (!hasExplicitNs) {
                 appendLine("@        86400  IN  NS  ${soa.primaryNs.ensureTrailingDot()}")
@@ -1500,7 +1514,7 @@ class DnsServiceImpl : IDnsService {
             parentFile.mkdirs()
             writeText(content)
         }
-        logger.info("Wrote zone file: ${zone.filePath}")
+        logger.info("Wrote zone file: ${zone.filePath} (Records: ${records.size})")
     }
 
     private fun formatRecord(record: DnsRecord): String {
