@@ -82,6 +82,7 @@ interface IDnsService {
     fun buildSpfRecord(config: SpfConfig): String
     fun buildDmarcRecord(config: DmarcConfig): String
     fun suggestReverseZone(ip: String): IpPtrSuggestion
+    fun generateReverseZones(zoneId: String): DnsActionResult
     fun checkPropagation(zoneId: String, recordName: String, recordType: DnsRecordType): PropagationCheckResult
     fun createDefaultZones(): List<DnsZone>
     fun regenerateZoneFiles(): DnsActionResult

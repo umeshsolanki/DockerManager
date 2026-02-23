@@ -1659,6 +1659,72 @@ logging {
         }
     }
 
+    override fun generateReverseZones(zoneId: String): DnsActionResult {
+        val zone = getZone(zoneId) ?: return DnsActionResult(false, "Zone not found")
+        if (zone.type != ZoneType.FORWARD) return DnsActionResult(false, "Only forward zones can generate reverse zones")
+
+        val records = zone.records.filter { it.type == DnsRecordType.A || it.type == DnsRecordType.AAAA }
+        if (records.isEmpty()) return DnsActionResult(false, "No A or AAAA records found in this zone")
+
+        var createdZones = 0
+        var addedRecords = 0
+        val errors = mutableListOf<String>()
+
+        for (record in records) {
+            try {
+                val suggestion = suggestReverseZone(record.value)
+                if (suggestion.reverseZone == "invalid.in-addr.arpa") continue
+
+                // 1. Ensure reverse zone exists
+                var reverseZone = listZones().find { it.name == suggestion.reverseZone }
+                if (reverseZone == null) {
+                    val createReq = CreateZoneRequest(
+                        name = suggestion.reverseZone,
+                        type = ZoneType.REVERSE,
+                        role = ZoneRole.MASTER,
+                        soa = SoaRecord(
+                            primaryNs = zone.soa.primaryNs,
+                            adminEmail = zone.soa.adminEmail
+                        )
+                    )
+                    reverseZone = createZone(createReq)
+                    if (reverseZone != null) {
+                        createdZones++
+                        // Add NS record to new reverse zone
+                        addRecord(reverseZone.id, DnsRecord(id = "", name = "@", type = DnsRecordType.NS, value = zone.soa.primaryNs, ttl = 86400))
+                    }
+                }
+
+                if (reverseZone != null) {
+                    // 2. Add PTR record
+                    val existingPtr = getRecords(reverseZone.id).find { it.name == suggestion.ptrRecordName && it.type == DnsRecordType.PTR }
+                    if (existingPtr == null) {
+                        val ptrValue = if (record.name == "@") zone.name.ensureTrailingDot() else "${record.name}.${zone.name}".ensureTrailingDot()
+                        val ptrRecord = DnsRecord(
+                            id = "",
+                            name = suggestion.ptrRecordName,
+                            type = DnsRecordType.PTR,
+                            value = ptrValue,
+                            ttl = 3600
+                        )
+                        if (addRecord(reverseZone.id, ptrRecord)) {
+                            addedRecords++
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                logger.error("Failed to process reverse record for ${record.value}", e)
+                errors.add(record.value)
+            }
+        }
+
+        return if (errors.isEmpty()) {
+            DnsActionResult(true, "Successfully processed reverse mappings: $createdZones zones created, $addedRecords PTR records added.")
+        } else {
+            DnsActionResult(false, "Processed with errors for: ${errors.joinToString()}. Created $createdZones zones and added $addedRecords records.")
+        }
+    }
+
     override fun buildSrvRecord(config: SrvConfig): String {
         return "${config.priority} ${config.weight} ${config.port} ${config.target.ensureTrailingDot()}"
     }
@@ -1844,6 +1910,7 @@ object DnsService {
     fun buildSpfRecord(config: SpfConfig) = service.buildSpfRecord(config)
     fun buildDmarcRecord(config: DmarcConfig) = service.buildDmarcRecord(config)
     fun suggestReverseZone(ip: String) = service.suggestReverseZone(ip)
+    fun generateReverseZones(zoneId: String) = service.generateReverseZones(zoneId)
     fun checkPropagation(zoneId: String, recordName: String, recordType: DnsRecordType) = service.checkPropagation(zoneId, recordName, recordType)
     fun createDefaultZones() = service.createDefaultZones()
     fun regenerateZoneFiles() = service.regenerateZoneFiles()

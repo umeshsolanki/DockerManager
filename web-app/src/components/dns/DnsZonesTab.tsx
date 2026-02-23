@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Power, Shield, FileText, Upload, BookTemplate, Settings2, Search, Lock, Mail, ShieldCheck, CheckCircle2, RefreshCw, Globe } from 'lucide-react';
+import { Plus, Trash2, Power, Shield, FileText, Upload, BookTemplate, Settings2, Search, Lock, Mail, ShieldCheck, CheckCircle2, RefreshCw, Globe, Zap } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import {
     DnsZone, DnsRecord, DnsRecordType, ZoneValidationResult, ZoneTemplate,
@@ -64,11 +64,11 @@ function RecordRow({ record, hasPriority, onUpdate, onDelete, onCheck }: {
             <td className="px-4 py-3">
                 <input value={record.value} onChange={e => onUpdate({ ...record, value: e.target.value })} placeholder={HINTS[record.type] || ''} className="w-full bg-transparent border-b-2 border-transparent hover:border-outline/10 focus:border-primary px-1 py-1.5 text-sm font-mono focus:outline-none transition-colors" />
             </td>
-            <td className="px-4 py-3 w-32">
+            <td className="px-4 py-3 w-36">
                 <select
                     value={record.ttl}
                     onChange={e => onUpdate({ ...record, ttl: parseInt(e.target.value) || 3600 })}
-                    className="w-full bg-surface-container hover:bg-surface-container-high rounded-xl px-3 py-1.5 text-xs font-bold text-on-surface-variant border border-outline/10 focus:border-primary focus:outline-none appearance-none transition-colors cursor-pointer text-center"
+                    className="w-full bg-surface-container hover:bg-surface-container-high rounded-xl px-2 py-1.5 text-xs font-bold text-on-surface-variant border border-outline/10 focus:border-primary focus:outline-none transition-colors cursor-pointer text-center"
                 >
                     {!TTL_PRESETS.some(p => p.value === record.ttl) && (
                         <option value={record.ttl}>{record.ttl}s (Custom)</option>
@@ -267,6 +267,18 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
         else toast.error('Failed to apply template');
     };
 
+    const handleGenerateReverse = async () => {
+        if (!confirm('This will automatically create reverse zones and PTR records based on your A/AAAA records. Continue?')) return;
+        const r = await DockerClient.generateDnsReverseZones(zone.id);
+        if (r.success) {
+            toast.success(r.message);
+            onRefresh();
+            setShowWizards(false);
+        } else {
+            toast.error(r.message);
+        }
+    };
+
     const loadTemplates = async () => {
         setTemplates(await DockerClient.listDnsTemplates());
         setShowTemplates(true);
@@ -306,6 +318,7 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                                 <button onClick={() => { setActiveWizard('dkim'); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><Lock size={14} className="text-emerald-400" /> DKIM Producer</button>
                                 <button onClick={() => { setActiveWizard('dmarc'); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><Shield size={14} className="text-blue-400" /> DMARC Setup</button>
                                 <button onClick={() => { setActiveWizard('reverse'); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><RefreshCw size={14} className="text-purple-400" /> Reverse DNS Helper</button>
+                                <button onClick={handleGenerateReverse} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><Zap size={14} className="text-yellow-400" /> Auto-Generate Reverses</button>
                                 <div className="h-px bg-outline/10 my-1"></div>
                                 <button onClick={() => { setShowImport(!showImport); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><Upload size={14} className="text-on-surface-variant" /> Import BIND File</button>
                                 <button onClick={() => { loadTemplates(); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><BookTemplate size={14} className="text-on-surface-variant" /> Apply Template</button>
@@ -528,7 +541,7 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                                     <th className="px-4 py-3 text-left font-bold w-1/4">Name</th>
                                     <th className="px-4 py-3 text-left font-bold w-1/6">Type</th>
                                     <th className="px-4 py-3 text-left font-bold w-1/3">Value</th>
-                                    <th className="px-4 py-3 text-center font-bold w-32">TTL</th>
+                                    <th className="px-4 py-3 text-center font-bold w-36">TTL</th>
                                     {hasPriority && <th className="px-4 py-3 text-center font-bold w-20">Pri</th>}
                                     <th className="px-2 py-3 w-12 text-right"></th>
                                     <th className="px-2 py-3 w-12 text-right"></th>

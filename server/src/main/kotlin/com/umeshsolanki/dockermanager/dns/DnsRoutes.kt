@@ -148,6 +148,11 @@ fun Route.dnsRoutes() {
                     call.respond(DnsService.getDsRecords(id))
                 }
 
+                post("/generate-reverse") {
+                    val id = call.requireParameter("id") ?: return@post
+                    call.respond(DnsService.generateReverseZones(id))
+                }
+
                 // -- Templates --
 
                 post("/apply-template/{templateId}") {

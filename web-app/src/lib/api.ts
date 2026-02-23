@@ -495,6 +495,7 @@ export const DockerClient = {
     validateDnsZone: (id: string) => req<ZoneValidationResult>(`/dns/zones/${id}/validate`, {}, { valid: false, output: '' }),
     getDnsZoneFile: (id: string) => textReq(`/dns/zones/${id}/file`),
     exportDnsZone: (id: string) => textReq(`/dns/zones/${id}/export`),
+    generateDnsReverseZones: (id: string) => req<DnsActionResult>(`/dns/zones/${id}/generate-reverse`, { method: 'POST' }, { success: false, message: 'Network error' }),
 
     // Records
     getDnsRecords: (zoneId: string) => req<DnsRecord[]>(`/dns/zones/${zoneId}/records`, {}, []),
