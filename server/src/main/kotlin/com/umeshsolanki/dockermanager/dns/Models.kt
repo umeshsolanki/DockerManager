@@ -275,7 +275,8 @@ data class GlobalSecurityConfig(
     val rateLimitResponsesPerSecond: Int = 10,
     val rateLimitWindow: Int = 5,
     val defaultNameServers: List<String> = emptyList(),
-    val allowQuery: List<String> = listOf("any")
+    val allowQuery: List<String> = listOf("any"),
+    val minimalResponses: Boolean = false
 )
 
 

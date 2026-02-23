@@ -679,6 +679,8 @@ class DnsServiceImpl : IDnsService {
             appendLine("    allow-transfer { none; };")
             appendLine("    allow-update { none; };")
             appendLine("    version \"none\";")
+            appendLine("    minimal-responses ${if (security.minimalResponses) "yes" else "no"};")
+            appendLine("    minimal-any ${if (security.minimalResponses) "yes" else "no"};")
             appendLine("    ")
             
             if (security.rateLimitEnabled) {

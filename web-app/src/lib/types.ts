@@ -830,6 +830,7 @@ export interface GlobalSecurityConfig {
   rateLimitWindow: number;
   defaultNameServers: string[];
   allowQuery: string[];
+  minimalResponses: boolean;
 }
 
 // ========== Professional Hosting Structures ==========

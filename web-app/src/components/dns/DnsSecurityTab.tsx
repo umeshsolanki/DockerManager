@@ -90,6 +90,20 @@ function GlobalSecuritySection() {
 
                 <div className="border-t border-outline/10 pt-3"></div>
 
+                {/* Minimal Responses */}
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium">Minimal Responses</label>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" className="sr-only peer" checked={config.minimalResponses} onChange={e => setConfig({ ...config, minimalResponses: e.target.checked })} />
+                            <div className="w-9 h-5 bg-surface-container-high peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                        </label>
+                    </div>
+                    <p className="text-xs text-on-surface-variant">Omits authority and additional sections from responses (minimal-responses/any) to reduce response size and prevent data enumeration.</p>
+                </div>
+
+                <div className="border-t border-outline/10 pt-3"></div>
+
                 {/* Default Name Servers */}
                 <div className="space-y-2">
                     <label className="text-sm font-medium">Default Name Servers</label>
