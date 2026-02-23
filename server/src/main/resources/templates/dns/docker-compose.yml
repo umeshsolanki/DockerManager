@@ -14,7 +14,7 @@ services:
       - ${BIND9_CONFIG_PATH}:/etc/bind
       - ${BIND9_DATA_PATH}:/var/lib/bind
     environment:
-      - TZ=UTC
+      - TZ=Asia/Kolkata
       - BIND9_USER=root
     healthcheck:
       test: ["CMD-SHELL", "rndc status || exit 1"]
