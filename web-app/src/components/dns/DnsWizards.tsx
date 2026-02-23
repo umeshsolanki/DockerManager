@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Shield, Mail, Globe, ArrowRight, Check, Copy, RefreshCw, AlertCircle, Trash2, Search } from 'lucide-react';
+import { Shield, Mail, Globe, ArrowRight, Check, Copy, RefreshCw, AlertCircle, Trash2, Search, ShieldCheck, Zap, Plus } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import {
     DnsZone, DnsRecord, SpfConfig, DmarcConfig, DkimKey,
@@ -562,6 +562,27 @@ export function ChildNsWizard({ zone, onAddRecords }: { zone: DnsZone; onAddReco
     const [subdomain, setSubdomain] = useState('ns1');
     const [ip, setIp] = useState('');
     const [ipv6, setIpv6] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const detectIp = async () => {
+        setLoading(true);
+        try {
+            const config = await DockerClient.getGlobalSecurityConfig();
+            if (config.glueIp) setIp(config.glueIp);
+            if (config.glueIpv6) setIpv6(config.glueIpv6);
+
+            if (!config.glueIp) {
+                // If not set in config, many DNS lookups to @ will return the server IP
+                const records = await DockerClient.getDnsRecords(zone.id);
+                const rootA = records.find(r => r.name === '@' && r.type === 'A');
+                if (rootA) setIp(rootA.value);
+            }
+            toast.success('IP addresses detected');
+        } catch (e) {
+            toast.error('Failed to detect IP');
+        }
+        setLoading(false);
+    };
 
     const handleAdd = () => {
         if (!subdomain || !ip) return;
@@ -580,37 +601,92 @@ export function ChildNsWizard({ zone, onAddRecords }: { zone: DnsZone; onAddReco
 
         onAddRecords(records);
         toast.success(`Child Name Server ${fullName} added`);
-        setIp(''); setIpv6('');
+        // We don't clear subdomain as user might want to add ns2 immediately
+        setIp(ip);
     };
 
     return (
         <div className="space-y-4">
-            <p className="text-xs text-on-surface-variant leading-relaxed"> Register "Glue Records" to use this server as a name server for your domain. This is required if you want to use <span className="text-primary font-mono">{subdomain}.{zone.name}</span> as your DNS at your registrar.</p>
-            <div className="grid grid-cols-1 gap-3">
-                <div className="space-y-1">
-                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Host Name</label>
-                    <div className="flex items-center gap-1">
-                        <input value={subdomain} onChange={e => setSubdomain(e.target.value)} className="input-field flex-1 text-sm font-mono" placeholder="ns1" />
-                        <span className="text-xs text-on-surface-variant font-mono">.{zone.name}</span>
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-primary/5 border border-primary/10 mb-2">
+                <ShieldCheck size={20} className="text-primary mt-0.5 shrink-0" />
+                <div className="text-xs text-on-surface-variant leading-relaxed">
+                    <b className="text-on-surface block mb-1">About Glue Records</b>
+                    Registering a Child Name Server (Glue Record) is required if you want to use <span className="text-primary font-mono">{subdomain}.{zone.name}</span> as the authoritative DNS for this or any other domain at your registrar.
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest flex items-center gap-1.5">
+                        <Globe size={10} /> Name Server Hostname
+                    </label>
+                    <div className="flex items-center gap-2">
+                        <div className="flex-1 relative">
+                            <input
+                                value={subdomain}
+                                onChange={e => setSubdomain(e.target.value)}
+                                className="input-field py-2.5 text-sm font-mono pr-20"
+                                placeholder="ns1"
+                            />
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-on-surface-variant/40 pointer-events-none">
+                                .{zone.name}
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                        <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">IPv4 Address</label>
-                        <input value={ip} onChange={e => setIp(e.target.value)} className="input-field py-2 text-sm font-mono" placeholder="1.2.3.4" />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest flex items-center justify-between">
+                            <span>IPv4 Address (A)</span>
+                            <button
+                                onClick={detectIp}
+                                disabled={loading}
+                                className="text-primary hover:underline lowercase font-bold tracking-normal flex items-center gap-1"
+                            >
+                                {loading ? <RefreshCw size={10} className="animate-spin" /> : <Zap size={10} />}
+                                Auto-detect
+                            </button>
+                        </label>
+                        <input
+                            value={ip}
+                            onChange={e => setIp(e.target.value)}
+                            className="input-field py-2.5 text-sm font-mono"
+                            placeholder="e.g. 1.2.3.4"
+                        />
                     </div>
-                    <div className="space-y-1">
-                        <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">IPv6 (Optional)</label>
-                        <input value={ipv6} onChange={e => setIpv6(e.target.value)} className="input-field py-2 text-sm font-mono" placeholder="::1" />
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">IPv6 Address (AAAA) - Optional</label>
+                        <input
+                            value={ipv6}
+                            onChange={e => setIpv6(e.target.value)}
+                            className="input-field py-2.5 text-sm font-mono"
+                            placeholder="e.g. 2001:db8::1"
+                        />
                     </div>
                 </div>
             </div>
-            <button onClick={handleAdd} disabled={!subdomain || !ip} className="w-full btn-primary py-2.5 text-sm font-bold shadow-lg shadow-primary/20">
-                Register Name Server
-            </button>
+
+            <div className="flex gap-3 pt-2">
+                <button
+                    onClick={handleAdd}
+                    disabled={!subdomain || !ip}
+                    className="flex-1 btn-primary py-3 text-sm font-black shadow-lg shadow-primary/20 flex items-center justify-center gap-2 group transition-all"
+                >
+                    <Plus size={16} className="group-hover:rotate-90 transition-transform" />
+                    Register Name Server
+                </button>
+            </div>
+
+            <div className="p-3 bg-surface-container-low rounded-xl border border-outline/5">
+                <p className="text-[10px] text-on-surface-variant leading-normal">
+                    <span className="font-bold text-amber-400">Note:</span> After adding these records here, you must also log in to your domain registrar (like Namecheap, GoDaddy, etc.) and look for "Child Name Servers" or "Host Names" to register the IP at the registry level.
+                </p>
+            </div>
         </div>
     );
 }
+
 
 // --- Reverse DNS Dashboard ---
 export function ReverseDnsDashboard() {

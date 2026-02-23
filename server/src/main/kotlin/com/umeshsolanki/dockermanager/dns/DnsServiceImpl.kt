@@ -14,6 +14,7 @@ import kotlin.concurrent.withLock
 import java.util.*
 import java.security.*
 import java.net.InetAddress
+import java.net.NetworkInterface
 import org.xbill.DNS.*
 import org.xbill.DNS.Record
 
@@ -1446,6 +1447,8 @@ class DnsServiceImpl : IDnsService {
         nsNames.add(soa.primaryNs.ensureTrailingDot().lowercase())
 
         // 2. For each in-bailiwick NS, ensure there's an A/AAAA record
+        val securityConfig = getGlobalSecurityConfig()
+        
         for (nsName in nsNames) {
             val isRoot = nsName == zoneName
             val isSub = nsName.endsWith(".$zoneName")
@@ -1454,19 +1457,28 @@ class DnsServiceImpl : IDnsService {
                 val shortName = if (isRoot) "@" else nsName.substring(0, nsName.length - (zoneName.length + 1))
                 
                 // Compare carefully: check short name, full name without dot, or full name with dot
-                val hasAddress = records.any { rec ->
+                val hasA = records.any { rec ->
                     val rName = rec.name.lowercase()
                     val match = (rName == shortName.lowercase()) || 
                                 (rName == nsName.removeSuffix(".")) || 
                                 (rName == nsName)
                     
-                    match && (rec.type == DnsRecordType.A || rec.type == DnsRecordType.AAAA)
+                    match && rec.type == DnsRecordType.A
+                }
+
+                val hasAAAA = records.any { rec ->
+                    val rName = rec.name.lowercase()
+                    val match = (rName == shortName.lowercase()) || 
+                                (rName == nsName.removeSuffix(".")) || 
+                                (rName == nsName)
+                    
+                    match && rec.type == DnsRecordType.AAAA
                 }
                 
-                if (!hasAddress) {
-                    // Automatically add an A record for the nameserver if missing
-                    val serverIp = System.getenv("BIND_GLUE_IP") 
-                        ?: try { InetAddress.getLocalHost().hostAddress } catch (_: Exception) { "127.0.0.1" }
+                if (!hasA) {
+                    val serverIp = securityConfig.glueIp 
+                        ?: System.getenv("BIND_GLUE_IP") 
+                        ?: detectPublicIpV4()
                         
                     records.add(DnsRecord(
                         id = UUID.randomUUID().toString(),
@@ -1475,7 +1487,18 @@ class DnsServiceImpl : IDnsService {
                         value = serverIp,
                         ttl = 3600
                     ))
-                    logger.info("Automatically inserted missing glue record for in-bailiwick NS '$nsName' -> $serverIp in zone '${zone.name}'")
+                    logger.info("Automatically inserted missing glue record (A) for in-bailiwick NS '$nsName' -> $serverIp in zone '${zone.name}'")
+                }
+
+                if (!hasAAAA && !securityConfig.glueIpv6.isNullOrBlank()) {
+                    records.add(DnsRecord(
+                        id = UUID.randomUUID().toString(),
+                        name = if (shortName.isEmpty()) "@" else shortName,
+                        type = DnsRecordType.AAAA,
+                        value = securityConfig.glueIpv6,
+                        ttl = 3600
+                    ))
+                    logger.info("Automatically inserted missing glue record (AAAA) for in-bailiwick NS '$nsName' -> ${securityConfig.glueIpv6} in zone '${zone.name}'")
                 }
             }
         }
@@ -1788,7 +1811,47 @@ controls {
         }
     }
 
+    private fun detectPublicIpV4(): String {
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            val ips = mutableListOf<String>()
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                if (iface.isLoopback || !iface.isUp) continue
+                
+                val addresses = iface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val addr = addresses.nextElement()
+                    if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
+                        val ip = addr.hostAddress
+                        // Prioritize non-private IPs if any, but in local network environments, 
+                        // private IPs (192.168.x.x, 10.x.x.x) are often the intended "public" face.
+                        // We definitely want to avoid 127.0.x.x and 172.17.x.x (Docker default bridge) if possible.
+                        if (!ip.startsWith("127.") && !ip.startsWith("172.17.")) {
+                            ips.add(ip)
+                        }
+                    }
+                }
+            }
+            
+            // Prefer non-private ranges if available
+            val publicIps = ips.filter { ip ->
+                !ip.startsWith("10.") && 
+                !ip.startsWith("192.168.") && 
+                !(ip.startsWith("172.") && ip.split(".")[1].toInt() in 16..31)
+            }
+            
+            if (publicIps.isNotEmpty()) return publicIps.first()
+            if (ips.isNotEmpty()) return ips.first()
+            
+            return try { InetAddress.getLocalHost().hostAddress } catch (_: Exception) { "127.0.0.1" }
+        } catch (e: Exception) {
+            return "127.0.0.1"
+        }
+    }
+
     private fun resolveDataPath(path: String): String {
+
         val file = File(path)
         return if (file.isAbsolute) path else File(AppConfig.dataRoot, path).absolutePath
     }

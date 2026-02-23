@@ -168,6 +168,36 @@ function GlobalSecuritySection() {
 
                 <div className="border-t border-outline/10 pt-3"></div>
 
+                {/* Glue IP Control */}
+                <div className="space-y-3">
+                    <label className="text-sm font-semibold flex items-center gap-2">📌 Default Glue Records</label>
+                    <p className="text-xs text-on-surface-variant">Used to automatically create A/AAAA records for in-bailiwick name servers. If blank, the server will attempt to auto-detect its public IP.</p>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-[10px] font-medium mb-1 uppercase tracking-wider text-primary/70">IPv4 Glue IP</label>
+                            <input
+                                type="text"
+                                value={config.glueIp || ''}
+                                onChange={e => setConfig({ ...config, glueIp: e.target.value })}
+                                placeholder="e.g. 1.2.3.4"
+                                className="input-field"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-medium mb-1 uppercase tracking-wider text-primary/70">IPv6 Glue IP</label>
+                            <input
+                                type="text"
+                                value={config.glueIpv6 || ''}
+                                onChange={e => setConfig({ ...config, glueIpv6: e.target.value })}
+                                placeholder="e.g. 2001:db8::1"
+                                className="input-field"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="border-t border-outline/10 pt-3"></div>
+
                 {/* Default Name Servers */}
                 <div className="space-y-2">
                     <label className="text-sm font-medium">Default Name Servers</label>
@@ -178,6 +208,7 @@ function GlobalSecuritySection() {
                         placeholder="e.g. ns1.yourdomain.com"
                     />
                 </div>
+
 
                 <div className="pt-2">
                     <button onClick={handleSave} disabled={saving} className="btn-primary w-full disabled:opacity-50">

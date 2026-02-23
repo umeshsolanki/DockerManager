@@ -290,8 +290,11 @@ data class GlobalSecurityConfig(
     val ipv6Enabled: Boolean = true,
     val tcpClients: Int = 100,
     val maxCacheSize: String = "128M",
-    val reuseport: Boolean = false
+    val reuseport: Boolean = false,
+    val glueIp: String? = null,
+    val glueIpv6: String? = null
 )
+
 
 
 @Serializable

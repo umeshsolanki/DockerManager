@@ -840,7 +840,10 @@ export interface GlobalSecurityConfig {
   tcpClients: number;
   maxCacheSize: string;
   reuseport: boolean;
+  glueIp?: string;
+  glueIpv6?: string;
 }
+
 
 // ========== Professional Hosting Structures ==========
 
