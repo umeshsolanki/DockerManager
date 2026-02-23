@@ -1335,8 +1335,8 @@ class DnsServiceImpl : IDnsService {
             if (zone.alsoNotify.isNotEmpty()) {
                 appendLine("    also-notify { ${zone.alsoNotify.joinToString("; ")}; };")
             }
-
             if (zone.dnssecEnabled && zone.role == ZoneRole.MASTER) {
+                appendLine("    key-directory \"/var/lib/bind/keys\";")
                 appendLine("    dnssec-policy default;")
                 appendLine("    inline-signing yes;")
             }
