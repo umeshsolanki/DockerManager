@@ -350,6 +350,14 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                     </SectionCard>
                 )}
 
+                {zone.type === 'FORWARD' && (
+                    <SectionCard title="Email Health Check">
+                        <div className="max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                            <EmailHealthCheck zoneId={zone.id} />
+                        </div>
+                    </SectionCard>
+                )}
+
                 {showSettings && <ZoneSettings zone={zone} onRefresh={onRefresh} />}
 
                 {showImport && (
