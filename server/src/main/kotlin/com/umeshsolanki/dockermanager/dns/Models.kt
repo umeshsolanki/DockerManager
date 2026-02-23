@@ -326,7 +326,8 @@ data class PropagationCheckResult(
 data class BulkImportRequest(
     val zoneId: String,
     val content: String,
-    val format: String = "bind"
+    val format: String = "bind",
+    val replace: Boolean = false
 )
 
 @Serializable

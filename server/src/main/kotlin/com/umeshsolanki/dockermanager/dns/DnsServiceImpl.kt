@@ -491,27 +491,171 @@ class DnsServiceImpl : IDnsService {
     override fun importZoneFile(request: BulkImportRequest): BulkImportResult {
         val zone = getZone(request.zoneId) ?: return BulkImportResult(false, errors = listOf("Zone not found"))
 
-        val parsed = mutableListOf<DnsRecord>()
+        val parsedRecords = mutableListOf<DnsRecord>()
+        var parsedSoa: SoaRecord? = null
         val errors = mutableListOf<String>()
-        var skipped = 0
+        var skippedCount = 0
 
-        for ((lineNo, line) in request.content.lines().withIndex()) {
+        val logicalLines = mutableListOf<String>()
+        var currentLogicalLine = StringBuilder()
+        var inParen = false
+
+        request.content.lines().forEach { rawLine ->
+            var noComment = StringBuilder()
+            var inQuotes = false
+            var escaped = false
+            
+            for (char in rawLine) {
+                if (escaped) {
+                    noComment.append(char)
+                    escaped = false
+                    continue
+                }
+                if (char == '\\') {
+                    noComment.append(char)
+                    escaped = true
+                    continue
+                }
+                if (char == '"') {
+                    inQuotes = !inQuotes
+                    noComment.append(char)
+                    continue
+                }
+                if (char == ';' && !inQuotes) {
+                    break
+                }
+                noComment.append(char)
+            }
+            
+            val lineContent = noComment.toString()
+            if (lineContent.isBlank()) {
+                if (!inParen) skippedCount++
+                return@forEach
+            }
+
+            if (lineContent.contains("(")) inParen = true
+
+            if (inParen) {
+                val clean = lineContent.replace("(", "").replace(")", "").trim()
+                currentLogicalLine.append(clean).append(" ")
+                if (lineContent.contains(")")) {
+                    inParen = false
+                    logicalLines.add(currentLogicalLine.toString().trim())
+                    currentLogicalLine = StringBuilder()
+                }
+            } else {
+                logicalLines.add(lineContent)
+            }
+        }
+
+        var lastName = "@"
+        var defaultTtl = zone.soa.minimumTtl
+        
+        for (line in logicalLines) {
             val trimmed = line.trim()
-            if (trimmed.isBlank() || trimmed.startsWith(";") || trimmed.startsWith("\$")) {
-                skipped++
+            if (trimmed.startsWith("$")) {
+                if (trimmed.startsWith("\$TTL", ignoreCase = true)) {
+                    defaultTtl = trimmed.split(Regex("\\s+")).getOrNull(1)?.toIntOrNull() ?: defaultTtl
+                }
+                skippedCount++
                 continue
             }
 
             try {
-                val record = parseBindRecord(trimmed, lineNo + 1)
-                if (record != null) parsed.add(record) else skipped++
+                val parts = trimmed.split(Regex("\\s+")).filter { it.isNotBlank() }
+                if (parts.size < 2) continue
+
+                val isIndented = line.startsWith(" ") || line.startsWith("\t")
+                var idx = 0
+                var name = if (isIndented) lastName else {
+                    val n = parts[idx++]
+                    // If the first token is a known type or TTL/Class, then name was omitted
+                    if (n.toIntOrNull() != null || n.uppercase() == "IN" || n.uppercase() == "SOA" || 
+                        DnsRecordType.entries.any { it.name == n.uppercase() }) {
+                        idx--
+                        lastName
+                    } else {
+                        lastName = n
+                        n
+                    }
+                }
+
+                // TTL
+                var ttl = parts.getOrNull(idx)?.toIntOrNull()
+                if (ttl != null) idx++ else ttl = defaultTtl
+
+                // Class
+                if (parts.getOrNull(idx)?.uppercase() == "IN") idx++
+
+                // Handle case where TTL is after IN
+                if (ttl == defaultTtl && parts.getOrNull(idx)?.toIntOrNull() != null) {
+                    ttl = parts[idx++].toIntOrNull() ?: defaultTtl
+                }
+
+                val typeStr = parts.getOrNull(idx++)?.uppercase() ?: continue
+                if (typeStr == "SOA") {
+                    val ns = parts.getOrNull(idx++) ?: ""
+                    val email = parts.getOrNull(idx++) ?: ""
+                    val serial = parts.getOrNull(idx++)?.toLongOrNull() ?: 1L
+                    val refresh = parts.getOrNull(idx++)?.toIntOrNull() ?: 3600
+                    val retry = parts.getOrNull(idx++)?.toIntOrNull() ?: 600
+                    val expire = parts.getOrNull(idx++)?.toIntOrNull() ?: 604800
+                    val min = parts.getOrNull(idx++)?.toIntOrNull() ?: 300
+                    parsedSoa = SoaRecord(ns, email, serial, refresh, retry, expire, min)
+                    continue
+                }
+
+                val recordType = try { DnsRecordType.valueOf(typeStr) } catch (_: Exception) {
+                    errors.add("Unknown record type '$typeStr' at: $trimmed")
+                    continue
+                }
+
+                var priority: Int? = null
+                var weight: Int? = null
+                var port: Int? = null
+                var value = ""
+
+                when (recordType) {
+                    DnsRecordType.MX -> {
+                        priority = parts.getOrNull(idx++)?.toIntOrNull()
+                        value = parts.drop(idx).joinToString(" ").trim()
+                    }
+                    DnsRecordType.SRV -> {
+                        priority = parts.getOrNull(idx++)?.toIntOrNull()
+                        weight = parts.getOrNull(idx++)?.toIntOrNull()
+                        port = parts.getOrNull(idx++)?.toIntOrNull()
+                        value = parts.drop(idx).joinToString(" ").trim()
+                    }
+                    DnsRecordType.TXT -> {
+                        val remaining = parts.drop(idx).joinToString(" ").trim()
+                        if (remaining.startsWith("\"")) {
+                            val matches = Regex("\"([^\"]*)\"").findAll(remaining)
+                            value = if (matches.any()) matches.map { it.groupValues[1] }.joinToString("") else remaining.removeSurrounding("\"")
+                        } else {
+                            value = remaining
+                        }
+                    }
+                    else -> value = parts.drop(idx).joinToString(" ").trim()
+                }
+
+                parsedRecords.add(DnsRecord(
+                    id = UUID.randomUUID().toString(),
+                    name = name,
+                    type = recordType,
+                    value = value,
+                    ttl = ttl,
+                    priority = priority,
+                    weight = weight,
+                    port = port
+                ))
+
             } catch (e: Exception) {
-                errors.add("Line ${lineNo + 1}: ${e.message}")
+                errors.add("Failed to parse record line [$trimmed]: ${e.message}")
             }
         }
 
-        if (parsed.isEmpty() && errors.isNotEmpty()) {
-            return BulkImportResult(false, 0, skipped, errors)
+        if (parsedRecords.isEmpty() && parsedSoa == null && errors.isNotEmpty()) {
+            return BulkImportResult(false, errors = errors)
         }
 
         lock.withLock {
@@ -520,46 +664,17 @@ class DnsServiceImpl : IDnsService {
             if (index == -1) return BulkImportResult(false, errors = listOf("Zone not found"))
 
             val z = zones[index]
-            val updated = z.copy(
-                records = z.records + parsed,
-                soa = z.soa.copy(serial = z.soa.serial + 1)
-            )
+            val finalSoa = parsedSoa ?: z.soa.copy(serial = z.soa.serial + 1)
+            val finalRecords = if (request.replace) parsedRecords else (z.records + parsedRecords)
+
+            val updated = z.copy(records = finalRecords, soa = finalSoa)
             zones[index] = updated
             writeZoneFile(updated)
             saveZones(zones)
         }
         reloadBind()
 
-        return BulkImportResult(true, parsed.size, skipped, errors)
-    }
-
-    private fun parseBindRecord(line: String, lineNo: Int): DnsRecord? {
-        val parts = line.split(Regex("\\s+"))
-        if (parts.size < 4) return null
-
-        // Handle: name [ttl] [IN] type value
-        var idx = 0
-        val name = parts[idx++]
-        val ttl = parts[idx].toIntOrNull()
-        if (ttl != null) idx++
-        if (idx < parts.size && parts[idx].equals("IN", ignoreCase = true)) idx++
-        if (idx + 1 >= parts.size) return null
-
-        val typeStr = parts[idx++].uppercase()
-        val recordType = try { DnsRecordType.valueOf(typeStr) } catch (_: Exception) { return null }
-        if (recordType == DnsRecordType.SOA) return null
-
-        val value = parts.drop(idx).joinToString(" ").trim().removeSurrounding("\"")
-        val priority = if (recordType == DnsRecordType.MX && parts.size > idx) parts[idx].toIntOrNull() else null
-
-        return DnsRecord(
-            id = UUID.randomUUID().toString(),
-            name = name.trim(),
-            type = recordType,
-            value = (if (priority != null && parts.size > idx + 1) parts.drop(idx + 1).joinToString(" ") else value).trim(),
-            ttl = ttl ?: 3600,
-            priority = priority
-        )
+        return BulkImportResult(true, parsedRecords.size, skippedCount, errors)
     }
 
     // ===================================================================
@@ -1228,7 +1343,12 @@ class DnsServiceImpl : IDnsService {
         return when (record.type) {
             DnsRecordType.MX -> "$name $ttl  IN  MX  ${record.priority ?: 10} $value"
             DnsRecordType.SRV -> "$name $ttl  IN  SRV ${record.priority ?: 0} ${record.weight ?: 0} ${record.port ?: 0} ${value.ensureTrailingDot()}"
-            DnsRecordType.TXT -> "$name $ttl  IN  TXT \"${record.value}\""
+            DnsRecordType.TXT -> {
+                val chunks = record.value.chunked(255).map { chunk ->
+                    chunk.replace("\\", "\\\\").replace("\"", "\\\"")
+                }.joinToString("\" \"")
+                "$name $ttl  IN  TXT \"$chunks\""
+            }
             DnsRecordType.CAA -> "$name $ttl  IN  CAA ${record.value}"
             DnsRecordType.SOA -> ""
             else -> "$name $ttl  IN  ${record.type.name}  $value"
@@ -1945,7 +2065,10 @@ logging {
         return "${config.priority} ${config.weight} ${config.port} ${config.target.ensureTrailingDot()}"
     }
 
-    private fun String.ensureTrailingDot() = if (endsWith(".")) this else "$this."
+    private fun String.ensureTrailingDot(): String {
+        if (this == "@" || this.isEmpty()) return this
+        return if (endsWith(".")) this else "$this."
+    }
 
     override fun getEmailHealth(zoneId: String): EmailHealthStatus {
         val zone = getZone(zoneId) ?: throw IllegalArgumentException("Zone not found")
