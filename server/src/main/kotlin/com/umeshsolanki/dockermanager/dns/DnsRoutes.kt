@@ -170,6 +170,11 @@ fun Route.dnsRoutes() {
             call.respond(DnsService.importZoneFile(request))
         }
 
+        post("/pull") {
+            val request = call.receive<PullZoneRequest>()
+            call.respond(DnsService.pullZone(request))
+        }
+
         // ==================== Lookup (dig) ====================
 
         post("/lookup") {

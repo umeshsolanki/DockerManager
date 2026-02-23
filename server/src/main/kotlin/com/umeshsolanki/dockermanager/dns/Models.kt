@@ -338,6 +338,13 @@ data class BulkImportResult(
     val errors: List<String> = emptyList()
 )
 
+@Serializable
+data class PullZoneRequest(
+    val zoneId: String,
+    val masterServer: String,
+    val replace: Boolean = false
+)
+
 // ========== Installation ==========
 
 @Serializable

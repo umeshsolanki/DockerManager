@@ -1004,6 +1004,12 @@ export interface BulkImportResult {
   errors: string[];
 }
 
+export interface PullZoneRequest {
+  zoneId: string;
+  masterServer: string;
+  replace?: boolean;
+}
+
 export type DnsInstallMethod = 'DOCKER' | 'APT';
 
 export interface DnsInstallRequest {

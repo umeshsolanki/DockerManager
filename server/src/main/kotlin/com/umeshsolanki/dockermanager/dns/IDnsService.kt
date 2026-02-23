@@ -31,6 +31,7 @@ interface IDnsService {
     fun getZoneFileContent(zoneId: String): String?
     fun exportZoneFile(zoneId: String): String?
     fun importZoneFile(request: BulkImportRequest): BulkImportResult
+    fun pullZone(request: PullZoneRequest): BulkImportResult
 
     // -- ACLs --
     fun listAcls(): List<DnsAcl>

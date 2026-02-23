@@ -16,7 +16,7 @@ import {
     PullProgress,
     DnsZone, DnsRecord, DnsServiceStatus, ZoneValidationResult, CreateZoneRequest, UpdateZoneRequest, DnsActionResult,
     DnsAcl, TsigKey, DnsForwarderConfig, DnssecStatus, DnsLookupRequest, DnsLookupResult,
-    DnsQueryStats, ZoneTemplate, BulkImportRequest, BulkImportResult,
+    DnsQueryStats, ZoneTemplate, BulkImportRequest, BulkImportResult, PullZoneRequest,
     DnsInstallRequest, DnsInstallStatus, GlobalSecurityConfig,
     SpfConfig, DmarcConfig, DkimKey, DkimKeyGenRequest, PropagationStatus,
     PropagationCheckResult, IpPtrSuggestion, DnsRecordType,
@@ -518,6 +518,7 @@ export const DockerClient = {
 
     // Import
     importDnsZoneFile: (body: BulkImportRequest) => req<BulkImportResult>('/dns/import', { method: 'POST', body: JSON.stringify(body) }, { success: false, imported: 0, skipped: 0, errors: ['Network error'] }),
+    pullDnsZone: (body: PullZoneRequest) => req<BulkImportResult>('/dns/pull', { method: 'POST', body: JSON.stringify(body) }, { success: false, imported: 0, skipped: 0, errors: ['Network error'] }),
 
     // Lookup
     dnsLookup: (body: DnsLookupRequest) => req<DnsLookupResult>('/dns/lookup', { method: 'POST', body: JSON.stringify(body) }, { success: false, query: body.query, type: body.type, answers: [], rawOutput: '', queryTime: '', server: '', status: '' }),

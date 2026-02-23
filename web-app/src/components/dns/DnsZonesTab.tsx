@@ -1,24 +1,25 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Power, Shield, FileText, Upload, BookTemplate, Settings2, Search, Lock, Mail, ShieldCheck, CheckCircle2, RefreshCw, Globe, Zap } from 'lucide-react';
+import { Plus, Trash2, Power, Shield, FileText, Upload, Download, BookTemplate, Settings2, Search, Lock, Mail, ShieldCheck, CheckCircle2, RefreshCw, Globe, Zap } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import {
     DnsZone, DnsRecord, DnsRecordType, ZoneValidationResult, ZoneTemplate,
-    UpdateZoneRequest, SoaRecord, PropagationCheckResult, IpPtrSuggestion
+    UpdateZoneRequest, SoaRecord, PropagationCheckResult, IpPtrSuggestion, PullZoneRequest
 } from '@/lib/types';
 import { StatusBadge, EmptyState, CreateZoneModal, TagInput, SectionCard } from './DnsShared';
 import { SpfWizard, DkimWizard, DmarcWizard, PropagationChecker, ReverseDnsWizard, SrvWizard, EmailHealthCheck, ReverseDnsDashboard, ChildNsWizard } from './DnsWizards';
 import { toast } from 'sonner';
 
 const RECORD_TYPES: DnsRecordType[] = [
-    'A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'SRV', 'PTR', 'CAA',
+    'A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'SOA', 'SRV', 'PTR', 'CAA',
     'TLSA', 'SSHFP', 'HTTPS', 'NAPTR'
 ];
 
 const HINTS: Record<string, string> = {
     A: '192.168.1.1', AAAA: '2001:db8::1', CNAME: 'alias.example.com.',
     MX: 'mail.example.com.', TXT: 'v=spf1 include:...', NS: 'ns1.example.com.',
+    SOA: 'ns1.example.com. admin.example.com. 1 3600 600 604800 300',
     SRV: 'target.example.com.', PTR: 'host.example.com.', CAA: '0 issue "letsencrypt.org"',
     TLSA: '3 1 1 <hex>', SSHFP: '1 1 <hex>', HTTPS: '1 . alpn="h2"', NAPTR: '100 10 "u" "sip+E2U" "!^.*$!sip:user@example.com!" .'
 };
@@ -219,6 +220,9 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
     const [validation, setValidation] = useState<ZoneValidationResult | null>(null);
     const [showImport, setShowImport] = useState(false);
     const [importText, setImportText] = useState('');
+    const [showPull, setShowPull] = useState(false);
+    const [pullMasterIp, setPullMasterIp] = useState('');
+    const [pullReplace, setPullReplace] = useState(false);
     const [templates, setTemplates] = useState<ZoneTemplate[]>([]);
     const [showTemplates, setShowTemplates] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
@@ -259,6 +263,19 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
         const r = await DockerClient.importDnsZoneFile({ zoneId: zone.id, content: importText, format: 'bind' });
         if (r.success) { toast.success(`Imported ${r.imported} records`); setShowImport(false); setImportText(''); onRefresh(); }
         else toast.error(r.errors.join(', ') || 'Import failed');
+    };
+
+    const handlePull = async () => {
+        setSaving(true);
+        const r = await DockerClient.pullDnsZone({ zoneId: zone.id, masterServer: pullMasterIp, replace: pullReplace });
+        setSaving(false);
+        if (r.success) {
+            toast.success(`Successfully pulled ${r.imported} records from ${pullMasterIp}`);
+            setShowPull(false);
+            setPullMasterIp('');
+            onRefresh();
+        }
+        else toast.error(r.errors.join(', ') || 'Pull failed');
     };
 
     const handleApplyTemplate = async (templateId: string) => {
@@ -321,6 +338,7 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                                 <button onClick={() => { setActiveWizard('child-ns'); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><ShieldCheck size={14} className="text-secondary" /> Child Name Servers</button>
                                 <button onClick={handleGenerateReverse} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><Zap size={14} className="text-yellow-400" /> Auto-Generate Reverses</button>
                                 <div className="h-px bg-outline/10 my-1"></div>
+                                <button onClick={() => { setShowPull(!showPull); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><Download size={14} className="text-on-surface-variant" /> Pull Records via AXFR</button>
                                 <button onClick={() => { setShowImport(!showImport); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><Upload size={14} className="text-on-surface-variant" /> Import BIND File</button>
                                 <button onClick={() => { loadTemplates(); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><BookTemplate size={14} className="text-on-surface-variant" /> Apply Template</button>
                             </div>
@@ -391,6 +409,28 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                                     <div className="text-xs text-on-surface-variant flex-1">{t.description}</div>
                                 </div>
                             ))}
+                        </div>
+                    </SectionCard>
+                )}
+
+                {showPull && (
+                    <SectionCard title="Pull Records (AXFR Transfer)">
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">Master Server IP/Hostname</label>
+                                <input value={pullMasterIp} onChange={e => setPullMasterIp(e.target.value)} className="w-[100%] bg-surface-container-high rounded-xl border border-outline/10 px-4 py-2 text-sm focus:border-primary focus:outline-none transition-colors" placeholder="e.g. 1.2.3.4" />
+                            </div>
+                            <div className="flex items-center gap-3 bg-surface-container/50 p-3 rounded-xl border border-outline/5">
+                                <input type="checkbox" checked={pullReplace} onChange={e => setPullReplace(e.target.checked)} id="pull-replace" className="rounded w-4 h-4 text-primary bg-surface border-outline/20" />
+                                <label htmlFor="pull-replace" className="text-xs font-bold text-on-surface cursor-pointer">Replace existing records</label>
+                            </div>
+                            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-500 font-medium leading-normal">
+                                <b>Requirement:</b> The master server must allow AXFR zone transfers for this server's IP address.
+                            </div>
+                            <button onClick={handlePull} disabled={!pullMasterIp.trim() || saving} className="btn-sm bg-primary text-on-primary w-full disabled:opacity-50 flex items-center justify-center gap-2 font-bold py-2.5">
+                                {saving ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
+                                Pull Records
+                            </button>
                         </div>
                     </SectionCard>
                 )}

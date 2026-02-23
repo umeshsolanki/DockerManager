@@ -216,6 +216,19 @@ class DnsServiceImpl : IDnsService {
         val zoneFile = File(zonesDir, "db.$name")
 
         val defaultRecords = mutableListOf<DnsRecord>()
+        if (request.role == ZoneRole.MASTER) {
+            val soa = request.soa
+            defaultRecords.add(
+                DnsRecord(
+                    id = UUID.randomUUID().toString(),
+                    name = "@",
+                    type = DnsRecordType.SOA,
+                    value = "${soa.primaryNs} ${soa.adminEmail} ${soa.serial} ${soa.refresh} ${soa.retry} ${soa.expire} ${soa.minimumTtl}",
+                    ttl = soa.minimumTtl
+                )
+            )
+        }
+
         if (request.type == ZoneType.FORWARD && request.role == ZoneRole.MASTER) {
             val securityConfig = getGlobalSecurityConfig()
             securityConfig.defaultNameServers.forEach { ns ->
@@ -675,6 +688,32 @@ class DnsServiceImpl : IDnsService {
         reloadBind()
 
         return BulkImportResult(true, parsedRecords.size, skippedCount, errors)
+    }
+
+    override fun pullZone(request: PullZoneRequest): BulkImportResult {
+        val zone = getZone(request.zoneId) ?: return BulkImportResult(false, errors = listOf("Zone not found"))
+
+        // Execute dig AXFR
+        val result = commandExecutor.execute("dig +noall +answer AXFR @${request.masterServer} ${zone.name}")
+        
+        if (result.exitCode != 0) {
+            return BulkImportResult(false, errors = listOf("dig command failed with exit code ${result.exitCode}: ${result.output}"))
+        }
+
+        if (result.output.contains("Transfer failed", ignoreCase = true) || result.output.contains("REFUSED", ignoreCase = true)) {
+            return BulkImportResult(false, errors = listOf("Zone transfer failed or refused. Ensure AXFR is allowed for this server's IP on the master."))
+        }
+
+        if (result.output.isBlank()) {
+            return BulkImportResult(false, errors = listOf("No records returned. Ensure the master server has records for this zone."))
+        }
+
+        return importZoneFile(BulkImportRequest(
+            zoneId = request.zoneId,
+            content = result.output,
+            format = "bind",
+            replace = request.replace
+        ))
     }
 
     // ===================================================================
@@ -2199,6 +2238,7 @@ object DnsService {
     fun getZoneFileContent(id: String) = service.getZoneFileContent(id)
     fun exportZoneFile(id: String) = service.exportZoneFile(id)
     fun importZoneFile(req: BulkImportRequest) = service.importZoneFile(req)
+    fun pullZone(req: PullZoneRequest) = service.pullZone(req)
 
     // ACLs
     fun listAcls() = service.listAcls()
