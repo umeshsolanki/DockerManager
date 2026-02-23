@@ -81,6 +81,8 @@ export function CreateZoneModal({ onClose, onCreated }: { onClose: () => void; o
     const [masters, setMasters] = useState<string[]>([]);
     const [forwarders, setForwarders] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
+    const [enableDnssec, setEnableDnssec] = useState(true);
+    const [allowPublicQueries, setAllowPublicQueries] = useState(true);
 
     const [hasManualNs, setHasManualNs] = useState(false);
     const [hasManualEmail, setHasManualEmail] = useState(false);
@@ -117,10 +119,14 @@ export function CreateZoneModal({ onClose, onCreated }: { onClose: () => void; o
             soa: { primaryNs, adminEmail },
             masterAddresses: masters,
             forwarders,
+            allowQuery: allowPublicQueries ? ['any'] : [],
         };
         const result = await DockerClient.createDnsZone(req);
         setLoading(false);
         if (result && (result as any).id) {
+            if (enableDnssec && role === 'MASTER') {
+                await DockerClient.enableDnssec((result as any).id);
+            }
             toast.success(`Zone "${name}" created`);
             onCreated();
             onClose();
@@ -184,6 +190,18 @@ export function CreateZoneModal({ onClose, onCreated }: { onClose: () => void; o
                         <Field label="Forwarders">
                             <TagInput value={forwarders} onChange={setForwarders} placeholder="8.8.8.8" />
                         </Field>
+                    )}
+                    {showSoa && (
+                        <div className="space-y-2 mt-2 pt-2 border-t border-outline/10">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" checked={enableDnssec} onChange={e => setEnableDnssec(e.target.checked)} className="rounded bg-surface-container-high border-outline/20 text-primary focus:ring-primary h-4 w-4" />
+                                <span className="text-xs font-semibold text-on-surface">Enable DNSSEC</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" checked={allowPublicQueries} onChange={e => setAllowPublicQueries(e.target.checked)} className="rounded bg-surface-container-high border-outline/20 text-primary focus:ring-primary h-4 w-4" />
+                                <span className="text-xs font-semibold text-on-surface">Allow Public Queries (any)</span>
+                            </label>
+                        </div>
                     )}
                 </div>
                 <div className="flex gap-2 mt-5 justify-end">

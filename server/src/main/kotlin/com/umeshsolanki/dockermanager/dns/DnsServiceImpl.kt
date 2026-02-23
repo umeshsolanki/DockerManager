@@ -879,12 +879,23 @@ class DnsServiceImpl : IDnsService {
         bindExec("rndc stats")
 
         val raw = if (isDockerMode) {
-            val catResult = bindExec("cat /var/cache/bind/named.stats 2>/dev/null || cat /var/log/named/named.stats 2>/dev/null")
-            if (catResult.exitCode != 0 || catResult.output.isBlank()) {
+            val dockerStatsPaths = listOf(
+                "/var/named/data/named_stats.txt",
+                "/var/cache/bind/named.stats",
+                "/var/log/named/named.stats"
+            )
+            var content: String? = null
+            for (path in dockerStatsPaths) {
+                val catResult = bindExec("cat $path 2>/dev/null")
+                if (catResult.exitCode == 0 && catResult.output.isNotBlank()) {
+                    content = catResult.output
+                    break
+                }
+            }
+            content ?: run {
                 val rndcStatus = bindExec("rndc status")
                 return DnsQueryStats(rawStats = rndcStatus.output)
             }
-            catResult.output
         } else {
             val statsFile = File("/var/named/data/named_stats.txt").takeIf { it.exists() }
                 ?: File("/var/cache/bind/named.stats").takeIf { it.exists() }
@@ -900,58 +911,81 @@ class DnsServiceImpl : IDnsService {
         var tcp = 0L; var udp = 0L
         val queryTypes = mutableMapOf<String, Long>()
 
-        var inIncoming = false
+        var currentSection: String? = null
+        val sectionRegex = Regex("^\\+\\+ (.+) \\+\\+$")
+        val statLineRegex = Regex("^(\\d+)\\s+(.+)$")
+
         for (line in raw.lines()) {
             val trimmed = line.trim()
-            when {
-                trimmed.contains("++ Incoming Requests ++") || trimmed.contains("++ Incoming Queries ++") -> inIncoming = true
-                trimmed.contains("++") && inIncoming -> inIncoming = false
-                inIncoming -> {
-                    val match = Regex("^(\\d+)\\s+(.+)$").find(trimmed)
-                    if (match != null) {
-                        val count = match.groupValues[1].toLongOrNull() ?: 0
-                        val type = match.groupValues[2].trim()
+            val sectionMatch = sectionRegex.find(trimmed)
+
+            if (sectionMatch != null) {
+                currentSection = sectionMatch.groupValues[1]
+                continue
+            }
+
+            val statMatch = statLineRegex.find(trimmed)
+            if (statMatch != null) {
+                val count = statMatch.groupValues[1].toLongOrNull() ?: 0
+                val type = statMatch.groupValues[2].trim()
+
+                when (currentSection) {
+                    "Incoming Requests", "Incoming Queries" -> {
                         queryTypes[type] = count
-                        if (!type.contains("queries received") && !type.contains("responses sent")) {
-                             // Only add to total if it's a specific record type or generic query
-                             if (!type.contains("IPv") && !type.contains("UDP") && !type.contains("TCP")) {
-                                 total += count
-                             }
+                        // Only add to total if it's a specific record type or generic query
+                        if (!type.contains("IPv") && !type.contains("UDP") && !type.contains("TCP") &&
+                            !type.contains("queries received") && !type.contains("responses sent")) {
+                            total += count
                         }
-                        if (type.contains("TCP queries received")) tcp = count
-                        if (type.contains("UDP queries received")) udp = count
                     }
-                }
-                trimmed.contains("queries resulted in successful answer") -> {
-                    success = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
-                }
-                trimmed.contains("queries resulted in NXDOMAIN") -> {
-                    nxdomain = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
-                }
-                trimmed.contains("queries resulted in SERVFAIL") -> {
-                    servfail = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
-                }
-                trimmed.contains("queries resulted in REFUSED") -> {
-                    refused = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
-                }
-                trimmed.contains("queries resulted in DROPPED") || trimmed.contains("queries dropped") -> {
-                    dropped = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
-                }
-                trimmed.contains("recursive queries answered") -> {
-                    recursive = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
-                }
-                // Fallback for older BIND formats
-                trimmed.contains("QUERY") && trimmed.first().isDigit() && success == 0L -> {
-                    success = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
-                }
-                trimmed.contains("SERVFAIL") && trimmed.first().isDigit() && servfail == 0L -> {
-                    servfail = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
-                }
-                trimmed.contains("NXDOMAIN") && trimmed.first().isDigit() && nxdomain == 0L -> {
-                    nxdomain = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
-                }
-                trimmed.contains("REFUSED") && trimmed.first().isDigit() && refused == 0L -> {
-                    refused = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                    "Name Server Statistics" -> {
+                        when {
+                            type.contains("TCP queries received") -> tcp = count
+                            type.contains("UDP queries received") -> udp = count
+                            type.contains("queries resulted in successful answer") -> success = count
+                            type.contains("queries resulted in NXDOMAIN") -> nxdomain = count
+                            type.contains("queries resulted in SERVFAIL") -> servfail = count
+                            type.contains("queries resulted in REFUSED") -> refused = count
+                            type.contains("queries resulted in DROPPED") || type.contains("queries dropped") -> dropped = count
+                            type.contains("recursive queries answered") -> recursive = count
+                        }
+                    }
+                    // Fallback for older BIND formats or if not in a specific section
+                    else -> {
+                        when {
+                            trimmed.contains("queries resulted in successful answer") -> {
+                                success = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                            }
+                            trimmed.contains("queries resulted in NXDOMAIN") -> {
+                                nxdomain = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                            }
+                            trimmed.contains("queries resulted in SERVFAIL") -> {
+                                servfail = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                            }
+                            trimmed.contains("queries resulted in REFUSED") -> {
+                                refused = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                            }
+                            trimmed.contains("queries resulted in DROPPED") || trimmed.contains("queries dropped") -> {
+                                dropped = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                            }
+                            trimmed.contains("recursive queries answered") -> {
+                                recursive = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                            }
+                            // Fallback for older BIND formats
+                            trimmed.contains("QUERY") && trimmed.first().isDigit() && success == 0L -> {
+                                success = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                            }
+                            trimmed.contains("SERVFAIL") && trimmed.first().isDigit() && servfail == 0L -> {
+                                servfail = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                            }
+                            trimmed.contains("NXDOMAIN") && trimmed.first().isDigit() && nxdomain == 0L -> {
+                                nxdomain = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                            }
+                            trimmed.contains("REFUSED") && trimmed.first().isDigit() && refused == 0L -> {
+                                refused = Regex("^(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                            }
+                        }
+                    }
                 }
             }
         }
