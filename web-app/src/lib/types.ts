@@ -831,6 +831,9 @@ export interface GlobalSecurityConfig {
   defaultNameServers: string[];
   allowQuery: string[];
   minimalResponses: boolean;
+  ednsUdpSize: number;
+  ipv4Enabled: boolean;
+  ipv6Enabled: boolean;
 }
 
 // ========== Professional Hosting Structures ==========

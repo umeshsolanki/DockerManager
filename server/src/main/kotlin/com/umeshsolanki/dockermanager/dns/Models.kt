@@ -276,7 +276,10 @@ data class GlobalSecurityConfig(
     val rateLimitWindow: Int = 5,
     val defaultNameServers: List<String> = emptyList(),
     val allowQuery: List<String> = listOf("any"),
-    val minimalResponses: Boolean = false
+    val minimalResponses: Boolean = false,
+    val ednsUdpSize: Int = 1232,
+    val ipv4Enabled: Boolean = true,
+    val ipv6Enabled: Boolean = true
 )
 
 

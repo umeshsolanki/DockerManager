@@ -28,6 +28,25 @@ function GlobalSecuritySection() {
     return (
         <SectionCard title="Global Security & Query Control" actions={<Globe size={14} className="text-on-surface-variant" />}>
             <div className="space-y-4">
+                {/* IP Listening Control */}
+                <div className="grid grid-cols-2 gap-4 pb-2">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-container-low border border-outline/5">
+                        <span className="text-sm font-medium">IPv4 Support</span>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" className="sr-only peer" checked={config.ipv4Enabled} onChange={e => setConfig({ ...config, ipv4Enabled: e.target.checked })} />
+                            <div className="w-9 h-5 bg-surface-container-high peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                        </label>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-container-low border border-outline/5">
+                        <span className="text-sm font-medium">IPv6 Support</span>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" className="sr-only peer" checked={config.ipv6Enabled} onChange={e => setConfig({ ...config, ipv6Enabled: e.target.checked })} />
+                            <div className="w-9 h-5 bg-surface-container-high peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                        </label>
+                    </div>
+                </div>
+
+                <div className="border-t border-outline/10 pt-1"></div>
 
                 {/* Recursion Control */}
                 <div className="space-y-2">
@@ -100,6 +119,22 @@ function GlobalSecuritySection() {
                         </label>
                     </div>
                     <p className="text-xs text-on-surface-variant">Omits authority and additional sections from responses (minimal-responses/any) to reduce response size and prevent data enumeration.</p>
+                </div>
+
+                <div className="border-t border-outline/10 pt-3"></div>
+
+                {/* EDNS UDP Size */}
+                <div className="space-y-2">
+                    <label className="text-sm font-medium">EDNS UDP Size</label>
+                    <p className="text-xs text-on-surface-variant">Sets the maximum UDP packet size for EDNS. 1232 is recommended to avoid IPv6 fragmentation issues.</p>
+                    <input
+                        type="number"
+                        min="512"
+                        max="4096"
+                        value={config.ednsUdpSize}
+                        onChange={e => setConfig({ ...config, ednsUdpSize: parseInt(e.target.value) || 1232 })}
+                        className="input-field"
+                    />
                 </div>
 
                 <div className="border-t border-outline/10 pt-3"></div>

@@ -538,7 +538,7 @@ export const DockerClient = {
     updateDnsForwarders: (config: DnsForwarderConfig) => safeReq('/dns/forwarders', { method: 'POST', body: JSON.stringify(config) }),
 
     // Global Security
-    getGlobalSecurityConfig: () => req<GlobalSecurityConfig>('/dns/security', {}, { recursionEnabled: false, allowRecursion: ['localnets', 'localhost'], rateLimitEnabled: false, rateLimitResponsesPerSecond: 10, rateLimitWindow: 5, defaultNameServers: [], allowQuery: ['any'], minimalResponses: false }),
+    getGlobalSecurityConfig: () => req<GlobalSecurityConfig>('/dns/security', {}, { recursionEnabled: false, allowRecursion: ['localnets', 'localhost'], rateLimitEnabled: false, rateLimitResponsesPerSecond: 10, rateLimitWindow: 5, defaultNameServers: [], allowQuery: ['any'], minimalResponses: false, ednsUdpSize: 1232, ipv4Enabled: true, ipv6Enabled: true }),
     updateGlobalSecurityConfig: (config: GlobalSecurityConfig) => safeReq('/dns/security', { method: 'POST', body: JSON.stringify(config) }),
 
     // Installation
