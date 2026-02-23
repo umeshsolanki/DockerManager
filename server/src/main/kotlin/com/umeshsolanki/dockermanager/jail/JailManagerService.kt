@@ -442,7 +442,8 @@ class JailManagerServiceImpl(
         // 3. Check User Agent Rules
         if (!shouldJail) {
             for (cached in cachedUserAgentRules) {
-                if (cached.regex?.containsMatchIn(userAgent) == true) {
+                val matches = (userAgent.isBlank() && cached.rule.matchEmpty) || cached.regex?.containsMatchIn(userAgent) == true
+                if (matches) {
                     if (checkRuleThreshold(cached.rule, ip)) {
                         shouldJail = true
                         reason = "Matched UA rule: ${cached.rule.description ?: cached.rule.pattern}"
@@ -482,9 +483,10 @@ class JailManagerServiceImpl(
         }
         
         // 6. Check Host Header Rules
-        if (!shouldJail && hostHeader.isNotBlank()) {
+        if (!shouldJail) {
             for (cached in cachedHostHeaderRules) {
-                if (cached.regex?.containsMatchIn(hostHeader) == true) {
+                val matches = (hostHeader.isBlank() && cached.rule.matchEmpty) || (hostHeader.isNotBlank() && cached.regex?.containsMatchIn(hostHeader) == true)
+                if (matches) {
                     if (checkRuleThreshold(cached.rule, ip)) {
                         shouldJail = true
                         reason = "Matched HOST_HEADER rule: ${cached.rule.description ?: cached.rule.pattern}"

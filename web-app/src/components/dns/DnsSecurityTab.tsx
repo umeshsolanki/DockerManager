@@ -75,6 +75,19 @@ function GlobalSecuritySection() {
                     )}
                 </div>
 
+                <div className="border-t border-outline/10 pt-3"></div>
+
+                {/* Default Name Servers */}
+                <div className="space-y-2">
+                    <label className="text-sm font-medium">Default Name Servers</label>
+                    <p className="text-xs text-on-surface-variant">Recommended name servers that will be automatically added to all new master zones.</p>
+                    <TagInput
+                        value={config.defaultNameServers}
+                        onChange={v => setConfig({ ...config, defaultNameServers: v })}
+                        placeholder="e.g. ns1.yourdomain.com"
+                    />
+                </div>
+
                 <div className="pt-2">
                     <button onClick={handleSave} disabled={saving} className="btn-primary w-full disabled:opacity-50">
                         {saving ? 'Saving...' : 'Apply Security Settings'}

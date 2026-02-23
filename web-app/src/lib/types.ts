@@ -428,6 +428,7 @@ export interface ProxyJailRule {
   description?: string;
   statusCodePattern?: string;
   threshold?: number;
+  matchEmpty?: boolean;
 }
 
 export interface WebSocketConnection {
@@ -827,6 +828,7 @@ export interface GlobalSecurityConfig {
   rateLimitEnabled: boolean;
   rateLimitResponsesPerSecond: number;
   rateLimitWindow: number;
+  defaultNameServers: string[];
 }
 
 // ========== Professional Hosting Structures ==========

@@ -273,7 +273,8 @@ data class GlobalSecurityConfig(
     val allowRecursion: List<String> = listOf("localnets", "localhost"),
     val rateLimitEnabled: Boolean = false,
     val rateLimitResponsesPerSecond: Int = 10,
-    val rateLimitWindow: Int = 5
+    val rateLimitWindow: Int = 5,
+    val defaultNameServers: List<String> = emptyList()
 )
 
 

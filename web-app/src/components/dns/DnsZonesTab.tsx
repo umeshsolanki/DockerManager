@@ -8,7 +8,7 @@ import {
     UpdateZoneRequest, SoaRecord, PropagationCheckResult, IpPtrSuggestion
 } from '@/lib/types';
 import { StatusBadge, EmptyState, CreateZoneModal, TagInput, SectionCard } from './DnsShared';
-import { SpfWizard, DkimWizard, DmarcWizard, PropagationChecker, ReverseDnsWizard, SrvWizard, EmailHealthCheck, ReverseDnsDashboard } from './DnsWizards';
+import { SpfWizard, DkimWizard, DmarcWizard, PropagationChecker, ReverseDnsWizard, SrvWizard, EmailHealthCheck, ReverseDnsDashboard, ChildNsWizard } from './DnsWizards';
 import { toast } from 'sonner';
 
 const RECORD_TYPES: DnsRecordType[] = [
@@ -50,10 +50,10 @@ function RecordRow({ record, hasPriority, onUpdate, onDelete, onCheck }: {
 
     return (
         <tr className="hover:bg-white/[0.03] transition-colors group">
-            <td className="px-4 py-3">
+            <td className="px-2 py-3">
                 <input value={record.name} onChange={e => onUpdate({ ...record, name: e.target.value })} className="w-full bg-transparent border-b-2 border-transparent hover:border-outline/10 focus:border-primary px-1 py-1.5 text-sm font-mono font-bold text-on-surface focus:outline-none transition-colors" placeholder="@" />
             </td>
-            <td className="px-4 py-3">
+            <td className="px-2 py-3 w-32">
                 <div className="relative">
                     <select value={record.type} onChange={e => onUpdate({ ...record, type: e.target.value as DnsRecordType })} className={`w-full bg-surface-container hover:bg-surface-container-high rounded-xl pl-3 pr-8 py-1.5 text-xs font-black border border-outline/10 focus:border-primary focus:outline-none appearance-none transition-colors cursor-pointer ${typeColor(record.type)}`}>
                         {RECORD_TYPES.map(t => <option key={t} value={t} className="text-on-surface">{t}</option>)}
@@ -61,10 +61,10 @@ function RecordRow({ record, hasPriority, onUpdate, onDelete, onCheck }: {
                     <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-50"><Settings2 size={12} /></div>
                 </div>
             </td>
-            <td className="px-4 py-3">
+            <td className="px-2 py-3">
                 <input value={record.value} onChange={e => onUpdate({ ...record, value: e.target.value })} placeholder={HINTS[record.type] || ''} className="w-full bg-transparent border-b-2 border-transparent hover:border-outline/10 focus:border-primary px-1 py-1.5 text-sm font-mono focus:outline-none transition-colors" />
             </td>
-            <td className="px-4 py-3 w-36">
+            <td className="px-2 py-3 w-32">
                 <select
                     value={record.ttl}
                     onChange={e => onUpdate({ ...record, ttl: parseInt(e.target.value) || 3600 })}
@@ -79,7 +79,7 @@ function RecordRow({ record, hasPriority, onUpdate, onDelete, onCheck }: {
                 </select>
             </td>
             {hasPriority && (
-                <td className="px-4 py-3 w-20">
+                <td className="px-2 py-3 w-24">
                     {(record.type === 'MX' || record.type === 'SRV') ? (
                         <input type="number" value={record.priority ?? 10} onChange={e => onUpdate({ ...record, priority: parseInt(e.target.value) || 0 })} className="w-full bg-surface-container hover:bg-surface-container-high rounded-xl border border-outline/10 focus:border-primary px-2 py-1.5 text-xs font-bold font-mono focus:outline-none transition-colors text-center" />
                     ) : null}
@@ -224,7 +224,7 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
     const [showSettings, setShowSettings] = useState(false);
     const [searchRecord, setSearchRecord] = useState('');
     const [showWizards, setShowWizards] = useState(false);
-    const [activeWizard, setActiveWizard] = useState<'spf' | 'dkim' | 'dmarc' | 'srv' | 'propagation' | 'reverse' | null>(null);
+    const [activeWizard, setActiveWizard] = useState<'spf' | 'dkim' | 'dmarc' | 'srv' | 'propagation' | 'reverse' | 'child-ns' | null>(null);
     const [propRecord, setPropRecord] = useState<DnsRecord | null>(null);
 
     useEffect(() => {
@@ -318,6 +318,7 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                                 <button onClick={() => { setActiveWizard('dkim'); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><Lock size={14} className="text-emerald-400" /> DKIM Producer</button>
                                 <button onClick={() => { setActiveWizard('dmarc'); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><Shield size={14} className="text-blue-400" /> DMARC Setup</button>
                                 <button onClick={() => { setActiveWizard('reverse'); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><RefreshCw size={14} className="text-purple-400" /> Reverse DNS Helper</button>
+                                <button onClick={() => { setActiveWizard('child-ns'); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><ShieldCheck size={14} className="text-secondary" /> Child Name Servers</button>
                                 <button onClick={handleGenerateReverse} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><Zap size={14} className="text-yellow-400" /> Auto-Generate Reverses</button>
                                 <div className="h-px bg-outline/10 my-1"></div>
                                 <button onClick={() => { setShowImport(!showImport); setShowWizards(false); }} className="px-3 py-2 text-xs text-left hover:bg-surface-container transition-colors flex items-center gap-2"><Upload size={14} className="text-on-surface-variant" /> Import BIND File</button>
@@ -338,7 +339,8 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                                     activeWizard === 'dkim' ? 'DKIM Producer' :
                                         activeWizard === 'dmarc' ? 'DMARC Setup' :
                                             activeWizard === 'propagation' ? 'Propagation Check' :
-                                                'Reverse DNS Helper'
+                                                activeWizard === 'child-ns' ? 'Child Name Servers (Glue)' :
+                                                    'Reverse DNS Helper'
                         }
                         actions={<button onClick={() => { setActiveWizard(null); setPropRecord(null); }} className="text-on-surface-variant hover:text-on-surface p-2 rounded-xl bg-surface-container hover:bg-surface-container-high transition-colors"><Trash2 size={16} /></button>}
                     >
@@ -348,6 +350,11 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                             {activeWizard === 'srv' && <SrvWizard zone={zone} onAddRecord={r => { setRecords([{ ...r, id: `new-${Date.now()}` } as DnsRecord, ...records]); setDirty(true); }} />}
                             {activeWizard === 'dkim' && <DkimWizard zone={zone} onAddRecord={r => { setRecords([{ ...r, id: `new-${Date.now()}` } as DnsRecord, ...records]); setDirty(true); }} />}
                             {activeWizard === 'dmarc' && <DmarcWizard zone={zone} onAddRecord={r => { setRecords([{ ...r, id: `new-${Date.now()}` } as DnsRecord, ...records]); setDirty(true); }} />}
+                            {activeWizard === 'child-ns' && <ChildNsWizard zone={zone} onAddRecords={rs => {
+                                const newRecs = rs.map(r => ({ ...r, id: `new-${Math.random().toString(36).substr(2, 9)}` } as DnsRecord));
+                                setRecords([...newRecs, ...records]);
+                                setDirty(true);
+                            }} />}
                             {activeWizard === 'propagation' && propRecord && <PropagationChecker zone={zone} record={propRecord} />}
                             {activeWizard === 'reverse' && <ReverseDnsWizard onZoneSuggested={(s: IpPtrSuggestion) => {
                                 DockerClient.createDnsZone({ name: s.reverseZone, type: 'REVERSE', role: 'MASTER' }).then(r => {
@@ -359,14 +366,6 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                                     }
                                 });
                             }} />}
-                        </div>
-                    </SectionCard>
-                )}
-
-                {zone.type === 'FORWARD' && (
-                    <SectionCard title="Email Health Check" collapsible defaultExpanded={false}>
-                        <div className="max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-                            <EmailHealthCheck zoneId={zone.id} />
                         </div>
                     </SectionCard>
                 )}
@@ -498,11 +497,11 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                     </SectionCard>
                 )}
 
-                {zone.type === 'FORWARD' && (
+                {/* {zone.type === 'FORWARD' && (
                     <SectionCard title="Email Health Check">
                         <EmailHealthCheck zoneId={zone.id} />
                     </SectionCard>
-                )}
+                )} */}
 
                 {validation && (
                     <div className={`rounded-lg p-3 text-xs font-mono ${validation.valid ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>{validation.output}</div>
@@ -538,13 +537,13 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                         <table className="w-full text-sm">
                             <thead className="sticky top-0 z-10 bg-surface shadow-[0_1px_0_rgba(255,255,255,0.05)]">
                                 <tr className="text-on-surface-variant text-xs uppercase tracking-wider">
-                                    <th className="px-4 py-3 text-left font-bold w-1/4">Name</th>
-                                    <th className="px-4 py-3 text-left font-bold w-1/6">Type</th>
-                                    <th className="px-4 py-3 text-left font-bold w-1/3">Value</th>
-                                    <th className="px-4 py-3 text-center font-bold w-36">TTL</th>
-                                    {hasPriority && <th className="px-4 py-3 text-center font-bold w-20">Pri</th>}
-                                    <th className="px-2 py-3 w-12 text-right"></th>
-                                    <th className="px-2 py-3 w-12 text-right"></th>
+                                    <th className="px-2 py-3 text-left font-bold w-[20%]">Name</th>
+                                    <th className="px-2 py-3 text-left font-bold w-32">Type</th>
+                                    <th className="px-2 py-3 text-left font-bold w-2/5">Value</th>
+                                    <th className="px-2 py-3 text-center font-bold w-32">TTL</th>
+                                    {hasPriority && <th className="px-2 py-3 text-center font-bold w-24">Pri</th>}
+                                    <th className="px-1 py-3 w-10 text-right"></th>
+                                    <th className="px-1 py-3 w-10 text-right"></th>
                                 </tr>
                             </thead>
                             <tbody>

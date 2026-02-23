@@ -94,8 +94,8 @@ export function SpfWizard({ zone, onAddRecord }: { zone: DnsZone; onAddRecord: (
                                 }
                             }}
                             className={`px-2 py-1 text-[10px] rounded border transition-colors ${p.include && config.includeDomains.includes(p.include)
-                                    ? 'bg-primary/20 border-primary text-primary'
-                                    : 'bg-surface-container border-outline/10 text-on-surface-variant hover:border-primary/50'
+                                ? 'bg-primary/20 border-primary text-primary'
+                                : 'bg-surface-container border-outline/10 text-on-surface-variant hover:border-primary/50'
                                 }`}
                         >
                             {p.name}
@@ -552,6 +552,61 @@ export function EmailHealthCheck({ zoneId }: { zoneId: string }) {
 
             <button onClick={refresh} className="w-full flex justify-center py-1.5 text-[10px] text-on-surface-variant hover:text-primary transition-colors">
                 <RefreshCw size={10} className="mr-1" /> Re-scan
+            </button>
+        </div>
+    );
+}
+
+// --- Child Name Server Wizard ---
+export function ChildNsWizard({ zone, onAddRecords }: { zone: DnsZone; onAddRecords: (rs: Partial<DnsRecord>[]) => void }) {
+    const [subdomain, setSubdomain] = useState('ns1');
+    const [ip, setIp] = useState('');
+    const [ipv6, setIpv6] = useState('');
+
+    const handleAdd = () => {
+        if (!subdomain || !ip) return;
+
+        const nsName = subdomain.replace(`.${zone.name}`, '').replace(/\.$/, '');
+        const fullName = `${nsName}.${zone.name}.`;
+
+        const records: Partial<DnsRecord>[] = [
+            { name: nsName, type: 'A', value: ip, ttl: 86400 },
+            { name: '@', type: 'NS', value: fullName, ttl: 86400 }
+        ];
+
+        if (ipv6) {
+            records.push({ name: nsName, type: 'AAAA', value: ipv6, ttl: 86400 });
+        }
+
+        onAddRecords(records);
+        toast.success(`Child Name Server ${fullName} added`);
+        setIp(''); setIpv6('');
+    };
+
+    return (
+        <div className="space-y-4">
+            <p className="text-xs text-on-surface-variant leading-relaxed"> Register "Glue Records" to use this server as a name server for your domain. This is required if you want to use <span className="text-primary font-mono">{subdomain}.{zone.name}</span> as your DNS at your registrar.</p>
+            <div className="grid grid-cols-1 gap-3">
+                <div className="space-y-1">
+                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Host Name</label>
+                    <div className="flex items-center gap-1">
+                        <input value={subdomain} onChange={e => setSubdomain(e.target.value)} className="input-field flex-1 text-sm font-mono" placeholder="ns1" />
+                        <span className="text-xs text-on-surface-variant font-mono">.{zone.name}</span>
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">IPv4 Address</label>
+                        <input value={ip} onChange={e => setIp(e.target.value)} className="input-field py-2 text-sm font-mono" placeholder="1.2.3.4" />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">IPv6 (Optional)</label>
+                        <input value={ipv6} onChange={e => setIpv6(e.target.value)} className="input-field py-2 text-sm font-mono" placeholder="::1" />
+                    </div>
+                </div>
+            </div>
+            <button onClick={handleAdd} disabled={!subdomain || !ip} className="w-full btn-primary py-2.5 text-sm font-bold shadow-lg shadow-primary/20">
+                Register Name Server
             </button>
         </div>
     );

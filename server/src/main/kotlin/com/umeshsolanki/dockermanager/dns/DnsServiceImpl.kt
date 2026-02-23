@@ -162,6 +162,22 @@ class DnsServiceImpl : IDnsService {
         val id = UUID.randomUUID().toString()
         val zoneFile = File(zonesDir, "db.$name")
 
+        val defaultRecords = mutableListOf<DnsRecord>()
+        if (request.type == ZoneType.FORWARD && request.role == ZoneRole.MASTER) {
+            val securityConfig = getGlobalSecurityConfig()
+            securityConfig.defaultNameServers.forEach { ns ->
+                defaultRecords.add(
+                    DnsRecord(
+                        id = UUID.randomUUID().toString(),
+                        name = "@",
+                        type = DnsRecordType.NS,
+                        value = ns.ensureTrailingDot(),
+                        ttl = 86400
+                    )
+                )
+            }
+        }
+
         val zone = DnsZone(
             id = id,
             name = name,
@@ -169,6 +185,7 @@ class DnsServiceImpl : IDnsService {
             role = request.role,
             filePath = zoneFile.absolutePath,
             soa = request.soa,
+            records = defaultRecords,
             masterAddresses = sanitizeAclEntries(request.masterAddresses),
             allowTransfer = sanitizeAclEntries(request.allowTransfer),
             allowUpdate = sanitizeAclEntries(request.allowUpdate),

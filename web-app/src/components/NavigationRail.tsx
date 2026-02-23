@@ -24,7 +24,6 @@ export default function NavigationRail({ selectedScreen, onScreenChange, onLogou
         { label: 'Files', Icon: FolderInput },
         { label: 'DB', Icon: Database },
         { label: 'Kafka', Icon: Zap },
-        { label: 'IP', Icon: ShieldAlert },
         { label: 'DNS', Icon: Waypoints },
     ] as const;
 

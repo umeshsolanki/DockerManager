@@ -19,7 +19,8 @@ interface ProxyRulesTabProps {
 
 const RULE_TYPE_META: Record<string, { label: string; icon: React.ElementType; color: string; bg: string; border: string; hint: string }> = {
     USER_AGENT: { label: 'User Agent', icon: History, color: 'text-pink-400', bg: 'bg-pink-500/10', border: 'border-pink-500/30', hint: 'Regex matched against the request User-Agent header' },
-    PATH: { label: 'Path', icon: Globe, color: 'text-indigo-400', bg: 'bg-indigo-500/10', border: 'border-indigo-500/30', hint: 'Regex matched against the request URL path' },
+    PATH: { label: 'Path', icon: Activity, color: 'text-indigo-400', bg: 'bg-indigo-500/10', border: 'border-indigo-500/30', hint: 'Regex matched against the request URL path' },
+    HOST_HEADER: { label: 'Host', icon: Globe, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30', hint: 'Regex matched against the Host header (e.g. domain.com)' },
     METHOD: { label: 'Method', icon: Terminal, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30', hint: 'Exact match on HTTP method (GET, POST, DELETE, etc.)' },
     STATUS_CODE: { label: 'Status Code', icon: Hash, color: 'text-teal-400', bg: 'bg-teal-500/10', border: 'border-teal-500/30', hint: 'Regex matched against the response status code' },
     COMPOSITE: { label: 'Composite', icon: Layers, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30', hint: 'Path regex + status code pattern combined' },
@@ -358,6 +359,11 @@ function RuleCard({ rule, accent, onDelete, onDuplicate, onEdit }: {
                                 {threshold}x threshold
                             </span>
                         )}
+                        {rule.matchEmpty && (
+                            <span className="text-[9px] font-bold bg-blue-500/15 text-blue-400 px-1.5 py-0.5 rounded">
+                                matches empty
+                            </span>
+                        )}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                         <code className="text-xs font-mono text-on-surface/70 truncate">
@@ -535,6 +541,7 @@ function RuleFormModal({ rule, onClose, onSave }: {
     const [description, setDescription] = useState(rule?.description ?? '');
     const [threshold, setThreshold] = useState(rule?.threshold ?? 1);
     const [statusCodePattern, setStatusCodePattern] = useState(rule?.statusCodePattern ?? '');
+    const [matchEmpty, setMatchEmpty] = useState(rule?.matchEmpty ?? false);
     const [error, setError] = useState('');
     const [warning, setWarning] = useState('');
     const [validating, setValidating] = useState(false);
@@ -546,10 +553,11 @@ function RuleFormModal({ rule, onClose, onSave }: {
         setError('');
         setWarning('');
 
-        if (!pattern.trim()) { setError('Pattern is required'); return; }
+        if (!pattern.trim() && !matchEmpty) { setError('Pattern is required'); return; }
 
         const isRegexType = type === ProxyJailRuleType.USER_AGENT
             || type === ProxyJailRuleType.PATH
+            || type === ProxyJailRuleType.HOST_HEADER
             || type === ProxyJailRuleType.COMPOSITE
             || type === ProxyJailRuleType.STATUS_CODE;
 
@@ -592,6 +600,7 @@ function RuleFormModal({ rule, onClose, onSave }: {
             type,
             pattern: pattern.trim(),
             description: description.trim() || undefined,
+            matchEmpty,
             threshold: threshold > 1 ? threshold : undefined,
             statusCodePattern: (type === ProxyJailRuleType.COMPOSITE || type === ProxyJailRuleType.STATUS_CODE) && statusCodePattern.trim()
                 ? statusCodePattern.trim()
@@ -643,12 +652,27 @@ function RuleFormModal({ rule, onClose, onSave }: {
                         placeholder={
                             type === ProxyJailRuleType.USER_AGENT ? 'e.g. ^sqlmap/.*' :
                                 type === ProxyJailRuleType.PATH ? 'e.g. /wp-admin|/xmlrpc\\.php' :
-                                    type === ProxyJailRuleType.METHOD ? 'e.g. DELETE' :
-                                        type === ProxyJailRuleType.STATUS_CODE ? 'e.g. 5\\d\\d' :
-                                            'e.g. /api/.*'
+                                    type === ProxyJailRuleType.HOST_HEADER ? 'e.g. ^(www\\.)?malicious\\.com$' :
+                                        type === ProxyJailRuleType.METHOD ? 'e.g. DELETE' :
+                                            type === ProxyJailRuleType.STATUS_CODE ? 'e.g. 5\\d\\d' :
+                                                'e.g. /api/.*'
                         }
                         className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-primary/50"
                     />
+                    {(type === ProxyJailRuleType.USER_AGENT || type === ProxyJailRuleType.HOST_HEADER) && (
+                        <div className="flex items-center gap-2 mt-2 ml-1">
+                            <input
+                                type="checkbox"
+                                id="matchEmpty"
+                                checked={matchEmpty}
+                                onChange={e => setMatchEmpty(e.target.checked)}
+                                className="w-3.5 h-3.5 rounded border-white/10 bg-black/40 text-primary focus:ring-0 focus:ring-offset-0"
+                            />
+                            <label htmlFor="matchEmpty" className="text-[11px] font-bold text-on-surface-variant cursor-pointer select-none">
+                                Match if empty or missing
+                            </label>
+                        </div>
+                    )}
                 </div>
 
                 {/* Status Code Pattern - for COMPOSITE */}

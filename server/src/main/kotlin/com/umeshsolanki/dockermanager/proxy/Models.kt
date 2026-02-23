@@ -200,7 +200,8 @@ data class ProxyJailRule(
     val pattern: String,
     val description: String? = null,
     val statusCodePattern: String? = null, // For COMPOSITE rules: regex pattern to match status codes (e.g., "404|403")
-    val threshold: Int = 1 // Number of matches in window before jailing (1 = instant jail)
+    val threshold: Int = 1, // Number of matches in window before jailing (1 = instant jail)
+    val matchEmpty: Boolean = false // If true, matches if the target value is empty/missing
 )
 
 @Serializable
