@@ -456,7 +456,11 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                                     type="checkbox"
                                     checked={zone.allowTransfer.includes('any')}
                                     onChange={async (e) => {
-                                        const newAllowTransfer = e.target.checked ? ['any'] : [];
+                                        const isChecking = e.target.checked;
+                                        if (isChecking && !confirm('Security Warning: Enabling Public Zone Transfer allows anyone to download the entire list of DNS records for this zone. Are you sure you want to proceed?')) {
+                                            return;
+                                        }
+                                        const newAllowTransfer = isChecking ? ['any'] : [];
                                         const r = await DockerClient.updateDnsZoneOptions(zone.id, { allowTransfer: newAllowTransfer });
                                         if (r) { toast.success('Transfer settings updated'); onRefresh(); } else toast.error('Failed to update');
                                     }}
