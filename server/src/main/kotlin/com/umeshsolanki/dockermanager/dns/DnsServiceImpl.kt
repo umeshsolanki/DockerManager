@@ -568,7 +568,8 @@ class DnsServiceImpl : IDnsService {
             val trimmed = line.trim()
             if (trimmed.startsWith("$")) {
                 if (trimmed.startsWith("\$TTL", ignoreCase = true)) {
-                    defaultTtl = trimmed.split(Regex("\\s+")).getOrNull(1)?.toIntOrNull() ?: defaultTtl
+                    val ttlPart = trimmed.split(Regex("\\s+")).getOrNull(1)
+                    defaultTtl = parseTtl(ttlPart, defaultTtl)
                 }
                 skippedCount++
                 continue
@@ -576,33 +577,48 @@ class DnsServiceImpl : IDnsService {
 
             try {
                 val parts = trimmed.split(Regex("\\s+")).filter { it.isNotBlank() }
-                if (parts.size < 2) continue
+                if (parts.isEmpty()) continue
 
                 val isIndented = line.startsWith(" ") || line.startsWith("\t")
                 var idx = 0
-                var name = if (isIndented) lastName else {
-                    val n = parts[idx++]
-                    // If the first token is a known type or TTL/Class, then name was omitted
-                    if (n.toIntOrNull() != null || n.uppercase() == "IN" || n.uppercase() == "SOA" || 
-                        DnsRecordType.entries.any { it.name == n.uppercase() }) {
-                        idx--
-                        lastName
+                
+                var name: String
+                if (isIndented) {
+                    val firstToken = parts[0].uppercase()
+                    if (isTtl(parts[0]) || firstToken == "IN" || isDnsRecordType(firstToken)) {
+                        name = lastName
                     } else {
-                        lastName = n
-                        n
+                        name = parts[idx++]
+                        lastName = name
+                    }
+                } else {
+                    val firstToken = parts[0].uppercase()
+                    if (isTtl(parts[0]) || firstToken == "IN" || isDnsRecordType(firstToken)) {
+                        name = lastName
+                    } else {
+                        name = parts[idx++]
+                        lastName = name
                     }
                 }
 
-                // TTL
-                var ttl = parts.getOrNull(idx)?.toIntOrNull()
-                if (ttl != null) idx++ else ttl = defaultTtl
+                // Normalize name relative to zone
+                name = normalizeName(name, zone.name)
 
-                // Class
-                if (parts.getOrNull(idx)?.uppercase() == "IN") idx++
+                // Parse TTL
+                var ttl = if (idx < parts.size && isTtl(parts[idx])) {
+                    parseTtl(parts[idx++], defaultTtl)
+                } else {
+                    defaultTtl
+                }
 
-                // Handle case where TTL is after IN
-                if (ttl == defaultTtl && parts.getOrNull(idx)?.toIntOrNull() != null) {
-                    ttl = parts[idx++].toIntOrNull() ?: defaultTtl
+                // Parse Class
+                if (idx < parts.size && parts[idx].uppercase() == "IN") {
+                    idx++
+                }
+
+                // Second chance for TTL (BIND allows swapping CLASS and TTL)
+                if (idx < parts.size && isTtl(parts[idx])) {
+                    ttl = parseTtl(parts[idx++], ttl)
                 }
 
                 val typeStr = parts.getOrNull(idx++)?.uppercase() ?: continue
@@ -630,13 +646,29 @@ class DnsServiceImpl : IDnsService {
 
                 when (recordType) {
                     DnsRecordType.MX -> {
-                        priority = parts.getOrNull(idx++)?.toIntOrNull()
+                        val p = parts.getOrNull(idx)
+                        if (p != null && p.toLongOrNull() != null) {
+                            priority = p.toInt()
+                            idx++
+                        }
                         value = parts.drop(idx).joinToString(" ").trim()
                     }
                     DnsRecordType.SRV -> {
-                        priority = parts.getOrNull(idx++)?.toIntOrNull()
-                        weight = parts.getOrNull(idx++)?.toIntOrNull()
-                        port = parts.getOrNull(idx++)?.toIntOrNull()
+                        val p = parts.getOrNull(idx)
+                        if (p != null && p.toLongOrNull() != null) {
+                            priority = p.toInt()
+                            idx++
+                        }
+                        val w = parts.getOrNull(idx)
+                        if (w != null && w.toLongOrNull() != null) {
+                            weight = w.toInt()
+                            idx++
+                        }
+                        val po = parts.getOrNull(idx)
+                        if (po != null && po.toLongOrNull() != null) {
+                            port = po.toInt()
+                            idx++
+                        }
                         value = parts.drop(idx).joinToString(" ").trim()
                     }
                     DnsRecordType.TXT -> {
@@ -649,6 +681,11 @@ class DnsServiceImpl : IDnsService {
                         }
                     }
                     else -> value = parts.drop(idx).joinToString(" ").trim()
+                }
+
+                if (value.isBlank()) {
+                    errors.add("Missing value for $recordType record at: $trimmed")
+                    continue
                 }
 
                 parsedRecords.add(DnsRecord(
@@ -1070,16 +1107,35 @@ class DnsServiceImpl : IDnsService {
 
     override fun getLogs(tail: Int): String {
         val status = getInstallStatus()
-        if (!status.installed || !status.running) return "DNS service is not running."
+        if (!status.installed) return "DNS service is not installed."
 
-        return if (status.method == DnsInstallMethod.DOCKER && status.dockerContainerId != null) {
-            val cmd = "${AppConfig.dockerCommand} logs --tail $tail ${status.dockerContainerId} 2>&1"
-            commandExecutor.execute(cmd).output
-        } else if (status.method == DnsInstallMethod.APT && status.osType != "mac") {
-            val cmd = "journalctl -u named -u bind9 -n $tail --no-pager"
-            commandExecutor.execute(cmd).output
-        } else {
-            "Log retrieval not supported for this installation type."
+        return try {
+            if (status.method == DnsInstallMethod.DOCKER) {
+                val cName = containerName
+                val cmd = "${AppConfig.dockerCommand} logs --tail $tail $cName 2>&1"
+                commandExecutor.execute(cmd).output.ifBlank { "No logs found for container $cName." }
+            } else if (status.method == DnsInstallMethod.APT) {
+                // Try journalctl first, then fallback to common log files
+                val journalCmd = "journalctl -u named -u bind9 -n $tail --no-pager 2>/dev/null"
+                val journalResult = commandExecutor.execute(journalCmd)
+                if (journalResult.exitCode == 0 && journalResult.output.isNotBlank()) {
+                    journalResult.output
+                } else {
+                    val logFile = listOf("/var/log/syslog", "/var/log/messages", "/var/log/named/named.log")
+                        .map { File(it) }
+                        .firstOrNull { it.exists() }
+                    
+                    if (logFile != null) {
+                        commandExecutor.execute("tail -n $tail ${logFile.absolutePath}").output
+                    } else {
+                        "Could not locate BIND9 logs."
+                    }
+                }
+            } else {
+                "Log retrieval not supported for this installation type."
+            }
+        } catch (e: Exception) {
+            "Error retrieving logs: ${e.message}"
         }
     }
 
@@ -1332,8 +1388,85 @@ class DnsServiceImpl : IDnsService {
     //  Zone File Generation
     // ===================================================================
 
+    private fun isTtl(token: String): Boolean {
+        if (token.isEmpty()) return false
+        val units = setOf('s', 'm', 'h', 'd', 'w')
+        val lastChar = token.last().lowercaseChar()
+        if (lastChar in units) {
+            return token.dropLast(1).toLongOrNull() != null
+        }
+        return token.toLongOrNull() != null
+    }
+
+    private fun parseTtl(token: String?, default: Int): Int {
+        if (token == null) return default
+        val units = mapOf(
+            's' to 1,
+            'm' to 60,
+            'h' to 3600,
+            'd' to 86400,
+            'w' to 604800
+        )
+        val lastChar = token.last().lowercaseChar()
+        if (lastChar in units) {
+            val num = token.dropLast(1).toLongOrNull() ?: return default
+            return (num * units[lastChar]!!).toInt()
+        }
+        return token.toIntOrNull() ?: default
+    }
+
+    private fun isDnsRecordType(token: String): Boolean {
+        return try { DnsRecordType.valueOf(token.uppercase()); true } catch (_: Exception) { false }
+    }
+
+    private fun normalizeName(name: String, zoneName: String): String {
+        if (name == "@") return "@"
+        val origin = zoneName.ensureTrailingDot()
+        val normalizedName = name.ensureTrailingDot()
+        
+        if (normalizedName.equals(origin, ignoreCase = true)) return "@"
+        if (normalizedName.lowercase().endsWith(".${origin.lowercase()}")) {
+            val short = normalizedName.dropLast(origin.length + 1)
+            return if (short.isEmpty()) "@" else short
+        }
+        return name
+    }
+
     private fun writeZoneFile(zone: DnsZone) {
         val soa = zone.soa
+        val zoneName = zone.name.ensureTrailingDot()
+        val records = zone.records.toMutableList()
+
+        // 1. Identify all NS records (explicit or default)
+        val nsNames = records.filter { it.type == DnsRecordType.NS }.map { it.value.ensureTrailingDot() }.toMutableSet()
+        if (nsNames.isEmpty()) {
+            nsNames.add(soa.primaryNs.ensureTrailingDot())
+        }
+
+        // 2. For each in-bailiwick NS, ensure there's an A/AAAA record
+        for (nsName in nsNames) {
+            if (nsName.endsWith(".$zoneName") || nsName == zoneName) {
+                val shortName = if (nsName == zoneName) "@" else nsName.dropLast(zoneName.length + 1).removeSuffix(".")
+                val hasAddress = records.any { 
+                    (it.name == shortName || it.name == nsName.removeSuffix(".")) && 
+                    (it.type == DnsRecordType.A || it.type == DnsRecordType.AAAA) 
+                }
+                
+                if (!hasAddress) {
+                    // Automatically add an A record for the nameserver if missing
+                    val serverIp = try { InetAddress.getLocalHost().hostAddress } catch (_: Exception) { "127.0.0.1" }
+                    records.add(DnsRecord(
+                        id = UUID.randomUUID().toString(),
+                        name = if (shortName.isEmpty()) "@" else shortName,
+                        type = DnsRecordType.A,
+                        value = serverIp,
+                        ttl = 3600
+                    ))
+                    logger.info("Added missing glue record for in-bailiwick NS $nsName in zone ${zone.name}")
+                }
+            }
+        }
+
         val content = buildString {
             appendLine("; Zone file for ${zone.name}")
             appendLine("; Generated by UCPanel")
@@ -1350,14 +1483,14 @@ class DnsServiceImpl : IDnsService {
             appendLine("             ${soa.minimumTtl}      ; Minimum TTL")
             appendLine(")")
             appendLine()
-            // BIND9 requires at least one NS record per zone. Emit one automatically
-            // derived from the SOA's primaryNs if the zone has no explicit NS records.
-            val hasNsRecord = zone.records.any { it.type == DnsRecordType.NS }
-            if (!hasNsRecord) {
+            
+            // Emit NS records. If none were provided, use the default from SOA
+            val hasExplicitNs = records.any { it.type == DnsRecordType.NS }
+            if (!hasExplicitNs) {
                 appendLine("@        86400  IN  NS  ${soa.primaryNs.ensureTrailingDot()}")
             }
-            appendLine()
-            for (record in zone.records) {
+
+            for (record in records) {
                 val line = formatRecord(record)
                 if (line.isNotBlank()) appendLine(line)
             }
