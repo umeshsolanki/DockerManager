@@ -3,6 +3,9 @@ import com.umeshsolanki.dockermanager.*
 
 import java.io.File
 import java.util.concurrent.TimeUnit
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.time.Instant
 
 interface IComposeService {
     fun listComposeFiles(): List<ComposeFile>
@@ -338,13 +341,13 @@ class ComposeServiceImpl : IComposeService {
                     if (stackName.isNotBlank() && createdAtStr.isNotBlank()) {
                         // Docker format is "2024-05-20 10:00:00 +0000 UTC" or ISO
                         try {
-                            val time = java.time.ZonedDateTime.parse(createdAtStr, 
-                                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss Z z")).toInstant().toEpochMilli()
+                            val time = ZonedDateTime.parse(createdAtStr, 
+                                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss Z z")).toInstant().toEpochMilli()
                             stackTimes[stackName] = minOf(stackTimes.getOrDefault(stackName, Long.MAX_VALUE), time)
                         } catch (e: Exception) {
                             // Fallback for different formats
                             try {
-                                val time = java.time.Instant.parse(createdAtStr.replace(" ", "T")).toEpochMilli()
+                                val time = Instant.parse(createdAtStr.replace(" ", "T")).toEpochMilli()
                                 stackTimes[stackName] = minOf(stackTimes.getOrDefault(stackName, Long.MAX_VALUE), time)
                             } catch (e2: Exception) {}
                         }

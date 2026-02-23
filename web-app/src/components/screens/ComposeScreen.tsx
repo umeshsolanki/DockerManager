@@ -726,6 +726,11 @@ export default function ComposeScreen() {
                                                                 </span>
                                                             );
                                                         })()}
+                                                        {stack.createdAt && stack.createdAt > 0 && (
+                                                            <span className="text-[10px] text-on-surface-variant/60 font-medium ml-auto">
+                                                                Created {new Date(stack.createdAt).toLocaleString()}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     <div className="flex items-center gap-2 text-xs text-on-surface-variant">
                                                         <span>{stack.services} service{stack.services !== 1 ? 's' : ''}</span>
