@@ -184,11 +184,23 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
         });
     };
 
-    const filteredRules = rules.filter(r =>
-        r.ip.includes(searchQuery) ||
-        (r.comment?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
-        (r.country?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
-    );
+    const filteredRules = rules.filter(r => {
+        if (!searchQuery) return true;
+        const q = searchQuery.toLowerCase();
+
+        // Handle prefixed search
+        if (q.includes(':')) {
+            const [key, value] = q.split(':').map(s => s.trim());
+            if (key === 'ip') return r.ip.includes(value);
+            if (key === 'country') return r.country?.toLowerCase().includes(value) ?? false;
+            if (key === 'comment') return r.comment?.toLowerCase().includes(value) ?? false;
+            if (key === 'port') return String(r.port).includes(value);
+        }
+
+        return r.ip.includes(searchQuery) ||
+            (r.comment?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
+            (r.country?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
+    });
 
     const handleDeleteReputation = async (ip: string) => {
         if (!confirm(`Are you sure you want to delete reputation for ${ip}?`)) return;
@@ -520,18 +532,22 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
                     {(() => {
                         // Parse key:value tokens from search string
                         const filters: Record<string, string> = {};
-                        const freeText = repSearch.replace(/(\w+):(\S+)/g, (_, k, v) => {
-                            filters[k.toLowerCase()] = v.toLowerCase();
-                            return '';
-                        }).trim();
+                        const regex = /(\w+):([^,\s]+)/g;
+                        let match;
+                        while ((match = regex.exec(repSearch)) !== null) {
+                            filters[match[1].toLowerCase()] = match[2].toLowerCase();
+                        }
+                        const freeText = repSearch.replace(regex, '').replace(/,/g, ' ').trim();
 
                         const activeChips = Object.entries(filters);
 
                         const filtered = reputations
                             .filter(rep => {
                                 if (filters.country && !rep.country?.toLowerCase().includes(filters.country)) return false;
-                                if (filters.isp && !rep.isp?.toLowerCase().includes(filters.isp)) return false;
+                                if (filters.isp && !rep.isp?.toLowerCase().includes(filters.isp) && !rep.asName?.toLowerCase().includes(filters.isp)) return false;
+                                if (filters.asn && !rep.asn?.toLowerCase().includes(filters.asn)) return false;
                                 if (filters.range && !rep.range?.toLowerCase().includes(filters.range)) return false;
+                                if (filters.reason && !rep.reasons?.some(r => r.toLowerCase().includes(filters.reason))) return false;
                                 if (filters.blocked) {
                                     const n = parseInt(filters.blocked, 10);
                                     if (!isNaN(n) && rep.blockedTimes < n) return false;

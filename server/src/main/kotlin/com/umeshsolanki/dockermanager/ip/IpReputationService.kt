@@ -113,13 +113,42 @@ class IpReputationServiceImpl : IIpReputationService {
         val query = IpReputationTable.selectAll()
         
         search?.takeIf { it.isNotBlank() }?.let { term ->
-            query.andWhere { 
-                (IpReputationTable.ip like "%$term%") or 
-                (IpReputationTable.country like "%$term%") or
-                (IpReputationTable.reasons like "%$term%") or
-                (IpReputationTable.isp like "%$term%") or
-                (IpReputationTable.tag like "%$term%") or
-                (IpReputationTable.range like "%$term%")
+            val filters = mutableMapOf<String, String>()
+            val regex = Regex("(\\w+):([^\\s,]+)")
+            val matches = regex.findAll(term)
+            var freeText = term
+            matches.forEach { match ->
+                filters[match.groupValues[1].lowercase()] = match.groupValues[2]
+                freeText = freeText.replace(match.value, "")
+            }
+            freeText = freeText.replace(",", " ").trim()
+
+            // Apply specific filters (AND logic)
+            filters.forEach { (key, value) ->
+                when (key) {
+                    "ip" -> query.andWhere { IpReputationTable.ip like "%$value%" }
+                    "country" -> query.andWhere { IpReputationTable.country.lowerCase() like "%${value.lowercase()}%" }
+                    "isp" -> query.andWhere { IpReputationTable.isp.lowerCase() like "%${value.lowercase()}%" }
+                    "range" -> query.andWhere { IpReputationTable.range.lowerCase() like "%${value.lowercase()}%" }
+                    "tag" -> query.andWhere { IpReputationTable.tag.lowerCase() like "%${value.lowercase()}%" }
+                    "reason", "reasons" -> query.andWhere { IpReputationTable.reasons.lowerCase() like "%${value.lowercase()}%" }
+                }
+            }
+            
+            // Apply free text search if any leftover (OR logic within the free text part)
+            if (freeText.isNotEmpty()) {
+                val tokens = freeText.split(Regex("\\s+")).filter { it.isNotBlank() }
+                tokens.forEach { token ->
+                    val t = token.lowercase()
+                    query.andWhere {
+                        (IpReputationTable.ip like "%$token%") or
+                        (IpReputationTable.country.lowerCase() like "%$t%") or
+                        (IpReputationTable.reasons.lowerCase() like "%$t%") or
+                        (IpReputationTable.isp.lowerCase() like "%$t%") or
+                        (IpReputationTable.tag.lowerCase() like "%$t%") or
+                        (IpReputationTable.range.lowerCase() like "%$t%")
+                    }
+                }
             }
         }
 
