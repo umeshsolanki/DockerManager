@@ -144,14 +144,15 @@ class DnsServiceImpl : IDnsService {
                         continue
                     }
 
-                    // Re-sign zone
-                    val cZonePath = if (isDockerMode) "${containerZonesDir()}/${File(zone.filePath).name}" else zone.filePath
-                    val signResult = bindExec("dnssec-signzone -K $cKeysDir -o ${zone.name} -S $cZonePath")
-                    if (signResult.exitCode == 0) {
+                    // BIND handles inline signing automatically; just reload
+                    if (kskResult.exitCode == 0 && zskResult.exitCode == 0) {
+                        if (isDockerMode) {
+                            bindExec("chown bind:bind $cKeysDir/K${zone.name}.*")
+                        }
                         logger.info("Successfully recovered DNSSEC keys for ${zone.name}")
                         reloaded = true
                     } else {
-                        logger.error("Auto-recovery Zone signing failed for ${zone.name}: ${signResult.error}")
+                        logger.error("Auto-recovery ZSK/KSK generation failed for ${zone.name}")
                     }
                 }
             }
@@ -715,7 +716,9 @@ class DnsServiceImpl : IDnsService {
             if (index == -1) return BulkImportResult(false, errors = listOf("Zone not found"))
 
             val z = zones[index]
-            val finalSoa = parsedSoa ?: z.soa.copy(serial = z.soa.serial + 1)
+            val currentSerial = parsedSoa?.serial ?: z.soa.serial
+            val nextSerial = generateNextSerial(currentSerial, z.name)
+            val finalSoa = (parsedSoa ?: z.soa).copy(serial = nextSerial)
             val finalRecords = if (request.replace) parsedRecords else (z.records + parsedRecords)
 
             val updated = z.copy(records = finalRecords, soa = finalSoa)
@@ -1004,44 +1007,39 @@ class DnsServiceImpl : IDnsService {
         )
         if (zskResult.exitCode != 0) return DnsActionResult(false, "ZSK generation failed: ${zskResult.error}")
 
-        val signResult = bindExec(
-            "dnssec-signzone -K $cKeysDir -o ${zone.name} -S $cZonePath"
-        )
-        if (signResult.exitCode != 0) return DnsActionResult(false, "Zone signing failed: ${signResult.error}")
+        if (isDockerMode) {
+            bindExec("chown bind:bind $cKeysDir/K${zone.name}.*")
+        }
 
         mutateZone(zoneId) { it.copy(dnssecEnabled = true) }
         writeNamedConfEntry(getZone(zoneId)!!)
         reloadBind()
-        DnsActionResult(true, "DNSSEC enabled for ${zone.name}")
+        DnsActionResult(true, "DNSSEC enabled for ${zone.name}. BIND will now inline-sign the zone.")
     }
 
     override fun signZone(zoneId: String): DnsActionResult = lock.withLock {
         val zone = getZone(zoneId) ?: return DnsActionResult(false, "Zone not found")
         if (!zone.dnssecEnabled) return DnsActionResult(false, "DNSSEC is not enabled for this zone")
         
-        val cKeysDir = containerKeysDir()
-        val cZonePath = if (isDockerMode) "${containerZonesDir()}/${File(zone.filePath).name}" else zone.filePath
+        val signResult = bindExec("rndc sign ${zone.name}")
+        if (signResult.exitCode != 0) return DnsActionResult(false, "Zone signing command failed: ${signResult.error}")
 
-        bindExec("mkdir -p $cKeysDir")
-
-        val signResult = bindExec(
-            "dnssec-signzone -K $cKeysDir -o ${zone.name} -S $cZonePath"
-        )
-        if (signResult.exitCode != 0) return DnsActionResult(false, "Zone signing failed: ${signResult.error}")
-
-        reloadBind()
         DnsActionResult(true, "Zone ${zone.name} successfully signed")
     }
 
     override fun disableDnssec(zoneId: String): DnsActionResult = lock.withLock {
         val zone = getZone(zoneId) ?: return DnsActionResult(false, "Zone not found")
 
-        File(zone.filePath + ".signed").delete()
-        keysDir.listFiles()?.filter { it.name.startsWith("K${zone.name}") }?.forEach { it.delete() }
-
         mutateZone(zoneId) { it.copy(dnssecEnabled = false) }
         writeNamedConfEntry(getZone(zoneId)!!)
         reloadBind()
+
+        // Clean up files after BIND has released the configuration
+        File(zone.filePath + ".signed").delete()
+        File(zone.filePath + ".signed.jnl").delete()
+        File(zone.filePath + ".jnl").delete()
+        keysDir.listFiles()?.filter { it.name.startsWith("K${zone.name}") }?.forEach { it.delete() }
+
         DnsActionResult(true, "DNSSEC disabled for ${zone.name}")
     }
 
@@ -1610,8 +1608,7 @@ class DnsServiceImpl : IDnsService {
         if (!confFile.exists()) { confFile.parentFile?.mkdirs(); confFile.createNewFile() }
         removeNamedConfEntry(zone)
 
-        val zoneFilePath = if (zone.dnssecEnabled && File(zone.filePath + ".signed").exists())
-            zone.filePath + ".signed" else zone.filePath
+        val zoneFilePath = zone.filePath
 
         val entry = buildString {
             appendLine(managedBlockStart.format(zone.name))
@@ -1863,11 +1860,11 @@ controls {
         // BIND's auto-signing increments internal serials that we must respect to avoid "out of range" errors.
         if (zoneName != null) {
             val digOutput = commandExecutor.execute("dig +short SOA $zoneName @127.0.0.1").output.trim()
-            if (digOutput.isNotBlank() && !digOutput.startsWith(";") && digOutput.split("\\s+".toRegex()).size >= 3) {
-                val liveSerialStr = digOutput.split("\\s+".toRegex())[2]
-                val liveSerial = liveSerialStr.toLongOrNull()
-                if (liveSerial != null && liveSerial > baseSerial) {
-                    baseSerial = liveSerial
+                if (digOutput.isNotBlank() && !digOutput.startsWith(";") && digOutput.split("\\s+".toRegex()).size >= 3) {
+                    val liveSerialStr = digOutput.split("\\s+".toRegex())[2]
+                    val liveSerial = liveSerialStr.toLongOrNull()
+                    if (liveSerial != null && liveSerial > baseSerial) {
+                        baseSerial = liveSerial
                 }
             }
         }
