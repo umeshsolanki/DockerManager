@@ -1555,7 +1555,7 @@ class DnsServiceImpl : IDnsService {
             }
 
             for (record in records) {
-                val line = formatRecord(record)
+                val line = formatRecord(record, zone.name)
                 if (line.isNotBlank()) appendLine(line)
             }
         }
@@ -1567,8 +1567,21 @@ class DnsServiceImpl : IDnsService {
         logger.info("Wrote zone file: ${zone.filePath} (Records: ${records.size})")
     }
 
-    private fun formatRecord(record: DnsRecord): String {
-        val name = record.name.padEnd(24)
+    /** Format record name for BIND zone file: relative names (no trailing dot) for in-zone, FQDN with trailing dot otherwise. */
+    private fun formatRecordNameForZone(recordName: String, zoneName: String): String {
+        if (recordName == "@" || recordName.isBlank()) return "@"
+        val origin = zoneName.ensureTrailingDot().lowercase()
+        val nameNorm = recordName.trim().ensureTrailingDot().lowercase()
+        if (nameNorm == origin) return "@"
+        if (nameNorm.endsWith(".$origin")) {
+            val short = nameNorm.dropLast(origin.length + 1)
+            return if (short.isEmpty()) "@" else short
+        }
+        return if (recordName.endsWith(".")) recordName else "$recordName."
+    }
+
+    private fun formatRecord(record: DnsRecord, zoneName: String): String {
+        val name = formatRecordNameForZone(record.name, zoneName).padEnd(24)
         val ttl = record.ttl.toString()
         val value = when (record.type) {
             DnsRecordType.NS, DnsRecordType.CNAME, DnsRecordType.PTR -> record.value.ensureTrailingDot()

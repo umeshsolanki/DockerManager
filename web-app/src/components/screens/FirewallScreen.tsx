@@ -653,7 +653,10 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
                                                                 )}
                                                             </td>
                                                             <td className="px-4 py-3 text-xs text-on-surface-variant">
-                                                                {rep.isp || rep.range || '—'}
+                                                                <div className="flex flex-col">
+                                                                    <span>{rep.isp || rep.range || '—'}</span>
+                                                                    {rep.asn && <span className="text-[9px] text-on-surface-variant/60 font-mono mt-0.5">{rep.asn}</span>}
+                                                                </div>
                                                             </td>
                                                             <td className="px-4 py-3">
                                                                 <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${threatStyle.badge}`}>
