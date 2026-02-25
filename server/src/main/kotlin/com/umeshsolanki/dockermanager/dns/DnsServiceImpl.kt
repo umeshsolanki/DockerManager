@@ -268,7 +268,7 @@ class DnsServiceImpl : IDnsService {
         writeNamedConfEntry(zone)
         zones.add(zone)
         saveZones(zones)
-        reloadBind()
+        reloadBind(zone.name)
         zone
     }
 
@@ -316,7 +316,7 @@ class DnsServiceImpl : IDnsService {
         zones[index] = updated
         writeNamedConfEntry(updated)
         saveZones(zones)
-        reloadBind()
+        reloadBind(updated.name)
         true
     }
 
@@ -349,7 +349,7 @@ class DnsServiceImpl : IDnsService {
         if (needsZoneFileWrite) writeZoneFile(final)
         writeNamedConfEntry(final)
         saveZones(zones)
-        reloadBind()
+        if (needsZoneFileWrite || request.role != null) reloadBind(final.name) else reloadBind()
         true
     }
 
@@ -377,7 +377,7 @@ class DnsServiceImpl : IDnsService {
         zones[index] = updated
         writeZoneFile(updated)
         saveZones(zones)
-        reloadBind()
+        reloadBind(updated.name)
         true
     }
 
@@ -396,7 +396,7 @@ class DnsServiceImpl : IDnsService {
         zones[index] = updated
         writeZoneFile(updated)
         saveZones(zones)
-        reloadBind()
+        reloadBind(updated.name)
         true
     }
 
@@ -413,7 +413,7 @@ class DnsServiceImpl : IDnsService {
         zones[index] = updated
         writeZoneFile(updated)
         saveZones(zones)
-        reloadBind()
+        reloadBind(updated.name)
         true
     }
 
@@ -1752,10 +1752,11 @@ controls {
         }
     }
 
-    private fun reloadBind() {
+    private fun reloadBind(zoneName: String? = null) {
         ensureRndcConfig()
-        val result = bindExec("rndc reload")
-        if (result.exitCode != 0) logger.warn("rndc reload failed: ${result.error}")
+        val cmd = if (zoneName != null) "rndc reload $zoneName" else "rndc reload"
+        val result = bindExec(cmd)
+        if (result.exitCode != 0) logger.warn("rndc reload failed for cmd '$cmd': ${result.error}")
     }
 
     // ==================== Installation ====================
