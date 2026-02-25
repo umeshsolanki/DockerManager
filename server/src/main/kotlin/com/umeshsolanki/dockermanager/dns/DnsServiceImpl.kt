@@ -17,6 +17,7 @@ import java.net.InetAddress
 import java.net.NetworkInterface
 import org.xbill.DNS.*
 import org.xbill.DNS.Record
+import kotlinx.coroutines.*
 
 class DnsServiceImpl : IDnsService {
     private val logger = LoggerFactory.getLogger(DnsServiceImpl::class.java)
@@ -1759,9 +1760,9 @@ controls {
         if (result.exitCode != 0) logger.warn("rndc reload failed for cmd '$cmd': ${result.error}")
         
         // Enforce NSEC3 over NSEC for DNSSEC zones to prevent zone enumeration risks
-        Thread {
+        CoroutineScope(Dispatchers.IO).launch {
             try {
-                Thread.sleep(1000) // Give BIND a second to load the zone and keys
+                delay(1000) // Give BIND a second to load the zone and keys
                 val zones = loadZones()
                 val targetZones = if (zoneName != null) zones.filter { it.name == zoneName && it.dnssecEnabled } else zones.filter { it.dnssecEnabled }
                 
@@ -1773,7 +1774,7 @@ controls {
             } catch (e: Exception) {
                 logger.error("Failed to enforce NSEC3 parameters", e)
             }
-        }.start()
+        }
     }
 
     // ==================== Installation ====================
