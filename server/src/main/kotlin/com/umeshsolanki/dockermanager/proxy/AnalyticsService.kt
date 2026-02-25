@@ -1583,6 +1583,7 @@ class AnalyticsServiceImpl(
                 val ipInfo = IpLookupService.lookup(hit.ip)
                 ipInfo?.countryCode?.let { hitsByCountryMap.merge(it, 1L, Long::plus) }
                 ipInfo?.provider?.let { hitsByProviderMap.merge(it, 1L, Long::plus) }
+                ipInfo?.asn?.let { hitsByAsnMap.merge(it, 1L, Long::plus) }
             } catch (_: Exception) {}
         }
         recentHitsList.addFirst(hit)
