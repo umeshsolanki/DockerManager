@@ -230,7 +230,10 @@ data class IpPtrSuggestion(
 data class DnsLookupRequest(
     val query: String,
     val type: String = "A",
-    val server: String? = null
+    val server: String? = null,
+    val port: Int? = null,
+    val tool: String = "dig", // dig, ping, traceroute, whois, curl
+    val options: List<String> = emptyList() // +trace, +tcp, +short, etc
 )
 
 @Serializable

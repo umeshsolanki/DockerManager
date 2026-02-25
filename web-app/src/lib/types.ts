@@ -950,6 +950,9 @@ export interface DnsLookupRequest {
   query: string;
   type: string;
   server?: string;
+  port?: number;
+  tool?: string;
+  options?: string[];
 }
 
 export interface DnsLookupAnswer {

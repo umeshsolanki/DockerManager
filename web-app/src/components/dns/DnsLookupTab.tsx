@@ -12,6 +12,9 @@ export default function DnsLookupTab() {
     const [query, setQuery] = useState('');
     const [type, setType] = useState('A');
     const [server, setServer] = useState('');
+    const [port, setPort] = useState('');
+    const [tool, setTool] = useState('dig');
+    const [options, setOptions] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<DnsLookupResult | null>(null);
     const [history, setHistory] = useState<DnsLookupResult[]>([]);
@@ -19,7 +22,15 @@ export default function DnsLookupTab() {
     const handleLookup = async () => {
         if (!query.trim()) return;
         setLoading(true);
-        const r = await DockerClient.dnsLookup({ query: query.trim(), type, server: server.trim() || undefined });
+        const p = parseInt(port.trim(), 10);
+        const r = await DockerClient.dnsLookup({
+            query: query.trim(),
+            type,
+            server: server.trim() || undefined,
+            port: isNaN(p) ? undefined : p,
+            tool,
+            options
+        });
         setResult(r);
         if (r.success) setHistory(h => [r, ...h].slice(0, 20));
         setLoading(false);
@@ -27,33 +38,76 @@ export default function DnsLookupTab() {
 
     return (
         <div className="space-y-5">
-            <SectionCard title="DNS Lookup">
+            <SectionCard title="Network Tools">
                 <div className="flex gap-3 flex-wrap">
+                    <select value={tool} onChange={e => setTool(e.target.value)} className="input-field w-32">
+                        <option value="dig">DIG</option>
+                        <option value="ping">Ping</option>
+                        <option value="traceroute">Traceroute</option>
+                        <option value="whois">Whois</option>
+                        <option value="curl">Curl / HTTP</option>
+                    </select>
                     <input
                         value={query}
                         onChange={e => setQuery(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && handleLookup()}
-                        placeholder="example.com"
+                        placeholder={tool === 'curl' ? "example.com (https is default)" : "example.com"}
                         className="flex-1 min-w-[200px] input-field"
                     />
-                    <select value={type} onChange={e => setType(e.target.value)} className="input-field w-24">
-                        {COMMON_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    <input
-                        value={server}
-                        onChange={e => setServer(e.target.value)}
-                        placeholder="DNS server (optional)"
-                        className="input-field w-48"
-                    />
+                    {tool === 'dig' && (
+                        <>
+                            <select value={type} onChange={e => setType(e.target.value)} className="input-field w-24">
+                                {COMMON_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                            <input
+                                value={server}
+                                onChange={e => setServer(e.target.value)}
+                                placeholder="DNS server (optional)"
+                                className="input-field w-44"
+                            />
+                            <input
+                                value={port}
+                                onChange={e => setPort(e.target.value)}
+                                placeholder="Port"
+                                className="input-field w-20"
+                            />
+                        </>
+                    )}
+                    {tool === 'curl' && (
+                        <input
+                            value={port}
+                            onChange={e => setPort(e.target.value)}
+                            placeholder="Port"
+                            className="input-field w-24"
+                        />
+                    )}
                     <button onClick={handleLookup} disabled={loading || !query.trim()} className="btn-primary disabled:opacity-50 flex items-center gap-1.5">
-                        <Search size={14} /> {loading ? 'Looking up...' : 'Lookup'}
+                        <Search size={14} /> {loading ? 'Running...' : 'Check'}
                     </button>
                 </div>
+                {tool === 'dig' && (
+                    <div className="flex gap-4 mt-4">
+                        {['+trace', '+tcp', '+short', '+dnssec'].map(opt => (
+                            <label key={opt} className="flex items-center gap-1.5 text-sm text-on-surface hover:text-primary cursor-pointer transition-colors">
+                                <input
+                                    type="checkbox"
+                                    checked={options.includes(opt)}
+                                    onChange={e => {
+                                        if (e.target.checked) setOptions([...options, opt]);
+                                        else setOptions(options.filter(o => o !== opt));
+                                    }}
+                                    className="rounded bg-surface border-outline/20 text-primary focus:ring-primary focus:ring-offset-surface cursor-pointer"
+                                />
+                                <span>{opt}</span>
+                            </label>
+                        ))}
+                    </div>
+                )}
             </SectionCard>
 
             {result && (
                 <SectionCard title={`Results for ${result.query} (${result.type})`} actions={
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${result.status === 'NOERROR' ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${result.status === 'NOERROR' || result.status === 'TRACE' ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>
                         {result.status || (result.success ? 'OK' : 'FAILED')}
                     </span>
                 }>
@@ -81,7 +135,7 @@ export default function DnsLookupTab() {
                             </table>
                         </div>
                     ) : (
-                        <p className="text-sm text-on-surface-variant">No records found</p>
+                        <p className="text-sm text-on-surface-variant">No parsed records</p>
                     )}
                     <div className="flex gap-4 mt-3 text-[10px] text-on-surface-variant">
                         {result.queryTime && <span className="flex items-center gap-1"><Clock size={10} /> {result.queryTime}</span>}

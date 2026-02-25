@@ -1051,9 +1051,33 @@ class DnsServiceImpl : IDnsService {
     // ===================================================================
 
     override fun lookup(request: DnsLookupRequest): DnsLookupResult {
+        val safeQuery = request.query.replace(Regex("[^a-zA-Z0-9.-]"), "")
+        when (request.tool) {
+            "ping" -> {
+                val res = commandExecutor.execute("ping -c 4 $safeQuery")
+                return DnsLookupResult(success = res.exitCode == 0, query = request.query, type = "PING", rawOutput = res.output.ifBlank { res.error })
+            }
+            "traceroute" -> {
+                val res = commandExecutor.execute("traceroute $safeQuery")
+                return DnsLookupResult(success = res.exitCode == 0, query = request.query, type = "TRACEROUTE", rawOutput = res.output.ifBlank { res.error })
+            }
+            "whois" -> {
+                val res = commandExecutor.execute("whois $safeQuery")
+                return DnsLookupResult(success = res.exitCode == 0, query = request.query, type = "WHOIS", rawOutput = res.output.ifBlank { res.error })
+            }
+            "curl" -> {
+                val portStr = if (request.port != null) ":${request.port}" else ""
+                val res = commandExecutor.execute("curl -k -v -I https://$safeQuery$portStr")
+                return DnsLookupResult(success = res.exitCode == 0, query = request.query, type = "CURL", rawOutput = res.error + "\n" + res.output)
+            }
+        }
+
         val serverArg = if (!request.server.isNullOrBlank()) "@${request.server}" else ""
-        val cmd = "dig $serverArg ${request.query} ${request.type} +noall +answer +stats +comments"
-        val result = bindExec(cmd)
+        val portArg = if (request.port != null) "-p ${request.port}" else ""
+        val optionsStr = request.options.joinToString(" ")
+        val baseOpts = if (request.options.contains("+trace")) "" else "+noall +answer +stats +comments"
+        val cmd = "dig $serverArg $portArg ${request.query} ${request.type} $optionsStr $baseOpts"
+        val result = commandExecutor.execute(cmd)
 
         if (result.exitCode != 0) {
             return DnsLookupResult(false, request.query, request.type, rawOutput = result.error.ifBlank { result.output })
@@ -1064,29 +1088,33 @@ class DnsServiceImpl : IDnsService {
         var server = ""
         var status = ""
 
-        for (line in result.output.lines()) {
-            val trimmed = line.trim()
-            when {
-                trimmed.startsWith(";; ->>HEADER<<-") -> {
-                    val statusMatch = Regex("status: (\\w+)").find(trimmed)
-                    status = statusMatch?.groupValues?.getOrNull(1) ?: ""
-                }
-                trimmed.startsWith(";;") -> {
-                    if (trimmed.contains("Query time:")) queryTime = trimmed.substringAfter("Query time:").trim()
-                    if (trimmed.contains("SERVER:")) server = trimmed.substringAfter("SERVER:").trim()
-                }
-                trimmed.isNotBlank() && !trimmed.startsWith(";") -> {
-                    val parts = trimmed.split(Regex("\\s+"), limit = 5)
-                    if (parts.size >= 5) {
-                        answers.add(DnsLookupAnswer(
-                            name = parts[0],
-                            ttl = parts[1].toIntOrNull() ?: 0,
-                            type = parts[3],
-                            value = parts[4]
-                        ))
+        if (!request.options.contains("+trace")) {
+            for (line in result.output.lines()) {
+                val trimmed = line.trim()
+                when {
+                    trimmed.startsWith(";; ->>HEADER<<-") -> {
+                        val statusMatch = Regex("status: (\\w+)").find(trimmed)
+                        status = statusMatch?.groupValues?.getOrNull(1) ?: ""
+                    }
+                    trimmed.startsWith(";;") -> {
+                        if (trimmed.contains("Query time:")) queryTime = trimmed.substringAfter("Query time:").trim()
+                        if (trimmed.contains("SERVER:")) server = trimmed.substringAfter("SERVER:").trim()
+                    }
+                    trimmed.isNotBlank() && !trimmed.startsWith(";") -> {
+                        val parts = trimmed.split(Regex("\\s+"), limit = 5)
+                        if (parts.size >= 5) {
+                            answers.add(DnsLookupAnswer(
+                                name = parts[0],
+                                ttl = parts[1].toIntOrNull() ?: 0,
+                                type = parts[3],
+                                value = parts[4]
+                            ))
+                        }
                     }
                 }
             }
+        } else {
+            status = "TRACE"
         }
 
         return DnsLookupResult(
@@ -1094,7 +1122,7 @@ class DnsServiceImpl : IDnsService {
             query = request.query,
             type = request.type,
             answers = answers,
-            rawOutput = result.output,
+            rawOutput = result.output.ifBlank { result.error },
             queryTime = queryTime,
             server = server,
             status = status

@@ -30,6 +30,7 @@ build_ui() {
 }
 
 run_server() {
+    build_server
     echo "----------------------------------------"
     echo "Starting Server (Logging to $SERVER_LOG)..."
     echo "----------------------------------------"
