@@ -254,6 +254,7 @@ class AnalyticsServiceImpl(
 
             // Reset counters
             resetDailyStats()
+            lastResetDate = today
             logger.info("Reset daily stats for $today")
         }
 
