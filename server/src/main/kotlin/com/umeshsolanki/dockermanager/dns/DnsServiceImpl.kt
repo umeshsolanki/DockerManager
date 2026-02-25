@@ -1757,6 +1757,23 @@ controls {
         val cmd = if (zoneName != null) "rndc reload $zoneName" else "rndc reload"
         val result = bindExec(cmd)
         if (result.exitCode != 0) logger.warn("rndc reload failed for cmd '$cmd': ${result.error}")
+        
+        // Enforce NSEC3 over NSEC for DNSSEC zones to prevent zone enumeration risks
+        Thread {
+            try {
+                Thread.sleep(1000) // Give BIND a second to load the zone and keys
+                val zones = loadZones()
+                val targetZones = if (zoneName != null) zones.filter { it.name == zoneName && it.dnssecEnabled } else zones.filter { it.dnssecEnabled }
+                
+                for (zone in targetZones) {
+                    if (zone.role == ZoneRole.MASTER) {
+                        bindExec("rndc signing -nsec3param 1 0 10 auto ${zone.name}")
+                    }
+                }
+            } catch (e: Exception) {
+                logger.error("Failed to enforce NSEC3 parameters", e)
+            }
+        }.start()
     }
 
     // ==================== Installation ====================
