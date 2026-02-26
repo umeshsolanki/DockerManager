@@ -1073,11 +1073,7 @@ class DnsServiceImpl : IDnsService {
         val optionsStr = request.options.joinToString(" ")
         val baseOpts = if (request.options.contains("+trace")) "" else "+noall +answer +stats +comments"
         val digArgs = "$serverArg $portArg ${request.query} ${request.type} $optionsStr $baseOpts".trim()
-        val cmd = if (isDockerMode && request.server.isNullOrBlank() && getInstallStatus().installed) {
-            "${AppConfig.dockerCommand} exec $containerName dig @127.0.0.1 ${request.query} ${request.type} $optionsStr $baseOpts".trim()
-        } else {
-            "dig $digArgs"
-        }
+        val cmd = "dig $digArgs"
         val result = commandExecutor.execute(cmd)
 
         if (result.exitCode != 0) {
@@ -1968,8 +1964,14 @@ controls {
 
         // Attempt to fetch the true live serial from BIND if the zone is running.
         // BIND's auto-signing increments internal serials that we must respect to avoid "out of range" errors.
-        if (zoneName != null) {
-            val digOutput = commandExecutor.execute("dig +short SOA $zoneName @127.0.0.1").output.trim()
+        if (zoneName != null && getInstallStatus().installed) {
+            val port = if (isDockerMode) {
+                File(dnsComposeDir, ".env").takeIf { it.exists() }?.readLines()
+                    ?.firstOrNull { it.startsWith("BIND9_HOST_PORT=") }
+                    ?.substringAfter("=")?.trim()?.toIntOrNull() ?: 53
+            } else 53
+            val portArg = if (port != 53) "-p $port" else ""
+            val digOutput = commandExecutor.execute("dig +short SOA $zoneName @127.0.0.1 $portArg".trim()).output.trim()
                 if (digOutput.isNotBlank() && !digOutput.startsWith(";") && digOutput.split("\\s+".toRegex()).size >= 3) {
                     val liveSerialStr = digOutput.split("\\s+".toRegex())[2]
                     val liveSerial = liveSerialStr.toLongOrNull()
