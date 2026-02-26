@@ -121,47 +121,7 @@ class DnsServiceImpl : IDnsService {
     }
 
     private fun syncDnssecState() {
-        val zones = loadZones()
-        var reloaded = false
-        val cKeysDir = containerKeysDir()
-        
-        for (zone in zones) {
-            if (zone.dnssecEnabled && zone.role == ZoneRole.MASTER) {
-                val zskFiles = keysDir.listFiles { _, name -> name.startsWith("K${zone.name}.") && name.endsWith(".key") } ?: emptyArray()
-                if (zskFiles.isEmpty()) {
-                    logger.warn("DNSSEC is enabled for ${zone.name} but keys are missing. Auto-recovering...")
-                    
-                    // Generate KSK
-                    val kskResult = bindExec("dnssec-keygen -K $cKeysDir -a ECDSAP256SHA256 -fKSK ${zone.name}")
-                    if (kskResult.exitCode != 0) {
-                        logger.error("Auto-recovery KSK generation failed for ${zone.name}: ${kskResult.error}")
-                        continue
-                    }
-
-                    // Generate ZSK
-                    val zskResult = bindExec("dnssec-keygen -K $cKeysDir -a ECDSAP256SHA256 ${zone.name}")
-                    if (zskResult.exitCode != 0) {
-                        logger.error("Auto-recovery ZSK generation failed for ${zone.name}: ${zskResult.error}")
-                        continue
-                    }
-
-                    // BIND handles inline signing automatically; just reload
-                    if (kskResult.exitCode == 0 && zskResult.exitCode == 0) {
-                        if (isDockerMode) {
-                            bindExec("chown bind:bind $cKeysDir/K${zone.name}.*")
-                        }
-                        logger.info("Successfully recovered DNSSEC keys for ${zone.name}")
-                        reloaded = true
-                    } else {
-                        logger.error("Auto-recovery ZSK/KSK generation failed for ${zone.name}")
-                    }
-                }
-            }
-        }
-        
-        if (reloaded) {
-            reloadBind()
-        }
+        // With dnssec-policy default, BIND manages keys itself. No manual key generation.
     }
 
     // ===================================================================
@@ -277,7 +237,7 @@ class DnsServiceImpl : IDnsService {
         val zones = loadZones()
         val zone = zones.find { it.id == zoneId } ?: return false
 
-        File(zone.filePath).delete()
+        getZoneFilePath(zone).delete()
         removeNamedConfEntry(zone)
         zones.removeIf { it.id == zoneId }
         saveZones(zones)
@@ -487,7 +447,7 @@ class DnsServiceImpl : IDnsService {
 
     override fun validateZone(zoneId: String): ZoneValidationResult {
         val zone = getZone(zoneId) ?: return ZoneValidationResult(false, "Zone not found")
-        val zonePath = translateToContainerPath(zone.filePath)
+        val zonePath = "${containerZonesDir()}/db.${zone.name}"
         val result = bindExec("named-checkzone ${zone.name} $zonePath")
         return ZoneValidationResult(result.exitCode == 0, result.output.trim().ifBlank { result.error.trim() })
     }
@@ -498,7 +458,7 @@ class DnsServiceImpl : IDnsService {
 
     override fun getZoneFileContent(zoneId: String): String? {
         val zone = getZone(zoneId) ?: return null
-        val file = File(zone.filePath)
+        val file = getZoneFilePath(zone)
         return if (file.exists()) file.readText() else null
     }
 
@@ -975,18 +935,16 @@ class DnsServiceImpl : IDnsService {
         val zone = getZone(zoneId) ?: return DnssecStatus()
         if (!zone.dnssecEnabled) return DnssecStatus()
 
-        val kskFiles = keysDir.listFiles()?.filter { it.name.startsWith("K${zone.name}") && it.name.contains("ksk") } ?: emptyList()
-        val zskFiles = keysDir.listFiles()?.filter { it.name.startsWith("K${zone.name}") && it.name.contains("zsk") } ?: emptyList()
-
         val cKeysDir = containerKeysDir()
+        val keyFiles = keysDir.listFiles()?.filter { it.name.startsWith("K${zone.name}") && it.name.endsWith(".key") } ?: emptyList()
         val dsResult = bindExec("dnssec-dsfromkey $cKeysDir/K${zone.name}.*.key 2>/dev/null")
         val dsRecords = if (dsResult.exitCode == 0) dsResult.output.lines().filter { it.isNotBlank() } else emptyList()
 
         return DnssecStatus(
             enabled = true,
-            signed = File(zone.filePath + ".signed").exists(),
-            kskKeyTag = kskFiles.firstOrNull()?.name ?: "",
-            zskKeyTag = zskFiles.firstOrNull()?.name ?: "",
+            signed = File(getZoneFilePath(zone).absolutePath + ".signed").exists(),
+            kskKeyTag = keyFiles.firstOrNull()?.name ?: "BIND-managed",
+            zskKeyTag = if (keyFiles.size > 1) keyFiles.drop(1).firstOrNull()?.name ?: "" else "BIND-managed",
             dsRecords = dsRecords
         )
     }
@@ -994,28 +952,14 @@ class DnsServiceImpl : IDnsService {
     override fun enableDnssec(zoneId: String): DnsActionResult = lock.withLock {
         val zone = getZone(zoneId) ?: return DnsActionResult(false, "Zone not found")
         val cKeysDir = containerKeysDir()
-        val cZonePath = if (isDockerMode) "${containerZonesDir()}/${File(zone.filePath).name}" else zone.filePath
 
         bindExec("mkdir -p $cKeysDir")
 
-        val kskResult = bindExec(
-            "dnssec-keygen -K $cKeysDir -a ECDSAP256SHA256 -fKSK ${zone.name}"
-        )
-        if (kskResult.exitCode != 0) return DnsActionResult(false, "KSK generation failed: ${kskResult.error}")
-
-        val zskResult = bindExec(
-            "dnssec-keygen -K $cKeysDir -a ECDSAP256SHA256 ${zone.name}"
-        )
-        if (zskResult.exitCode != 0) return DnsActionResult(false, "ZSK generation failed: ${zskResult.error}")
-
-        if (isDockerMode) {
-            bindExec("chown bind:bind $cKeysDir/K${zone.name}.*")
-        }
-
         mutateZone(zoneId) { it.copy(dnssecEnabled = true) }
         writeNamedConfEntry(getZone(zoneId)!!)
-        reloadBind()
-        DnsActionResult(true, "DNSSEC enabled for ${zone.name}. BIND will now inline-sign the zone.")
+        reloadBind(zone.name)
+
+        DnsActionResult(true, "DNSSEC enabled for ${zone.name}. BIND (dnssec-policy default) will inline-sign the zone.")
     }
 
     override fun signZone(zoneId: String): DnsActionResult = lock.withLock {
@@ -1036,9 +980,10 @@ class DnsServiceImpl : IDnsService {
         reloadBind()
 
         // Clean up files after BIND has released the configuration
-        File(zone.filePath + ".signed").delete()
-        File(zone.filePath + ".signed.jnl").delete()
-        File(zone.filePath + ".jnl").delete()
+        val base = getZoneFilePath(zone).absolutePath
+        File("$base.signed").delete()
+        File("$base.signed.jnl").delete()
+        File("$base.jnl").delete()
         keysDir.listFiles()?.filter { it.name.startsWith("K${zone.name}") }?.forEach { it.delete() }
 
         DnsActionResult(true, "DNSSEC disabled for ${zone.name}")
@@ -1072,11 +1017,28 @@ class DnsServiceImpl : IDnsService {
             }
         }
 
-        val serverArg = if (!request.server.isNullOrBlank()) "@${request.server}" else ""
-        val portArg = if (request.port != null) "-p ${request.port}" else ""
+        val (resolvedServer, resolvedPort) = when {
+            !request.server.isNullOrBlank() -> request.server.trim() to request.port
+            getInstallStatus().installed -> {
+                val port = if (getInstallStatus().method == DnsInstallMethod.DOCKER) {
+                    File(dnsComposeDir, ".env").takeIf { it.exists() }?.readLines()
+                        ?.firstOrNull { it.startsWith("BIND9_HOST_PORT=") }
+                        ?.substringAfter("=")?.trim()?.toIntOrNull() ?: 53
+                } else 53
+                "127.0.0.1" to (request.port ?: port)
+            }
+            else -> null to request.port
+        }
+        val serverArg = if (resolvedServer != null) "@$resolvedServer" else ""
+        val portArg = if (resolvedPort != null) "-p $resolvedPort" else ""
         val optionsStr = request.options.joinToString(" ")
         val baseOpts = if (request.options.contains("+trace")) "" else "+noall +answer +stats +comments"
-        val cmd = "dig $serverArg $portArg ${request.query} ${request.type} $optionsStr $baseOpts"
+        val digArgs = "$serverArg $portArg ${request.query} ${request.type} $optionsStr $baseOpts".trim()
+        val cmd = if (isDockerMode && request.server.isNullOrBlank() && getInstallStatus().installed) {
+            "${AppConfig.dockerCommand} exec $containerName dig @127.0.0.1 ${request.query} ${request.type} $optionsStr $baseOpts".trim()
+        } else {
+            "dig $digArgs"
+        }
         val result = commandExecutor.execute(cmd)
 
         if (result.exitCode != 0) {
@@ -1101,14 +1063,25 @@ class DnsServiceImpl : IDnsService {
                         if (trimmed.contains("SERVER:")) server = trimmed.substringAfter("SERVER:").trim()
                     }
                     trimmed.isNotBlank() && !trimmed.startsWith(";") -> {
-                        val parts = trimmed.split(Regex("\\s+"), limit = 5)
-                        if (parts.size >= 5) {
-                            answers.add(DnsLookupAnswer(
-                                name = parts[0],
-                                ttl = parts[1].toIntOrNull() ?: 0,
-                                type = parts[3],
-                                value = parts[4]
-                            ))
+                        val parts = trimmed.split(Regex("\\s+"))
+                        when {
+                            parts.size >= 5 && (parts.getOrNull(2)?.uppercase() == "IN" || parts.getOrNull(2)?.uppercase() == "HS" || parts.getOrNull(2)?.uppercase() == "CH") -> {
+                                val value = parts.drop(4).joinToString(" ").trim()
+                                if (value.isNotBlank()) {
+                                    answers.add(DnsLookupAnswer(
+                                        name = parts[0],
+                                        ttl = parts[1].toIntOrNull() ?: 0,
+                                        type = parts[3],
+                                        value = value
+                                    ))
+                                }
+                            }
+                            request.options.contains("+short") && trimmed.length < 512 -> {
+                                answers.add(DnsLookupAnswer(name = request.query, ttl = 0, type = request.type, value = trimmed))
+                            }
+                            answers.isEmpty() && parts.size in 1..4 && !trimmed.contains(":") && !trimmed.startsWith("+") -> {
+                                answers.add(DnsLookupAnswer(name = request.query, ttl = 0, type = request.type, value = trimmed))
+                            }
                         }
                     }
                 }
@@ -1460,7 +1433,23 @@ class DnsServiceImpl : IDnsService {
         return name
     }
 
+    /** Canonical zone file path — always under current zonesDir so BIND mount sees it. */
+    private fun getZoneFilePath(zone: DnsZone): File = File(zonesDir, "db.${zone.name}")
+
     private fun writeZoneFile(zone: DnsZone) {
+        val zoneFile = getZoneFilePath(zone)
+        val isDnssec = zone.dnssecEnabled && zone.role == ZoneRole.MASTER
+
+        if (isDnssec) {
+            val zonestatus = bindExec("rndc zonestatus ${zone.name} 2>/dev/null")
+            if (zonestatus.exitCode == 0) {
+                val freezeResult = bindExec("rndc freeze ${zone.name}")
+                if (freezeResult.exitCode != 0) {
+                    logger.warn("rndc freeze failed for ${zone.name}: ${freezeResult.error}")
+                }
+            }
+        }
+
         val soa = zone.soa
         val zoneName = zone.name.ensureTrailingDot().lowercase()
         val records = zone.records.toMutableList()
@@ -1560,11 +1549,26 @@ class DnsServiceImpl : IDnsService {
             }
         }
 
-        File(zone.filePath).apply {
+        zoneFile.apply {
             parentFile.mkdirs()
             writeText(content)
         }
-        logger.info("Wrote zone file: ${zone.filePath} (Records: ${records.size})")
+
+        if (isDnssec) {
+            listOf(".jnl", ".signed", ".signed.jnl", ".jbk").forEach { ext ->
+                File(zoneFile.absolutePath + ext).takeIf { it.exists() }?.delete()
+            }
+            val thawResult = bindExec("rndc thaw ${zone.name}")
+            if (thawResult.exitCode != 0) {
+                logger.warn("rndc thaw failed for ${zone.name}: ${thawResult.error}")
+            }
+            val signResult = bindExec("rndc sign ${zone.name}")
+            if (signResult.exitCode != 0) {
+                logger.warn("rndc sign failed for ${zone.name}: ${signResult.error}")
+            }
+        }
+
+        logger.info("Wrote zone file: ${zoneFile.absolutePath} (Records: ${records.size})")
     }
 
     /** Format record name for BIND zone file: relative names (no trailing dot) for in-zone, FQDN with trailing dot otherwise. */
@@ -1650,7 +1654,7 @@ class DnsServiceImpl : IDnsService {
         if (!confFile.exists()) { confFile.parentFile?.mkdirs(); confFile.createNewFile() }
         removeNamedConfEntry(zone)
 
-        val zoneFilePath = zone.filePath
+        val containerZoneFile = "${containerZonesDir()}/db.${zone.name}"
 
         val entry = buildString {
             appendLine(managedBlockStart.format(zone.name))
@@ -1659,18 +1663,18 @@ class DnsServiceImpl : IDnsService {
             when (zone.role) {
                 ZoneRole.MASTER -> {
                     appendLine("    type master;")
-                    appendLine("    file \"${translateToContainerPath(zoneFilePath)}\";")
+                    appendLine("    file \"$containerZoneFile\";")
                 }
                 ZoneRole.SLAVE -> {
                     appendLine("    type slave;")
-                    appendLine("    file \"${translateToContainerPath(zone.filePath)}\";")
+                    appendLine("    file \"$containerZoneFile\";")
                     if (zone.masterAddresses.isNotEmpty()) {
                         appendLine("    masters { ${zone.masterAddresses.joinToString("; ")}; };")
                     }
                 }
                 ZoneRole.STUB -> {
                     appendLine("    type stub;")
-                    appendLine("    file \"${translateToContainerPath(zone.filePath)}\";")
+                    appendLine("    file \"$containerZoneFile\";")
                     if (zone.masterAddresses.isNotEmpty()) {
                         appendLine("    masters { ${zone.masterAddresses.joinToString("; ")}; };")
                     }
