@@ -121,7 +121,27 @@ class DnsServiceImpl : IDnsService {
     }
 
     private fun syncDnssecState() {
-        // With dnssec-policy default, BIND manages keys itself. No manual key generation.
+        val zones = loadZones()
+        var reloaded = false
+        val cKeysDir = containerKeysDir()
+
+        for (zone in zones) {
+            if (zone.dnssecEnabled && zone.role == ZoneRole.MASTER && zone.dnssecPolicy == "manual") {
+                val keyFiles = keysDir.listFiles { _, name -> name.startsWith("K${zone.name}.") && name.endsWith(".key") } ?: emptyArray()
+                if (keyFiles.isEmpty()) {
+                    logger.warn("DNSSEC manual keys missing for ${zone.name}. Auto-recovering...")
+                    val alg = zone.dnssecAlgorithm.takeIf { it in listOf("ECDSAP256SHA256", "ECDSAP384SHA384", "RSASHA256", "RSASHA512") } ?: "ECDSAP256SHA256"
+                    val kskResult = bindExec("dnssec-keygen -K $cKeysDir -a $alg -fKSK ${zone.name}")
+                    val zskResult = if (kskResult.exitCode == 0) bindExec("dnssec-keygen -K $cKeysDir -a $alg ${zone.name}") else kskResult
+                    if (kskResult.exitCode == 0 && zskResult.exitCode == 0) {
+                        if (isDockerMode) bindExec("chown bind:bind $cKeysDir/K${zone.name}.*")
+                        logger.info("Recovered DNSSEC keys for ${zone.name}")
+                        reloaded = true
+                    }
+                }
+            }
+        }
+        if (reloaded) reloadBind()
     }
 
     // ===================================================================
@@ -949,17 +969,36 @@ class DnsServiceImpl : IDnsService {
         )
     }
 
-    override fun enableDnssec(zoneId: String): DnsActionResult = lock.withLock {
+    override fun enableDnssec(zoneId: String, request: EnableDnssecRequest?): DnsActionResult = lock.withLock {
         val zone = getZone(zoneId) ?: return DnsActionResult(false, "Zone not found")
+        val policy = request?.policy?.takeIf { it in listOf("manual", "dnssec-policy") } ?: "manual"
+        val algorithm = request?.algorithm?.takeIf { it in listOf("ECDSAP256SHA256", "ECDSAP384SHA384", "RSASHA256", "RSASHA512") } ?: "ECDSAP256SHA256"
         val cKeysDir = containerKeysDir()
 
         bindExec("mkdir -p $cKeysDir")
 
-        mutateZone(zoneId) { it.copy(dnssecEnabled = true) }
+        if (policy == "manual") {
+            val kskResult = bindExec("dnssec-keygen -K $cKeysDir -a $algorithm -fKSK ${zone.name}")
+            if (kskResult.exitCode != 0) return DnsActionResult(false, "KSK generation failed: ${kskResult.error}")
+
+            val zskResult = bindExec("dnssec-keygen -K $cKeysDir -a $algorithm ${zone.name}")
+            if (zskResult.exitCode != 0) return DnsActionResult(false, "ZSK generation failed: ${zskResult.error}")
+
+            if (isDockerMode) {
+                bindExec("chown bind:bind $cKeysDir/K${zone.name}.*")
+            }
+        }
+
+        mutateZone(zoneId) { it.copy(dnssecEnabled = true, dnssecPolicy = policy, dnssecAlgorithm = algorithm) }
         writeNamedConfEntry(getZone(zoneId)!!)
         reloadBind(zone.name)
 
-        DnsActionResult(true, "DNSSEC enabled for ${zone.name}. BIND (dnssec-policy default) will inline-sign the zone.")
+        val msg = if (policy == "manual") {
+            "DNSSEC enabled for ${zone.name} (manual keys, $algorithm). Zone will be inline-signed."
+        } else {
+            "DNSSEC enabled for ${zone.name} (dnssec-policy). BIND will manage keys and inline-sign."
+        }
+        DnsActionResult(true, msg)
     }
 
     override fun signZone(zoneId: String): DnsActionResult = lock.withLock {
@@ -1574,28 +1613,33 @@ class DnsServiceImpl : IDnsService {
     /** Format record name for BIND zone file: relative names (no trailing dot) for in-zone, FQDN with trailing dot otherwise. */
     private fun formatRecordNameForZone(recordName: String, zoneName: String): String {
         if (recordName == "@" || recordName.isBlank()) return "@"
+        val trimmed = recordName.trim()
         val origin = zoneName.ensureTrailingDot().lowercase()
-        val nameNorm = recordName.trim().ensureTrailingDot().lowercase()
+        // Single label (e.g. "www") = relative to zone, no trailing dot
+        val labels = trimmed.trimEnd('.').split('.')
+        if (labels.size == 1 && labels[0].isNotBlank()) return labels[0]
+        val nameNorm = trimmed.ensureTrailingDot().lowercase()
         if (nameNorm == origin) return "@"
         if (nameNorm.endsWith(".$origin")) {
             val short = nameNorm.dropLast(origin.length + 1)
             return if (short.isEmpty()) "@" else short
         }
-        return if (recordName.endsWith(".")) recordName else "$recordName."
+        return trimmed.ensureTrailingDot()
     }
 
     private fun formatRecord(record: DnsRecord, zoneName: String): String {
         val name = formatRecordNameForZone(record.name, zoneName).padEnd(24)
         val ttl = record.ttl.toString()
         val value = when (record.type) {
-            DnsRecordType.NS, DnsRecordType.CNAME, DnsRecordType.PTR -> record.value.ensureTrailingDot()
-            DnsRecordType.MX -> record.value.ensureTrailingDot()
+            DnsRecordType.NS, DnsRecordType.CNAME, DnsRecordType.PTR, DnsRecordType.MX ->
+                formatRecordNameForZone(record.value, zoneName)
+            DnsRecordType.SRV -> formatRecordNameForZone(record.value, zoneName)
             else -> record.value
         }
         
         return when (record.type) {
             DnsRecordType.MX -> "$name $ttl  IN  MX  ${record.priority ?: 10} $value"
-            DnsRecordType.SRV -> "$name $ttl  IN  SRV ${record.priority ?: 0} ${record.weight ?: 0} ${record.port ?: 0} ${value.ensureTrailingDot()}"
+            DnsRecordType.SRV -> "$name $ttl  IN  SRV ${record.priority ?: 0} ${record.weight ?: 0} ${record.port ?: 0} $value"
             DnsRecordType.TXT -> {
                 val chunks = record.value.chunked(255).map { chunk ->
                     chunk.replace("\\", "\\\\").replace("\"", "\\\"")
@@ -1709,8 +1753,10 @@ class DnsServiceImpl : IDnsService {
             }
             if (zone.dnssecEnabled && zone.role == ZoneRole.MASTER) {
                 appendLine("    key-directory \"/var/lib/bind/keys\";")
-                appendLine("    dnssec-policy default;")
                 appendLine("    inline-signing yes;")
+                if (zone.dnssecPolicy == "dnssec-policy") {
+                    appendLine("    dnssec-policy default;")
+                }
             }
 
             appendLine("};")
@@ -2377,7 +2423,8 @@ logging {
 
     private fun String.ensureTrailingDot(): String {
         if (this == "@" || this.isEmpty()) return this
-        return if (endsWith(".")) this else "$this."
+        val trimmed = this.trimEnd('.')
+        return if (trimmed.isEmpty()) this else "$trimmed."
     }
 
     override fun getEmailHealth(zoneId: String): EmailHealthStatus {
@@ -2528,7 +2575,7 @@ object DnsService {
 
     // DNSSEC
     fun getDnssecStatus(zoneId: String) = service.getDnssecStatus(zoneId)
-    fun enableDnssec(zoneId: String) = service.enableDnssec(zoneId)
+    fun enableDnssec(zoneId: String, request: EnableDnssecRequest? = null) = service.enableDnssec(zoneId, request)
     fun disableDnssec(zoneId: String) = service.disableDnssec(zoneId)
     fun signZone(zoneId: String) = service.signZone(zoneId)
     fun getDsRecords(zoneId: String) = service.getDsRecords(zoneId)

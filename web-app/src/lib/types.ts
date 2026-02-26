@@ -763,6 +763,8 @@ export interface DnsZone {
   alsoNotify: string[];
   forwarders: string[];
   dnssecEnabled: boolean;
+  dnssecPolicy?: string;      // "manual" | "dnssec-policy"
+  dnssecAlgorithm?: string; // ECDSAP256SHA256 | ECDSAP384SHA384 | RSASHA256 | RSASHA512
 }
 
 export interface DnsServiceStatus {

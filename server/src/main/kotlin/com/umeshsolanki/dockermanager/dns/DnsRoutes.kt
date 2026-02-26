@@ -130,7 +130,8 @@ fun Route.dnsRoutes() {
 
                 post("/dnssec/enable") {
                     val id = call.requireParameter("id") ?: return@post
-                    call.respond(DnsService.enableDnssec(id))
+                    val request = try { call.receive<EnableDnssecRequest>() } catch (_: Exception) { null }
+                    call.respond(DnsService.enableDnssec(id, request))
                 }
 
                 post("/dnssec/disable") {

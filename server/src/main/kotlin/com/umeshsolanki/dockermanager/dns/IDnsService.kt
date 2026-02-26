@@ -55,7 +55,7 @@ interface IDnsService {
 
     // -- DNSSEC --
     fun getDnssecStatus(zoneId: String): DnssecStatus
-    fun enableDnssec(zoneId: String): DnsActionResult
+    fun enableDnssec(zoneId: String, request: EnableDnssecRequest? = null): DnsActionResult
     fun disableDnssec(zoneId: String): DnsActionResult
     fun signZone(zoneId: String): DnsActionResult
     fun getDsRecords(zoneId: String): List<String>

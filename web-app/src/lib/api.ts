@@ -505,7 +505,11 @@ export const DockerClient = {
 
     // DNSSEC
     getDnssecStatus: (zoneId: String) => req<DnssecStatus>(`/dns/zones/${zoneId}/dnssec`, {}, { enabled: false, signed: false, kskKeyTag: '', zskKeyTag: '', dsRecords: [] }),
-    enableDnssec: (zoneId: string) => req<DnsActionResult>(`/dns/zones/${zoneId}/dnssec/enable`, { method: 'POST' }, { success: false, message: 'Error' }),
+    enableDnssec: (zoneId: string, opts?: { policy?: string; algorithm?: string }) =>
+        req<DnsActionResult>(`/dns/zones/${zoneId}/dnssec/enable`, {
+            method: 'POST',
+            body: opts ? JSON.stringify({ policy: opts.policy ?? 'manual', algorithm: opts.algorithm ?? 'ECDSAP256SHA256' }) : undefined
+        }, { success: false, message: 'Error' }),
     disableDnssec: (zoneId: string) => req<DnsActionResult>(`/dns/zones/${zoneId}/dnssec/disable`, { method: 'POST' }, { success: false, message: 'Error' }),
     signDnsZone: (zoneId: string) => req<DnsActionResult>(`/dns/zones/${zoneId}/dnssec/sign`, { method: 'POST' }, { success: false, message: 'Error' }),
     getDsRecords: (zoneId: string) => req<string[]>(`/dns/zones/${zoneId}/dnssec/ds`, {}, []),

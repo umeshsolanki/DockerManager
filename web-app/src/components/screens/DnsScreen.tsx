@@ -197,7 +197,7 @@ export default function DnsScreen() {
                 {tab === 'analytics' && <DnsAnalyticsTab />}
                 {tab === 'zones' && <DnsZonesTab zones={zones} selectedZoneId={selectedZoneId} onSelectZone={setSelectedZoneId} onRefresh={refresh} />}
                 {tab === 'lookup' && <DnsLookupTab />}
-                {tab === 'security' && <DnsSecurityTab zones={zones} />}
+                {tab === 'security' && <DnsSecurityTab zones={zones} onRefresh={refresh} />}
                 {tab === 'config' && <DnsConfigTab />}
             </div>
         </div>

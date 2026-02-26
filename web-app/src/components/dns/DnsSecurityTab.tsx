@@ -317,11 +317,15 @@ function TsigSection() {
     );
 }
 
-function DnssecSection({ zones }: { zones: DnsZone[] }) {
+function DnssecSection({ zones, onRefresh }: { zones: DnsZone[]; onRefresh?: () => void }) {
     const masterZones = zones.filter(z => z.role === 'MASTER');
     const [selectedId, setSelectedId] = useState<string | null>(masterZones[0]?.id ?? null);
     const [status, setStatus] = useState<DnssecStatus | null>(null);
     const [loading, setLoading] = useState(false);
+    const [enablePolicy, setEnablePolicy] = useState<string>('manual');
+    const [enableAlgorithm, setEnableAlgorithm] = useState<string>('ECDSAP256SHA256');
+
+    const selectedZone = masterZones.find(z => z.id === selectedId);
 
     const refreshStatus = useCallback(async () => {
         if (!selectedId) return;
@@ -333,12 +337,16 @@ function DnssecSection({ zones }: { zones: DnsZone[] }) {
     const handleToggle = async () => {
         if (!selectedId) return;
         setLoading(true);
-        const r = status?.enabled
-            ? await DockerClient.disableDnssec(selectedId)
-            : await DockerClient.enableDnssec(selectedId);
+        if (status?.enabled) {
+            const r = await DockerClient.disableDnssec(selectedId);
+            r.success ? toast.success(r.message) : toast.error(r.message);
+        } else {
+            const r = await DockerClient.enableDnssec(selectedId, { policy: enablePolicy, algorithm: enableAlgorithm });
+            r.success ? toast.success(r.message) : toast.error(r.message);
+        }
         setLoading(false);
-        r.success ? toast.success(r.message) : toast.error(r.message);
         refreshStatus();
+        onRefresh?.();
     };
 
     return (
@@ -355,6 +363,9 @@ function DnssecSection({ zones }: { zones: DnsZone[] }) {
                             <div className="flex gap-2">
                                 <StatusBadge ok={status.enabled} label={status.enabled ? 'Enabled' : 'Disabled'} />
                                 {status.signed && <StatusBadge ok={true} label="Signed" />}
+                                {status.enabled && selectedZone?.dnssecPolicy && (
+                                    <StatusBadge ok={true} label={selectedZone.dnssecPolicy === 'manual' ? 'Manual' : 'Policy'} />
+                                )}
                             </div>
                             {status.kskKeyTag && <p className="text-[10px] text-on-surface-variant font-mono">KSK: {status.kskKeyTag}</p>}
                             {status.zskKeyTag && <p className="text-[10px] text-on-surface-variant font-mono">ZSK: {status.zskKeyTag}</p>}
@@ -362,6 +373,31 @@ function DnssecSection({ zones }: { zones: DnsZone[] }) {
                                 <div>
                                     <p className="text-xs font-medium mb-1">DS Records (add to registrar)</p>
                                     {status.dsRecords.map((ds, i) => <pre key={i} className="text-[10px] font-mono bg-surface p-2 rounded mb-1 break-all">{ds}</pre>)}
+                                </div>
+                            )}
+                            {!status.enabled && (
+                                <div className="space-y-2 p-2 rounded-lg bg-surface-container-low/50 border border-outline/10">
+                                    <div>
+                                        <label className="block text-xs font-medium mb-1">Signing policy</label>
+                                        <select value={enablePolicy} onChange={e => setEnablePolicy(e.target.value)} className="input-field text-sm">
+                                            <option value="manual">Manual keys (dnssec-keygen)</option>
+                                            <option value="dnssec-policy">dnssec-policy (BIND-managed)</option>
+                                        </select>
+                                        <p className="text-[10px] text-on-surface-variant mt-0.5">
+                                            {enablePolicy === 'manual' ? 'Generate KSK/ZSK with dnssec-keygen. You control keys.' : 'BIND manages keys automatically via dnssec-policy default.'}
+                                        </p>
+                                    </div>
+                                    {enablePolicy === 'manual' && (
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1">Algorithm</label>
+                                            <select value={enableAlgorithm} onChange={e => setEnableAlgorithm(e.target.value)} className="input-field text-sm">
+                                                <option value="ECDSAP256SHA256">ECDSAP256SHA256</option>
+                                                <option value="ECDSAP384SHA384">ECDSAP384SHA384</option>
+                                                <option value="RSASHA256">RSASHA256</option>
+                                                <option value="RSASHA512">RSASHA512</option>
+                                            </select>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                             <div className="flex gap-2">
@@ -393,11 +429,11 @@ function DnssecSection({ zones }: { zones: DnsZone[] }) {
     );
 }
 
-export default function DnsSecurityTab({ zones }: { zones: DnsZone[] }) {
+export default function DnsSecurityTab({ zones, onRefresh }: { zones: DnsZone[]; onRefresh?: () => void }) {
     return (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             <GlobalSecuritySection />
-            <DnssecSection zones={zones} />
+            <DnssecSection zones={zones} onRefresh={onRefresh} />
             <TsigSection />
             <AclSection />
         </div>

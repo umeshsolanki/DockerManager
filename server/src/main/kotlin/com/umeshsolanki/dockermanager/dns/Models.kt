@@ -74,7 +74,9 @@ data class DnsZone(
     val allowQuery: List<String> = emptyList(),
     val alsoNotify: List<String> = emptyList(),
     val forwarders: List<String> = emptyList(),
-    val dnssecEnabled: Boolean = false
+    val dnssecEnabled: Boolean = false,
+    val dnssecPolicy: String = "manual",      // "manual" | "dnssec-policy"
+    val dnssecAlgorithm: String = "ECDSAP256SHA256"  // ECDSAP256SHA256 | ECDSAP384SHA384 | RSASHA256 | RSASHA512
 )
 
 // ========== Service Status ==========
@@ -132,6 +134,12 @@ data class DnsForwarderConfig(
 )
 
 // ========== DNSSEC ==========
+
+@Serializable
+data class EnableDnssecRequest(
+    val policy: String = "manual",       // "manual" | "dnssec-policy"
+    val algorithm: String = "ECDSAP256SHA256"
+)
 
 @Serializable
 data class DnssecStatus(
