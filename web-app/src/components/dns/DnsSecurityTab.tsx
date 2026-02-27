@@ -485,6 +485,21 @@ function ApiKeySection() {
         }
     };
 
+    const handleUpdateIps = async (id: string, newIps: string[]) => {
+        if (!config) return;
+        const updated = {
+            ...config,
+            apiKeys: (config.apiKeys || []).map(k => k.id === id ? { ...k, allowedIps: newIps } : k)
+        };
+        const r = await DockerClient.updateGlobalSecurityConfig(updated);
+        if (r.success) {
+            toast.success('Allowed IPs updated');
+            refresh();
+        } else {
+            toast.error('Failed to update IPs');
+        }
+    };
+
     if (!config) return null;
 
     return (
@@ -495,17 +510,24 @@ function ApiKeySection() {
                     <div key={k.id} className="flex items-start gap-3 p-3 rounded-lg bg-surface">
                         <Key size={14} className="text-primary shrink-0 mt-0.5" />
                         <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium">{k.name}</div>
+                            <div className="text-sm font-medium flex items-center justify-between">
+                                {k.name}
+                                <button onClick={() => handleDelete(k.id)} className="text-red-400 hover:text-red-300 p-1" title="Delete API Key"><Trash2 size={14} /></button>
+                            </div>
                             <div className="text-[10px] text-on-surface-variant font-mono select-all bg-surface-container-low px-1.5 py-1 rounded mt-1 overflow-hidden text-ellipsis border border-outline/5">{k.key}</div>
-                            {k.allowedIps.length > 0 ? (
-                                <div className="flex gap-1 flex-wrap mt-2">
-                                    {k.allowedIps.map((e, i) => <span key={i} className="text-[10px] bg-surface-container px-1.5 py-0.5 rounded font-mono">{e}</span>)}
-                                </div>
-                            ) : (
-                                <div className="text-[10px] text-amber-500 mt-1">⚠️ No IP restrictions. API Key can be used from anywhere.</div>
-                            )}
+
+                            <div className="mt-2">
+                                <label className="block text-[10px] font-medium mb-1 text-on-surface-variant uppercase tracking-wider">Restricted allowed IPs/CIDRs</label>
+                                <TagInput
+                                    value={k.allowedIps || []}
+                                    onChange={(newIps) => handleUpdateIps(k.id, newIps)}
+                                    placeholder="Add IP/CIDR"
+                                />
+                                {(!k.allowedIps || k.allowedIps.length === 0) && (
+                                    <div className="text-[10px] text-amber-500 mt-1">⚠️ No IP restrictions. API Key can be used from anywhere.</div>
+                                )}
+                            </div>
                         </div>
-                        <button onClick={() => handleDelete(k.id)} className="text-red-400 hover:text-red-300 p-1"><Trash2 size={14} /></button>
                     </div>
                 ))}
                 {(config.apiKeys || []).length === 0 && <p className="text-xs text-on-surface-variant">No API keys</p>}
