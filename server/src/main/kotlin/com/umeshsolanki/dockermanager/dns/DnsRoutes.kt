@@ -398,33 +398,33 @@ fun Route.dnsApiKeyRoutes() {
             JailManagerService.clearFailedAttempts(remoteHost)
         }
 
-        route("/zones/{id}") {
+        route("/zones/{idOrName}") {
             get {
-                val id = call.requireParameter("id") ?: return@get
-                call.respondNullableResult(DnsService.getZone(id), "Zone not found")
+                val identifier = call.requireParameter("idOrName") ?: return@get
+                call.respondNullableResult(DnsService.getZone(identifier), "Zone not found")
             }
             route("/records") {
                 get {
-                    val id = call.requireParameter("id") ?: return@get
-                    call.respond(DnsService.getRecords(id))
+                    val identifier = call.requireParameter("idOrName") ?: return@get
+                    call.respond(DnsService.getRecords(identifier))
                 }
 
                 put {
-                    val id = call.requireParameter("id") ?: return@put
+                    val identifier = call.requireParameter("idOrName") ?: return@put
                     val request = call.receive<UpdateRecordRequest>()
-                    call.respondBooleanResult(DnsService.updateRecords(id, request.records), "Records updated", "Failed to update records")
+                    call.respondBooleanResult(DnsService.updateRecords(identifier, request.records), "Records updated", "Failed to update records")
                 }
 
                 post {
-                    val id = call.requireParameter("id") ?: return@post
+                    val identifier = call.requireParameter("idOrName") ?: return@post
                     val record = call.receive<DnsRecord>()
-                    call.respondBooleanResult(DnsService.addRecord(id, record), "Record added", "Failed to add record", HttpStatusCode.Created)
+                    call.respondBooleanResult(DnsService.addRecord(identifier, record), "Record added", "Failed to add record", HttpStatusCode.Created)
                 }
 
                 delete("/{recordId}") {
-                    val zoneId = call.requireParameter("id") ?: return@delete
+                    val identifier = call.requireParameter("idOrName") ?: return@delete
                     val recordId = call.requireParameter("recordId") ?: return@delete
-                    call.respondBooleanResult(DnsService.deleteRecord(zoneId, recordId), "Record deleted", "Failed to delete record")
+                    call.respondBooleanResult(DnsService.deleteRecord(identifier, recordId), "Record deleted", "Failed to delete record")
                 }
             }
         }

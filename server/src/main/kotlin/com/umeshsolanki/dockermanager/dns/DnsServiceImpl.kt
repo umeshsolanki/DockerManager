@@ -165,9 +165,16 @@ class DnsServiceImpl : IDnsService {
         }
     }
 
+    private fun findZoneIndex(zones: List<DnsZone>, identifier: String): Int {
+        val idx = zones.indexOfFirst { it.id == identifier }
+        if (idx != -1) return idx
+        val normalized = identifier.trim().lowercase().trim('.')
+        return zones.indexOfFirst { it.name.trim('.').lowercase() == normalized }
+    }
+
     private fun mutateZone(zoneId: String, mutator: (DnsZone) -> DnsZone): Boolean = lock.withLock {
         val zones = loadZones()
-        val index = zones.indexOfFirst { it.id == zoneId }
+        val index = findZoneIndex(zones, zoneId)
         if (index == -1) return false
         zones[index] = mutator(zones[index])
         saveZones(zones)
@@ -185,7 +192,11 @@ class DnsServiceImpl : IDnsService {
     private fun sanitizeAclEntries(entries: List<String>): List<String> =
         entries.map { it.trim() }.filter { it.isNotBlank() && bindAclPattern.matches(it) }
 
-    override fun getZone(zoneId: String): DnsZone? = loadZones().find { it.id == zoneId }
+    override fun getZone(zoneId: String): DnsZone? {
+        val zones = loadZones()
+        val index = findZoneIndex(zones, zoneId)
+        return if (index != -1) zones[index] else null
+    }
 
     override fun createZone(request: CreateZoneRequest): DnsZone? = lock.withLock {
         val zones = loadZones()
@@ -255,11 +266,13 @@ class DnsServiceImpl : IDnsService {
 
     override fun deleteZone(zoneId: String): Boolean = lock.withLock {
         val zones = loadZones()
-        val zone = zones.find { it.id == zoneId } ?: return false
+        val index = findZoneIndex(zones, zoneId)
+        if (index == -1) return false
+        val zone = zones[index]
 
         getZoneFilePath(zone).delete()
         removeNamedConfEntry(zone)
-        zones.removeIf { it.id == zoneId }
+        zones.removeAt(index)
         saveZones(zones)
         reloadBind()
         true
@@ -267,7 +280,7 @@ class DnsServiceImpl : IDnsService {
 
     override fun toggleZone(zoneId: String): Boolean = lock.withLock {
         val zones = loadZones()
-        val index = zones.indexOfFirst { it.id == zoneId }
+        val index = findZoneIndex(zones, zoneId)
         if (index == -1) return false
 
         val zone = zones[index]
@@ -282,7 +295,7 @@ class DnsServiceImpl : IDnsService {
 
     override fun updateZoneOptions(zoneId: String, request: UpdateZoneOptionsRequest): Boolean = lock.withLock {
         val zones = loadZones()
-        val index = zones.indexOfFirst { it.id == zoneId }
+        val index = findZoneIndex(zones, zoneId)
         if (index == -1) return false
 
         val zone = zones[index]
@@ -303,7 +316,7 @@ class DnsServiceImpl : IDnsService {
 
     override fun updateZone(zoneId: String, request: UpdateZoneRequest): Boolean = lock.withLock {
         val zones = loadZones()
-        val index = zones.indexOfFirst { it.id == zoneId }
+        val index = findZoneIndex(zones, zoneId)
         if (index == -1) return false
 
         val zone = zones[index]
@@ -343,7 +356,7 @@ class DnsServiceImpl : IDnsService {
 
     override fun updateRecords(zoneId: String, records: List<DnsRecord>): Boolean = lock.withLock {
         val zones = loadZones()
-        val index = zones.indexOfFirst { it.id == zoneId }
+        val index = findZoneIndex(zones, zoneId)
         if (index == -1) return false
 
         val cleaned = records.map {
@@ -364,7 +377,7 @@ class DnsServiceImpl : IDnsService {
 
     override fun addRecord(zoneId: String, record: DnsRecord): Boolean = lock.withLock {
         val zones = loadZones()
-        val index = zones.indexOfFirst { it.id == zoneId }
+        val index = findZoneIndex(zones, zoneId)
         if (index == -1) return false
 
         val zone = zones[index]
@@ -383,7 +396,7 @@ class DnsServiceImpl : IDnsService {
 
     override fun deleteRecord(zoneId: String, recordId: String): Boolean = lock.withLock {
         val zones = loadZones()
-        val index = zones.indexOfFirst { it.id == zoneId }
+        val index = findZoneIndex(zones, zoneId)
         if (index == -1) return false
 
         val zone = zones[index]
@@ -1344,7 +1357,7 @@ class DnsServiceImpl : IDnsService {
         val template = templatesPersistence.load().find { it.id == templateId } ?: return false
         return lock.withLock {
             val zones = loadZones()
-            val index = zones.indexOfFirst { it.id == zoneId }
+            val index = findZoneIndex(zones, zoneId)
             if (index == -1) return false
             val zone = zones[index]
 
