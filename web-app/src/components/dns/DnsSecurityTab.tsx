@@ -527,6 +527,16 @@ function ApiKeySection() {
                                     <div className="text-[10px] text-amber-500 mt-1">⚠️ No IP restrictions. API Key can be used from anywhere.</div>
                                 )}
                             </div>
+
+                            <div className="mt-3 p-2 bg-[#1e1e1e] border border-outline/10 rounded-lg overflow-x-auto text-[10px] font-mono text-gray-300">
+                                <div className="text-primary/80 font-semibold mb-1 uppercase tracking-wider text-[8px] select-none">Example: Add Record</div>
+                                <div className="whitespace-pre">
+                                    {`curl -X POST ${DockerClient.getServerUrl()}/api/dns/zones/<ZONE_ID>/records \\
+  -H "X-Api-Key: ${k.key}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"name": "subdomain", "type": "A", "value": "1.2.3.4", "ttl": 300}'`}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 ))}
