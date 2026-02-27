@@ -168,6 +168,12 @@ class IpReputationServiceImpl : IIpReputationService {
     override suspend fun recordActivity(ipAddress: String, countryCode: String?, isp: String?, tag: String?, range: String?, dangerTag: String?) {
         if (ipAddress.isBlank() || AppConfig.isLocalIP(ipAddress)) return
 
+        // Prevent duplicate processing of the same IP right after flush
+        val lastFlush = activityCache[ipAddress]
+        if (lastFlush != null && System.currentTimeMillis() - lastFlush < ACTIVITY_CACHE_TTL_MS) {
+            return
+        }
+
         val entry = ActivityEntry(countryCode, isp, tag, range, dangerTag)
         activityBuffer[ipAddress] = entry
 
