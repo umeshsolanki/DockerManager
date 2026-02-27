@@ -22,6 +22,7 @@ interface IJailManagerService {
     
     // Failed login attempt tracking
     fun recordFailedLoginAttempt(ip: String)
+    fun recordInvalidApiAttempt(ip: String)
     fun clearFailedAttempts(ip: String)
     
     // Proxy security violation checking
@@ -266,6 +267,51 @@ class JailManagerServiceImpl(
         }
     }
     
+    override fun recordInvalidApiAttempt(ip: String) {
+        if (ip.isBlank() || AppConfig.isLocalIP(ip)) return
+        
+        // Record activity in reputation service
+        scope.launch {
+            try {
+                ipReputationService.recordActivity(ip)
+            } catch(e: Exception) {
+                logger.error("Failed to record activity", e)
+            }
+        }
+        
+        val settings = settingsProvider()
+        if (!settings.jailEnabled) return
+        
+        // Check if already jailed
+        if (isIPJailed(ip)) return
+        
+        // Increment failed attempts (we re-use the same failedAttempts bucket for simplicity, or we could use another map if we want separate thresholds)
+        val count = failedAttemptsInWindow.merge(ip, 1, Int::plus) ?: 1
+        
+        // Check threshold
+        if (count >= settings.jailThreshold) {
+            val reason = "Failed API access >= ${settings.jailThreshold} failed attempts"
+            
+            scope.launch {
+                val success = jailIP(ip, settings.jailDurationMinutes, reason)
+                if (success) {
+                    failedAttemptsInWindow.remove(ip)
+                    
+                    // Send notification
+                    try {
+                        FcmService.sendNotification(
+                            title = "Security Alert: IP Jailed",
+                            body = "IP $ip has been jailed for ${settings.jailThreshold} failed API attempts.",
+                            data = mapOf("type" to "security", "ip" to ip, "action" to "jail")
+                        )
+                    } catch (e: Exception) {
+                        logger.warn("Failed to send FCM notification", e)
+                    }
+                }
+            }
+        }
+    }
+
     override fun clearFailedAttempts(ip: String) {
         failedAttemptsInWindow.remove(ip)
     }
@@ -588,6 +634,7 @@ object JailManagerService {
     fun getCountryCode(ip: String) = service.getCountryCode(ip)
     fun isIPJailed(ip: String) = service.isIPJailed(ip)
     fun recordFailedLoginAttempt(ip: String) = service.recordFailedLoginAttempt(ip)
+    fun recordInvalidApiAttempt(ip: String) = service.recordInvalidApiAttempt(ip)
     fun clearFailedAttempts(ip: String) = service.clearFailedAttempts(ip)
     fun checkProxySecurityViolation(ip: String, userAgent: String, method: String, path: String, status: Int, errorCount: Long, hostHeader: String = "") = 
         service.checkProxySecurityViolation(ip, userAgent, method, path, status, errorCount, hostHeader)

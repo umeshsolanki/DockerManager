@@ -844,6 +844,14 @@ export interface GlobalSecurityConfig {
   reuseport: boolean;
   glueIp?: string;
   glueIpv6?: string;
+  apiKeys?: DnsApiKey[];
+}
+
+export interface DnsApiKey {
+  id: string;
+  name: string;
+  key: string;
+  allowedIps: string[];
 }
 
 

@@ -9,6 +9,49 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.*
+import com.umeshsolanki.dockermanager.auth.AuthService
+import io.ktor.http.HttpHeaders
+import io.ktor.server.application.ApplicationCallPipeline
+import io.ktor.server.application.call
+import com.umeshsolanki.dockermanager.jail.JailManagerService
+import io.ktor.server.plugins.origin
+import java.net.InetAddress
+
+private fun checkIpMatch(ip: String, pattern: String): Boolean {
+    val trimmed = pattern.trim()
+    if (ip == trimmed) return true
+    if (!trimmed.contains("/")) return false
+    
+    try {
+        val parts = trimmed.split("/")
+        if (parts.size != 2) return false
+        val subnet = parts[0]
+        val mask = parts[1].toIntOrNull() ?: return false
+        
+        val ipAddr = InetAddress.getByName(ip).address
+        val subnetAddr = InetAddress.getByName(subnet).address
+        
+        if (ipAddr.size != subnetAddr.size) return false
+        
+        var maskBits = mask
+        for (i in ipAddr.indices) {
+            val ipByte = ipAddr[i].toInt() and 0xFF
+            val subnetByte = subnetAddr[i].toInt() and 0xFF
+            
+            if (maskBits >= 8) {
+                if (ipByte != subnetByte) return false
+                maskBits -= 8
+            } else if (maskBits > 0) {
+                val shift = 8 - maskBits
+                if ((ipByte ushr shift) != (subnetByte ushr shift)) return false
+                maskBits = 0
+            }
+        }
+        return true
+    } catch (e: Exception) {
+        return false
+    }
+}
 
 fun Route.dnsRoutes() {
     route("/dns") {
@@ -314,6 +357,75 @@ fun Route.dnsRoutes() {
 
             get("/reverse-dashboard") {
                 call.respond(DnsService.getReverseDnsDashboard())
+            }
+        }
+    }
+}
+
+fun Route.dnsApiKeyRoutes() {
+    route("/api/dns") {
+        intercept(ApplicationCallPipeline.Plugins) {
+            val remoteHost = call.request.origin.remoteHost
+            
+            // Fast exit if explicitly jailed
+            if (JailManagerService.isIPJailed(remoteHost)) {
+                call.respond(HttpStatusCode.Forbidden, "Access Denied")
+                finish()
+                return@intercept
+            }
+            
+            val apiKey = call.request.headers["X-Api-Key"] ?: call.request.queryParameters["apiKey"]
+            var authorized = false
+            
+            if (apiKey != null) {
+                val config = DnsService.getGlobalSecurityConfig()
+                val matchingKey = config.apiKeys.find { it.key == apiKey }
+                if (matchingKey != null) {
+                    if (matchingKey.allowedIps.isEmpty() || matchingKey.allowedIps.any { checkIpMatch(remoteHost, it) }) {
+                        authorized = true
+                    }
+                }
+            }
+            
+            if (!authorized) {
+                JailManagerService.recordInvalidApiAttempt(remoteHost)
+                call.respond(HttpStatusCode.Unauthorized, "Unauthorized or Invalid API Key")
+                finish()
+                return@intercept
+            }
+            
+            // Clear attempts on success
+            JailManagerService.clearFailedAttempts(remoteHost)
+        }
+
+        route("/zones/{id}") {
+            get {
+                val id = call.requireParameter("id") ?: return@get
+                call.respondNullableResult(DnsService.getZone(id), "Zone not found")
+            }
+            route("/records") {
+                get {
+                    val id = call.requireParameter("id") ?: return@get
+                    call.respond(DnsService.getRecords(id))
+                }
+
+                put {
+                    val id = call.requireParameter("id") ?: return@put
+                    val request = call.receive<UpdateRecordRequest>()
+                    call.respondBooleanResult(DnsService.updateRecords(id, request.records), "Records updated", "Failed to update records")
+                }
+
+                post {
+                    val id = call.requireParameter("id") ?: return@post
+                    val record = call.receive<DnsRecord>()
+                    call.respondBooleanResult(DnsService.addRecord(id, record), "Record added", "Failed to add record", HttpStatusCode.Created)
+                }
+
+                delete("/{recordId}") {
+                    val zoneId = call.requireParameter("id") ?: return@delete
+                    val recordId = call.requireParameter("recordId") ?: return@delete
+                    call.respondBooleanResult(DnsService.deleteRecord(zoneId, recordId), "Record deleted", "Failed to delete record")
+                }
             }
         }
     }

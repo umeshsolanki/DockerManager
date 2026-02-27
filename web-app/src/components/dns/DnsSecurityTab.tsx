@@ -434,9 +434,89 @@ export default function DnsSecurityTab({ zones, onRefresh }: { zones: DnsZone[];
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             <GlobalSecuritySection />
             <DnssecSection zones={zones} onRefresh={onRefresh} />
+            <ApiKeySection />
             <TsigSection />
             <AclSection />
         </div>
+    );
+}
+
+function ApiKeySection() {
+    const [config, setConfig] = useState<GlobalSecurityConfig | null>(null);
+    const [name, setName] = useState('');
+    const [allowedIps, setAllowedIps] = useState<string[]>([]);
+
+    const refresh = useCallback(async () => setConfig(await DockerClient.getGlobalSecurityConfig()), []);
+    useEffect(() => { refresh(); }, [refresh]);
+
+    const handleCreate = async () => {
+        if (!name.trim() || !config) return;
+        const array = new Uint8Array(24);
+        window.crypto.getRandomValues(array);
+        const apiKey = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+
+        const newKey = {
+            id: Math.random().toString(36).substring(2, 10),
+            name: name.trim(),
+            key: apiKey,
+            allowedIps
+        };
+        const updated = { ...config, apiKeys: [...(config.apiKeys || []), newKey] };
+        const r = await DockerClient.updateGlobalSecurityConfig(updated);
+        if (r.success) {
+            toast.success('API Key generated');
+            setName('');
+            setAllowedIps([]);
+            refresh();
+        } else {
+            toast.error('Failed to create API key');
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!config) return;
+        const updated = { ...config, apiKeys: (config.apiKeys || []).filter(k => k.id !== id) };
+        const r = await DockerClient.updateGlobalSecurityConfig(updated);
+        if (r.success) {
+            toast.success('API Key deleted');
+            refresh();
+        } else {
+            toast.error('Failed to delete API key');
+        }
+    };
+
+    if (!config) return null;
+
+    return (
+        <SectionCard title="API Keys" actions={<Key size={14} className="text-on-surface-variant" />}>
+            <div className="space-y-3">
+                <p className="text-xs text-on-surface-variant">API keys allow automated tools to manage DNS zones and records without full authentication.</p>
+                {(config.apiKeys || []).map(k => (
+                    <div key={k.id} className="flex items-start gap-3 p-3 rounded-lg bg-surface">
+                        <Key size={14} className="text-primary shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium">{k.name}</div>
+                            <div className="text-[10px] text-on-surface-variant font-mono select-all bg-surface-container-low px-1.5 py-1 rounded mt-1 overflow-hidden text-ellipsis border border-outline/5">{k.key}</div>
+                            {k.allowedIps.length > 0 ? (
+                                <div className="flex gap-1 flex-wrap mt-2">
+                                    {k.allowedIps.map((e, i) => <span key={i} className="text-[10px] bg-surface-container px-1.5 py-0.5 rounded font-mono">{e}</span>)}
+                                </div>
+                            ) : (
+                                <div className="text-[10px] text-amber-500 mt-1">⚠️ No IP restrictions. API Key can be used from anywhere.</div>
+                            )}
+                        </div>
+                        <button onClick={() => handleDelete(k.id)} className="text-red-400 hover:text-red-300 p-1"><Trash2 size={14} /></button>
+                    </div>
+                ))}
+                {(config.apiKeys || []).length === 0 && <p className="text-xs text-on-surface-variant">No API keys</p>}
+
+                <div className="border-t border-outline/10 pt-3 space-y-2">
+                    <input value={name} onChange={e => setName(e.target.value)} placeholder="Key name (e.g. WHMCS, Updater)" className="input-field" />
+                    <TagInput value={allowedIps} onChange={setAllowedIps} placeholder="Allowed IPs or CIDRs (optional, but recommended)" />
+                    <button onClick={handleCreate} disabled={!name.trim()} className="btn-sm bg-primary/10 text-primary disabled:opacity-50"><Plus size={13} /> Generate Key</button>
+                </div>
+            </div>
+        </SectionCard>
     );
 }
 

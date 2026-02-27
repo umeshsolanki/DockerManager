@@ -303,7 +303,16 @@ data class GlobalSecurityConfig(
     val maxCacheSize: String = "128M",
     val reuseport: Boolean = false,
     val glueIp: String? = null,
-    val glueIpv6: String? = null
+    val glueIpv6: String? = null,
+    val apiKeys: List<DnsApiKey> = emptyList()
+)
+
+@Serializable
+data class DnsApiKey(
+    val id: String = "",
+    val name: String,
+    val key: String,
+    val allowedIps: List<String> = emptyList()
 )
 
 
