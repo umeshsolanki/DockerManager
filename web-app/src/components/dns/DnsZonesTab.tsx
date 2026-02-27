@@ -453,7 +453,7 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                         </div>
 
                         <div className="flex items-center gap-2">
-                            <button onClick={() => { setRecords([{ id: '', name: '@', type: 'A', value: '', ttl: 3600 }, ...records]); setDirty(true); }} className="btn-sm bg-primary text-on-primary shadow-sm shadow-primary/20 hover:shadow-md hover:shadow-primary/30 transition-all font-bold">
+                            <button onClick={() => { setRecords([{ id: `new-${Math.random().toString(36).substring(2, 9)}`, name: '@', type: 'A', value: '', ttl: 3600 }, ...records]); setDirty(true); }} className="btn-sm bg-primary text-on-primary shadow-sm shadow-primary/20 hover:shadow-md hover:shadow-primary/30 transition-all font-bold">
                                 <Plus size={16} className="mr-1" /> Add Record
                             </button>
                             {dirty && (
@@ -607,8 +607,8 @@ function ZoneDetail({ zone, onRefresh }: { zone: DnsZone; onRefresh: () => void 
                                     r.value.toLowerCase().includes(searchRecord.toLowerCase())
                                 ).map((r, i) => (
                                     <RecordRow key={r.id || i} record={r} hasPriority={hasPriority}
-                                        onUpdate={u => { const next = [...records]; next[i] = u; setRecords(next); setDirty(true); }}
-                                        onDelete={() => { setRecords(records.filter((_, j) => j !== i)); setDirty(true); }}
+                                        onUpdate={u => { setRecords(records.map(orig => orig === r ? u : orig)); setDirty(true); }}
+                                        onDelete={() => { setRecords(records.filter(orig => orig !== r)); setDirty(true); }}
                                         onCheck={() => { setPropRecord(r); setActiveWizard('propagation'); }} />
                                 ))}
                             </tbody>
