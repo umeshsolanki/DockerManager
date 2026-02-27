@@ -6,7 +6,7 @@ import {
     Terminal, History, Zap, ChevronDown, Copy, GripVertical,
     AlertTriangle, Filter, Eye, EyeOff, Hash, Layers
 } from 'lucide-react';
-import { SystemConfig, ProxyJailRule, ProxyJailRuleType } from '@/lib/types';
+import { SystemConfig, ProxyJailRule, ProxyJailRuleType, ProxyJailRuleTarget } from '@/lib/types';
 import { DockerClient } from '@/lib/api';
 import { Modal } from '../ui/Modal';
 import { toast } from 'sonner';
@@ -364,6 +364,12 @@ function RuleCard({ rule, accent, onDelete, onDuplicate, onEdit }: {
                                 matches empty
                             </span>
                         )}
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${rule.target === ProxyJailRuleTarget.NGINX ? 'bg-indigo-500/15 text-indigo-400' :
+                                rule.target === ProxyJailRuleTarget.INTERNAL ? 'bg-pink-500/15 text-pink-400' :
+                                    'bg-violet-500/15 text-violet-400'
+                            }`}>
+                            {rule.target || ProxyJailRuleTarget.BOTH}
+                        </span>
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                         <code className="text-xs font-mono text-on-surface/70 truncate">
@@ -542,6 +548,7 @@ function RuleFormModal({ rule, onClose, onSave }: {
     const [threshold, setThreshold] = useState(rule?.threshold ?? 1);
     const [statusCodePattern, setStatusCodePattern] = useState(rule?.statusCodePattern ?? '');
     const [matchEmpty, setMatchEmpty] = useState(rule?.matchEmpty ?? false);
+    const [target, setTarget] = useState<ProxyJailRuleTarget>(rule?.target ?? ProxyJailRuleTarget.BOTH);
     const [error, setError] = useState('');
     const [warning, setWarning] = useState('');
     const [validating, setValidating] = useState(false);
@@ -605,6 +612,7 @@ function RuleFormModal({ rule, onClose, onSave }: {
             statusCodePattern: (type === ProxyJailRuleType.COMPOSITE || type === ProxyJailRuleType.STATUS_CODE) && statusCodePattern.trim()
                 ? statusCodePattern.trim()
                 : undefined,
+            target,
         });
     };
 
@@ -638,6 +646,31 @@ function RuleFormModal({ rule, onClose, onSave }: {
                         })}
                     </div>
                     <p className="text-[10px] text-on-surface-variant/40 mt-2 pl-1">{meta.hint}</p>
+                </div>
+
+                {/* Target selector */}
+                <div>
+                    <label className="text-[10px] font-bold uppercase text-on-surface-variant tracking-widest block mb-2">Enforcement Target</label>
+                    <div className="grid grid-cols-3 gap-2">
+                        {[
+                            { id: ProxyJailRuleTarget.INTERNAL, label: 'App (Internal)', desc: 'Mirror & Analyze', icon: Shield },
+                            { id: ProxyJailRuleTarget.NGINX, label: 'Nginx (Edge)', desc: 'Instant Block', icon: Globe },
+                            { id: ProxyJailRuleTarget.BOTH, label: 'Both', desc: 'Edge + Analysis', icon: Layers },
+                        ].map((t) => (
+                            <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => setTarget(t.id)}
+                                className={`flex flex-col items-start gap-1 p-3 rounded-xl border transition-all ${target === t.id ? 'bg-primary/10 border-primary/30 ring-1 ring-primary/30' : 'bg-white/5 border-white/5 text-on-surface-variant/50 hover:bg-white/10'}`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <t.icon size={12} className={target === t.id ? 'text-primary' : ''} />
+                                    <span className={`text-[10px] font-bold uppercase tracking-wider ${target === t.id ? 'text-on-surface' : ''}`}>{t.label}</span>
+                                </div>
+                                <span className="text-[9px] opacity-40">{t.desc}</span>
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 {/* Pattern */}

@@ -191,6 +191,11 @@ data class KafkaActionResult(
 )
 
 @Serializable
+enum class ProxyJailRuleTarget {
+    INTERNAL, NGINX, BOTH
+}
+
+@Serializable
 enum class ProxyJailRuleType {
     USER_AGENT, METHOD, PATH, STATUS_CODE, COMPOSITE, HOST_HEADER
 }
@@ -203,7 +208,8 @@ data class ProxyJailRule(
     val description: String? = null,
     val statusCodePattern: String? = null, // For COMPOSITE rules: regex pattern to match status codes (e.g., "404|403")
     val threshold: Int = 1, // Number of matches in window before jailing (1 = instant jail)
-    val matchEmpty: Boolean = false // If true, matches if the target value is empty/missing
+    val matchEmpty: Boolean = false, // If true, matches if the target value is empty/missing
+    val target: ProxyJailRuleTarget = ProxyJailRuleTarget.BOTH
 )
 
 @Serializable

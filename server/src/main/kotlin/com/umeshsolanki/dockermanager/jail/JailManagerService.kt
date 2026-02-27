@@ -7,6 +7,7 @@ import com.umeshsolanki.dockermanager.constants.TimeoutConstants
 import com.umeshsolanki.dockermanager.firewall.IFirewallService
 import com.umeshsolanki.dockermanager.firewall.BlockIPRequest
 import com.umeshsolanki.dockermanager.proxy.ProxyJailRuleType
+import com.umeshsolanki.dockermanager.proxy.ProxyJailRuleTarget
 import com.umeshsolanki.dockermanager.fcm.FcmService
 import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
@@ -342,7 +343,8 @@ class JailManagerServiceImpl(
         val compositeRules = mutableListOf<CachedRule>()
         val hostHeaderRules = mutableListOf<CachedRule>()
         
-        for (rule in currentRules) {
+        val filteredRules = currentRules.filter { it.target == ProxyJailRuleTarget.INTERNAL || it.target == ProxyJailRuleTarget.BOTH }
+        for (rule in filteredRules) {
             when (rule.type) {
                 ProxyJailRuleType.USER_AGENT -> uaRules.add(CachedRule(rule, rule.pattern.toRegex(RegexOption.IGNORE_CASE)))
                 ProxyJailRuleType.PATH -> pathRules.add(CachedRule(rule, rule.pattern.toRegex(RegexOption.IGNORE_CASE)))

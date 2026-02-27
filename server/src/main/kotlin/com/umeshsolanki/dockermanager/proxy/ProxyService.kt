@@ -2010,7 +2010,7 @@ class ProxyServiceImpl(
             val template = getCachedTemplate("templates/proxy/security-maps.conf")
             
             val pathViolations = settings.proxyJailRules
-                .filter { it.type == ProxyJailRuleType.PATH }
+                .filter { (it.target == ProxyJailRuleTarget.NGINX || it.target == ProxyJailRuleTarget.BOTH) && it.type == ProxyJailRuleType.PATH }
                 .joinToString("\n    ") { rule ->
                     val pattern = rule.pattern.replace("\"", "\\\"")
                         .let { if (it.startsWith("~")) it else "~*$it" }
@@ -2018,7 +2018,7 @@ class ProxyServiceImpl(
                 }
 
             val uaViolations = settings.proxyJailRules
-                .filter { it.type == ProxyJailRuleType.USER_AGENT }
+                .filter { (it.target == ProxyJailRuleTarget.NGINX || it.target == ProxyJailRuleTarget.BOTH) && it.type == ProxyJailRuleType.USER_AGENT }
                 .joinToString("\n    ") { rule ->
                     val pattern = rule.pattern.replace("\"", "\\\"")
                         .let { if (it.contains("|") || it.contains("[") || it.contains("(")) "~*$it" else it }

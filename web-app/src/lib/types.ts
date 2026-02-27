@@ -414,6 +414,12 @@ export interface GenericHitEntry {
   count: number;
 }
 
+export enum ProxyJailRuleTarget {
+  INTERNAL = 'INTERNAL',
+  NGINX = 'NGINX',
+  BOTH = 'BOTH'
+}
+
 export enum ProxyJailRuleType {
   USER_AGENT = 'USER_AGENT',
   METHOD = 'METHOD',
@@ -431,6 +437,7 @@ export interface ProxyJailRule {
   statusCodePattern?: string;
   threshold?: number;
   matchEmpty?: boolean;
+  target?: ProxyJailRuleTarget;
 }
 
 export interface WebSocketConnection {
