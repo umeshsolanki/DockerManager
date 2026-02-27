@@ -1609,18 +1609,23 @@ class DnsServiceImpl : IDnsService {
     /** Format record name for BIND zone file: relative names (no trailing dot) for in-zone, FQDN with trailing dot otherwise. */
     private fun formatRecordNameForZone(recordName: String, zoneName: String): String {
         if (recordName == "@" || recordName.isBlank()) return "@"
-        val trimmed = recordName.trim()
+        val trimmed = recordName.trim().trimEnd('.')
         val origin = zoneName.ensureTrailingDot().lowercase()
-        // Single label (e.g. "www") = relative to zone, no trailing dot
-        val labels = trimmed.trimEnd('.').split('.')
+        val labels = trimmed.split('.')
+        // Single label (e.g. "www") = relative to zone
         if (labels.size == 1 && labels[0].isNotBlank()) return labels[0]
-        val nameNorm = trimmed.ensureTrailingDot().lowercase()
+        val nameNorm = "$trimmed.".lowercase()
         if (nameNorm == origin) return "@"
         if (nameNorm.endsWith(".$origin")) {
             val short = nameNorm.dropLast(origin.length + 1)
             return if (short.isEmpty()) "@" else short
         }
-        return trimmed.ensureTrailingDot()
+        // Multi-label but not ending with zone: e.g. "default._domainkey" (DKIM), "_dmarc" - treat as relative
+        // (adding trailing dot would make it root FQDN = "out-of-zone" per BIND)
+        if (labels.lastOrNull()?.startsWith("_") == true) return trimmed
+        val lastLabel = labels.lastOrNull()?.lowercase() ?: ""
+        val commonTlds = setOf("com", "org", "net", "edu", "gov", "io", "co", "uk", "de", "fr", "info", "biz", "app", "dev")
+        return if (lastLabel in commonTlds && labels.size >= 2) trimmed.ensureTrailingDot() else trimmed
     }
 
     private fun formatRecord(record: DnsRecord, zoneName: String): String {
