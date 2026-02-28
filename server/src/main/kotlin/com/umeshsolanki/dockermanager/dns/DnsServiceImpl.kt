@@ -190,7 +190,7 @@ class DnsServiceImpl : IDnsService {
     private val bindAclPattern = Regex("""^[a-zA-Z0-9.:/_\-!]+$""")
 
     private fun sanitizeAclEntries(entries: List<String>): List<String> =
-        entries.map { it.trim() }.filter { it.isNotBlank() && bindAclPattern.matches(it) }
+        entries.map { it.trim().trimEnd(';', ',') }.filter { it.isNotBlank() && bindAclPattern.matches(it) }
 
     override fun getZone(zoneId: String): DnsZone? {
         val zones = loadZones()
@@ -1621,24 +1621,49 @@ class DnsServiceImpl : IDnsService {
 
     /** Format record name for BIND zone file: relative names (no trailing dot) for in-zone, FQDN with trailing dot otherwise. */
     private fun formatRecordNameForZone(recordName: String, zoneName: String): String {
-        if (recordName == "@" || recordName.isBlank()) return "@"
-        val trimmed = recordName.trim().trimEnd('.')
-        val origin = zoneName.ensureTrailingDot().lowercase()
-        val labels = trimmed.split('.')
-        // Single label (e.g. "www") = relative to zone
-        if (labels.size == 1 && labels[0].isNotBlank()) return labels[0]
-        val nameNorm = "$trimmed.".lowercase()
-        if (nameNorm == origin) return "@"
-        if (nameNorm.endsWith(".$origin")) {
-            val short = nameNorm.dropLast(origin.length + 1)
+        // 1. Basic cleaning
+        val raw = recordName.trim().filter { !it.isWhitespace() }
+        if (raw == "@" || raw.isBlank()) return "@"
+
+        // 2. Identify explicit intent
+        val isExplicitlyAbsolute = raw.endsWith(".") || raw.endsWith(",")
+        val base = raw.trimEnd('.', ',')
+        val origin = zoneName.trim().trimEnd('.', ',').lowercase()
+        val baseNorm = base.lowercase()
+
+        // 3. Handle origin/subdomain matches (these are always relative)
+        if (baseNorm == origin) return "@"
+        if (baseNorm.endsWith(".$origin")) {
+            val short = base.dropLast(origin.length + 1)
             return if (short.isEmpty()) "@" else short
         }
-        // Multi-label but not ending with zone: e.g. "default._domainkey" (DKIM), "_dmarc" - treat as relative
-        // (adding trailing dot would make it root FQDN = "out-of-zone" per BIND)
-        if (labels.lastOrNull()?.startsWith("_") == true) return trimmed
-        val lastLabel = labels.lastOrNull()?.lowercase() ?: ""
-        val commonTlds = setOf("com", "org", "net", "edu", "gov", "io", "co", "uk", "de", "fr", "info", "biz", "app", "dev")
-        return if (lastLabel in commonTlds && labels.size >= 2) trimmed.ensureTrailingDot() else trimmed
+
+        // 4. If they expressly provided a dot or comma at the end, respect it as absolute
+        if (isExplicitlyAbsolute) return "$base."
+
+        // 5. Smart inference for ambiguous names (no trailing dot)
+        val labels = base.split('.')
+        if (labels.size <= 1) return base // "www" -> "www" (relative)
+
+        // Known common TLDs to help distinguish absolute from relative
+        val lastLabel = labels.last().lowercase()
+        val commonTlds = setOf(
+            "com", "org", "net", "edu", "gov", "io", "co", "uk", "de", "fr", "it", "es", "in", "me", "cloud", 
+            "info", "biz", "app", "dev", "xyz", "online", "site", "tv", "shop", "store", "tech", "us", "ca", "au",
+            "pk", "cn", "jp", "ru", "br", "mx", "nl", "se", "no", "fi", "dk", "pl", "ch", "at", "be", "cz", "hu", "ro"
+        )
+
+        // If it starts with an underscore, it's almost always a service-related relative record (e.g., _acme-challenge)
+        if (labels.any { it.startsWith("_") }) return base
+
+        // If it ends in a known TLD, it's almost certainly absolute
+        if (lastLabel in commonTlds) return "$base."
+
+        // For all other multi-label names, if it doesn't match our origin, 
+        // it's safer to treat it as absolute if it looks like a full domain (e.g. "my.other.site")
+        // and relative if it's just "sub.domain" (where domain isn't a TLD).
+        // Since we can't be 100% sure without a dot, we stick to conservative relative unless TLD matches.
+        return base
     }
 
     private fun formatRecord(record: DnsRecord, zoneName: String): String {
@@ -2443,7 +2468,7 @@ logging {
 
     private fun String.ensureTrailingDot(): String {
         if (this == "@" || this.isEmpty()) return this
-        val trimmed = this.trimEnd('.')
+        val trimmed = this.trimEnd('.', ',')
         return if (trimmed.isEmpty()) this else "$trimmed."
     }
 
