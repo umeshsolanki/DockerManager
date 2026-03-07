@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "312364473553",
+    "project_id": "ucpanel-7702a",
+    "storage_bucket": "ucpanel-7702a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:312364473553:android:84985cb20c6b09e92139f0",
+        "android_client_info": {
+          "package_name": "com.umeshsolanki.ucpanel"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBRIT1GzrnHIy0_m6NP17wffdt6iLwt-CI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
