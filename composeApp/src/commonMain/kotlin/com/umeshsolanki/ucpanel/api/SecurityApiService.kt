@@ -56,4 +56,29 @@ object SecurityApiService {
     } catch (e: Exception) {
         e.printStackTrace()
     }
+
+    suspend fun listIpReputations(limit: Int = 50): List<IpReputation> = try {
+        client.get("ip-reputation") {
+            parameter("limit", limit)
+        }.body()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        emptyList()
+    }
+
+    suspend fun getSecurityMirrors(limit: Int = 20): List<ProxyHit> = try {
+        client.get("analytics/security/mirrors") {
+            parameter("limit", limit)
+        }.body()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        emptyList()
+    }
+
+    suspend fun getProxyStats(): ProxyStats? = try {
+        client.get("analytics/stats").body()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
 }
