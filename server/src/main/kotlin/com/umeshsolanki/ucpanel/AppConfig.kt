@@ -552,6 +552,13 @@ object AppConfig {
         saveSettings()
     }
 
+    fun regenerateFcmApiKey(): String = synchronized(lock) {
+        val newKey = java.util.UUID.randomUUID().toString()
+        _settings = _settings.copy(fcmApiKey = newKey)
+        saveSettings()
+        newKey
+    }
+
     fun updateFileBookmarks(bookmarks: List<String>) = synchronized(lock) {
         _settings = _settings.copy(
             fileBookmarks = bookmarks

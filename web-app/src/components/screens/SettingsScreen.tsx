@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Link, Save, CheckCircle, Info, Database, Server, Terminal, RefreshCw, Settings2, Globe, ShieldAlert, Key, LogOut, Maximize2, ShieldCheck, HardDrive } from 'lucide-react';
+import { Link, Save, CheckCircle, Info, Database, Server, Terminal, RefreshCw, Settings2, Globe, ShieldAlert, Key, LogOut, Maximize2, ShieldCheck, HardDrive, Copy, Smartphone, Eye, EyeOff } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
 import { SystemConfig, TwoFactorSetupResponse, StorageInfo } from '@/lib/types';
 import dynamic from 'next/dynamic';
@@ -118,6 +118,12 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
     const [verificationCode, setVerificationCode] = useState('');
     const [configuring2FA, setConfiguring2FA] = useState(false);
 
+    // API Key state
+    const [fcmApiKey, setFcmApiKey] = useState('');
+    const [showApiKey, setShowApiKey] = useState(false);
+    const [apiKeyCopied, setApiKeyCopied] = useState(false);
+    const [regeneratingKey, setRegeneratingKey] = useState(false);
+
     const fetchConfig = async () => {
         setLoading(true);
         try {
@@ -153,6 +159,11 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
 
             const storage = await DockerClient.getStorageInfo();
             setStorageInfo(storage);
+
+            try {
+                const keyData = await DockerClient.getFcmApiKey();
+                if (keyData?.apiKey) setFcmApiKey(keyData.apiKey);
+            } catch {}
         } catch (e) {
             console.error(e);
             showMessage('Failed to load configuration');
@@ -501,6 +512,63 @@ export default function SettingsScreen({ onLogout }: SettingsScreenProps) {
                                     </div>
                                 )
                             )}
+                        </SettingsCard>
+
+                        <SettingsCard title="Mobile API Key" subtitle="Push notification authentication" icon={Smartphone} iconColor="green-500">
+                            <p className="text-xs text-on-surface-variant mb-3">
+                                Apps use this key to register for push notifications. Regenerating will require all devices to re-login.
+                            </p>
+                            <div className="flex items-center gap-2 mb-3">
+                                <div className="flex-1 relative">
+                                    <input
+                                        type={showApiKey ? 'text' : 'password'}
+                                        readOnly
+                                        value={fcmApiKey || '—'}
+                                        className="w-full bg-surface border border-outline/20 rounded-xl px-3 py-2.5 text-sm font-mono pr-10"
+                                    />
+                                    <button
+                                        onClick={() => setShowApiKey(!showApiKey)}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-on-surface-variant/50 hover:text-on-surface-variant"
+                                    >
+                                        {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(fcmApiKey);
+                                        setApiKeyCopied(true);
+                                        setTimeout(() => setApiKeyCopied(false), 2000);
+                                    }}
+                                    className={`p-2.5 rounded-xl border transition-all ${apiKeyCopied ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-surface border-outline/20 text-on-surface-variant hover:bg-white/5'}`}
+                                    title="Copy to clipboard"
+                                >
+                                    {apiKeyCopied ? <CheckCircle size={16} /> : <Copy size={16} />}
+                                </button>
+                            </div>
+                            <button
+                                onClick={async () => {
+                                    if (!confirm('Regenerate API key? All mobile devices will need to re-login to receive notifications.')) return;
+                                    setRegeneratingKey(true);
+                                    try {
+                                        const result = await DockerClient.regenerateFcmApiKey();
+                                        if (result.success && result.apiKey) {
+                                            setFcmApiKey(result.apiKey);
+                                            showMessage('API key regenerated');
+                                        } else {
+                                            showMessage(result.message || 'Failed to regenerate');
+                                        }
+                                    } catch {
+                                        showMessage('Error regenerating API key');
+                                    } finally {
+                                        setRegeneratingKey(false);
+                                    }
+                                }}
+                                disabled={regeneratingKey}
+                                className="w-full flex items-center justify-center gap-2 bg-red-500/10 text-red-400 border border-red-500/20 py-2 rounded-xl text-sm font-bold hover:bg-red-500/20 transition-all disabled:opacity-50"
+                            >
+                                <RefreshCw size={14} className={regeneratingKey ? 'animate-spin' : ''} />
+                                {regeneratingKey ? 'Regenerating…' : 'Regenerate Key'}
+                            </button>
                         </SettingsCard>
                     </div>
                 )}

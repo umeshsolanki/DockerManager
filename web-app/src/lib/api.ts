@@ -108,6 +108,10 @@ export const DockerClient = {
     enable2FA: (body: Enable2FARequest) => safeReq('/auth/2fa/enable', { method: 'POST', body: JSON.stringify(body) }),
     disable2FA: (password: string) => safeReq('/auth/2fa/disable', { method: 'POST', body: JSON.stringify({ password }) }),
 
+    // --- FCM API Key ---
+    getFcmApiKey: () => req<{ apiKey: string }>('/auth/fcm/api-key', {}, { apiKey: '' }),
+    regenerateFcmApiKey: () => safeReq<{ success: boolean; apiKey: string }>('/auth/fcm/api-key/regenerate', { method: 'POST' }),
+
     // --- Containers ---
     listContainers: () => req<DockerContainer[]>('/containers', {}, []),
     inspectContainer: (id: string) => req<ContainerDetails | null>(`/containers/${id}/inspect`, {}, null),

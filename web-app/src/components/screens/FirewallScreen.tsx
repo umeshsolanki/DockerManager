@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Shield, ShieldAlert, ShieldCheck, Trash2, Plus, Search, RefreshCw, Globe, Lock, Activity, Terminal, ChevronRight, ListFilter, Database, MapPin, Save, Info, Settings, Timer, UserX, Zap, Clock, AlertTriangle, Filter, ArrowDown } from 'lucide-react';
+import { Shield, ShieldAlert, ShieldCheck, Trash2, Plus, Search, RefreshCw, Globe, Lock, Activity, Terminal, ChevronRight, ListFilter, Database, MapPin, Save, Info, Settings, Timer, UserX, Zap, Clock, AlertTriangle, Filter, ArrowDown, TrendingUp, Eye, Ban, Crosshair, Network } from 'lucide-react';
 import { DockerClient } from '@/lib/api';
-import { FirewallRule, IptablesRule, IpReputation, SystemConfig } from '@/lib/types';
+import { FirewallRule, IptablesRule, IpReputation, SystemConfig, ProxyStats, ProxyHit } from '@/lib/types';
 import { toast } from 'sonner';
 import { Modal } from '../ui/Modal';
 import { StatCard } from '../ui/StatCard';
@@ -61,6 +61,11 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
     const [manualJailReason, setManualJailReason] = useState('');
     const [isManualJailing, setIsManualJailing] = useState(false);
     const [showJailSettings, setShowJailSettings] = useState(false);
+
+    // Overview security stats
+    const [proxyStats, setProxyStats] = useState<ProxyStats | null>(null);
+    const [securityMirrors, setSecurityMirrors] = useState<ProxyHit[]>([]);
+    const [overviewReps, setOverviewReps] = useState<IpReputation[]>([]);
 
     const fetchRules = async () => {
         setIsLoading(true);
@@ -153,6 +158,16 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
     }, [activeTab]);
 
     useEffect(() => {
+        if (activeTab === 'overview') {
+            Promise.all([
+                DockerClient.getProxyStats().then(setProxyStats).catch(() => {}),
+                DockerClient.getSecurityMirrors(20).then(setSecurityMirrors).catch(() => {}),
+                DockerClient.listIpReputations(10, 0, '').then(r => {
+                    r.sort((a, b) => b.blockedTimes - a.blockedTimes);
+                    setOverviewReps(r);
+                }).catch(() => {}),
+            ]);
+        }
         if (activeTab === 'reputation' || activeTab === 'geolocation') {
             fetchIpRangeStats();
         }
@@ -297,13 +312,273 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
                 </div>
             </div>
 
-            {activeTab === 'overview' && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <StatCard label="Active Blocks" value={rules.length.toString()} icon={<Shield size={24} />} sub="Firewall level restrictions" color="primary" />
-                    <StatCard label="Jailed IPs" value={rules.filter(r => r.expiresAt != null).length.toString()} icon={<Lock size={24} />} sub="Timed security jails" color="indigo" />
-                    <StatCard label="Proxy Rules" value={(proxyConfig?.proxyJailRules?.length || 0).toString()} icon={<Terminal size={24} />} sub="Active armor patterns" color="orange" />
-                </div>
-            )}
+            {activeTab === 'overview' && (() => {
+                const now = Date.now();
+                const activeJails = rules.filter(r => r.expiresAt != null && r.expiresAt > now);
+                const permanentBlocks = rules.filter(r => !r.expiresAt);
+                const proxyJails = activeJails.filter(j => j.comment?.toLowerCase().startsWith('proxy'));
+                const loginJails = activeJails.filter(j => j.comment?.toLowerCase().includes('login') || j.comment?.toLowerCase().includes('failed'));
+                const totalBlocked = overviewReps.reduce((s, r) => s + r.blockedTimes, 0);
+                const errorHits = proxyStats ? Object.entries(proxyStats.hitsByStatus).filter(([s]) => Number(s) >= 400).reduce((s, [, c]) => s + c, 0) : 0;
+                const countryMap: Record<string, number> = {};
+                overviewReps.forEach(r => { if (r.country) countryMap[r.country] = (countryMap[r.country] || 0) + r.blockedTimes; });
+                const topCountries = Object.entries(countryMap).sort(([, a], [, b]) => b - a).slice(0, 6);
+                const asnMap: Record<string, number> = {};
+                overviewReps.forEach(r => { if (r.asn) asnMap[r.asn] = (asnMap[r.asn] || 0) + r.blockedTimes; });
+                const topAsns = Object.entries(asnMap).sort(([, a], [, b]) => b - a).slice(0, 6);
+                const proxyAsnMap = proxyStats?.hitsByAsn ?? {};
+                const topProxyAsns = Object.entries(proxyAsnMap).sort(([, a], [, b]) => b - a).slice(0, 6);
+                const asnStats = topAsns.length > 0 ? topAsns : topProxyAsns;
+
+                const reasonMap: Record<string, number> = {};
+                overviewReps.forEach(r => r.reasons?.forEach(reason => { reasonMap[reason] = (reasonMap[reason] || 0) + 1; }));
+                const topReasons = Object.entries(reasonMap).sort(([, a], [, b]) => b - a).slice(0, 5);
+
+                return (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* Top Stats Row */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <button onClick={() => setActiveTab('rules')} className="text-left bg-surface/30 border border-outline/10 rounded-2xl p-5 hover:border-primary/30 hover:bg-primary/[0.03] transition-all group">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary"><Shield size={20} /></div>
+                                    <div className="text-3xl font-black text-primary">{rules.length}</div>
+                                </div>
+                                <div className="text-[10px] uppercase font-bold text-on-surface-variant/60 tracking-wider">Total Blocks</div>
+                                <div className="text-[9px] text-on-surface-variant/40 mt-0.5">{permanentBlocks.length} permanent · {activeJails.length} jailed</div>
+                            </button>
+                            <button onClick={() => setActiveTab('jails')} className="text-left bg-surface/30 border border-outline/10 rounded-2xl p-5 hover:border-red-500/30 hover:bg-red-500/[0.03] transition-all group">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-400"><Lock size={20} /></div>
+                                    <div className="text-3xl font-black text-red-400">{activeJails.length}</div>
+                                </div>
+                                <div className="text-[10px] uppercase font-bold text-on-surface-variant/60 tracking-wider">Active Jails</div>
+                                <div className="text-[9px] text-on-surface-variant/40 mt-0.5">{proxyJails.length} proxy · {loginJails.length} login</div>
+                            </button>
+                            <button onClick={() => setActiveTab('proxy-rules')} className="text-left bg-surface/30 border border-outline/10 rounded-2xl p-5 hover:border-orange-500/30 hover:bg-orange-500/[0.03] transition-all group">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-400"><Crosshair size={20} /></div>
+                                    <div className="text-3xl font-black text-orange-400">{proxyConfig?.proxyJailRules?.length || 0}</div>
+                                </div>
+                                <div className="text-[10px] uppercase font-bold text-on-surface-variant/60 tracking-wider">Armor Rules</div>
+                                <div className="text-[9px] text-on-surface-variant/40 mt-0.5">{proxyConfig?.proxyJailEnabled ? 'Active' : 'Disabled'}</div>
+                            </button>
+                            <button onClick={() => setActiveTab('reputation')} className="text-left bg-surface/30 border border-outline/10 rounded-2xl p-5 hover:border-violet-500/30 hover:bg-violet-500/[0.03] transition-all group">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center text-violet-400"><Eye size={20} /></div>
+                                    <div className="text-3xl font-black text-violet-400">{overviewReps.length}</div>
+                                </div>
+                                <div className="text-[10px] uppercase font-bold text-on-surface-variant/60 tracking-wider">Tracked IPs</div>
+                                <div className="text-[9px] text-on-surface-variant/40 mt-0.5">{totalBlocked} total blocks</div>
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                            {/* Top Blocked IPs — drills into reputation */}
+                            <div className="bg-surface/30 border border-outline/10 rounded-2xl p-5 lg:col-span-2">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-sm font-bold flex items-center gap-2"><Ban size={16} className="text-red-400" /> Top Blocked IPs</h3>
+                                    <button onClick={() => setActiveTab('reputation')} className="text-[10px] font-bold text-primary hover:underline">View All →</button>
+                                </div>
+                                {overviewReps.length === 0 ? (
+                                    <p className="text-xs text-on-surface-variant/40 py-8 text-center">No reputation data yet</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {overviewReps.slice(0, 7).map(rep => {
+                                            const maxBlocked = overviewReps[0]?.blockedTimes || 1;
+                                            const pct = Math.max(5, (rep.blockedTimes / maxBlocked) * 100);
+                                            return (
+                                                <div key={rep.ip} className="group flex items-center gap-3 p-2 rounded-xl hover:bg-white/[0.03] transition-all">
+                                                    <span className="font-mono text-xs text-on-surface w-32 shrink-0 truncate">{rep.ip}</span>
+                                                    <div className="flex-1 h-5 bg-white/5 rounded-full overflow-hidden relative">
+                                                        <div className="absolute inset-y-0 left-0 bg-red-500/30 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                                                        <span className="absolute inset-0 flex items-center px-2 text-[10px] font-bold text-red-400">{rep.blockedTimes}×</span>
+                                                    </div>
+                                                    {rep.country && <span className="text-[9px] font-bold text-on-surface-variant/50 uppercase w-6 text-center shrink-0">{rep.country}</span>}
+                                                    {rep.exponentialBlockedTimes > 0 && (
+                                                        <span className="text-[8px] font-bold bg-orange-500/15 text-orange-400 px-1.5 py-0.5 rounded shrink-0">x{Math.pow(2, rep.exponentialBlockedTimes)}</span>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Threat Origins: Country + ASN stacked */}
+                            <div className="space-y-4">
+                                <div className="bg-surface/30 border border-outline/10 rounded-2xl p-5">
+                                    <h3 className="text-sm font-bold flex items-center gap-2 mb-3"><Globe size={16} className="text-blue-400" /> By Country</h3>
+                                    {topCountries.length === 0 ? (
+                                        <p className="text-xs text-on-surface-variant/40 py-4 text-center">No geo data</p>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {topCountries.map(([country, count]) => {
+                                                const maxC = topCountries[0]?.[1] || 1;
+                                                return (
+                                                    <div key={country}>
+                                                        <div className="flex items-center justify-between mb-0.5">
+                                                            <span className="text-[10px] font-bold uppercase tracking-wider">{country}</span>
+                                                            <span className="text-[10px] font-mono text-on-surface-variant/60">{count}</span>
+                                                        </div>
+                                                        <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                                                            <div className="h-full bg-blue-500/50 rounded-full" style={{ width: `${(count / maxC) * 100}%` }} />
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="bg-surface/30 border border-outline/10 rounded-2xl p-5">
+                                    <h3 className="text-sm font-bold flex items-center gap-2 mb-3"><Network size={16} className="text-cyan-400" /> By ASN</h3>
+                                    {asnStats.length === 0 ? (
+                                        <p className="text-xs text-on-surface-variant/40 py-4 text-center">No ASN data</p>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {asnStats.map(([asn, count]) => {
+                                                const maxA = asnStats[0]?.[1] || 1;
+                                                return (
+                                                    <div key={asn}>
+                                                        <div className="flex items-center justify-between mb-0.5">
+                                                            <span className="text-[10px] font-bold truncate max-w-[140px]" title={asn}>{asn}</span>
+                                                            <span className="text-[10px] font-mono text-on-surface-variant/60">{count}</span>
+                                                        </div>
+                                                        <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                                                            <div className="h-full bg-cyan-500/50 rounded-full" style={{ width: `${(count / maxA) * 100}%` }} />
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            {/* Recent Security Events — drills into jails */}
+                            <div className="bg-surface/30 border border-outline/10 rounded-2xl p-5">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-sm font-bold flex items-center gap-2"><Activity size={16} className="text-green-400" /> Recent Jails</h3>
+                                    <button onClick={() => setActiveTab('jails')} className="text-[10px] font-bold text-primary hover:underline">View All →</button>
+                                </div>
+                                {activeJails.length === 0 ? (
+                                    <p className="text-xs text-on-surface-variant/40 py-8 text-center">No active jails</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {activeJails.slice(0, 6).map(jail => {
+                                            const msLeft = (jail.expiresAt ?? 0) - now;
+                                            const minsLeft = Math.floor(msLeft / 60000);
+                                            const isProxy = jail.comment?.toLowerCase().startsWith('proxy');
+                                            const tagColor = isProxy ? 'text-orange-400 bg-orange-500/10' : 'text-yellow-400 bg-yellow-500/10';
+                                            return (
+                                                <div key={jail.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/[0.03] transition-all">
+                                                    <Lock size={12} className="text-red-400 shrink-0" />
+                                                    <span className="font-mono text-xs text-on-surface flex-1 truncate">{jail.ip}</span>
+                                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${tagColor}`}>{isProxy ? 'Proxy' : 'Login'}</span>
+                                                    <span className="text-[10px] font-mono text-on-surface-variant/50 shrink-0">{minsLeft > 0 ? `${minsLeft}m` : '<1m'}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Top Violation Reasons */}
+                            <div className="bg-surface/30 border border-outline/10 rounded-2xl p-5">
+                                <h3 className="text-sm font-bold flex items-center gap-2 mb-4"><AlertTriangle size={16} className="text-amber-400" /> Top Violation Reasons</h3>
+                                {topReasons.length === 0 ? (
+                                    <p className="text-xs text-on-surface-variant/40 py-8 text-center">No violations recorded</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {topReasons.map(([reason, count]) => (
+                                            <div key={reason} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/[0.03] transition-all">
+                                                <Zap size={12} className="text-amber-400 shrink-0" />
+                                                <span className="text-xs text-on-surface truncate flex-1" title={reason}>{reason}</span>
+                                                <span className="text-xs font-mono font-bold text-amber-400 shrink-0">{count}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* HTTP Error Status Breakdown + Recent Mirrors */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div className="bg-surface/30 border border-outline/10 rounded-2xl p-5">
+                                <h3 className="text-sm font-bold flex items-center gap-2 mb-4"><TrendingUp size={16} className="text-indigo-400" /> Error Status Codes</h3>
+                                {proxyStats ? (() => {
+                                    const errorStatuses = Object.entries(proxyStats.hitsByStatus)
+                                        .filter(([s]) => Number(s) >= 400)
+                                        .sort(([, a], [, b]) => b - a)
+                                        .slice(0, 8);
+                                    if (errorStatuses.length === 0) return <p className="text-xs text-on-surface-variant/40 py-8 text-center">No error traffic</p>;
+                                    const maxVal = errorStatuses[0]?.[1] || 1;
+                                    return (
+                                        <div className="space-y-2">
+                                            {errorStatuses.map(([status, count]) => {
+                                                const s = Number(status);
+                                                const color = s === 403 ? 'bg-red-500/40' : s === 404 ? 'bg-yellow-500/40' : s === 429 ? 'bg-orange-500/40' : s >= 500 ? 'bg-pink-500/40' : 'bg-blue-500/40';
+                                                return (
+                                                    <div key={status} className="flex items-center gap-3">
+                                                        <span className="text-xs font-mono font-bold w-8 text-on-surface-variant shrink-0">{status}</span>
+                                                        <div className="flex-1 h-4 bg-white/5 rounded-full overflow-hidden">
+                                                            <div className={`h-full ${color} rounded-full`} style={{ width: `${(count / maxVal) * 100}%` }} />
+                                                        </div>
+                                                        <span className="text-xs font-mono text-on-surface-variant/60 w-14 text-right shrink-0">{count.toLocaleString()}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    );
+                                })() : <p className="text-xs text-on-surface-variant/40 py-8 text-center">Loading stats…</p>}
+                            </div>
+
+                            <div className="bg-surface/30 border border-outline/10 rounded-2xl p-5">
+                                <h3 className="text-sm font-bold flex items-center gap-2 mb-4"><ShieldAlert size={16} className="text-pink-400" /> Recent Security Mirrors</h3>
+                                {securityMirrors.length === 0 ? (
+                                    <p className="text-xs text-on-surface-variant/40 py-8 text-center">No mirrored traffic</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {securityMirrors.slice(0, 6).map((hit, i) => (
+                                            <div key={i} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/[0.03] transition-all">
+                                                <ShieldAlert size={12} className="text-pink-400 shrink-0" />
+                                                <span className="font-mono text-[11px] text-on-surface truncate flex-1" title={hit.path}>{hit.method} {hit.path}</span>
+                                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-pink-500/10 text-pink-400 shrink-0">{hit.status}</span>
+                                                <span className="text-[10px] font-mono text-on-surface-variant/40 shrink-0">{hit.ip}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Config Status Bar */}
+                        <div className="bg-surface/30 border border-outline/10 rounded-2xl p-4 flex flex-wrap items-center gap-4 text-xs">
+                            <div className="flex items-center gap-2">
+                                <div className={`w-2 h-2 rounded-full ${proxyConfig?.proxyJailEnabled ? 'bg-green-500' : 'bg-red-500'}`} />
+                                <span className="text-on-surface-variant">Proxy Jail: <span className="font-bold">{proxyConfig?.proxyJailEnabled ? 'Active' : 'Off'}</span></span>
+                            </div>
+                            <div className="h-4 w-px bg-outline/10" />
+                            <div className="flex items-center gap-2">
+                                <div className={`w-2 h-2 rounded-full ${proxyConfig?.jailEnabled ? 'bg-green-500' : 'bg-red-500'}`} />
+                                <span className="text-on-surface-variant">Auto-Jail: <span className="font-bold">{proxyConfig?.jailEnabled ? 'Active' : 'Off'}</span></span>
+                            </div>
+                            <div className="h-4 w-px bg-outline/10" />
+                            <div className="flex items-center gap-2">
+                                <div className={`w-2 h-2 rounded-full ${proxyConfig?.exponentialJailEnabled ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                                <span className="text-on-surface-variant">Exponential: <span className="font-bold">{proxyConfig?.exponentialJailEnabled ? 'On' : 'Off'}</span></span>
+                            </div>
+                            <div className="h-4 w-px bg-outline/10" />
+                            <span className="text-on-surface-variant">Base Jail: <span className="font-bold font-mono">{proxyConfig?.jailDurationMinutes ?? '—'}m</span></span>
+                            <div className="h-4 w-px bg-outline/10" />
+                            <span className="text-on-surface-variant">Window: <span className="font-bold font-mono">{proxyConfig?.proxyJailWindowMinutes ?? '—'}m</span></span>
+                            <div className="h-4 w-px bg-outline/10" />
+                            <span className="text-on-surface-variant">4xx Threshold: <span className="font-bold font-mono">{proxyConfig?.proxyJailThresholdNon200 ?? '—'}</span></span>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {(activeTab === 'rules' || activeTab === 'geolocation') && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
