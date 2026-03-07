@@ -394,6 +394,24 @@ class JailedIP(
 )
 
 @Serializable
+data class IpReputation(
+    val ip: String,
+    val firstObserved: String? = null,
+    val lastActivity: String? = null,
+    val firstBlocked: String? = null,
+    val blockedTimes: Int = 0,
+    val exponentialBlockedTimes: Int = 0,
+    val lastJailDuration: Int = 0,
+    val flaggedTimes: Int = 0,
+    val lastBlocked: String? = null,
+    val reasons: List<String> = emptyList(),
+    val country: String? = null,
+    val isp: String? = null,
+    val range: String? = null,
+    val asn: String? = null,
+)
+
+@Serializable
 class TopIpEntry(
     val ip: String,
     val count: Int,

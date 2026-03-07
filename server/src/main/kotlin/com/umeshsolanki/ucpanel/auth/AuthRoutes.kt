@@ -77,6 +77,11 @@ fun Route.authRoutes() {
                 call.respond(mapOf("apiKey" to AppConfig.settings.fcmApiKey))
             }
 
+            post("/fcm/api-key/regenerate") {
+                val newKey = AppConfig.regenerateFcmApiKey()
+                call.respond(mapOf("success" to true, "apiKey" to newKey))
+            }
+
             post("/password") {
                 val request = call.receive<UpdatePasswordRequest>()
                 if (AuthService.updatePassword(request.currentPassword, request.newPassword)) {
