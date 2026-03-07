@@ -1,0 +1,798 @@
+package com.umeshsolanki.ucpanel
+
+import com.umeshsolanki.ucpanel.proxy.ProxyJailRule
+import com.umeshsolanki.ucpanel.constants.*
+import com.umeshsolanki.ucpanel.proxy.IpFilterUtils
+import com.umeshsolanki.ucpanel.utils.JsonPersistence
+import com.umeshsolanki.ucpanel.cache.RedisConfig
+import com.umeshsolanki.ucpanel.cache.CacheService
+import com.umeshsolanki.ucpanel.database.DatabaseFactory
+import com.umeshsolanki.ucpanel.database.SettingsTable
+import com.umeshsolanki.ucpanel.email.AlertConfig
+import com.umeshsolanki.ucpanel.email.EmailClientConfig
+import com.umeshsolanki.ucpanel.proxy.ProxyJailRuleType
+import com.umeshsolanki.ucpanel.kafka.KafkaSettings
+import com.umeshsolanki.ucpanel.kafka.KafkaRule
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.intOrNull
+import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.transactions.transaction
+import org.slf4j.LoggerFactory
+import java.io.File
+
+fun String?.ifNullOrBlank(value: String): String {
+    return if (this.isNullOrBlank()) value else this
+}
+
+@Serializable
+data class UpdateProxyStatsRequest(
+    val active: Boolean,
+    val intervalMs: Long,
+    val filterLocalIps: Boolean? = null
+)
+
+val DEFAULT_PROXY_JAIL_RULES = listOf(
+
+    // ── 1. Sensitive / hidden files ───────────────────────────────────────────
+    // Non-capturing group, possessive quantifier on the stem, anchored suffix.
+    // Covers: .env*, .git/*, .ini, .xml, .log, .old, .backup*, .db, .sqlite
+    ProxyJailRule(
+        type = ProxyJailRuleType.PATH,
+        pattern = """(?:/\.git(?:/|$)|\.(?:env\w*+|ini|xml|log|old|bak|backup\w*+|db|sqlite|DS_Store)$)""",
+        description = "Sensitive/hidden file access"
+    ),
+
+    // ── 2. Path traversal & system paths ─────────────────────────────────────
+    // Anchored alternatives; possessive on directory names avoids catastrophic
+    // backtracking on long URLs with many slashes.
+    ProxyJailRule(
+        type = ProxyJailRuleType.PATH,
+        pattern = """(?:\.\./|/(?:etc|proc|sys|usr/bin|boot|windows)/++)""",
+        description = "Path traversal / system path probe"
+    ),
+
+    // ── 3. CMS admin panels & well-known attack surfaces ─────────────────────
+    // Ordered by attack frequency. Non-capturing, no unnecessary .*
+    ProxyJailRule(
+        type = ProxyJailRuleType.PATH,
+        pattern = """/(?:wp-admin|wp-login\.php|administrator|phpmyadmin|myadmin|pma|manager|console|actuator|jolokia|cgi-bin|autodiscover|owa|ecp|phpinfo|xmlrpc\.php|\.vscode|\.idea|\.env)(?:/|$|[?#])""",
+        description = "CMS admin panel / security probe"
+    ),
+
+    // ── 4. Server-side script extensions ─────────────────────────────────────
+    // Hard-anchor at end of path (before query). Possessive prevents
+    // the engine retrying after the dot.
+    ProxyJailRule(
+        type = ProxyJailRuleType.PATH,
+        pattern = """\.(?:php\d*+|asp|aspx|jsp|jspx|cgi|pl|py|rb|sh|bash|bat|cmd|exe|cfm|htaccess|htpasswd)(?:\?|#|$)""",
+        description = "Server-side script execution attempt"
+    ),
+
+    // ── 5. Database / archive / config dumps ─────────────────────────────────
+    ProxyJailRule(
+        type = ProxyJailRuleType.PATH,
+        pattern = """\.(?:sql|dump|bak|swp|tmp|tar\.gz|tgz|zip|rar|7z|gz|tar)$""",
+        description = "Database / archive / config dump access"
+    ),
+
+    // ── 6. Known bad User-Agents (security scanners & exploit frameworks) ─────
+    // Case-insensitive flag inline (?i) so the JIT compiles one path.
+    ProxyJailRule(
+        type = ProxyJailRuleType.USER_AGENT,
+        pattern = """(?i)(?:sqlmap|nikto|masscan|gobuster|dirbuster|nmap|metasploit|nuclei|hydra|wpscan|zgrab|python-requests/2\.[01]|curl/7\.[0-4])""",
+        description = "Known scanner / exploit framework user-agent"
+    ),
+
+    // ── 7. Non-standard HTTP methods ─────────────────────────────────────────
+    // Exact-match negation via PCRE negative lookahead; anchor both ends.
+    ProxyJailRule(
+        type = ProxyJailRuleType.METHOD,
+        pattern = """^(?!(?:GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)$)""",
+        description = "Non-standard HTTP method"
+    ),
+
+    // ── 8. Composite: API abuse — repeated 5xx from /api ─────────────────────
+    ProxyJailRule(
+        type = ProxyJailRuleType.COMPOSITE,
+        pattern = """^/api/""",
+        statusCodePattern = """5\d\d""",
+        threshold = 10,
+        description = "API endpoint flooding (5xx)"
+    )
+)
+
+// KafkaSettings removed and moved to shared module
+
+@Serializable
+data class ClickHouseSettings(
+    val enabled: Boolean = false,
+    val host: String = "localhost",
+    val port: Int = 8123,
+    val database: String = "docker_manager",
+    val user: String = "default",
+    val password: String = "",
+    val batchSize: Int = 5000,
+    val flushIntervalMs: Long = 5000
+)
+
+@Serializable
+data class AppSettings(
+    val dockerSocket: String = SystemConstants.DOCKER_SOCKET_DEFAULT,
+    val jamesWebAdminUrl: String = "http://localhost:8000",
+    // Jail Settings
+    val jailEnabled: Boolean = true,
+    val jailThreshold: Int = 5,
+    val jailDurationMinutes: Int = 30,
+    val exponentialJailEnabled: Boolean = true,
+    val maxJailDurationMinutes: Int = 10080, // 1 week
+    val fcmServiceAccountPath: String = FileConstants.FCM_SERVICE_ACCOUNT_JSON,
+    val fcmApiKey: String = java.util.UUID.randomUUID().toString(),
+    val proxyStatsActive: Boolean = true,
+    val proxyStatsIntervalMs: Long = 10000L,
+    val filterLocalIps: Boolean = true, // Filter out local/internal IPs from analytics
+    
+    // Proxy Specific Security
+    val proxyJailEnabled: Boolean = true,
+    val proxyJailThresholdNon200: Int = 20,
+    val proxyJailThresholdDanger: Int = 20,  // Instant jail for path traversal/danger
+    val proxyJailThresholdBurst: Int = 20,  // Jail after 10 rate limit hits
+    val proxyJailThresholdCidr: Int = 3,   // Instant jail for CIDR violation
+    val proxyJailWindowMinutes: Int = 5,
+    val proxyJailRules: List<ProxyJailRule> = emptyList(), // Default to empty, let admin configure
+    val proxyDefaultReturn404: Boolean = false,
+    val proxyBurstProtectionEnabled: Boolean = false, // Default disabled to avoid breaking existing setups
+    val proxyBurstProtectionRate: Int = 10,  // Requests per second (global)
+    val proxyBurstProtectionBurst: Int = 10, // Burst allowed (global)
+    val proxyJailIgnore404Patterns: List<String> = listOf(
+        "favicon.ico", "robots.txt", "llms.txt", "sitemap.xml", "ads.txt", 
+        "humans.txt", "apple-touch-icon.png", "apple-touch-icon-precomposed.png", 
+        "browserconfig.xml", "crossdomain.xml", ".well-known/", ".ico", ".png", ".jpg", ".jpeg"
+    ),
+    val proxyJailStatusThresholds: Map<Int, Int> = emptyMap(),
+    
+    // Redis Cache Configuration
+    val redisConfig: RedisConfig = RedisConfig(),
+    
+    // Alert & SMTP Configuration
+    val alertConfig: AlertConfig = AlertConfig(),
+
+    // Docker Build Settings
+    val dockerBuildKit: Boolean = true,
+    val dockerCliBuild: Boolean = true,
+
+    // Kafka Settings
+    val kafkaSettings: KafkaSettings = KafkaSettings(),
+
+    // Storage Settings
+    val autoStorageRefresh: Boolean = false,
+    val autoStorageRefreshIntervalMinutes: Int = 15,
+
+    // Logging Settings
+    val dbPersistenceLogsEnabled: Boolean = true,
+    val jsonLoggingEnabled: Boolean = false,
+    
+    // Kafka Rules
+    val kafkaRules: List<KafkaRule> = emptyList(),
+    
+    // File Manager
+    val fileBookmarks: List<String> = emptyList(),
+    
+    // Syslog Ingestion
+    val syslogEnabled: Boolean = false,
+    val syslogServer: String = "127.0.0.1",
+    val syslogServerInternal: String? = null,
+    val syslogPort: Int = 514,
+    val proxyRsyslogEnabled: Boolean = false,
+    val proxyDualLoggingEnabled: Boolean = true,
+    val nginxLogDir: String? = null,
+    val logBufferingEnabled: Boolean = false,
+    val logBufferSizeKb: Int = 512, // Default 512kb
+    val logFlushIntervalSeconds: Int = 5, // Default 5s
+    
+    // Danger Proxy Settings (Global)
+    val dangerProxyEnabled: Boolean = false,
+    val dangerProxyHost: String? = null,
+    
+    // ClickHouse for big data analytics
+    val clickhouseSettings: ClickHouseSettings = ClickHouseSettings(),
+    
+    // Email Client Configuration
+    val emailClientConfig: EmailClientConfig = EmailClientConfig(),
+
+    // Recommended Rules (The "defaults" loaded via UI)
+    val recommendedProxyJailRules: List<ProxyJailRule> = DEFAULT_PROXY_JAIL_RULES
+)
+
+object AppConfig {
+    private val logger = LoggerFactory.getLogger(AppConfig::class.java)
+    private val lock = Any()
+    private const val DEFAULT_DATA_DIR = SystemConstants.DEFAULT_DATA_DIR
+
+    val json = Json {
+        prettyPrint = false
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+        coerceInputValues = true
+        isLenient = true
+    }
+
+    val isDocker: Boolean by lazy {
+        val inDocker =
+            File(SystemConstants.DOCKERENV).exists() || (File(SystemConstants.PROC_CGROUP).exists() && File(SystemConstants.PROC_CGROUP).readText()
+                .contains("docker"))
+        logger.info("Environment detection: isDocker=$inDocker")
+        inDocker
+    }
+
+    val dataRoot: File by lazy {
+        if (isDocker) {
+            File(SystemConstants.APP_DATA)
+        } else {
+            val env = System.getenv(SystemConstants.ENV_DATA_DIR).ifNullOrBlank(DEFAULT_DATA_DIR)
+            logger.info("Using DATA_DIR: $env")
+            File(env)
+        }
+    }
+
+    private val settingsFile: File by lazy {
+        File(dataRoot, FileConstants.SETTINGS_JSON)
+    }
+
+    // Keep JsonPersistence for file fallback/legacy reading
+    private val jsonPersistence: JsonPersistence<AppSettings> by lazy {
+        JsonPersistence.create(
+            file = settingsFile,
+            defaultContent = AppSettings(),
+            loggerName = AppConfig::class.java.name
+        )
+    }
+
+    // Initialize Settings from DB or File
+    private var isDbActive = false
+    private var _settings: AppSettings = loadSettings()
+
+    val storageBackend: String get() = if (isDbActive) "database" else "file"
+
+    fun reloadSettings() = synchronized(lock) {
+        logger.info("Reloading settings...")
+        _settings = loadSettings()
+    }
+
+    private fun loadSettings(): AppSettings {
+        logger.info("Initializing configuration...")
+        isDbActive = false
+        
+        // 1. Initialize Database
+        var shouldTryDb = false
+        try {
+            val dbConfigFile = File(dataRoot, "db-config.json")
+            if (dbConfigFile.exists()) {
+                try {
+                    val content = dbConfigFile.readText()
+                    val jsonEl = json.parseToJsonElement(content).jsonObject
+                    val host = jsonEl["host"]?.jsonPrimitive?.content
+                    val port = jsonEl["port"]?.jsonPrimitive?.content 
+                        ?: jsonEl["port"]?.jsonPrimitive?.intOrNull?.toString()
+                    val name = jsonEl["name"]?.jsonPrimitive?.content
+                    val user = jsonEl["user"]?.jsonPrimitive?.content
+                    val password = jsonEl["password"]?.jsonPrimitive?.content
+                    
+                    DatabaseFactory.init(host, port, name, user, password)
+                    shouldTryDb = true
+                } catch (e: Exception) {
+                    logger.error("Failed to read/init from db-config.json", e)
+                    // Try fallback default
+                    DatabaseFactory.init()
+                    shouldTryDb = true
+                }
+            } else if (!System.getenv("DB_HOST").isNullOrBlank()) {
+                DatabaseFactory.init()
+                shouldTryDb = true
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to initialize database: ${e.message}. Falling back to file-only mode.", e)
+            shouldTryDb = false
+        }
+
+        // 2. Try to load from Database (Main Source of Truth)
+        if (shouldTryDb) {
+            try {
+                val dbSettingsJson = transaction {
+                    SettingsTable.selectAll().where { SettingsTable.key eq "MAIN_SETTINGS" }
+                        .singleOrNull()
+                        ?.get(SettingsTable.value)
+                }
+
+                if (dbSettingsJson != null) {
+                    logger.info("Settings loaded from Database")
+                    isDbActive = true
+                    var loaded = json.decodeFromString<AppSettings>(dbSettingsJson)
+                    
+                    // Auto-injection removed to let admin control rules
+                    /*if (loaded.proxyJailEnabled && loaded.proxyJailRules.isEmpty()) {
+                        loaded = loaded.copy(proxyJailRules = DEFAULT_PROXY_JAIL_RULES)
+                    }*/
+
+                    // FORCE DISABLE REDIS FOR NOW
+                    CacheService.initialize(loaded.redisConfig.copy(enabled = false))
+                    return loaded
+                }
+            } catch (e: Exception) {
+                logger.warn("Failed to load settings from DB: ${e.message}")
+            }
+        }
+
+        // 3. Fallback: Load from File (Legacy/Migration)
+        return try {
+            logger.info("Loading settings from file (migration/fallback): ${settingsFile.absolutePath}")
+            var loadedFromFile = jsonPersistence.load()
+            
+            // Auto-injection removed to let admin control rules
+            /*if (loadedFromFile.proxyJailEnabled && loadedFromFile.proxyJailRules.isEmpty()) {
+                loadedFromFile = loadedFromFile.copy(proxyJailRules = DEFAULT_PROXY_JAIL_RULES)
+            }*/
+            
+            // 4. Migrate to DB
+            if (shouldTryDb) {
+                try {
+                    logger.info("Migrating settings to Database...")
+                    val content = json.encodeToString(loadedFromFile)
+                    transaction {
+                        val existing = SettingsTable.selectAll().where { SettingsTable.key eq "MAIN_SETTINGS" }.singleOrNull()
+                        if (existing != null) {
+                             SettingsTable.update({ SettingsTable.key eq "MAIN_SETTINGS" }) { stmt ->
+                                 stmt[SettingsTable.value] = content
+                             }
+                        } else {
+                             SettingsTable.insert { stmt ->
+                                 stmt[SettingsTable.key] = "MAIN_SETTINGS"
+                                 stmt[SettingsTable.value] = content
+                             }
+                        }
+                    }
+                    logger.info("Settings migrated to Database successfully.")
+                    isDbActive = true
+                    // Optionally rename file to .bak? 
+                    // settingsFile.renameTo(File(settingsFile.parent, "${settingsFile.name}.bak"))
+                } catch (e: Exception) {
+                    logger.error("Failed to migrate settings to DB", e)
+                }
+            }
+
+            logger.debug("Settings loaded successfully from file")
+            // FORCE DISABLE REDIS FOR NOW
+            CacheService.initialize(loadedFromFile.redisConfig.copy(enabled = false))
+            loadedFromFile
+        } catch (e: Exception) {
+            logger.error("Failed to load settings from file, using defaults", e)
+            val defaults = AppSettings()
+            CacheService.initialize(defaults.redisConfig.copy(enabled = false))
+            defaults
+        }
+    }
+
+    fun updateSettings(
+        dockerSocket: String? = null,
+        jamesWebAdminUrl: String? = null,
+        dockerBuildKit: Boolean? = null,
+        dockerCliBuild: Boolean? = null,
+        autoStorageRefresh: Boolean? = null,
+        autoStorageRefreshIntervalMinutes: Int? = null,
+        kafkaSettings: KafkaSettings? = null,
+        dbPersistenceLogsEnabled: Boolean? = null,
+        syslogEnabled: Boolean? = null,
+        syslogServer: String? = null,
+        syslogServerInternal: String? = null,
+        syslogPort: Int? = null,
+        proxyRsyslogEnabled: Boolean? = null,
+        proxyDualLoggingEnabled: Boolean? = null,
+        jsonLoggingEnabled: Boolean? = null,
+        nginxLogDir: String? = null,
+        clickhouseSettings: ClickHouseSettings? = null,
+        logBufferingEnabled: Boolean? = null,
+        logBufferSizeKb: Int? = null,
+        logFlushIntervalSeconds: Int? = null,
+        jailEnabled: Boolean? = null,
+        jailThreshold: Int? = null,
+        jailDurationMinutes: Int? = null,
+        exponentialJailEnabled: Boolean? = null,
+        maxJailDurationMinutes: Int? = null,
+        proxyJailThresholdDanger: Int? = null,
+        proxyJailThresholdBurst: Int? = null,
+        proxyJailThresholdCidr: Int? = null
+    ) = synchronized(lock) {
+        _settings = _settings.copy(
+            dockerSocket = dockerSocket ?: _settings.dockerSocket,
+            jamesWebAdminUrl = jamesWebAdminUrl ?: _settings.jamesWebAdminUrl,
+            dockerBuildKit = dockerBuildKit ?: _settings.dockerBuildKit,
+            dockerCliBuild = dockerCliBuild ?: _settings.dockerCliBuild,
+            autoStorageRefresh = autoStorageRefresh ?: _settings.autoStorageRefresh,
+            autoStorageRefreshIntervalMinutes = autoStorageRefreshIntervalMinutes ?: _settings.autoStorageRefreshIntervalMinutes,
+            kafkaSettings = kafkaSettings ?: _settings.kafkaSettings,
+            dbPersistenceLogsEnabled = dbPersistenceLogsEnabled ?: _settings.dbPersistenceLogsEnabled,
+            syslogEnabled = syslogEnabled ?: _settings.syslogEnabled,
+            syslogServer = syslogServer ?: _settings.syslogServer,
+            syslogServerInternal = syslogServerInternal ?: _settings.syslogServerInternal,
+            syslogPort = syslogPort ?: _settings.syslogPort,
+            proxyRsyslogEnabled = proxyRsyslogEnabled ?: _settings.proxyRsyslogEnabled,
+            proxyDualLoggingEnabled = proxyDualLoggingEnabled ?: _settings.proxyDualLoggingEnabled,
+            jsonLoggingEnabled = jsonLoggingEnabled ?: _settings.jsonLoggingEnabled,
+            nginxLogDir = nginxLogDir ?: _settings.nginxLogDir,
+            clickhouseSettings = clickhouseSettings ?: _settings.clickhouseSettings,
+            logBufferingEnabled = logBufferingEnabled ?: _settings.logBufferingEnabled,
+            logBufferSizeKb = logBufferSizeKb ?: _settings.logBufferSizeKb,
+            logFlushIntervalSeconds = logFlushIntervalSeconds ?: _settings.logFlushIntervalSeconds,
+            jailEnabled = jailEnabled ?: _settings.jailEnabled,
+            jailThreshold = jailThreshold ?: _settings.jailThreshold,
+            jailDurationMinutes = jailDurationMinutes ?: _settings.jailDurationMinutes,
+            exponentialJailEnabled = exponentialJailEnabled ?: _settings.exponentialJailEnabled,
+            maxJailDurationMinutes = maxJailDurationMinutes ?: _settings.maxJailDurationMinutes,
+            proxyJailThresholdDanger = proxyJailThresholdDanger ?: _settings.proxyJailThresholdDanger,
+            proxyJailThresholdBurst = proxyJailThresholdBurst ?: _settings.proxyJailThresholdBurst,
+            proxyJailThresholdCidr = proxyJailThresholdCidr ?: _settings.proxyJailThresholdCidr
+        )
+        saveSettings()
+    }
+
+    fun updateJailSettings(
+        enabled: Boolean,
+        threshold: Int,
+        durationMinutes: Int,
+        exponentialEnabled: Boolean? = null,
+        maxDuration: Int? = null
+    ) = synchronized(lock) {
+        _settings = _settings.copy(
+            jailEnabled = enabled,
+            jailThreshold = threshold,
+            jailDurationMinutes = durationMinutes,
+            exponentialJailEnabled = exponentialEnabled ?: _settings.exponentialJailEnabled,
+            maxJailDurationMinutes = maxDuration ?: _settings.maxJailDurationMinutes
+        )
+        saveSettings()
+    }
+
+    fun updateProxyStatsSettings(active: Boolean, intervalMs: Long, filterLocalIps: Boolean? = null) = synchronized(lock) {
+        _settings = _settings.copy(
+            proxyStatsActive = active,
+            proxyStatsIntervalMs = intervalMs,
+            filterLocalIps = filterLocalIps ?: _settings.filterLocalIps
+        )
+        saveSettings()
+    }
+
+    fun updateProxySecuritySettings(
+        enabled: Boolean,
+        thresholdNon200: Int,
+        rules: List<ProxyJailRule>,
+        windowMinutes: Int? = null,
+        thresholdDanger: Int? = null,
+        thresholdBurst: Int? = null,
+        thresholdCidr: Int? = null,
+        dangerProxyEnabled: Boolean? = null,
+        dangerProxyHost: String? = null,
+        recommendedRules: List<ProxyJailRule>? = null,
+        proxyJailIgnore404Patterns: List<String>? = null,
+        proxyJailStatusThresholds: Map<Int, Int>? = null
+    ) = synchronized(lock) {
+        // Validate Regexes
+        val allRulesToCheck = (rules + (recommendedRules ?: emptyList()))
+        for (rule in allRulesToCheck) {
+            if (rule.type == ProxyJailRuleType.PATH || rule.type == ProxyJailRuleType.USER_AGENT) {
+                try {
+                    Regex(rule.pattern)
+                } catch (e: Exception) {
+                    throw IllegalArgumentException("Invalid regex in rule '${rule.description ?: rule.id}': ${e.message}")
+                }
+            }
+        }
+
+        _settings = _settings.copy(
+            proxyJailEnabled = enabled,
+            proxyJailThresholdNon200 = thresholdNon200,
+            proxyJailRules = rules,
+            proxyJailWindowMinutes = if (windowMinutes != null) windowMinutes else _settings.proxyJailWindowMinutes,
+            proxyJailThresholdDanger = if (thresholdDanger != null) thresholdDanger else _settings.proxyJailThresholdDanger,
+            proxyJailThresholdBurst = if (thresholdBurst != null) thresholdBurst else _settings.proxyJailThresholdBurst,
+            proxyJailThresholdCidr = if (thresholdCidr != null) thresholdCidr else _settings.proxyJailThresholdCidr,
+            dangerProxyEnabled = if (dangerProxyEnabled != null) dangerProxyEnabled else _settings.dangerProxyEnabled,
+            dangerProxyHost = if (dangerProxyHost != null) dangerProxyHost else _settings.dangerProxyHost,
+            recommendedProxyJailRules = if (recommendedRules != null) recommendedRules else _settings.recommendedProxyJailRules,
+            proxyJailIgnore404Patterns = if (proxyJailIgnore404Patterns != null) proxyJailIgnore404Patterns else _settings.proxyJailIgnore404Patterns,
+            proxyJailStatusThresholds = if (proxyJailStatusThresholds != null) proxyJailStatusThresholds else _settings.proxyJailStatusThresholds
+        )
+        saveSettings()
+    }
+
+    fun updateProxyDefaultBehavior(return404: Boolean) = synchronized(lock) {
+        _settings = _settings.copy(
+            proxyDefaultReturn404 = return404
+        )
+        saveSettings()
+    }
+
+    fun updateBurstProtectionSettings(enabled: Boolean, rate: Int? = null, burst: Int? = null) = synchronized(lock) {
+        _settings = _settings.copy(
+            proxyBurstProtectionEnabled = enabled,
+            proxyBurstProtectionRate = rate ?: _settings.proxyBurstProtectionRate,
+            proxyBurstProtectionBurst = burst ?: _settings.proxyBurstProtectionBurst
+        )
+        saveSettings()
+    }
+
+    fun updateLoggingSettings(
+        dbPersistenceLogsEnabled: Boolean? = null,
+        nginxLogDir: String? = null,
+        jsonLoggingEnabled: Boolean? = null,
+        logBufferingEnabled: Boolean? = null,
+        logBufferSizeKb: Int? = null,
+        logFlushIntervalSeconds: Int? = null
+    ) = synchronized(lock) {
+        _settings = _settings.copy(
+            dbPersistenceLogsEnabled = dbPersistenceLogsEnabled ?: _settings.dbPersistenceLogsEnabled,
+            nginxLogDir = if (nginxLogDir.isNullOrBlank()) _settings.nginxLogDir else nginxLogDir,
+            jsonLoggingEnabled = jsonLoggingEnabled ?: _settings.jsonLoggingEnabled,
+            logBufferingEnabled = logBufferingEnabled ?: _settings.logBufferingEnabled,
+            logBufferSizeKb = logBufferSizeKb ?: _settings.logBufferSizeKb,
+            logFlushIntervalSeconds = logFlushIntervalSeconds ?: _settings.logFlushIntervalSeconds
+        )
+        saveSettings()
+    }
+
+    fun updateDangerProxySettings(
+        enabled: Boolean? = null,
+        host: String? = null
+    ) = synchronized(lock) {
+        _settings = _settings.copy(
+            dangerProxyEnabled = enabled ?: _settings.dangerProxyEnabled,
+            dangerProxyHost = host ?: _settings.dangerProxyHost
+        )
+        saveSettings()
+    }
+
+    fun updateFileBookmarks(bookmarks: List<String>) = synchronized(lock) {
+        _settings = _settings.copy(
+            fileBookmarks = bookmarks
+        )
+        saveSettings()
+    }
+
+    fun updateKafkaRules(rules: List<KafkaRule>) = synchronized(lock) {
+        _settings = _settings.copy(
+            kafkaRules = rules
+        )
+        saveSettings()
+    }
+
+    fun updateSyslogSettings(enabled: Boolean, server: String, port: Int, serverInternal: String? = null) = synchronized(lock) {
+        _settings = _settings.copy(
+            syslogEnabled = enabled,
+            syslogServer = server,
+            syslogServerInternal = serverInternal,
+            syslogPort = port
+        )
+        saveSettings()
+    }
+
+    fun updateProxyRsyslogSettings(enabled: Boolean, dualLogging: Boolean) {
+        _settings = _settings.copy(
+            proxyRsyslogEnabled = enabled,
+            proxyDualLoggingEnabled = dualLogging
+        )
+        saveSettings()
+    }
+
+    val settings: AppSettings get() = _settings
+
+    fun updateRedisConfig(config: RedisConfig) {
+        _settings = _settings.copy(redisConfig = config)
+        saveSettings()
+        // FORCE DISABLE REDIS FOR NOW
+        CacheService.updateConfig(config.copy(enabled = false))
+    }
+    
+    val redisConfig: RedisConfig get() = _settings.redisConfig
+    
+    fun updateAlertConfig(config: AlertConfig) {
+        _settings = _settings.copy(alertConfig = config)
+        saveSettings()
+    }
+    
+    val alertConfig: AlertConfig get() = _settings.alertConfig
+
+    fun updateEmailClientConfig(config: EmailClientConfig) {
+        _settings = _settings.copy(emailClientConfig = config)
+        saveSettings()
+    }
+
+    fun saveStorageStats(json: String) {
+        transaction {
+            SettingsTable.selectAll().where { SettingsTable.key eq "LATEST_STORAGE_STATS" }.singleOrNull()?.let {
+                SettingsTable.update({ SettingsTable.key eq "LATEST_STORAGE_STATS" }) { stmt ->
+                    stmt[SettingsTable.value] = json
+                    stmt[SettingsTable.updatedAt] = java.time.LocalDateTime.now()
+                }
+            } ?: run {
+                SettingsTable.insert { stmt ->
+                    stmt[SettingsTable.key] = "LATEST_STORAGE_STATS"
+                    stmt[SettingsTable.value] = json
+                    stmt[SettingsTable.updatedAt] = java.time.LocalDateTime.now()
+                }
+            }
+        }
+    }
+
+    fun loadStorageStats(): String? {
+        return transaction {
+            SettingsTable.selectAll().where { SettingsTable.key eq "LATEST_STORAGE_STATS" }
+                .singleOrNull()
+                ?.get(SettingsTable.value)
+        }
+    }
+
+    private fun saveSettings() {
+        // Save to DB
+        try {
+            val content = json.encodeToString(_settings)
+            transaction {
+                val existing = SettingsTable.selectAll().where { SettingsTable.key eq "MAIN_SETTINGS" }.singleOrNull()
+                if (existing != null) {
+                    SettingsTable.update({ SettingsTable.key eq "MAIN_SETTINGS" }) { stmt ->
+                        stmt[SettingsTable.value] = content
+                        stmt[SettingsTable.updatedAt] = java.time.LocalDateTime.now()
+                    }
+                } else {
+                    SettingsTable.insert { stmt ->
+                        stmt[SettingsTable.key] = "MAIN_SETTINGS"
+                        stmt[SettingsTable.value] = content
+                        stmt[SettingsTable.updatedAt] = java.time.LocalDateTime.now()
+                    }
+                }
+            }
+            logger.info("Settings saved to Database")
+        } catch (e: Exception) {
+            logger.error("Failed to save settings to Database", e)
+        }
+
+        // Also save to file as backup for now
+        try {
+            val saved = jsonPersistence.save(_settings)
+            if (saved) {
+                logger.debug("Settings synced to file backup at ${settingsFile.absolutePath}")
+            }
+        } catch (e: Exception) {
+            logger.warn("Failed to sync settings to file backup", e)
+        }
+    }
+
+
+    val dockerCommand: String
+        get() = if (isDocker) SystemConstants.DOCKER_BIN_DOCKER else {
+            if (File(SystemConstants.DOCKER_BIN_HOMEBREW).exists()) {
+                SystemConstants.DOCKER_BIN_HOMEBREW
+            } else if (File(SystemConstants.DOCKER_BIN_USR_LOCAL).exists()) {
+                SystemConstants.DOCKER_BIN_USR_LOCAL
+            } else if (File(SystemConstants.DOCKER_BIN_DOCKER).exists()) {
+                SystemConstants.DOCKER_BIN_DOCKER
+            } else {
+                SystemConstants.DOCKER_COMMAND
+            }
+        }
+
+    val dockerComposeCommand: String
+        get() = if (isDocker) SystemConstants.DOCKER_COMPOSE_BIN_USR else {
+            val resolvedDocker = dockerCommand
+            if (resolvedDocker != SystemConstants.DOCKER_COMMAND && hasComposePlugin(resolvedDocker)) {
+                "$resolvedDocker compose"
+            } else if (File(SystemConstants.DOCKER_COMPOSE_BIN_HOMEBREW).exists()) {
+                SystemConstants.DOCKER_COMPOSE_BIN_HOMEBREW
+            } else if (File(SystemConstants.DOCKER_BIN_DOCKER).exists()) {
+                SystemConstants.DOCKER_COMPOSE_BIN_USR
+            } else {
+                SystemConstants.DOCKER_COMPOSE_COMMAND
+            }
+        }
+
+    private fun hasComposePlugin(dockerPath: String): Boolean {
+        return try {
+            val p = ProcessBuilder(dockerPath, "compose", "version")
+                .redirectErrorStream(true)
+                .start()
+            val finished = p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
+            finished && p.exitValue() == 0
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    val dockerSocket: String
+        get() = _settings.dockerSocket
+
+    val jamesWebAdminUrl: String
+        get() = _settings.jamesWebAdminUrl
+
+
+    //backup dirs
+    val backupDir: File get() = File(dataRoot, FileConstants.BACKUPS)
+    val composeProjDir: File get() = File(dataRoot, FileConstants.COMPOSE_YMLS)
+
+    val projectRoot: File by lazy {
+        logger.info("Using project root: ${composeProjDir.absolutePath}")
+        return@lazy if (composeProjDir.exists()) {
+            composeProjDir
+        } else {
+            composeProjDir.mkdirs()
+            composeProjDir
+        }
+    }
+
+    // Proxy Service Configs
+    val nginxDir: File get() = File(dataRoot, FileConstants.NGINX)
+    val nginxLogDir: File get() = _settings.nginxLogDir?.takeIf { it.isNotBlank() }?.let { File(it) } ?: File(nginxDir, FileConstants.LOGS)
+    val nginxAccessLogFile: File get() = File(nginxDir, "${FileConstants.LOGS}/${FileConstants.ACCESS_LOG}")
+    val nginxConfigDir: File get() = File(nginxDir, FileConstants.CONFIG_D)
+    val nginxHostsFile: File get() = File(dataRoot, "${FileConstants.PROXY}/${FileConstants.HOSTS_JSON}")
+
+    // Log Service Configs
+    val systemLogDir: File get() = if (isDocker) File(SystemConstants.HOST_VAR_LOG) else File(SystemConstants.VAR_LOG)
+
+    // Btmp Service Configs
+    val btmpLogFile: File get() = if (isDocker) File(SystemConstants.HOST_BTMP_LOG) else File(SystemConstants.BTMP_LOG)
+
+    // Certs
+    val certbotDir: File get() = File(dataRoot, FileConstants.CERTBOT)
+    val letsEncryptDir: File get() = File(certbotDir, "${FileConstants.CONF}/${FileConstants.LIVE}")
+    val customCertDir: File get() = File(dataRoot, FileConstants.CERTS)
+
+    // Firewall Configs
+    val firewallDataDir: File get() = File(dataRoot, FileConstants.FIREWALL)
+
+    // File Manager
+    val fileManagerDir: File get() = File.listRoots().first() ?: File("/")
+
+    // When running in docker, we mount these binaries. When running locally, assume they are in PATH or sbin.
+    // NOTE: If user runs jar on valid linux, iptables should be in path, but systemd path might be limited.
+    val iptablesCmd: String
+        get() {
+            if (isDocker) return SystemConstants.IPTABLES_BIN_DOCKER
+            if (File(SystemConstants.IPTABLES_BIN_USR_SBIN).exists()) return SystemConstants.IPTABLES_BIN_USR_SBIN
+            if (File(SystemConstants.IPTABLES_BIN_SBIN).exists()) return SystemConstants.IPTABLES_BIN_SBIN
+            return SystemConstants.IPTABLES_COMMAND
+        }
+
+    val ipsetCmd: String
+        get() {
+            if (isDocker) return SystemConstants.IPSET_BIN_DOCKER
+            if (File(SystemConstants.IPSET_BIN_USR_SBIN).exists()) return SystemConstants.IPSET_BIN_USR_SBIN
+            if (File(SystemConstants.IPSET_BIN_SBIN).exists()) return SystemConstants.IPSET_BIN_SBIN
+            return SystemConstants.IPSET_COMMAND
+        }
+
+    val nftCmd: String
+        get() {
+            if (isDocker) return SystemConstants.NFT_BIN_DOCKER
+            if (File(SystemConstants.NFT_BIN_USR_SBIN).exists()) return SystemConstants.NFT_BIN_USR_SBIN
+            if (File(SystemConstants.NFT_BIN_SBIN).exists()) return SystemConstants.NFT_BIN_SBIN
+            return SystemConstants.NFT_COMMAND
+        }
+
+    val appVersion: String by lazy {
+        try {
+            val props = java.util.Properties()
+            props.load(AppConfig::class.java.getResourceAsStream("/version.properties"))
+            props.getProperty("version", "Unknown")
+        } catch (e: Exception) {
+            logger.warn("Failed to load version.properties", e)
+            "Unknown"
+        }
+    }
+
+    val fcmServiceAccountFile: File get() = File(dataRoot, _settings.fcmServiceAccountPath)
+    val fcmTokensFile: File get() = File(dataRoot, "fcm-tokens.json")
+
+    fun isLocalIP(ip: String): Boolean {
+        return IpFilterUtils.isLocalIp(ip)
+    }
+}

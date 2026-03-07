@@ -6,7 +6,7 @@ import {
     Terminal, History, Zap, ChevronDown, Copy, GripVertical,
     AlertTriangle, Filter, Eye, EyeOff, Hash, Layers
 } from 'lucide-react';
-import { SystemConfig, ProxyJailRule, ProxyJailRuleType, ProxyJailRuleTarget } from '@/lib/types';
+import { SystemConfig, ProxyJailRule, ProxyJailRuleType, ProxyJailRuleTarget, ProxyJailMatchMode } from '@/lib/types';
 import { DockerClient } from '@/lib/api';
 import { Modal } from '../ui/Modal';
 import { toast } from 'sonner';
@@ -359,6 +359,11 @@ function RuleCard({ rule, accent, onDelete, onDuplicate, onEdit }: {
                                 {threshold}x threshold
                             </span>
                         )}
+                        {rule.matchMode === ProxyJailMatchMode.EXACT && (
+                            <span className="text-[9px] font-bold bg-green-500/15 text-green-400 px-1.5 py-0.5 rounded">
+                                EXACT O(1)
+                            </span>
+                        )}
                         {rule.matchEmpty && (
                             <span className="text-[9px] font-bold bg-blue-500/15 text-blue-400 px-1.5 py-0.5 rounded">
                                 matches empty
@@ -549,6 +554,7 @@ function RuleFormModal({ rule, onClose, onSave }: {
     const [statusCodePattern, setStatusCodePattern] = useState(rule?.statusCodePattern ?? '');
     const [matchEmpty, setMatchEmpty] = useState(rule?.matchEmpty ?? false);
     const [target, setTarget] = useState<ProxyJailRuleTarget>(rule?.target ?? ProxyJailRuleTarget.BOTH);
+    const [matchMode, setMatchMode] = useState<ProxyJailMatchMode>(rule?.matchMode ?? ProxyJailMatchMode.REGEX);
     const [error, setError] = useState('');
     const [warning, setWarning] = useState('');
     const [validating, setValidating] = useState(false);
@@ -562,11 +568,11 @@ function RuleFormModal({ rule, onClose, onSave }: {
 
         if (!pattern.trim() && !matchEmpty) { setError('Pattern is required'); return; }
 
-        const isRegexType = type === ProxyJailRuleType.USER_AGENT
+        const isRegexType = matchMode === ProxyJailMatchMode.REGEX && (type === ProxyJailRuleType.USER_AGENT
             || type === ProxyJailRuleType.PATH
             || type === ProxyJailRuleType.HOST_HEADER
             || type === ProxyJailRuleType.COMPOSITE
-            || type === ProxyJailRuleType.STATUS_CODE;
+            || type === ProxyJailRuleType.STATUS_CODE);
 
         if (isRegexType) {
             setValidating(true);
@@ -586,7 +592,7 @@ function RuleFormModal({ rule, onClose, onSave }: {
             }
         }
 
-        if (type === ProxyJailRuleType.COMPOSITE && statusCodePattern.trim()) {
+        if (matchMode === ProxyJailMatchMode.REGEX && type === ProxyJailRuleType.COMPOSITE && statusCodePattern.trim()) {
             setValidating(true);
             try {
                 const result = await DockerClient.validateRegex(statusCodePattern.trim());
@@ -613,6 +619,7 @@ function RuleFormModal({ rule, onClose, onSave }: {
                 ? statusCodePattern.trim()
                 : undefined,
             target,
+            matchMode,
         });
     };
 
@@ -673,22 +680,57 @@ function RuleFormModal({ rule, onClose, onSave }: {
                     </div>
                 </div>
 
+                {/* Match Mode */}
+                {type !== ProxyJailRuleType.METHOD && (
+                    <div>
+                        <label className="text-[10px] font-bold uppercase text-on-surface-variant tracking-widest block mb-2">Match Mode</label>
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setMatchMode(ProxyJailMatchMode.REGEX)}
+                                className={`flex flex-col items-start gap-1 p-3 rounded-xl border transition-all ${matchMode === ProxyJailMatchMode.REGEX ? 'bg-violet-500/10 border-violet-500/30 ring-1 ring-violet-500/30' : 'bg-white/5 border-white/5 text-on-surface-variant/50 hover:bg-white/10'}`}
+                            >
+                                <span className={`text-[10px] font-bold uppercase tracking-wider ${matchMode === ProxyJailMatchMode.REGEX ? 'text-violet-400' : ''}`}>Regex</span>
+                                <span className="text-[9px] opacity-40">Pattern matching (O(n))</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setMatchMode(ProxyJailMatchMode.EXACT)}
+                                className={`flex flex-col items-start gap-1 p-3 rounded-xl border transition-all ${matchMode === ProxyJailMatchMode.EXACT ? 'bg-green-500/10 border-green-500/30 ring-1 ring-green-500/30' : 'bg-white/5 border-white/5 text-on-surface-variant/50 hover:bg-white/10'}`}
+                            >
+                                <span className={`text-[10px] font-bold uppercase tracking-wider ${matchMode === ProxyJailMatchMode.EXACT ? 'text-green-400' : ''}`}>Exact</span>
+                                <span className="text-[9px] opacity-40">HashMap lookup (O(1))</span>
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* Pattern */}
                 <div>
                     <label className="text-[10px] font-bold uppercase text-on-surface-variant tracking-widest block mb-1.5">
-                        {type === ProxyJailRuleType.METHOD ? 'HTTP Method' : type === ProxyJailRuleType.STATUS_CODE ? 'Status Code Pattern' : 'Pattern (Regex)'}
+                        {type === ProxyJailRuleType.METHOD ? 'HTTP Method' :
+                            matchMode === ProxyJailMatchMode.EXACT ? 'Exact Value' :
+                                type === ProxyJailRuleType.STATUS_CODE ? 'Status Code Pattern' : 'Pattern (Regex)'}
                     </label>
                     <input
                         autoFocus
                         value={pattern}
                         onChange={e => setPattern(e.target.value)}
                         placeholder={
-                            type === ProxyJailRuleType.USER_AGENT ? 'e.g. ^sqlmap/.*' :
-                                type === ProxyJailRuleType.PATH ? 'e.g. /wp-admin|/xmlrpc\\.php' :
-                                    type === ProxyJailRuleType.HOST_HEADER ? 'e.g. ^(www\\.)?malicious\\.com$' :
-                                        type === ProxyJailRuleType.METHOD ? 'e.g. DELETE' :
-                                            type === ProxyJailRuleType.STATUS_CODE ? 'e.g. 5\\d\\d' :
-                                                'e.g. /api/.*'
+                            matchMode === ProxyJailMatchMode.EXACT ? (
+                                type === ProxyJailRuleType.PATH ? 'e.g. /wp-admin' :
+                                    type === ProxyJailRuleType.USER_AGENT ? 'e.g. sqlmap/1.0' :
+                                        type === ProxyJailRuleType.HOST_HEADER ? 'e.g. malicious.com' :
+                                            type === ProxyJailRuleType.STATUS_CODE ? 'e.g. 404' :
+                                                'e.g. /exact-path'
+                            ) : (
+                                type === ProxyJailRuleType.USER_AGENT ? 'e.g. ^sqlmap/.*' :
+                                    type === ProxyJailRuleType.PATH ? 'e.g. /wp-admin|/xmlrpc\\.php' :
+                                        type === ProxyJailRuleType.HOST_HEADER ? 'e.g. ^(www\\.)?malicious\\.com$' :
+                                            type === ProxyJailRuleType.METHOD ? 'e.g. DELETE' :
+                                                type === ProxyJailRuleType.STATUS_CODE ? 'e.g. 5\\d\\d' :
+                                                    'e.g. /api/.*'
+                            )
                         }
                         className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-primary/50"
                     />

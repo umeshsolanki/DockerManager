@@ -429,6 +429,11 @@ export enum ProxyJailRuleType {
   HOST_HEADER = 'HOST_HEADER'
 }
 
+export enum ProxyJailMatchMode {
+  REGEX = 'REGEX',
+  EXACT = 'EXACT'
+}
+
 export interface ProxyJailRule {
   id: string;
   type: ProxyJailRuleType;
@@ -438,6 +443,7 @@ export interface ProxyJailRule {
   threshold?: number;
   matchEmpty?: boolean;
   target?: ProxyJailRuleTarget;
+  matchMode?: ProxyJailMatchMode;
 }
 
 export interface WebSocketConnection {

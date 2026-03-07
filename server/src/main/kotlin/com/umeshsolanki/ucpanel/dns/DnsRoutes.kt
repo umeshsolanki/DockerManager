@@ -1,0 +1,430 @@
+package com.umeshsolanki.ucpanel.dns
+
+import com.umeshsolanki.ucpanel.requireParameter
+import com.umeshsolanki.ucpanel.respondBooleanResult
+import com.umeshsolanki.ucpanel.respondNullableResult
+import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.request.receive
+import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.*
+import io.ktor.server.application.ApplicationCallPipeline
+import io.ktor.server.application.call
+import com.umeshsolanki.ucpanel.jail.JailManagerService
+import io.ktor.server.plugins.origin
+import java.net.InetAddress
+
+private fun checkIpMatch(ip: String, pattern: String): Boolean {
+    val trimmed = pattern.trim()
+    if (ip == trimmed) return true
+    if (!trimmed.contains("/")) return false
+    
+    try {
+        val parts = trimmed.split("/")
+        if (parts.size != 2) return false
+        val subnet = parts[0]
+        val mask = parts[1].toIntOrNull() ?: return false
+        
+        val ipAddr = InetAddress.getByName(ip).address
+        val subnetAddr = InetAddress.getByName(subnet).address
+        
+        if (ipAddr.size != subnetAddr.size) return false
+        
+        var maskBits = mask
+        for (i in ipAddr.indices) {
+            val ipByte = ipAddr[i].toInt() and 0xFF
+            val subnetByte = subnetAddr[i].toInt() and 0xFF
+            
+            if (maskBits >= 8) {
+                if (ipByte != subnetByte) return false
+                maskBits -= 8
+            } else if (maskBits > 0) {
+                val shift = 8 - maskBits
+                if ((ipByte ushr shift) != (subnetByte ushr shift)) return false
+                maskBits = 0
+            }
+        }
+        return true
+    } catch (e: Exception) {
+        return false
+    }
+}
+
+fun Route.dnsRoutes() {
+    route("/dns") {
+
+        // ==================== Service Control ====================
+
+        get("/status") { call.respond(DnsService.getStatus()) }
+        post("/reload") { call.respond(DnsService.reload()) }
+        post("/restart") { call.respond(DnsService.restart()) }
+        post("/flush-cache") { call.respond(DnsService.flushCache()) }
+        get("/validate") { call.respond(DnsService.validateConfig()) }
+        get("/stats") { call.respond(DnsService.getQueryStats()) }
+        get("/logs") {
+            val tail = call.request.queryParameters["tail"]?.toIntOrNull() ?: 100
+            call.respondText(DnsService.getLogs(tail), ContentType.Text.Plain)
+        }
+
+
+        // ==================== Zones ====================
+
+        route("/zones") {
+            get { call.respond(DnsService.listZones()) }
+
+            post {
+                val request = call.receive<CreateZoneRequest>()
+                val zone = DnsService.createZone(request)
+                if (zone != null) call.respond(HttpStatusCode.Created, zone)
+                else call.respond(HttpStatusCode.Conflict, DnsActionResult(false, "Zone already exists"))
+            }
+
+            post("/create-defaults") {
+                call.respond(DnsService.createDefaultZones())
+            }
+
+            post("/regenerate") {
+                call.respond(DnsService.regenerateZoneFiles())
+            }
+
+            route("/{id}") {
+                get {
+                    val id = call.requireParameter("id") ?: return@get
+                    call.respondNullableResult(DnsService.getZone(id), "Zone not found")
+                }
+
+                put {
+                    val id = call.requireParameter("id") ?: return@put
+                    val request = call.receive<UpdateZoneRequest>()
+                    call.respondBooleanResult(DnsService.updateZone(id, request), "Zone updated", "Failed to update zone")
+                }
+
+                delete {
+                    val id = call.requireParameter("id") ?: return@delete
+                    call.respondBooleanResult(DnsService.deleteZone(id), "Zone deleted", "Failed to delete zone")
+                }
+
+                post("/toggle") {
+                    val id = call.requireParameter("id") ?: return@post
+                    call.respondBooleanResult(DnsService.toggleZone(id), "Zone toggled", "Failed to toggle zone")
+                }
+
+                put("/options") {
+                    val id = call.requireParameter("id") ?: return@put
+                    val request = call.receive<UpdateZoneOptionsRequest>()
+                    call.respondBooleanResult(DnsService.updateZoneOptions(id, request), "Zone options updated", "Failed to update zone options")
+                }
+
+                get("/validate") {
+                    val id = call.requireParameter("id") ?: return@get
+                    call.respond(DnsService.validateZone(id))
+                }
+
+                get("/file") {
+                    val id = call.requireParameter("id") ?: return@get
+                    val content = DnsService.getZoneFileContent(id)
+                    if (content != null) call.respondText(content, ContentType.Text.Plain)
+                    else call.respond(HttpStatusCode.NotFound, "Zone file not found")
+                }
+
+                get("/export") {
+                    val id = call.requireParameter("id") ?: return@get
+                    val content = DnsService.exportZoneFile(id)
+                    if (content != null) call.respondText(content, ContentType.Text.Plain)
+                    else call.respond(HttpStatusCode.NotFound, "Zone file not found")
+                }
+
+                // -- Records --
+
+                route("/records") {
+                    get {
+                        val id = call.requireParameter("id") ?: return@get
+                        call.respond(DnsService.getRecords(id))
+                    }
+
+                    put {
+                        val id = call.requireParameter("id") ?: return@put
+                        val request = call.receive<UpdateRecordRequest>()
+                        call.respondBooleanResult(DnsService.updateRecords(id, request.records), "Records updated", "Failed to update records")
+                    }
+
+                    post {
+                        val id = call.requireParameter("id") ?: return@post
+                        val record = call.receive<DnsRecord>()
+                        call.respondBooleanResult(DnsService.addRecord(id, record), "Record added", "Failed to add record", HttpStatusCode.Created)
+                    }
+
+                    delete("/{recordId}") {
+                        val zoneId = call.requireParameter("id") ?: return@delete
+                        val recordId = call.requireParameter("recordId") ?: return@delete
+                        call.respondBooleanResult(DnsService.deleteRecord(zoneId, recordId), "Record deleted", "Failed to delete record")
+                    }
+                }
+
+                // -- DNSSEC --
+
+                get("/dnssec") {
+                    val id = call.requireParameter("id") ?: return@get
+                    call.respond(DnsService.getDnssecStatus(id))
+                }
+
+                post("/dnssec/enable") {
+                    val id = call.requireParameter("id") ?: return@post
+                    val request = try { call.receive<EnableDnssecRequest>() } catch (_: Exception) { null }
+                    call.respond(DnsService.enableDnssec(id, request))
+                }
+
+                post("/dnssec/disable") {
+                    val id = call.requireParameter("id") ?: return@post
+                    call.respond(DnsService.disableDnssec(id))
+                }
+
+                post("/dnssec/sign") {
+                    val id = call.requireParameter("id") ?: return@post
+                    call.respond(DnsService.signZone(id))
+                }
+
+                get("/dnssec/ds") {
+                    val id = call.requireParameter("id") ?: return@get
+                    call.respond(DnsService.getDsRecords(id))
+                }
+
+                post("/generate-reverse") {
+                    val id = call.requireParameter("id") ?: return@post
+                    call.respond(DnsService.generateReverseZones(id))
+                }
+
+                // -- Templates --
+
+                post("/apply-template/{templateId}") {
+                    val zoneId = call.requireParameter("id") ?: return@post
+                    val templateId = call.requireParameter("templateId") ?: return@post
+                    call.respondBooleanResult(DnsService.applyTemplate(zoneId, templateId), "Template applied", "Failed to apply template")
+                }
+            }
+        }
+
+        // ==================== Import ====================
+
+        post("/import") {
+            val request = call.receive<BulkImportRequest>()
+            call.respond(DnsService.importZoneFile(request))
+        }
+
+        post("/pull") {
+            val request = call.receive<PullZoneRequest>()
+            call.respond(DnsService.pullZone(request))
+        }
+
+        // ==================== Lookup (dig) ====================
+
+        post("/lookup") {
+            val request = call.receive<DnsLookupRequest>()
+            call.respond(DnsService.lookup(request))
+        }
+
+        // ==================== ACLs ====================
+
+        route("/acls") {
+            get { call.respond(DnsService.listAcls()) }
+
+            post {
+                val acl = call.receive<DnsAcl>()
+                call.respond(HttpStatusCode.Created, DnsService.createAcl(acl))
+            }
+
+            put {
+                val acl = call.receive<DnsAcl>()
+                call.respondBooleanResult(DnsService.updateAcl(acl), "ACL updated", "Failed to update ACL")
+            }
+
+            delete("/{id}") {
+                val id = call.requireParameter("id") ?: return@delete
+                call.respondBooleanResult(DnsService.deleteAcl(id), "ACL deleted", "Failed to delete ACL")
+            }
+        }
+
+        // ==================== TSIG Keys ====================
+
+        route("/tsig") {
+            get { call.respond(DnsService.listTsigKeys()) }
+
+            post {
+                val key = call.receive<TsigKey>()
+                val created = DnsService.createTsigKey(key)
+                if (created != null) call.respond(HttpStatusCode.Created, created)
+                else call.respond(HttpStatusCode.InternalServerError, DnsActionResult(false, "Key generation failed"))
+            }
+
+            delete("/{id}") {
+                val id = call.requireParameter("id") ?: return@delete
+                call.respondBooleanResult(DnsService.deleteTsigKey(id), "TSIG key deleted", "Failed to delete key")
+            }
+        }
+
+        // ==================== Global Forwarders ====================
+
+        route("/forwarders") {
+            get { call.respond(DnsService.getForwarderConfig()) }
+
+            post {
+                val config = call.receive<DnsForwarderConfig>()
+                call.respondBooleanResult(DnsService.updateForwarderConfig(config), "Forwarders updated", "Failed to update forwarders")
+            }
+        }
+
+        // ==================== Global Security ====================
+
+        route("/security") {
+            get { call.respond(DnsService.getGlobalSecurityConfig()) }
+
+            post {
+                val config = call.receive<GlobalSecurityConfig>()
+                call.respondBooleanResult(DnsService.updateGlobalSecurityConfig(config), "Security config updated", "Failed to update security config")
+            }
+        }
+
+        // ==================== Installation ====================
+
+        get("/install/status") { call.respond(DnsService.getInstallStatus()) }
+
+        post("/install") {
+            val request = call.receive<DnsInstallRequest>()
+            call.respond(DnsService.install(request))
+        }
+
+        post("/uninstall") { call.respond(DnsService.uninstall()) }
+
+        // ==================== Templates ====================
+
+        route("/templates") {
+            get { call.respond(DnsService.listTemplates()) }
+
+            post {
+                val template = call.receive<ZoneTemplate>()
+                call.respond(HttpStatusCode.Created, DnsService.createTemplate(template))
+            }
+
+            delete("/{id}") {
+                val id = call.requireParameter("id") ?: return@delete
+                call.respondBooleanResult(DnsService.deleteTemplate(id), "Template deleted", "Failed to delete template")
+            }
+        }
+
+        // ==================== Professional Hosting ====================
+
+        route("/hosting") {
+            post("/dkim/generate") {
+                val request = call.receive<DkimKeyGenRequest>()
+                call.respond(DnsService.generateDkimKey(request))
+            }
+
+            post("/spf/build") {
+                val config = call.receive<SpfConfig>()
+                call.respondText(DnsService.buildSpfRecord(config), ContentType.Text.Plain)
+            }
+
+            post("/dmarc/build") {
+                val config = call.receive<DmarcConfig>()
+                call.respondText(DnsService.buildDmarcRecord(config), ContentType.Text.Plain)
+            }
+
+            get("/reverse/suggest") {
+                val ip = call.request.queryParameters["ip"] ?: return@get call.respond(HttpStatusCode.BadRequest, "IP missing")
+                call.respond(DnsService.suggestReverseZone(ip))
+            }
+
+            get("/propagation/{id}") {
+                val zoneId = call.requireParameter("id") ?: return@get
+                val name = call.request.queryParameters["name"] ?: "@"
+                val typeStr = call.request.queryParameters["type"] ?: "A"
+                val type = try { DnsRecordType.valueOf(typeStr) } catch(e: Exception) { DnsRecordType.A }
+                call.respond(DnsService.checkPropagation(zoneId, name, type))
+            }
+
+            post("/srv/build") {
+                val config = call.receive<SrvConfig>()
+                call.respond(mapOf("record" to DnsService.buildSrvRecord(config)))
+            }
+
+            get("/health/{id}") {
+                val id = call.requireParameter("id") ?: return@get
+                call.respond(DnsService.getEmailHealth(id))
+            }
+
+            get("/reverse-dashboard") {
+                call.respond(DnsService.getReverseDnsDashboard())
+            }
+        }
+    }
+}
+
+fun Route.dnsApiKeyRoutes() {
+    route("/api/dns") {
+        intercept(ApplicationCallPipeline.Plugins) {
+            val remoteHost = call.request.origin.remoteHost
+            
+            // Fast exit if explicitly jailed
+            if (JailManagerService.isIPJailed(remoteHost)) {
+                call.respond(HttpStatusCode.Forbidden, "Access Denied")
+                finish()
+                return@intercept
+            }
+            
+            val apiKey = call.request.headers["X-Api-Key"] ?: call.request.queryParameters["apiKey"]
+            var authorized = false
+            
+            if (apiKey != null) {
+                val config = DnsService.getGlobalSecurityConfig()
+                val matchingKey = config.apiKeys.find { it.key == apiKey }
+                if (matchingKey != null) {
+                    if (matchingKey.allowedIps.isEmpty() || matchingKey.allowedIps.any { checkIpMatch(remoteHost, it) }) {
+                        authorized = true
+                    }
+                }
+            }
+            
+            if (!authorized) {
+                JailManagerService.recordInvalidApiAttempt(remoteHost)
+                call.respond(HttpStatusCode.Unauthorized, "Unauthorized or Invalid API Key")
+                finish()
+                return@intercept
+            }
+            
+            // Clear attempts on success
+            JailManagerService.clearFailedAttempts(remoteHost)
+        }
+
+        route("/zones/{idOrName}") {
+            get {
+                val identifier = call.requireParameter("idOrName") ?: return@get
+                call.respondNullableResult(DnsService.getZone(identifier), "Zone not found")
+            }
+            route("/records") {
+                get {
+                    val identifier = call.requireParameter("idOrName") ?: return@get
+                    call.respond(DnsService.getRecords(identifier))
+                }
+
+                put {
+                    val identifier = call.requireParameter("idOrName") ?: return@put
+                    val request = call.receive<UpdateRecordRequest>()
+                    call.respondBooleanResult(DnsService.updateRecords(identifier, request.records), "Records updated", "Failed to update records")
+                }
+
+                post {
+                    val identifier = call.requireParameter("idOrName") ?: return@post
+                    val record = call.receive<DnsRecord>()
+                    call.respondBooleanResult(DnsService.addRecord(identifier, record), "Record added", "Failed to add record", HttpStatusCode.Created)
+                }
+
+                delete("/{recordId}") {
+                    val identifier = call.requireParameter("idOrName") ?: return@delete
+                    val recordId = call.requireParameter("recordId") ?: return@delete
+                    call.respondBooleanResult(DnsService.deleteRecord(identifier, recordId), "Record deleted", "Failed to delete record")
+                }
+            }
+        }
+    }
+}

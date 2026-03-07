@@ -1,4 +1,3 @@
-import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -42,6 +41,7 @@ kotlin {
             implementation(compose.foundation)
             implementation(compose.material3)
             implementation(compose.ui)
+            implementation(libs.navigation.compose)
             implementation(compose.components.resources)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
@@ -61,7 +61,7 @@ kotlin {
 }
 
 android {
-    namespace = "com.umeshsolanki.dockermanager.composeApp"
+    namespace = "com.umeshsolanki.ucpanel.composeApp"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {

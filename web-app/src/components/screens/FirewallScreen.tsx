@@ -60,6 +60,7 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
     const [manualJailDuration, setManualJailDuration] = useState('30');
     const [manualJailReason, setManualJailReason] = useState('');
     const [isManualJailing, setIsManualJailing] = useState(false);
+    const [showJailSettings, setShowJailSettings] = useState(false);
 
     const fetchRules = async () => {
         setIsLoading(true);
@@ -939,6 +940,138 @@ export default function FirewallScreen({ initialTab }: { initialTab?: FirewallTa
                                 </>
                             );
                         })()}
+                    </div>
+
+                    {/* Jail Settings Card */}
+                    <div className="bg-surface/30 border border-outline/10 rounded-2xl p-6">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-red-500/10 flex items-center justify-center text-red-400 border border-red-500/10">
+                                    <Settings size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold">Jail Settings</h3>
+                                    <p className="text-xs text-on-surface-variant/60 mt-0.5">Auto-jail behavior and exponential blocking</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={() => setShowJailSettings(!showJailSettings)}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${showJailSettings ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-white/5 border-white/5 text-on-surface-variant hover:bg-white/10'}`}
+                                >
+                                    <Settings size={14} /> Configure
+                                    <ChevronRight size={12} className={`transition-transform ${showJailSettings ? 'rotate-90' : ''}`} />
+                                </button>
+                                <div className="h-8 w-px bg-outline/10" />
+                                <span className="text-xs text-on-surface-variant/50">Auto-Jail</span>
+                                <button
+                                    onClick={async () => {
+                                        const newVal = !proxyConfig?.jailEnabled;
+                                        setProxyConfig(prev => prev ? { ...prev, jailEnabled: newVal } : null);
+                                        const result = await DockerClient.updateSystemConfig({ jailEnabled: newVal });
+                                        if (result.success) {
+                                            toast.success(newVal ? 'Auto-jail enabled' : 'Auto-jail disabled');
+                                        } else {
+                                            setProxyConfig(prev => prev ? { ...prev, jailEnabled: !newVal } : null);
+                                            toast.error('Failed to update setting');
+                                        }
+                                    }}
+                                    className={`w-12 h-6 rounded-full transition-all relative ${proxyConfig?.jailEnabled ? 'bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)]' : 'bg-white/10'}`}
+                                >
+                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${proxyConfig?.jailEnabled ? 'right-1' : 'left-1'}`} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {showJailSettings && (
+                            <div className="mt-6 pt-6 border-t border-outline/10 animate-in fade-in slide-in-from-top-2 duration-300 space-y-4">
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                    <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                                        <label className="text-[10px] font-bold uppercase tracking-tight block mb-0.5 text-on-surface-variant">
+                                            Base Duration
+                                        </label>
+                                        <span className="text-[9px] text-on-surface-variant/40 block mb-2">Jail duration (minutes)</span>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            value={proxyConfig?.jailDurationMinutes ?? 30}
+                                            onChange={e => setProxyConfig(prev => prev ? { ...prev, jailDurationMinutes: parseInt(e.target.value) || 1 } : null)}
+                                            onBlur={async (e) => {
+                                                const val = parseInt(e.target.value) || 1;
+                                                const result = await DockerClient.updateSystemConfig({ jailDurationMinutes: val });
+                                                if (result.success) toast.success('Base duration updated');
+                                                else toast.error('Failed to update');
+                                            }}
+                                            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm font-mono font-bold focus:outline-none focus:border-red-500/50"
+                                        />
+                                    </div>
+                                    <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                                        <label className="text-[10px] font-bold uppercase tracking-tight block mb-0.5 text-orange-400">
+                                            Max Duration
+                                        </label>
+                                        <span className="text-[9px] text-on-surface-variant/40 block mb-2">Escalation ceiling (minutes)</span>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            value={proxyConfig?.maxJailDurationMinutes ?? 10080}
+                                            onChange={e => setProxyConfig(prev => prev ? { ...prev, maxJailDurationMinutes: parseInt(e.target.value) || 1 } : null)}
+                                            onBlur={async (e) => {
+                                                const val = parseInt(e.target.value) || 1;
+                                                const result = await DockerClient.updateSystemConfig({ maxJailDurationMinutes: val });
+                                                if (result.success) toast.success('Max duration updated');
+                                                else toast.error('Failed to update');
+                                            }}
+                                            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm font-mono font-bold focus:outline-none focus:border-orange-500/50"
+                                        />
+                                    </div>
+                                    <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                                        <label className="text-[10px] font-bold uppercase tracking-tight block mb-0.5 text-blue-400">
+                                            Jail Threshold
+                                        </label>
+                                        <span className="text-[9px] text-on-surface-variant/40 block mb-2">Violations before jail</span>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            value={proxyConfig?.jailThreshold ?? 5}
+                                            onChange={e => setProxyConfig(prev => prev ? { ...prev, jailThreshold: parseInt(e.target.value) || 1 } : null)}
+                                            onBlur={async (e) => {
+                                                const val = parseInt(e.target.value) || 1;
+                                                const result = await DockerClient.updateSystemConfig({ jailThreshold: val });
+                                                if (result.success) toast.success('Threshold updated');
+                                                else toast.error('Failed to update');
+                                            }}
+                                            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-sm font-mono font-bold focus:outline-none focus:border-blue-500/50"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                                    <div className="flex items-center gap-3">
+                                        <Zap size={16} className="text-orange-400" />
+                                        <div>
+                                            <span className="text-xs font-bold block">Exponential Blocking</span>
+                                            <span className="text-[10px] text-on-surface-variant/40">Double jail duration for repeat offenders (2^n escalation, capped at max duration)</span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={async () => {
+                                            const newVal = !proxyConfig?.exponentialJailEnabled;
+                                            setProxyConfig(prev => prev ? { ...prev, exponentialJailEnabled: newVal } : null);
+                                            const result = await DockerClient.updateSystemConfig({ exponentialJailEnabled: newVal });
+                                            if (result.success) {
+                                                toast.success(newVal ? 'Exponential blocking enabled' : 'Exponential blocking disabled');
+                                            } else {
+                                                setProxyConfig(prev => prev ? { ...prev, exponentialJailEnabled: !newVal } : null);
+                                                toast.error('Failed to update setting');
+                                            }
+                                        }}
+                                        className={`w-10 h-5 rounded-full transition-all relative shrink-0 ${proxyConfig?.exponentialJailEnabled ? 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.3)]' : 'bg-white/10'}`}
+                                    >
+                                        <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${proxyConfig?.exponentialJailEnabled ? 'right-0.5' : 'left-0.5'}`} />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Toolbar */}

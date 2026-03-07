@@ -34,7 +34,7 @@ kotlin {
     }
 }
 
-group = "com.umeshsolanki.dockermanager"
+group = "com.umeshsolanki.ucpanel"
 version = "1.0.0"
 
 publishing {

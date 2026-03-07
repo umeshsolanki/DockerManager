@@ -7,11 +7,11 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
 }
 
-group = "com.umeshsolanki.dockermanager"
+group = "com.umeshsolanki.ucpanel"
 version = "5.0.1"
 
 application {
-    mainClass.set("com.umeshsolanki.dockermanager.ApplicationKt")
+    mainClass.set("com.umeshsolanki.ucpanel.ApplicationKt")
     
     val isDevelopment: Boolean = project.ext.has("development")
     applicationDefaultJvmArgs = listOf("-Dio.ktor.development=$isDevelopment")

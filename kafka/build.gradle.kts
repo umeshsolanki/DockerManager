@@ -3,7 +3,7 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
 }
 
-group = "com.umeshsolanki.dockermanager"
+group = "com.umeshsolanki.ucpanel"
 version = "1.0.0"
 
 dependencies {

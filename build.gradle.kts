@@ -9,4 +9,5 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.ktor) apply false
     alias(libs.plugins.shadowJar) apply false
+    alias(libs.plugins.googleServices) apply false
 }
